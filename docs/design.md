@@ -106,7 +106,7 @@
 - 一覧に追加するときは、ヘッダーだけを読んで、形式、寸法、EXIF の向き、解像度（dpi）を得る（`probe`）。画素は読まない。読めなければ `DecodeFailed`。
 - 総ピクセル数の上限 `MAX_IMAGE_PIXELS = 80_000_000`。A3 を 600 dpi で読み取った画像（約 7016×9921 = 6960 万画素）が収まる値。超えたら `TooLarge`。
 - 解像度は、PNG の `pHYs`、JPEG の JFIF の密度または EXIF の `XResolution`、BMP のヘッダーから読む。WebP と、値がない・単位が不明・`MIN_DPI`（36）〜`MAX_DPI`（2400）の外にある場合は `DEFAULT_DPI`（96）とする。
-- BMP は `image` で読み、`image` が返した RGBA をそのまま使う。32 ビットの BMP の 4 つ目の成分を透過として扱うかは `image` の解釈に従う（スパイクの BMP では不透明として扱われ、透過の部分は黒になった）。BMP の透過の扱いは規格で曖昧なので、アプリでは手を加えない。
+- BMP は `image` で読み、`image` が返した RGBA をそのまま使う。32 ビットの BMP の 4 つ目の成分を透過として扱うかは `image` の解釈に従う（アルファのマスクを持つ BMP（`BITMAPV4HEADER` 以降）は透過ありとして読まれ、マスクのない 32 ビットの BMP（スパイクで使ったもの）は不透明として読まれ、透過の部分は黒になる）。BMP の透過の扱いは規格で曖昧なので、アプリでは手を加えない。
 
 ### 4.2 ページの大きさと配置（FR-02）
 
@@ -313,6 +313,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 
 - `scripts/generate-licenses.ts` が、取得した tgz の `LICENSE` と `licenses/` の 14 件を第三者ライセンス一覧に加える。版は `pdfium-version.json` から入れる。
 - FreeType のライセンスが求める表示は、「このアプリについて」の一覧で満たす。
+- ライセンスの許可リストの検査（NFR-05）と第三者ライセンス一覧は、配布物に入る依存だけを対象にする。テストとフィクスチャの生成にだけ使う dev-dependencies は除く（`deny.toml` の `[graph] exclude-dev = true`）。配布物に入らないものに同梱の条件は掛からないため。例: `jpeg-encoder` は IJG ライセンスを含むが、フィクスチャの生成にだけ使う。
 
 ### 8.4 更新の確認
 
@@ -361,7 +362,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | `logo_alpha.png` / `.webp` | 透過背景の図形 | 透過の保持 |
 | `photo.jpg` | 色の多い RGB の JPEG | JPEG のバイト列の保持 |
 | `photo_cmyk.jpg` | CMYK の JPEG（`jpeg-encoder` で作る） | CMYK の JPEG |
-| `rotate90.jpg` ほか向き 8 通り | EXIF の向き付き JPEG | 向きの反映 |
+| `rotate0.jpg`、`flip_h.jpg`、`rotate180.jpg`、`flip_v.jpg`、`rotate90_flip_h.jpg`、`rotate90.jpg`、`rotate270_flip_h.jpg`、`rotate270.jpg` | EXIF の向き 1〜8 の JPEG。名前は `image::metadata::Orientation` に合わせる。向きを反映するとすべて同じ絵になる | 向きの反映 |
 | `deep16.png` | 16 ビットの PNG | 16 ビットの保持 |
 | `opaque.bmp` / `alpha32.bmp` | 24 ビットと 32 ビットの BMP | BMP の読み込み |
 | `dpi300.png` / `dpi300.jpg` | 解像度 300 dpi の情報付き | 「画像に合わせる」のページの大きさ |
@@ -369,14 +370,16 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | `encrypted.pdf` | 閲覧のパスワード付きの PDF | `PasswordProtected` |
 | `restricted.pdf` | 閲覧のパスワードなし、制限だけを掛けた暗号化の PDF | 開けること |
 | `corrupt.pdf` / `corrupt.png` | 途中で切れたファイル | `PdfOpenFailed` / `DecodeFailed` |
+| `shapes_150dpi_p1.png`〜`p3.png` | `shapes.pdf` の各ページを 150 dpi で描いたときの期待の画像（`gen_fixtures` が同じ図形から計算する） | §11.2 の PDF → 画像の比較 |
 
-- 暗号化された PDF の作り方（`lopdf` の暗号化機能を使うか、標準のセキュリティハンドラーを自前で書くか）は、フィクスチャのタスクで決める。
+- 暗号化された PDF は、標準のセキュリティハンドラー（revision 3、128 ビットの RC4）を `gen_fixtures` に自前で書いて作る。`lopdf` の暗号化は乱数を使うので、生成し直すと同じファイルにならないため（T02 で決定）。
+- `crates/core/tests/fixtures.rs` が、生成し直したバイト列とコミット済みのファイルを比べる。生成プログラムとフィクスチャがずれないようにするため。
 - 文字を含む PDF はフォントのライセンスの扱いが要るので、フィクスチャには入れない。文字の描画の確認は手動の確認（§11.3）で行う。
 
 ### 11.2 品質テスト（NFR-03）
 
-- **画像 → PDF**: 書いた PDF を pdfium で、元の画像の dpi で描画し直し、白の背景に重ねた元の画像と比べる。不一致の画素（RGB のいずれかの差が `COLOR_TOLERANCE`（8）を超える）の割合が `MAX_MISMATCH_RATIO_IMAGE`（0.1%）以下。JPEG は、加えて元のバイト列が PDF の中にそのまま含まれることを確かめる。CMYK の JPEG は色の変換が表示側に依存するので、バイト列の確認だけにする。
-- **PDF → 画像**: `shapes.pdf` を描画し、`gen_fixtures` が同じ図形から計算した期待の画像と比べる。図形の縁のぼかし方の差を許すため、`COLOR_TOLERANCE`（32）、`MAX_MISMATCH_RATIO_RENDER`（2%）とする。値はフィクスチャのタスクで実測して確定する。
+- **画像 → PDF**: 書いた PDF を pdfium で、元の画像の dpi で描画し直し、白の背景に重ねた元の画像と比べる。不一致の画素（RGB のいずれかの差が `COLOR_TOLERANCE_IMAGE`（8）を超える）の割合が `MAX_MISMATCH_RATIO_IMAGE`（0.1%）以下。T02 の実測では、CMYK を除く全フィクスチャで差の最大が 2、不一致は 0% だった。JPEG は、加えて元のバイト列が PDF の中にそのまま含まれることを確かめる。CMYK の JPEG は色の変換が表示側に依存するので、バイト列の確認だけにする。
+- **PDF → 画像**: `shapes.pdf` を描画し、`gen_fixtures` が同じ図形から計算した期待の画像と比べる。図形の縁のぼかし方の差を許すため、`COLOR_TOLERANCE_RENDER`（32）、`MAX_MISMATCH_RATIO_RENDER`（0.5%）とする。T02 の実測では最も悪いページで 0.12% だった（pdfium は画像を x 方向に 1 画素ずらして描く、A4 の高さが整数の画素にならない、などの 1 画素の差が図形の縁に出る）。4 倍の余裕を残しつつ、描画の劣化を見逃しにくい値にしている。
 - 出力した PDF が一般的なビューアーで開けること（NFR-03）は、手動の確認でブラウザー内蔵のビューアーで開いて確かめる。
 
 ### 11.3 テストの一覧
