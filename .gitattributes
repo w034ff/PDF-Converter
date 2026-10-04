@@ -2,3 +2,9 @@
 *.png binary
 *.ico binary
 *.icns binary
+# The fixtures must stay byte for byte what gen_fixtures writes
+# (crates/core/tests/fixtures.rs), so line endings are never converted.
+*.jpg binary
+*.webp binary
+*.bmp binary
+*.pdf binary
