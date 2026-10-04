@@ -14,6 +14,7 @@
 - 実装担当のコーディング規約は [GEMINI.md](../GEMINI.md)（T00 で SVG Tracer のものを元に作る）。
 - リポジトリはオーナーが GitHub に作る（公開、名前は `PDF-Converter` を想定）。Settings → Advanced Security で **Secret scanning** と **Push protection**、**Dependabot alerts** と **Dependabot security updates** を有効にする。main には SVG Tracer と同じルールセット（PR 必須、両 OS の CI 必須、ブランチが最新であること）を掛ける。
 - 実装担当の環境は新しい crate や npm パッケージを取得できないことがある。その場合、依存の追加は設計担当が小さな PR で先に行う。
+- T00 と T01 は設計担当（Opus）が実装する。Gemini の権限の設定では、ひな形の作成、`npm install`、ネットワークへの接続（pdfium の取得）ができないため。レビューと報告の書式は Gemini のタスクと同じにする（§2）。
 
 ## 2. 1 タスクの流れ
 
