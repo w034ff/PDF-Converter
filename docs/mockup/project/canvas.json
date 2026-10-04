@@ -1,20 +1,116 @@
 {
   "v": 3,
-  "createdOnFiles": { "v": 1, "at": "2026-10-04T07:55:23Z" },
-  "title": "PDF Converter 画面案",
-  "launch": { "view": "canvas" },
-  "pages": [],
+  "attachments": {},
   "boards": {
-    "Main.dc.html": { "x": 0, "y": 0, "w": 1200, "h": 800, "title": "画像→PDF：空の状態", "expand": "fill" },
-    "ImagesMerge.dc.html": { "x": 1280, "y": 0, "w": 1200, "h": 800, "title": "画像→PDF：1 つの PDF にまとめる", "expand": "fill" },
-    "ImagesEach.dc.html": { "x": 2560, "y": 0, "w": 1200, "h": 800, "title": "画像→PDF：1 枚ずつ（一括変換の実行中）", "expand": "fill" },
-    "PdfSingle.dc.html": { "x": 0, "y": 1220, "w": 1200, "h": 800, "title": "PDF→画像：1 つの PDF（ページの範囲を指定）", "expand": "fill" },
-    "PdfBatch.dc.html": { "x": 1280, "y": 1220, "w": 1200, "h": 800, "title": "PDF→画像：複数の PDF（終了後）", "expand": "fill" }
+    "ImagesEach.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "title": "画像→PDF：1 枚ずつ（一括変換の実行中）",
+      "w": 1200,
+      "x": 2560,
+      "y": 0
+    },
+    "ImagesMerge.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "title": "画像→PDF：1 つの PDF にまとめる",
+      "w": 1200,
+      "x": 1280,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "title": "画像→PDF：空の状態",
+      "w": 1200,
+      "x": 0,
+      "y": 0
+    },
+    "PdfBatch.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "title": "PDF→画像：複数の PDF（終了後）",
+      "w": 1200,
+      "x": 1280,
+      "y": 1220
+    },
+    "PdfSingle.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "title": "PDF→画像：1 つの PDF（ページの範囲を指定）",
+      "w": 1200,
+      "x": 0,
+      "y": 1220
+    },
+    "AccentA.dc.html": {
+      "x": 0,
+      "y": 2440,
+      "w": 1200,
+      "h": 800,
+      "title": "候補 A：テラコッタ #b4492b",
+      "expand": "fill"
+    },
+    "AccentB.dc.html": {
+      "x": 1280,
+      "y": 2440,
+      "w": 1200,
+      "h": 800,
+      "title": "候補 B：ティール #0e6b66",
+      "expand": "fill"
+    },
+    "AccentC.dc.html": {
+      "x": 2560,
+      "y": 2440,
+      "w": 1200,
+      "h": 800,
+      "title": "候補 C：紫 #5b3c9e",
+      "expand": "fill"
+    }
   },
-  "order": ["Main.dc.html", "ImagesMerge.dc.html", "ImagesEach.dc.html", "PdfSingle.dc.html", "PdfBatch.dc.html"],
+  "createdOnFiles": {
+    "at": "2026-10-04T07:55:23Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
   "notes": {
-    "rowImages": { "x": 0, "y": -300, "text": "画像 → PDF", "kind": "title1", "maxW": 3760 },
-    "rowPdf": { "x": 0, "y": 920, "text": "PDF → 画像", "kind": "title1", "maxW": 2480 }
+    "rowImages": {
+      "kind": "title1",
+      "maxW": 3760,
+      "text": "画像 → PDF",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "rowPdf": {
+      "kind": "title1",
+      "maxW": 2480,
+      "text": "PDF → 画像",
+      "w": 240,
+      "x": 0,
+      "y": 920
+    },
+    "rowAccent": {
+      "x": 0,
+      "y": 2140,
+      "text": "アクセントの色の候補",
+      "kind": "title1",
+      "maxW": 3760,
+      "w": 240
+    }
   },
-  "designSystems": []
+  "order": [
+    "Main.dc.html",
+    "ImagesMerge.dc.html",
+    "ImagesEach.dc.html",
+    "PdfSingle.dc.html",
+    "PdfBatch.dc.html",
+    "AccentA.dc.html",
+    "AccentB.dc.html",
+    "AccentC.dc.html"
+  ],
+  "pages": [],
+  "title": "PDF Converter 画面案"
 }
