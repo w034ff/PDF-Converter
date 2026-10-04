@@ -53,6 +53,10 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      # The worker tests and the bundle need the pinned pdfium (design §8.1).
+      - name: Fetch pdfium
+        run: npm run pdfium:fetch
+
       - name: Code Format Check
         run: npm run format:check
 
@@ -69,7 +73,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Rust Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Rust Test
-        run: cargo test --workspace
+        run: cargo test --workspace --all-features

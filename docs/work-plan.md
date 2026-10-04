@@ -75,7 +75,7 @@ Windows での確認、見た目の確認など、自動化できないもの。
 
 ### 2.3 pre-commit フック
 
-- `.githooks/pre-commit` が、§5 のローカルの検査（`cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`npm run format:check`、`npm run lint`、`npm run typecheck`、`npm test`）を走らせ、1 つでも失敗したらコミットを止める。人間のコミットも同じ検査を通る。
+- `.githooks/pre-commit` が、§5 のローカルの検査（`cargo fmt --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace --all-features`、`npm run format:check`、`npm run lint`、`npm run typecheck`、`npm test`）を走らせ、1 つでも失敗したらコミットを止める。人間のコミットも同じ検査を通る。
 - フックを有効にする `git config core.hooksPath .githooks` は、オーナーが T00 を渡す前に一度だけ実行する。`.githooks/` ができるまでは何も走らないので、先に設定しておいてよい。同じリポジトリの作業ツリー（`task` と `chore`）は、この設定を共有する。Gemini は git の設定を変えない。
 - `--no-verify` などでフックを迂回しない。フックが通らない状態ではコミットできないので、中断するときの報告はコミットせずに `pr-description.md` に置く。
 - 文書だけのコミット（設計担当による `docs/` の更新など）も検査が走る。時間がかかっても迂回しない。
@@ -305,8 +305,9 @@ Windows での確認、見た目の確認など、自動化できないもの。
 すべてのタスクで次を満たす。
 
 - タスクの「完了条件」をすべて満たしている。
+- Rust のビルドの前に `npm run pdfium:fetch` を一度実行してある（ワーカーのテストとアプリのビルドが pdfium を使うため）。`--all-features` は、ワーカーのテスト用の要求（`test-hooks`）を含めて検査するために付ける。
 - 変更した振る舞いにテストがある。テストは、その機能を壊すと失敗する内容になっている。
-- ローカルで次がすべて成功する: `cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`npm run format:check`、`npm run lint`、`npm run typecheck`、`npm test`。
+- ローカルで次がすべて成功する: `cargo fmt --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace --all-features`、`npm run format:check`、`npm run lint`、`npm run typecheck`、`npm test`。
 - CI が Windows と Ubuntu で成功している。
 - GEMINI.md の規約に従っている。
 - 新しい依存を追加した場合、PR の説明にその名前、ライセンス、追加した理由を書いている。T14 の後は、ライセンス一覧を生成し直してコミットしている。

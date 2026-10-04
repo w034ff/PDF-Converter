@@ -71,7 +71,7 @@ Do not push through by guessing.
 
 - No `unwrap()` / `expect()` outside tests, except for an invariant that cannot fail; state that invariant in the `expect` message.
 - Return errors as the error codes in `docs/design.md` §6.6. Do not return `String` errors from commands.
-- `unsafe_code` is forbidden in the workspace. Use safe wrappers for OS calls; if none exists, stop and ask.
+- `unsafe` is denied in the workspace. The single exception is `crates/worker/src/windows_job.rs` (the reason is at the top of that file). Use safe wrappers for OS calls; if none exists, stop and ask.
 - `cargo clippy --workspace --all-targets -- -D warnings` must pass. Do not silence lints with `#[allow(...)]` unless the reason is stated in a comment next to it.
 - Keep `crates/core` and `crates/worker` free of any Tauri dependency.
 

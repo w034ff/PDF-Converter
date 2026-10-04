@@ -1,0 +1,74 @@
+name: Bundle check
+
+# Builds the four installers so the bundled pdfium can be tried on a real
+# machine (work-plan T01). It runs when something that affects the bundle
+# changes; release.yml (T15) builds the published installers.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "scripts/pdfium-version.json"
+      - "scripts/fetch-pdfium.ts"
+      - "src-tauri/tauri*.json"
+      - "crates/worker/**"
+      - ".github/workflows/bundle-check.yml"
+
+jobs:
+  bundle:
+    name: Bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.04 keeps the AppImage and .deb runnable on the oldest Ubuntu
+        # the requirements support (requirements §4).
+        os: [windows-latest, ubuntu-22.04]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: "npm"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Fetch pdfium
+        run: npm run pdfium:fetch
+
+      - name: Build installers
+        run: npm run tauri build
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+          if-no-files-found: error
