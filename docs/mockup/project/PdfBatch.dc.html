@@ -49,10 +49,12 @@ td{font-size:13px;padding:8px 12px;border-bottom:1px solid #ebe8e3;vertical-alig
       <div style="display: flex; flex-direction: column; gap: 8px">
         <span class="label">ページ</span>
         <div class="seg" role="group" aria-label="ページ">
-          <button aria-pressed="true">すべて</button>
-          <button aria-pressed="false" disabled style="opacity: 0.5; cursor: not-allowed">範囲を指定</button>
+          <button aria-pressed="false">すべて</button>
+          <button aria-pressed="true">範囲を指定</button>
         </div>
-        <span class="hint">PDF が複数あるときは、すべてのページを変換します</span>
+        <label class="hint" for="range">変換するページ（例：1-3, 5）</label>
+        <input id="range" class="field" value="2">
+        <span class="hint">すべての PDF に同じ範囲を当てはめます。ページが足りない PDF は、あるページだけを変換します</span>
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px">
         <span class="label">形式</span>
@@ -78,11 +80,11 @@ td{font-size:13px;padding:8px 12px;border-bottom:1px solid #ebe8e3;vertical-alig
 
     <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; box-sizing: border-box">
       <div role="status" style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 8px">
-        <span style="font-size: 14px; font-weight: 700">変換が終わりました：成功 3 件 · 失敗 2 件</span>
+        <span style="font-size: 14px; font-weight: 700">変換が終わりました：成功 3 件 · 失敗 2 件 · 対象のページなし 1 件</span>
         <span class="hint">失敗した PDF の理由は、下の一覧に表示しています</span>
       </div>
       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-        <span class="label">PDF 5 件</span>
+        <span class="label">PDF 6 件</span>
         <span class="hint">「invoices」フォルダから追加</span>
         <div style="margin-left: auto; display: flex; gap: 8px">
           <button class="btn btn-ghost">PDF を追加</button>
@@ -92,9 +94,9 @@ td{font-size:13px;padding:8px 12px;border-bottom:1px solid #ebe8e3;vertical-alig
       </div>
       <div style="background: #ffffff; border: 1px solid #dcd9d3; border-radius: 8px; overflow-x: auto">
         <table style="width: 100%; border-collapse: collapse">
-          <thead><tr><th>ファイル名</th><th style="width: 80px">ページ</th><th>保存したファイル</th><th style="width: 200px">状態</th></tr></thead>
+          <thead><tr><th>ファイル名</th><th style="width: 120px">ページ / 全体</th><th>保存したファイル</th><th style="width: 200px">状態</th></tr></thead>
           <tbody>
-            <sc-for list="{{ rows }}" as="row" hint-placeholder-count="5">
+            <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
               <tr>
                 <td>{{ row.name }}</td>
                 <td class="mono">{{ row.pages }}</td>
@@ -120,9 +122,10 @@ class Component extends DCLogic {
     const ok = { status: '✓ 完了', color: '#1f6b3a', reason: '' };
     return {
       rows: [
-        { name: 'invoice-2026-07.pdf', pages: '2', out: 'invoice-2026-07_p1.jpg ほか 1 件', ...ok },
-        { name: 'invoice-2026-08.pdf', pages: '3', out: 'invoice-2026-08_p1.jpg ほか 2 件', ...ok },
-        { name: 'invoice-2026-09.pdf', pages: '2', out: 'invoice-2026-09_p1.jpg ほか 1 件', ...ok },
+        { name: 'invoice-2026-07.pdf', pages: '2 / 2', out: 'invoice-2026-07_p2.jpg', ...ok },
+        { name: 'invoice-2026-08.pdf', pages: '2 / 3', out: 'invoice-2026-08_p2.jpg', ...ok },
+        { name: 'invoice-2026-09.pdf', pages: '2 / 2', out: 'invoice-2026-09_p2.jpg', ...ok },
+        { name: 'receipt-0930.pdf', pages: '— / 1', out: '—', status: '対象のページなし', color: '#5c5a56', reason: '指定した範囲のページがありません' },
         { name: 'contract-signed.pdf', pages: '—', out: '—', status: '✕ 失敗', color: '#a3261b', reason: 'パスワードで保護されているため開けません' },
         { name: 'scan-broken.pdf', pages: '—', out: '—', status: '✕ 失敗', color: '#a3261b', reason: 'ファイルが壊れているため読み込めませんでした' }
       ]
