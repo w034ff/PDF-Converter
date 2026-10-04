@@ -52,7 +52,7 @@
 
 ```
 /
-├── crates/core/              変換の処理（Tauri 非依存）
+├── crates/core/              変換の処理（Tauri 非依存）。パッケージ名は pdfconv-core
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── probe.rs          画像の形式・寸法・向き・解像度の取得（§4.1）
@@ -63,7 +63,7 @@
 │   │   └── error.rs
 │   ├── examples/gen_fixtures.rs   フィクスチャの生成（§11.1）
 │   └── tests/
-├── crates/worker/            ワーカー（pdfium を使う唯一の crate）
+├── crates/worker/            ワーカー（pdfium を使う唯一の crate）。パッケージ名は pdfconv-worker
 │   └── src/
 │       ├── protocol.rs       メッセージの型と読み書き（メインプロセスと共有）
 │       └── worker.rs         ワーカーの本体（§5）
