@@ -1,0 +1,8 @@
+docs/
+spike/
+src-tauri/gen/
+src-tauri/pdfium/
+target/
+dist/
+package-lock.json
+Cargo.lock

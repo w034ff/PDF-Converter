@@ -1,0 +1,22 @@
+[package]
+name = "pdf-converter"
+version = "0.1.0"
+description = "Convert images to PDF and PDF pages to images, offline"
+authors = ["w034ff"]
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+name = "pdf_converter_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+pdfconv-core = { path = "../crates/core" }

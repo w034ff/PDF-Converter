@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/worker",
+    "src-tauri",
+]
+resolver = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
