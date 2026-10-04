@@ -75,7 +75,7 @@
 - Tauri 2 + React + TypeScript + Vite のプロジェクトを作り、design.md §3 のディレクトリ構成にする。Cargo ワークスペースに `crates/core`、`crates/worker`、`src-tauri` を含める。アプリの識別子とウィンドウの大きさ（既定 1200×800、最小 960×640）を設定する。
 - `GEMINI.md` を SVG Tracer のものを元に作る（型、コメント、定数、多言語、コミットメッセージの規約）。
 - ESLint と Prettier、`rustfmt`、`clippy`（`-D warnings`）の設定は SVG Tracer と同じにする（`any`、型アサーション、非 null アサーション、`class` 宣言を禁止）。
-- `.github/workflows/ci.yml`: Windows と Ubuntu で fmt、clippy、`cargo test`、lint、型検査、フロントエンドのテストを回す。
+- `.github/workflows/ci.yml`: Windows と Ubuntu で fmt、clippy、`cargo test`、lint、型検査、フロントエンドのテストを回す。ジョブの名前は `Test (ubuntu-latest)` と `Test (windows-latest)` にする（main のルールセットが、この名前のチェックの成功を必須にしているため）。
 - `LICENSE`（MIT）。`.gitignore` は SVG Tracer と同じ内容に、`src-tauri/pdfium/` と `spike/` の生成物を加える。
 - 既存の `spike/` は残す（スパイクの記録）。ワークスペースには含めない。
 
