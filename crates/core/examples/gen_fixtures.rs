@@ -436,9 +436,8 @@ fn over(dst: [u8; 4], src: [u8; 4]) -> [u8; 4] {
 }
 
 fn rgba_to_rgb(rgba: &[u8]) -> Vec<u8> {
-    rgba.chunks_exact(4)
-        .flat_map(|p| [p[0], p[1], p[2]])
-        .collect()
+    let (pixels, _) = rgba.as_chunks::<4>();
+    pixels.iter().flat_map(|&[r, g, b, _]| [r, g, b]).collect()
 }
 
 // ---------------------------------------------------------------------------
