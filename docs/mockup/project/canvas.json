@@ -1,0 +1,20 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-04T07:55:23Z" },
+  "title": "PDF Converter 画面案",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1200, "h": 800, "title": "画像→PDF：空の状態", "expand": "fill" },
+    "ImagesMerge.dc.html": { "x": 1280, "y": 0, "w": 1200, "h": 800, "title": "画像→PDF：1 つの PDF にまとめる", "expand": "fill" },
+    "ImagesEach.dc.html": { "x": 2560, "y": 0, "w": 1200, "h": 800, "title": "画像→PDF：1 枚ずつ（一括変換の実行中）", "expand": "fill" },
+    "PdfSingle.dc.html": { "x": 0, "y": 1220, "w": 1200, "h": 800, "title": "PDF→画像：1 つの PDF（ページの範囲を指定）", "expand": "fill" },
+    "PdfBatch.dc.html": { "x": 1280, "y": 1220, "w": 1200, "h": 800, "title": "PDF→画像：複数の PDF（終了後）", "expand": "fill" }
+  },
+  "order": ["Main.dc.html", "ImagesMerge.dc.html", "ImagesEach.dc.html", "PdfSingle.dc.html", "PdfBatch.dc.html"],
+  "notes": {
+    "rowImages": { "x": 0, "y": -300, "text": "画像 → PDF", "kind": "title1", "maxW": 3760 },
+    "rowPdf": { "x": 0, "y": 920, "text": "PDF → 画像", "kind": "title1", "maxW": 2480 }
+  },
+  "designSystems": []
+}
