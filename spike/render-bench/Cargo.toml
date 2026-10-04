@@ -8,3 +8,6 @@ publish = false
 hayro = "0.7.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 pdfium-render = "0.9.4"
+
+# Built on its own, outside the app workspace.
+[workspace]

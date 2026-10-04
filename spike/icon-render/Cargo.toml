@@ -1,12 +1,11 @@
 [package]
-name = "write-bench"
+name = "icon-render"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 [dependencies]
-krilla = "0.8.2"
-image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png", "webp"] }
+resvg = "0.48.1"
 
 # Built on its own, outside the app workspace.
 [workspace]
