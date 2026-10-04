@@ -26,74 +26,25 @@ pub fn page_number_width(total_pages: u32) -> usize {
     total_pages.max(1).to_string().len()
 }
 
-/// Formats the base output name for a single PDF page before collision resolution (design §6.3).
+/// Allocates the next available filename using the `name (n).ext` scheme (design §6.4).
 ///
-/// - `pdf_filename`: Name of the source PDF (e.g. `report.pdf` or `archive.tar.pdf`).
-/// - `page_number`: 1-based page number.
-/// - `total_pages`: Total page count of the source PDF.
-/// - `extension`: Output image extension without leading dot (e.g. `png`, `jpg`).
-///
-/// E.g. `format_pdf_page_name("report.pdf", 1, 120, "png")` -> `"report_p001.png"`.
-/// E.g. `format_pdf_page_name("archive.tar.pdf", 9, 9, "jpg")` -> `"archive.tar_p9.jpg"`.
-#[must_use]
-pub fn format_pdf_page_name(
-    pdf_filename: &str,
-    page_number: u32,
-    total_pages: u32,
-    extension: &str,
-) -> String {
-    let (stem, _) = split_stem_and_ext(pdf_filename);
-    let width = page_number_width(total_pages);
-    let ext = extension.trim_start_matches('.');
-    if ext.is_empty() {
-        format!("{stem}_p{page_number:0width$}")
-    } else {
-        format!("{stem}_p{page_number:0width$}.{ext}")
-    }
-}
-
-/// Extracts any existing trailing ` (n)` suffix from a stem.
-///
-/// If `stem` ends with ` (n)` where `n >= 1`, returns `(base_stem, Some(n))`.
-/// Otherwise returns `(stem, None)`.
-fn split_numeric_suffix(stem: &str) -> (&str, Option<usize>) {
-    if let Some(open_idx) = stem.rfind(" (")
-        && stem.ends_with(')')
-    {
-        let num_str = &stem[open_idx + 2..stem.len() - 1];
-        if let Ok(num) = num_str.parse::<usize>()
-            && num > 0
-        {
-            return (&stem[..open_idx], Some(num));
-        }
-    }
-    (stem, None)
-}
-
-/// Finds the next available filename using the `name (n).ext` scheme
-/// if `target_name` is taken according to `is_taken` (design §6.4).
-///
-/// If `target_name` is not taken, returns `target_name` unchanged.
-/// If `target_name` already has a ` (k)` suffix and is taken, increments from `k + 1`.
-pub fn next_available_name<F>(target_name: &str, is_taken: F) -> String
-where
-    F: Fn(&str) -> bool,
-{
-    if !is_taken(target_name) {
-        return target_name.to_string();
-    }
-
-    let (stem, ext) = split_stem_and_ext(target_name);
-    let (base_stem, start_n) = split_numeric_suffix(stem);
-    let mut n = start_n.map_or(1, |cur| cur + 1);
-
+/// Collision checks against `used_lower` are case-insensitive.
+/// When an available name is found, its lowercase form is inserted into `used_lower`,
+/// and the candidate (preserving the original casing of `base_stem`) is returned.
+fn allocate_unique_name(base_stem: &str, ext: &str, used_lower: &mut HashSet<String>) -> String {
+    let ext_trimmed = ext.trim_start_matches('.');
+    let mut n = 0usize;
     loop {
-        let candidate = if ext.is_empty() {
-            format!("{base_stem} ({n})")
-        } else {
-            format!("{base_stem} ({n}).{ext}")
+        let candidate = match (n, ext_trimmed.is_empty()) {
+            (0, true) => base_stem.to_string(),
+            (0, false) => format!("{base_stem}.{ext_trimmed}"),
+            (_, true) => format!("{base_stem} ({n})"),
+            (_, false) => format!("{base_stem} ({n}).{ext_trimmed}"),
         };
-        if !is_taken(&candidate) {
+
+        let candidate_lower = candidate.to_lowercase();
+        if !used_lower.contains(&candidate_lower) {
+            used_lower.insert(candidate_lower);
             return candidate;
         }
         n += 1;
@@ -128,22 +79,7 @@ pub fn resolve_image_to_pdf_names(inputs: &[String], existing: &HashSet<String>)
 
     for (input, original_index) in indexed_inputs {
         let (stem, _) = split_stem_and_ext(input);
-        let mut n = 0usize;
-        loop {
-            let candidate = if n == 0 {
-                format!("{stem}.pdf")
-            } else {
-                format!("{stem} ({n}).pdf")
-            };
-
-            let candidate_lower = candidate.to_lowercase();
-            if !used_lower.contains(&candidate_lower) {
-                used_lower.insert(candidate_lower);
-                resolved[original_index] = candidate;
-                break;
-            }
-            n += 1;
-        }
+        resolved[original_index] = allocate_unique_name(stem, "pdf", &mut used_lower);
     }
 
     resolved
@@ -211,95 +147,11 @@ pub fn resolve_pdf_to_image_names(
         let (stem, _) = split_stem_and_ext(entry.filename);
         let width = page_number_width(entry.total_pages);
         let base_stem = format!("{stem}_p{:0width$}", entry.page, width = width);
-
-        let mut n = 0usize;
-        loop {
-            let candidate = if n == 0 {
-                if ext.is_empty() {
-                    base_stem.clone()
-                } else {
-                    format!("{base_stem}.{ext}")
-                }
-            } else if ext.is_empty() {
-                format!("{base_stem} ({n})")
-            } else {
-                format!("{base_stem} ({n}).{ext}")
-            };
-
-            let candidate_lower = candidate.to_lowercase();
-            if !used_lower.contains(&candidate_lower) {
-                used_lower.insert(candidate_lower);
-                result[entry.input_idx][entry.page_idx] = candidate;
-                break;
-            }
-            n += 1;
-        }
+        result[entry.input_idx][entry.page_idx] =
+            allocate_unique_name(&base_stem, ext, &mut used_lower);
     }
 
     result
-}
-
-/// An item representing a single PDF page to convert to an image.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PdfPageItem {
-    /// Filename of the PDF.
-    pub pdf_filename: String,
-    /// 1-based page number.
-    pub page_number: u32,
-    /// Total page count of the PDF.
-    pub total_pages: u32,
-}
-
-/// Resolves output image filenames for a flat list of PDF page items (design §6.3, §6.4).
-///
-/// Output filenames correspond to `items` at the same index.
-/// Assignment order is sorted by `(pdf_filename, page_number)`.
-pub fn resolve_pdf_page_output_names(
-    items: &[PdfPageItem],
-    extension: &str,
-    existing: &HashSet<String>,
-) -> Vec<String> {
-    let ext = extension.trim_start_matches('.');
-    let mut indexed: Vec<(&PdfPageItem, usize)> =
-        items.iter().enumerate().map(|(i, it)| (it, i)).collect();
-    indexed.sort_by(|a, b| {
-        (a.0.pdf_filename.as_str(), a.0.page_number)
-            .cmp(&(b.0.pdf_filename.as_str(), b.0.page_number))
-    });
-
-    let mut used_lower: HashSet<String> = existing.iter().map(|s| s.to_lowercase()).collect();
-    let mut resolved = vec![String::new(); items.len()];
-
-    for (item, orig_idx) in indexed {
-        let (stem, _) = split_stem_and_ext(&item.pdf_filename);
-        let width = page_number_width(item.total_pages);
-        let base_stem = format!("{stem}_p{:0width$}", item.page_number, width = width);
-
-        let mut n = 0usize;
-        loop {
-            let candidate = if n == 0 {
-                if ext.is_empty() {
-                    base_stem.clone()
-                } else {
-                    format!("{base_stem}.{ext}")
-                }
-            } else if ext.is_empty() {
-                format!("{base_stem} ({n})")
-            } else {
-                format!("{base_stem} ({n}).{ext}")
-            };
-
-            let candidate_lower = candidate.to_lowercase();
-            if !used_lower.contains(&candidate_lower) {
-                used_lower.insert(candidate_lower);
-                resolved[orig_idx] = candidate;
-                break;
-            }
-            n += 1;
-        }
-    }
-
-    resolved
 }
 
 #[cfg(test)]
@@ -393,6 +245,18 @@ mod tests {
         let result_multi = resolve_image_to_pdf_names(&inputs_multi, &existing_multi);
         // "doc.jpg" < "doc.png", so doc.jpg gets (2), doc.png gets (3)
         assert_eq!(result_multi, vec!["doc (3).pdf", "doc (2).pdf"]);
+
+        // PDF to image rollover:
+        let pdf_inputs = vec![PdfToImageInput {
+            filename: "doc.pdf".to_string(),
+            total_pages: 5,
+            pages: vec![1],
+        }];
+        let mut existing_pdf = HashSet::new();
+        existing_pdf.insert("doc_p1.png".to_string());
+        existing_pdf.insert("doc_p1 (1).png".to_string());
+        let pdf_result = resolve_pdf_to_image_names(&pdf_inputs, "png", &existing_pdf);
+        assert_eq!(pdf_result, vec![vec!["doc_p1 (2).png"]]);
     }
 
     #[test]
@@ -411,6 +275,25 @@ mod tests {
         // In Unicode code point order, 'D' (0x44) < 'd' (0x64), so "DOC.png" comes first.
         // "DOC.png" gets "DOC.pdf", and "doc.png" collides case-insensitively, getting "doc (1).pdf".
         assert_eq!(result_case, vec!["doc (1).pdf", "DOC.pdf"]);
+    }
+
+    #[test]
+    fn pdf_to_image_case_differing_existing_file() {
+        // Existing file differs only in case:
+        let inputs = vec![PdfToImageInput {
+            filename: "report.pdf".to_string(),
+            total_pages: 5,
+            pages: vec![1],
+        }];
+        let mut existing = HashSet::new();
+        existing.insert("REPORT_P1.PNG".to_string());
+        let result = resolve_pdf_to_image_names(&inputs, "png", &existing);
+        assert_eq!(result, vec![vec!["report_p1 (1).png"]]);
+
+        // Rollover with case differences:
+        existing.insert("report_p1 (1).PNG".to_string());
+        let result2 = resolve_pdf_to_image_names(&inputs, "png", &existing);
+        assert_eq!(result2, vec![vec!["report_p1 (2).png"]]);
     }
 
     #[test]
@@ -438,30 +321,36 @@ mod tests {
     fn pdf_page_number_digits_boundary_and_large() {
         // 9 pages vs 10 pages boundary
         assert_eq!(page_number_width(9), 1);
-        assert_eq!(format_pdf_page_name("doc.pdf", 1, 9, "png"), "doc_p1.png");
-        assert_eq!(format_pdf_page_name("doc.pdf", 9, 9, "png"), "doc_p9.png");
-
         assert_eq!(page_number_width(10), 2);
-        assert_eq!(format_pdf_page_name("doc.pdf", 1, 10, "png"), "doc_p01.png");
-        assert_eq!(format_pdf_page_name("doc.pdf", 9, 10, "png"), "doc_p09.png");
-        assert_eq!(
-            format_pdf_page_name("doc.pdf", 10, 10, "png"),
-            "doc_p10.png"
-        );
-
-        // 120 pages
         assert_eq!(page_number_width(120), 3);
+
+        let inputs = vec![
+            PdfToImageInput {
+                filename: "doc9.pdf".to_string(),
+                total_pages: 9,
+                pages: vec![1, 9],
+            },
+            PdfToImageInput {
+                filename: "doc10.pdf".to_string(),
+                total_pages: 10,
+                pages: vec![1, 9, 10],
+            },
+            PdfToImageInput {
+                filename: "doc120.pdf".to_string(),
+                total_pages: 120,
+                pages: vec![1, 10, 120],
+            },
+        ];
+        let existing = HashSet::new();
+        let result = resolve_pdf_to_image_names(&inputs, "png", &existing);
+        assert_eq!(result[0], vec!["doc9_p1.png", "doc9_p9.png"]);
         assert_eq!(
-            format_pdf_page_name("doc.pdf", 1, 120, "png"),
-            "doc_p001.png"
+            result[1],
+            vec!["doc10_p01.png", "doc10_p09.png", "doc10_p10.png"]
         );
         assert_eq!(
-            format_pdf_page_name("doc.pdf", 10, 120, "png"),
-            "doc_p010.png"
-        );
-        assert_eq!(
-            format_pdf_page_name("doc.pdf", 120, 120, "png"),
-            "doc_p120.png"
+            result[2],
+            vec!["doc120_p001.png", "doc120_p010.png", "doc120_p120.png"]
         );
     }
 
@@ -490,82 +379,62 @@ mod tests {
         let result_2 = resolve_image_to_pdf_names(&inputs_2, &HashSet::new());
         // doc.jpg is at idx 0 -> "doc.pdf", doc.png is at idx 1 -> "doc (1).pdf"
         assert_eq!(result_2, vec!["doc.pdf", "doc (1).pdf"]);
+    }
 
-        // PDF to images invariance
-        let pdf_a = PdfToImageInput {
-            filename: "b.pdf".to_string(),
+    #[test]
+    fn pdf_to_image_order_invariance_with_collisions() {
+        // Test PDF -> Image input order invariance where inputs collide with each other.
+        // "DOC.pdf" vs "doc.pdf" both targeting page 1:
+        // 'D' < 'd', so DOC.pdf gets "DOC_p1.png" and doc.pdf gets "doc_p1 (1).png"
+        // regardless of which order they appear in the input list.
+        let pdf_upper = PdfToImageInput {
+            filename: "DOC.pdf".to_string(),
             total_pages: 5,
-            pages: vec![1, 2],
+            pages: vec![1],
+        };
+        let pdf_lower = PdfToImageInput {
+            filename: "doc.pdf".to_string(),
+            total_pages: 5,
+            pages: vec![1],
+        };
+
+        let res_1 = resolve_pdf_to_image_names(
+            &[pdf_lower.clone(), pdf_upper.clone()],
+            "png",
+            &HashSet::new(),
+        );
+        assert_eq!(res_1[0], vec!["doc_p1 (1).png"]);
+        assert_eq!(res_1[1], vec!["DOC_p1.png"]);
+
+        let res_2 = resolve_pdf_to_image_names(&[pdf_upper, pdf_lower], "png", &HashSet::new());
+        assert_eq!(res_2[0], vec!["DOC_p1.png"]);
+        assert_eq!(res_2[1], vec!["doc_p1 (1).png"]);
+
+        // Additional test with existing collision + multiple colliding inputs:
+        let mut existing = HashSet::new();
+        existing.insert("report_p1.png".to_string());
+
+        let pdf_a = PdfToImageInput {
+            filename: "REPORT.pdf".to_string(),
+            total_pages: 5,
+            pages: vec![1],
         };
         let pdf_b = PdfToImageInput {
-            filename: "a.pdf".to_string(),
+            filename: "report.pdf".to_string(),
             total_pages: 5,
-            pages: vec![1, 2],
+            pages: vec![1],
         };
-        let mut pdf_existing = HashSet::new();
-        pdf_existing.insert("a_p1.png".to_string());
 
-        let order_1 =
-            resolve_pdf_to_image_names(&[pdf_a.clone(), pdf_b.clone()], "png", &pdf_existing);
-        let order_2 = resolve_pdf_to_image_names(&[pdf_b, pdf_a], "png", &pdf_existing);
+        // 'R' (0x52) < 'r' (0x72).
+        // REPORT.pdf is sorted first -> collides with existing "report_p1.png", gets "REPORT_p1 (1).png"
+        // report.pdf is sorted second -> collides with both, gets "report_p1 (2).png"
+        let order_ab =
+            resolve_pdf_to_image_names(&[pdf_a.clone(), pdf_b.clone()], "png", &existing);
+        assert_eq!(order_ab[0], vec!["REPORT_p1 (1).png"]);
+        assert_eq!(order_ab[1], vec!["report_p1 (2).png"]);
 
-        // In order_1, input 0 is b.pdf, input 1 is a.pdf.
-        // In order_2, input 0 is a.pdf, input 1 is b.pdf.
-        assert_eq!(order_1[0], order_2[1]); // b.pdf results match
-        assert_eq!(order_1[1], order_2[0]); // a.pdf results match
-        assert_eq!(order_1[1], vec!["a_p1 (1).png", "a_p2.png"]);
-        assert_eq!(order_1[0], vec!["b_p1.png", "b_p2.png"]);
-    }
-
-    #[test]
-    fn flat_pdf_page_items_resolution() {
-        let items = vec![
-            PdfPageItem {
-                pdf_filename: "doc.pdf".to_string(),
-                page_number: 2,
-                total_pages: 10,
-            },
-            PdfPageItem {
-                pdf_filename: "doc.pdf".to_string(),
-                page_number: 1,
-                total_pages: 10,
-            },
-        ];
-        let mut existing = HashSet::new();
-        existing.insert("doc_p01.png".to_string());
-        let result = resolve_pdf_page_output_names(&items, "png", &existing);
-        assert_eq!(result, vec!["doc_p02.png", "doc_p01 (1).png"]);
-    }
-
-    #[test]
-    fn next_available_name_tests() {
-        let mut taken = HashSet::new();
-        taken.insert("output.pdf".to_string());
-        taken.insert("output (1).pdf".to_string());
-        taken.insert("readme".to_string());
-        taken.insert("case.pdf".to_string());
-
-        let is_taken = |name: &str| taken.contains(&name.to_lowercase());
-
-        // Not taken
-        assert_eq!(next_available_name("fresh.pdf", is_taken), "fresh.pdf");
-
-        // Taken -> (2) because (1) is also taken
-        assert_eq!(
-            next_available_name("output.pdf", is_taken),
-            "output (2).pdf"
-        );
-
-        // Already has (1), rolls over to (2)
-        assert_eq!(
-            next_available_name("output (1).pdf", is_taken),
-            "output (2).pdf"
-        );
-
-        // Case-insensitivity
-        assert_eq!(next_available_name("CASE.pdf", is_taken), "CASE (1).pdf");
-
-        // No extension
-        assert_eq!(next_available_name("readme", is_taken), "readme (1)");
+        let order_ba = resolve_pdf_to_image_names(&[pdf_b, pdf_a], "png", &existing);
+        assert_eq!(order_ba[0], vec!["report_p1 (2).png"]);
+        assert_eq!(order_ba[1], vec!["REPORT_p1 (1).png"]);
     }
 }
