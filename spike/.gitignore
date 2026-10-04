@@ -1,0 +1,10 @@
+# Downloaded or generated while running the spike; only the source is kept.
+target/
+pdfium-*/
+pdfium-*.tgz
+out/
+wout/
+wback/
+cmp/
+imgs/
+bench-*.txt

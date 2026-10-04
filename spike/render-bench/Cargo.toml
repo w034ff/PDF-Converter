@@ -1,0 +1,10 @@
+[package]
+name = "render-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+hayro = "0.7.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+pdfium-render = "0.9.4"
