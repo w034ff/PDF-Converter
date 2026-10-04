@@ -66,13 +66,16 @@
 ├── crates/worker/            ワーカー（pdfium を使う唯一の crate）。パッケージ名は pdfconv-worker
 │   └── src/
 │       ├── protocol.rs       メッセージの型と読み書き（メインプロセスと共有）
-│       └── worker.rs         ワーカーの本体（§5）
+│       ├── server.rs         ワーカーの本体（§5）
+│       ├── client.rs         メインプロセスの側の 1 つのワーカー（起動、要求、時間切れ、異常終了）
+│       ├── windows_job.rs    Windows のジョブオブジェクト（§5.3）
+│       └── main.rs           テスト用の単独のワーカー（`pdfconv-worker`）
 ├── src-tauri/
 │   ├── src/
 │   │   ├── main.rs           `--pdf-worker` なら worker を実行、それ以外はアプリ
 │   │   ├── commands.rs       IPC コマンド（§7）
 │   │   ├── items.rs          ファイルの ID の表と一覧の項目
-│   │   ├── worker_pool.rs    ワーカーの起動・貸し出し・監視（§5.2）
+│   │   ├── worker_pool.rs    ワーカーの数の管理と貸し出し（§5.2）。1 つのワーカーの扱いは crates/worker の client.rs
 │   │   ├── jobs.rs           変換の実行・進捗・キャンセル（§6）
 │   │   └── settings.rs       設定の読み書き（§6.7）
 │   ├── pdfium/               取得した pdfium（コミットしない、§8.1）
@@ -173,7 +176,9 @@
 
 - ワーカー 1 つが使えるメモリを `WORKER_MEMORY_LIMIT`（2 GiB）までにする。超えた確保は失敗し、ワーカーは終了する（`WorkerCrashed` として扱う）。
 - Linux: ワーカーが起動直後、pdfium を読み込む前に `setrlimit(RLIMIT_AS)` で自分に上限を掛ける。
-- Windows: メインプロセスがワーカーを起動したあと、ジョブオブジェクトに入れて `JOB_OBJECT_LIMIT_PROCESS_MEMORY` を掛ける。あわせて `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` を付け、メインプロセスが異常終了したときにワーカーが残らないようにする。
+- Windows: メインプロセスがワーカーを起動したあと、ジョブオブジェクトに入れて `JOB_OBJECT_LIMIT_PROCESS_MEMORY` を掛ける。あわせて `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` を付け、メインプロセスが異常終了したときにワーカーが残らないようにする。最初の要求を送る前にジョブに入れるので、上限の外で pdfium が動くことはない。
+- Windows のジョブオブジェクトの操作は `crates/worker/src/windows_job.rs` に閉じ込め、ワークスペースで unsafe を許すのはこのモジュールだけにする（ワークスペースの `unsafe_code` は、このモジュールが例外を宣言できるよう `deny` にする）。`JOB_OBJECT_LIMIT_PROCESS_MEMORY` を設定できる安全な包みの crate がないため（`win32job` 2.0 はワーキングセットの制限だけで、これは確保を失敗させない）。
+- Linux で親が異常終了した場合は、ワーカーの標準入力が閉じ、ワーカーは次の読み込みで終了する。pdfium の処理の途中で止まっているワーカーは、その処理が終わるか時間切れになるまで残りうる。
 - スパイクでの最大は約 84 MB（23 ページの論文を 300 dpi）で、上限は十分な余裕を持つ。上限の値と仕組みが Windows でも働くことを、作業計画の最初のタスクで確かめる。
 
 ### 5.4 ワーカーの見つけ方
@@ -300,7 +305,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 ### 8.2 同梱
 
 - `tauri.conf.json` の `bundle.resources` で、その OS のライブラリ（`pdfium.dll` / `libpdfium.so`）をリソースとして同梱する。MSI、NSIS、AppImage、.deb のすべてで、メインプロセスが `resource_dir()` から場所を求め、ワーカーに渡す（§5.4）。
-- 開発時（`tauri dev`）は `src-tauri/pdfium/<os>/` を直接使う。
+- 開発時（`tauri dev`）も、Tauri がリソースを `target/<profile>/pdfium/` に写すので、同じ `resource_dir()` の仕組みで見つかる。リソースの指定は `tauri.linux.conf.json` と `tauri.windows.conf.json` に OS ごとに置く。
 
 ### 8.3 ライセンス
 
@@ -379,7 +384,8 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | crates/core | 単体 | probe（形式、寸法、向き、dpi、上限）、ページの配置（画像に合わせる、A4 の縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
 | crates/core | 品質 | §11.2 |
 | crates/worker | 単体 | メッセージの読み書き、`Open` / `Render` / `Thumbnail`、パスワード、壊れた PDF、ページ数の上限、描画の上限 |
-| src-tauri | 単体 | ワーカーの管理: テスト用の要求（`cfg(feature = "test-hooks")` の `CrashForTest`、`HangForTest`）で、異常終了と時間切れのあとにアプリ側が続けて動くこと、新しいワーカーが起動すること。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。設定の読み書き |
+| crates/worker | 結合 | 単独のワーカー（`pdfconv-worker`）を起動し、テスト用の要求（`test-hooks` 機能の `CrashForTest`、`HangForTest`、`AllocateForTest`）で、異常終了、時間切れ、メモリの上限のあとにメインプロセスの側が続けて動くこと、新しいワーカーが起動することを確かめる（T01） |
+| src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。設定の読み書き |
 | フロントエンド | 単体 | 一覧の追加・並べ替え・削除、範囲の入力と開始ボタンの有効・無効、変換中の無効化、エラーコードから文言、状態の色と記号 |
 | 全体 | 手動 | 受け入れ基準（両 OS でインストーラーから）。文字を含む実際の PDF の描画、ブラウザーでの PDF の表示。`docs/manual-test.md` |
 

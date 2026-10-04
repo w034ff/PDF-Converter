@@ -3,8 +3,8 @@
 # docs/work-plan.md §5, so a broken state never reaches a branch.
 set -e
 cargo fmt --check
-cargo clippy --workspace --all-targets --quiet -- -D warnings
-cargo test --workspace --quiet
+cargo clippy --workspace --all-targets --all-features --quiet -- -D warnings
+cargo test --workspace --all-features --quiet
 npm run --silent format:check
 npm run --silent lint
 npm run --silent typecheck

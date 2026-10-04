@@ -12,10 +12,11 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
     "test": "vitest run",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "pdfium:fetch": "node scripts/fetch-pdfium.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",

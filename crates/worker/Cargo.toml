@@ -8,4 +8,20 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Requests that crash, hang or exhaust memory on purpose, to test how the main
+# process copes (design §11.3). Never enabled in release builds.
+test-hooks = []
+
 [dependencies]
+# pdfium_7881 is the newest API the bundled pdfium (chromium/8076) supports
+# (design §2); pdfium_latest would follow the crate instead of the binary.
+pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rlimit = "0.11"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

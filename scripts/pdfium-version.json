@@ -1,0 +1,15 @@
+{
+  "release": "chromium/8076",
+  "assets": {
+    "linux": {
+      "file": "pdfium-linux-x64.tgz",
+      "sha256": "d9d67bc40af03aef4fe28a60b19b1086f28ace019c8c9caf19cb7fe3d14ceca3",
+      "library": "lib/libpdfium.so"
+    },
+    "windows": {
+      "file": "pdfium-win-x64.tgz",
+      "sha256": "808d36da9bc5a3104315fb307c80998121f565ee53953633bf33e80d7429e5ac",
+      "library": "bin/pdfium.dll"
+    }
+  }
+}
