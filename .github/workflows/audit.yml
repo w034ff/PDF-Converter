@@ -1,0 +1,51 @@
+name: Audit
+
+# Known-vulnerability checks for shipped dependencies. Separate from CI so that a
+# newly published advisory shows up on the weekly run even when nothing is
+# pushed, and so that it does not block unrelated pull requests (it is not a
+# required check).
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Installs the version pinned in rust-toolchain.toml.
+      - name: Setup Rust toolchain
+        run: rustup toolchain install
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: Rust advisories
+        run: cargo deny check advisories
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: "npm"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # Development tools (license checker, test runner, bundler) run only on the
+      # developer's machine and in CI; only what ships in the app is audited.
+      - name: npm advisories
+        run: npm audit --omit=dev
