@@ -11,7 +11,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use pdfconv_core::{
-    IMAGE_EXTENSIONS, ImageFormat, ImageInfo, THUMBNAIL_SIDE, probe, thumbnail_png,
+    IMAGE_EXTENSIONS, ImageFormat, ImageInfo, THUMBNAIL_SIDE, orientation_swaps_dimensions, probe,
+    thumbnail_png,
 };
 use pdfconv_worker::protocol::{PageDimensions, Request, Response};
 use serde::Serialize;
@@ -164,7 +165,8 @@ pub struct ImageItem {
     pub id: u64,
     /// The file name, without the folder.
     pub name: String,
-    /// Pixels as stored, before the EXIF orientation is applied.
+    /// Pixels as displayed: the sides are swapped when the EXIF orientation
+    /// turns the image by a quarter.
     pub width: u32,
     pub height: u32,
     pub format: Option<ImageFormatName>,
@@ -378,11 +380,16 @@ pub fn add_images(state: &AppState, paths: &[PathBuf]) -> AddResult<ImageItem> {
 }
 
 fn image_item(id: u64, name: String, bytes: u64, info: &ImageInfo) -> ImageItem {
+    let (width, height) = if orientation_swaps_dimensions(info.orientation) {
+        (info.height, info.width)
+    } else {
+        (info.width, info.height)
+    };
     ImageItem {
         id,
         name,
-        width: info.width,
-        height: info.height,
+        width,
+        height,
         format: Some(info.format.into()),
         bytes,
         error: None,

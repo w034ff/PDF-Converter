@@ -146,12 +146,25 @@ fn pick_files(
     filter_name: &str,
     extensions: &[&str],
 ) -> Result<Option<Vec<PathBuf>>, IpcError> {
+    let patterns = filter_extensions(extensions);
+    let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
     app.dialog()
         .file()
-        .add_filter(filter_name, extensions)
+        .add_filter(filter_name, &patterns)
         .blocking_pick_files()
         .map(|files| files.into_iter().map(dialog_path).collect())
         .transpose()
+}
+
+/// The extensions to give a file dialog's filter: each one in lower and upper
+/// case. On Linux the dialog is GTK3's, whose patterns are case sensitive, so
+/// `*.png` alone would hide `IMG_0001.PNG`; the Windows dialog ignores case and
+/// is not hurt by the extra entries. Mixed case such as `Jpg` is not covered.
+fn filter_extensions(extensions: &[&str]) -> Vec<String> {
+    extensions
+        .iter()
+        .flat_map(|extension| [extension.to_lowercase(), extension.to_uppercase()])
+        .collect()
 }
 
 /// Opens a dialog to pick a folder. Blocks until it is closed, so it must not
@@ -173,4 +186,25 @@ fn dialog_path(picked: tauri_plugin_dialog::FilePath) -> Result<PathBuf, IpcErro
 /// The error of a blocking task that panicked or was cancelled.
 fn task_failed(error: tauri::Error) -> IpcError {
     IpcError::new(ErrorCode::ReadFailed, error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_filter_has_each_extension_in_both_cases() {
+        assert_eq!(filter_extensions(&["pdf"]), ["pdf", "PDF"]);
+        assert_eq!(
+            filter_extensions(IMAGE_EXTENSIONS),
+            [
+                "png", "PNG", "jpg", "JPG", "jpeg", "JPEG", "webp", "WEBP", "bmp", "BMP"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_extension_is_normalized_before_both_cases_are_made() {
+        assert_eq!(filter_extensions(&["Jpg"]), ["jpg", "JPG"]);
+    }
 }

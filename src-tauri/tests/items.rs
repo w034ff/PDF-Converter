@@ -13,7 +13,7 @@ use pdf_converter_lib::items::{
     add_pdfs, add_pdfs_from_folder, make_thumbnail, sort_dropped,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
-use pdfconv_core::THUMBNAIL_SIDE;
+use pdfconv_core::{THUMBNAIL_SIDE, probe};
 use pdfconv_worker::WORKER_FLAG;
 
 fn library_dir() -> PathBuf {
@@ -220,6 +220,29 @@ fn an_image_item_describes_the_file() {
     let json = serde_json::to_value(item).expect("serializing the item");
     assert_eq!(json["format"], "jpeg");
     assert!(json.get("path").is_none());
+}
+
+#[test]
+fn an_image_size_follows_the_exif_orientation() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let swapping = ["rotate90.jpg", "rotate270.jpg", "rotate90_flip_h.jpg"];
+    let keeping = ["rotate0.jpg", "rotate180.jpg", "flip_h.jpg", "flip_v.jpg"];
+    let state = state();
+
+    for name in swapping.iter().chain(keeping.iter()) {
+        let stored = probe(&fixture(name)).expect("probing the fixture");
+        assert_ne!(stored.width, stored.height, "{name} must not be square");
+        let path = put(dir.path(), name, name);
+
+        let item = &add_images(&state, &[path]).added[0];
+
+        let expected = if swapping.contains(name) {
+            (stored.height, stored.width)
+        } else {
+            (stored.width, stored.height)
+        };
+        assert_eq!((item.width, item.height), expected, "{name}");
+    }
 }
 
 #[test]

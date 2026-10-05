@@ -12,7 +12,8 @@ export type ImageItem = { id: number,
  */
 name: string, 
 /**
- * Pixels as stored, before the EXIF orientation is applied.
+ * Pixels as displayed: the sides are swapped when the EXIF orientation
+ * turns the image by a quarter.
  */
 width: number, height: number, format: ImageFormatName | null, 
 /**
