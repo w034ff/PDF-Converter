@@ -4,6 +4,7 @@ import {
   appReducer,
   createInitialAppState,
   imagesToPdfReducer,
+  initialImagesToPdfState,
   initialPdfToImagesState,
   languageReducer,
   pdfToImagesReducer,
@@ -105,7 +106,7 @@ describe("state reducers", () => {
 
   describe("imagesToPdfReducer", () => {
     it("adds image items with ADD_IMAGE_ITEMS", () => {
-      const initial: ImagesToPdfState = { items: [] };
+      const initial: ImagesToPdfState = initialImagesToPdfState;
       const updated = imagesToPdfReducer(initial, {
         type: "ADD_IMAGE_ITEMS",
         items: [sampleImageItem1, sampleImageItem2],
@@ -116,7 +117,10 @@ describe("state reducers", () => {
     });
 
     it("returns same state when ADD_IMAGE_ITEMS is given empty list", () => {
-      const initial: ImagesToPdfState = { items: [sampleImageItem1] };
+      const initial: ImagesToPdfState = {
+        ...initialImagesToPdfState,
+        items: [sampleImageItem1],
+      };
       const updated = imagesToPdfReducer(initial, {
         type: "ADD_IMAGE_ITEMS",
         items: [],
@@ -126,6 +130,7 @@ describe("state reducers", () => {
 
     it("removes image item by id with REMOVE_IMAGE_ITEM", () => {
       const initial: ImagesToPdfState = {
+        ...initialImagesToPdfState,
         items: [sampleImageItem1, sampleImageItem2],
       };
       const updated = imagesToPdfReducer(initial, {
@@ -137,7 +142,10 @@ describe("state reducers", () => {
     });
 
     it("returns same state when REMOVE_IMAGE_ITEM id does not exist", () => {
-      const initial: ImagesToPdfState = { items: [sampleImageItem1] };
+      const initial: ImagesToPdfState = {
+        ...initialImagesToPdfState,
+        items: [sampleImageItem1],
+      };
       const updated = imagesToPdfReducer(initial, {
         type: "REMOVE_IMAGE_ITEM",
         id: 999,
@@ -147,12 +155,96 @@ describe("state reducers", () => {
 
     it("clears all items with CLEAR_IMAGE_ITEMS", () => {
       const initial: ImagesToPdfState = {
+        ...initialImagesToPdfState,
         items: [sampleImageItem1, sampleImageItem2],
       };
       const updated = imagesToPdfReducer(initial, {
         type: "CLEAR_IMAGE_ITEMS",
       });
       expect(updated.items).toHaveLength(0);
+    });
+
+    it("updates output mode with SET_IMAGES_OUTPUT_MODE", () => {
+      const initial: ImagesToPdfState = initialImagesToPdfState;
+      const updated = imagesToPdfReducer(initial, {
+        type: "SET_IMAGES_OUTPUT_MODE",
+        output: "each",
+      });
+      expect(updated.output).toBe("each");
+
+      // No-op if same output
+      const unchanged = imagesToPdfReducer(updated, {
+        type: "SET_IMAGES_OUTPUT_MODE",
+        output: "each",
+      });
+      expect(unchanged).toBe(updated);
+    });
+
+    it("updates page size with SET_IMAGES_PAGE_SIZE", () => {
+      const initial: ImagesToPdfState = initialImagesToPdfState;
+      const updated = imagesToPdfReducer(initial, {
+        type: "SET_IMAGES_PAGE_SIZE",
+        pageSize: "a4",
+      });
+      expect(updated.pageSize).toBe("a4");
+
+      // No-op if same pageSize
+      const unchanged = imagesToPdfReducer(updated, {
+        type: "SET_IMAGES_PAGE_SIZE",
+        pageSize: "a4",
+      });
+      expect(unchanged).toBe(updated);
+    });
+
+    it("updates output dir with SET_IMAGES_OUTPUT_DIR", () => {
+      const initial: ImagesToPdfState = initialImagesToPdfState;
+      const updated = imagesToPdfReducer(initial, {
+        type: "SET_IMAGES_OUTPUT_DIR",
+        outputDir: { dirLabel: "output-folder" },
+      });
+      expect(updated.outputDir).toEqual({ dirLabel: "output-folder" });
+    });
+
+    it("reorders items with MOVE_IMAGE_ITEM", () => {
+      const initial: ImagesToPdfState = {
+        ...initialImagesToPdfState,
+        items: [sampleImageItem1, sampleImageItem2],
+      };
+      const updated = imagesToPdfReducer(initial, {
+        type: "MOVE_IMAGE_ITEM",
+        fromIndex: 0,
+        toIndex: 1,
+      });
+      expect(updated.items[0]).toEqual(sampleImageItem2);
+      expect(updated.items[1]).toEqual(sampleImageItem1);
+    });
+
+    it("ignores invalid MOVE_IMAGE_ITEM ranges", () => {
+      const initial: ImagesToPdfState = {
+        ...initialImagesToPdfState,
+        items: [sampleImageItem1, sampleImageItem2],
+      };
+      expect(
+        imagesToPdfReducer(initial, {
+          type: "MOVE_IMAGE_ITEM",
+          fromIndex: -1,
+          toIndex: 1,
+        }),
+      ).toBe(initial);
+      expect(
+        imagesToPdfReducer(initial, {
+          type: "MOVE_IMAGE_ITEM",
+          fromIndex: 0,
+          toIndex: 5,
+        }),
+      ).toBe(initial);
+      expect(
+        imagesToPdfReducer(initial, {
+          type: "MOVE_IMAGE_ITEM",
+          fromIndex: 0,
+          toIndex: 0,
+        }),
+      ).toBe(initial);
     });
   });
 
