@@ -2430,6 +2430,7 @@ dependencies = [
  "jpeg-encoder",
  "krilla",
  "md-5",
+ "pdfium-render",
  "png 0.18.1",
 ]
 
