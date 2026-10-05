@@ -285,9 +285,9 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `check_page_range` | `text, ids` | `{ totalPages }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, dpi` | – |
 | `cancel_job` | – | – |
-| `get_about` | – | `{ version, pdfiumVersion }` |
+| `get_about` | – | `{ version, pdfiumVersion, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか） |
 
-- `ImageItem`: `{ id, name, width, height, format, bytes, error }`。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。
+- `ImageItem`: `{ id, name, width, height, format, bytes, error }`。`width` と `height` は EXIF の向きを反映した表示上の寸法（サムネイルと同じ向き）。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。失敗した項目では、`width`・`height`・`pageCount` は 0、`format`・`firstPageSizePt` は `null`。
 - どのコマンドもパスを引数に取らない。`dirLabel` は表示用で、送り返されない。
 - 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items` は `ConversionRunning` で拒む。
 
