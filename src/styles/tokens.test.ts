@@ -22,6 +22,43 @@ function contrastRatio(hex1: string, hex2: string): number {
   return (max + 0.05) / (min + 0.05);
 }
 
+const WCAG_AA_TEXT_CONTRAST = 4.5;
+
+const TOKENS_PATH = path.resolve(__dirname, "tokens.css");
+
+/**
+ * Reads the `--name: #hex;` declarations of one theme from tokens.css.
+ * The light theme is the first `:root` block; the dark theme is the
+ * `:root` block inside `@media (prefers-color-scheme: dark)`, whose values
+ * override the light ones, so light values fill in what dark leaves out.
+ */
+function readThemeTokens(theme: "light" | "dark"): Map<string, string> {
+  const content = fs.readFileSync(TOKENS_PATH, "utf-8");
+  const darkStart = content.indexOf("@media (prefers-color-scheme: dark)");
+  expect(darkStart, "dark theme block in tokens.css").toBeGreaterThan(-1);
+
+  const declarationRegex = /(--color-[\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g;
+  const parse = (css: string) =>
+    new Map(
+      Array.from(css.matchAll(declarationRegex), (m): [string, string] => [
+        m[1],
+        m[2],
+      ]),
+    );
+
+  const light = parse(content.slice(0, darkStart));
+  if (theme === "light") {
+    return light;
+  }
+  return new Map([...light, ...parse(content.slice(darkStart))]);
+}
+
+function tokenValue(tokens: Map<string, string>, name: string): string {
+  const value = tokens.get(name);
+  expect(value, `${name} as a 6-digit hex color in tokens.css`).toBeDefined();
+  return value ?? "";
+}
+
 function findCssFiles(dir: string): string[] {
   const files: string[] = [];
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -82,30 +119,33 @@ describe("design tokens and CSS rules", () => {
     }
   });
 
-  it("meets contrast ratio requirements for terracotta accent colors", () => {
-    // Light mode: terracotta #b4492b vs white #ffffff and app bg #f4f3f0
-    const lightAccent = "#b4492b";
-    const lightBgApp = "#f4f3f0";
-    const white = "#ffffff";
+  it.each(["light", "dark"] as const)(
+    "meets WCAG AA contrast for accent pairs in the %s theme",
+    (theme) => {
+      const tokens = readThemeTokens(theme);
 
-    const lightVsWhite = contrastRatio(lightAccent, white);
-    const lightVsBg = contrastRatio(lightAccent, lightBgApp);
-    expect(lightVsWhite).toBeGreaterThanOrEqual(4.5);
-    expect(lightVsBg).toBeGreaterThanOrEqual(4.5);
+      // Pairs as app.css draws them: .btn-primary and .seg put
+      // text-on-accent over accent (accent-hover on hover), and links use
+      // accent (accent-hover on hover) as text over the app and surface.
+      const pairs: [string, string][] = [
+        ["--color-text-on-accent", "--color-accent"],
+        ["--color-text-on-accent", "--color-accent-hover"],
+        ["--color-accent", "--color-bg-app"],
+        ["--color-accent", "--color-bg-surface"],
+        ["--color-accent-hover", "--color-bg-app"],
+        ["--color-accent-hover", "--color-bg-surface"],
+      ];
 
-    // Dark mode: terracotta #e07353
-    const darkAccent = "#e07353";
-    const darkBgSurface = "#262522";
-    const darkBgApp = "#1c1b18";
-    const darkTextOnAccent = "#1c1b18";
-
-    const darkVsSurface = contrastRatio(darkAccent, darkBgSurface);
-    const darkVsApp = contrastRatio(darkAccent, darkBgApp);
-    const darkVsText = contrastRatio(darkAccent, darkTextOnAccent);
-    // Over dark background, accent contrast ratio must be >= 4.5
-    expect(darkVsSurface).toBeGreaterThanOrEqual(4.5);
-    expect(darkVsApp).toBeGreaterThanOrEqual(4.5);
-    // On dark accent button, text contrast ratio must be >= 4.5
-    expect(darkVsText).toBeGreaterThanOrEqual(4.5);
-  });
+      for (const [fg, bg] of pairs) {
+        const ratio = contrastRatio(
+          tokenValue(tokens, fg),
+          tokenValue(tokens, bg),
+        );
+        expect(
+          ratio,
+          `${fg} on ${bg} in the ${theme} theme`,
+        ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
+      }
+    },
+  );
 });
