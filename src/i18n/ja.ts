@@ -69,6 +69,37 @@ export const ja = {
     title: "エラー",
     dismiss: "閉じる",
   },
+  imagesToPdf: {
+    outputLabel: "出力",
+    outputMerge: "1 つの PDF",
+    outputEach: "1 枚ずつ",
+    outputMergeHint: "並べた順に 1 ページずつ入れて、1 つの PDF にします",
+    outputEachHint: "画像ごとに PDF を作ります",
+    pageSizeLabel: "ページの大きさ",
+    pageSizeFit: "画像に合わせる",
+    pageSizeA4: "A4",
+    pageSizeFitHint: "画像の大きさのページにします。画質は変わりません",
+    pageSizeA4Hint:
+      "A4 の縦か横（画像の向きに合わせる）に、余白を付けて収めます",
+    outputDirHint:
+      "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
+    conversionLockedNote: "変換中は設定を変えられません",
+    imageCount: "画像 {count} 枚",
+    reorderHint: "ドラッグか ↑↓ ボタンで並べ替えられます",
+    skipped: "対象外 {count} 件：{reasons}",
+    skippedFolders: "サブフォルダ",
+    skippedUnsupported: "非対応の形式",
+    skippedDuplicates: "重複",
+    skippedSeparator: "、",
+    addImages: "画像を追加",
+    addFolder: "フォルダを追加",
+    clearAll: "すべて外す",
+    mergePageCount: "{count} ページの PDF になります",
+    tableFileName: "ファイル名",
+    tableSavedName: "保存するファイル名",
+    tableStatus: "状態",
+    noOutputYet: "—",
+  },
 };
 
 export type Translations = typeof ja;
