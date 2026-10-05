@@ -261,3 +261,8 @@ a:hover {
 .app-footer-action {
   margin-left: auto;
 }
+
+.app-footer-progress {
+  flex: 1;
+  max-width: 480px;
+}

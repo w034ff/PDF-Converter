@@ -1,5 +1,6 @@
 import type { Language } from "../i18n";
 import type { ImageItem, PdfItem } from "../ipc";
+import type { JobAction, JobState } from "./job";
 
 export type ActiveTab = "imagesToPdf" | "pdfToImages";
 
@@ -34,6 +35,8 @@ export interface AppState {
   language: LanguageState;
   imagesToPdf: ImagesToPdfState;
   pdfToImages: PdfToImagesState;
+  job: JobState;
 }
 
-export type AppAction = LanguageAction | ImagesToPdfAction | PdfToImagesAction;
+export type AppAction =
+  LanguageAction | ImagesToPdfAction | PdfToImagesAction | JobAction;
