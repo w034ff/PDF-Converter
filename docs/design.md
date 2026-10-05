@@ -297,7 +297,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 
 | イベント | ペイロード |
 | --- | --- |
-| `items-dropped` | `{ images: ImageItem[], pdfs: PdfItem[], skipped }` |
+| `items-dropped` | `{ images: ImageItem[], pdfs: PdfItem[], skipped, error: IpcError \| null }`（変換中に落とされたときは何も加えず、`error` を `ConversionRunning` にする） |
 | `job-progress` | `{ done, total, current: string \| null }`（`total` は画像 → PDF は画像の数、PDF → 画像はページの合計） |
 | `job-item` | `{ id, status: "ok" \| "failed" \| "partial" \| "noPages" \| "cancelled", outputs: string[], error?, failedPages? }` |
 | `job-finished` | `{ succeeded, failed, noPages, unprocessed, cancelled }` |
@@ -354,7 +354,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 
 ### 10.3 テーマ
 
-- 色は `styles/tokens.css` の CSS カスタムプロパティで定義する。SVG Tracer の tokens.css を元にし、アクセントの色をテラコッタ（ライト: `#b4492b`）に替える。ダーク用のアクセントの色は、背景との明るさの差を確かめて実装時に決め、決めた値をこの節に書き足す。
+- 色は `styles/tokens.css` の CSS カスタムプロパティで定義する。SVG Tracer の tokens.css を元にし、アクセントの色をテラコッタ（ライト: `#b4492b`）に替える。ダークのアクセントは `#e07353`（面の背景 `#262522` との比 4.92）。ライトのアクセントの上の文字は白（比 5.35）だが、ダークでは白だと 3.11 で足りないので、ボタンの文字を `#1c1b18` にする（比 5.53）。どちらも `tokens.test.ts` が `tokens.css` の値で 4.5 以上を確かめる。
 - 成功は緑、失敗は赤に「✓」「✕」の記号を添える。実行中の行は本文と同じ色にする。アクセントの色（テラコッタ）は失敗の赤と系統が近いので、状態の表示には使わない。
 - フォントは SVG Tracer §8.5 と同じ（同梱しない）。
 
