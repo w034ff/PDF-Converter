@@ -21,6 +21,10 @@ use crate::{JPEG_QUALITY, MAX_PDF_PAGES, MAX_RENDER_PIXELS};
 /// fail and end the worker, which the main process reports as a crash.
 pub const WORKER_MEMORY_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 
+/// Name of a PDF file that causes the worker to abort on Open for testing (design §11.3).
+#[cfg(feature = "test-hooks")]
+pub const CRASH_ON_OPEN_FILE_NAME: &str = "crash-on-open-for-test.pdf";
+
 /// Error code for a pdfium library that cannot be loaded or used.
 const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
 
@@ -107,6 +111,10 @@ impl State {
                 Err(response) => (response, Vec::new()),
             },
             Request::Open { path } => {
+                #[cfg(feature = "test-hooks")]
+                if path.file_name().and_then(|n| n.to_str()) == Some(CRASH_ON_OPEN_FILE_NAME) {
+                    std::process::abort();
+                }
                 self.document = None;
                 let pdfium = match self.pdfium() {
                     Ok(p) => p,
@@ -431,5 +439,11 @@ mod tests {
         assert_eq!(format_number_with_commas(1000), "1,000");
         assert_eq!(format_number_with_commas(10000), "10,000");
         assert_eq!(format_number_with_commas(1000000), "1,000,000");
+    }
+
+    #[cfg(feature = "test-hooks")]
+    #[test]
+    fn crash_on_open_file_name_constant() {
+        assert_eq!(CRASH_ON_OPEN_FILE_NAME, "crash-on-open-for-test.pdf");
     }
 }

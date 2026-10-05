@@ -248,6 +248,23 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
     add("corrupt.pdf", shapes[..shapes.len() / 2].to_vec());
     add("shapes.pdf", shapes);
 
+    let mixed_pages = vec![
+        ShapesPage {
+            size_pt: A4_PT,
+            number: 1,
+        },
+        ShapesPage {
+            size_pt: (3000.0, 3000.0),
+            number: 2,
+        },
+        ShapesPage {
+            size_pt: A4_PT,
+            number: 3,
+        },
+    ];
+    let mixed = shapes_pdf(&mixed_pages)?;
+    add("mixed_sizes.pdf", mixed);
+
     add(
         "encrypted.pdf",
         encrypted_pdf("encrypted", ENCRYPTED_USER_PASSWORD, PERMISSIONS_ALL),

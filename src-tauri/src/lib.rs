@@ -1,7 +1,9 @@
 //! Application entry point.
 
 use std::ffi::OsString;
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
 use pdfconv_worker::WORKER_FLAG;
 use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
@@ -9,6 +11,7 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 pub mod commands;
 pub mod error;
 pub mod items;
+pub mod jobs;
 pub mod pdfium;
 pub mod worker_pool;
 
@@ -25,6 +28,14 @@ pub struct AppState {
     pub items: Arc<ItemTable>,
     /// The worker processes that open PDFs (design §5.2).
     pub pool: WorkerPool,
+    /// Flag indicating whether a conversion job is currently executing (design §6.5, §7.1).
+    pub is_running: Arc<AtomicBool>,
+    /// Shared cancellation flag checked during conversion jobs (design §6.5).
+    pub cancel_flag: Arc<AtomicBool>,
+    /// Output folder for images to PDF conversion (design §6.5).
+    pub images_output_dir: Arc<Mutex<Option<PathBuf>>>,
+    /// Output folder for PDF to images conversion (design §6.5).
+    pub pdfs_output_dir: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl AppState {
@@ -33,6 +44,10 @@ impl AppState {
         Self {
             items: Arc::new(ItemTable::new()),
             pool,
+            is_running: Arc::new(AtomicBool::new(false)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            images_output_dir: Arc::new(Mutex::new(None)),
+            pdfs_output_dir: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -61,6 +76,11 @@ pub fn run() {
             commands::add_pdfs,
             commands::remove_items,
             commands::get_thumbnail,
+            commands::check_page_range,
+            commands::save_merged_pdf,
+            commands::start_images_to_pdfs,
+            commands::start_pdfs_to_images,
+            commands::cancel_job,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {

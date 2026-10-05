@@ -1,19 +1,24 @@
 //! IPC commands (design §7.1).
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use pdfconv_core::IMAGE_EXTENSIONS;
 use pdfconv_worker::WORKER_FLAG;
 use pdfconv_worker::client::{OPEN_TIMEOUT, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::Request;
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_dialog::DialogExt;
 use ts_rs::TS;
 
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
+use crate::jobs::{
+    self, CheckPageRangeResult, PageSizeChoice, RenderFormatChoice, SaveMergedPdfResult,
+};
 
 /// Name of the image filter of the file dialog.
 const IMAGE_FILTER_NAME: &str = "Images";
@@ -86,6 +91,9 @@ pub async fn add_images(
     state: tauri::State<'_, AppState>,
     source: AddSource,
 ) -> Result<Option<AddResult<ImageItem>>, IpcError> {
+    if state.is_running.load(Ordering::SeqCst) {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || match source {
         AddSource::Files => Ok(pick_files(&app, IMAGE_FILTER_NAME, IMAGE_EXTENSIONS)?
@@ -106,6 +114,9 @@ pub async fn add_pdfs(
     state: tauri::State<'_, AppState>,
     source: AddSource,
 ) -> Result<Option<AddResult<PdfItem>>, IpcError> {
+    if state.is_running.load(Ordering::SeqCst) {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || match source {
         AddSource::Files => Ok(pick_files(&app, PDF_FILTER_NAME, &[PDF_EXTENSION])?
@@ -120,8 +131,159 @@ pub async fn add_pdfs(
 
 /// Removes items from the lists. An ID that is not in the table is ignored.
 #[tauri::command]
-pub fn remove_items(state: tauri::State<'_, AppState>, ids: Vec<u64>) {
-    state.items.remove(&ids);
+pub fn remove_items(state: tauri::State<'_, AppState>, ids: Vec<u64>) -> Result<(), IpcError> {
+    items::remove_items(&state, &ids)
+}
+
+/// Validates a page range string and counts matching pages across the specified PDF items (design §7.1).
+#[tauri::command]
+pub fn check_page_range(
+    state: tauri::State<'_, AppState>,
+    text: String,
+    ids: Vec<u64>,
+) -> Result<CheckPageRangeResult, IpcError> {
+    jobs::check_page_range_internal(&state, &text, &ids)
+}
+
+/// Requests cancellation of the currently executing conversion job (design §6.5, §7.1).
+#[tauri::command]
+pub fn cancel_job(state: tauri::State<'_, AppState>) {
+    state.cancel_flag.store(true, Ordering::SeqCst);
+}
+
+/// Opens a save dialog to save selected images into a single merged PDF (design §6.2, §7.1).
+#[tauri::command]
+pub async fn save_merged_pdf(
+    app: AppHandle,
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    ids: Vec<u64>,
+    page_size: PageSizeChoice,
+) -> Result<Option<SaveMergedPdfResult>, IpcError> {
+    if state
+        .is_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
+    state.cancel_flag.store(false, Ordering::SeqCst);
+
+    let state_inner = state.inner().clone();
+    let running_guard = jobs::RunningGuard::new(Arc::clone(&state_inner.is_running));
+
+    let default_name = {
+        let first_id = ids
+            .first()
+            .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
+        let entry = state_inner
+            .items
+            .get(*first_id)
+            .ok_or_else(|| IpcError::from_code(ErrorCode::UnknownHandle))?;
+        let filename = entry
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let (stem, _) = pdfconv_core::naming::split_stem_and_ext(&filename);
+        format!("{stem}.pdf")
+    };
+
+    let picked_path = tauri::async_runtime::spawn_blocking(move || {
+        let patterns = filter_extensions(&[PDF_EXTENSION]);
+        let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
+        app.dialog()
+            .file()
+            .add_filter(PDF_FILTER_NAME, &patterns)
+            .set_file_name(&default_name)
+            .blocking_save_file()
+            .map(dialog_path)
+            .transpose()
+    })
+    .await
+    .map_err(task_failed)??;
+
+    let Some(dest_path) = picked_path else {
+        return Ok(None);
+    };
+
+    let w1 = window.clone();
+    let w2 = window.clone();
+    let w3 = window.clone();
+
+    let callbacks = jobs::JobCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_item: move |item| {
+            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
+        },
+        on_finished: running_guard.wrap_on_finished(move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        }),
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        jobs::run_save_merged_pdf(&state_inner, &ids, page_size, &dest_path, callbacks)
+    })
+    .await
+    .map_err(task_failed)?
+}
+
+/// Starts batch conversion of images to individual PDF files in the background (design §6.2, §7.1).
+#[tauri::command]
+pub async fn start_images_to_pdfs(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    ids: Vec<u64>,
+    page_size: PageSizeChoice,
+) -> Result<(), IpcError> {
+    let w1 = window.clone();
+    let w2 = window.clone();
+    let w3 = window.clone();
+
+    let callbacks = jobs::JobCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_item: move |item| {
+            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
+        },
+        on_finished: move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        },
+    };
+
+    jobs::start_images_to_pdfs_internal(&state, &ids, page_size, callbacks)
+}
+
+/// Starts batch conversion of PDF pages to image files in the background (design §6.3, §7.1).
+#[tauri::command]
+pub async fn start_pdfs_to_images(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    ids: Vec<u64>,
+    range: String,
+    format: RenderFormatChoice,
+    dpi: u32,
+) -> Result<(), IpcError> {
+    let w1 = window.clone();
+    let w2 = window.clone();
+    let w3 = window.clone();
+
+    let callbacks = jobs::JobCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_item: move |item| {
+            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
+        },
+        on_finished: move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        },
+    };
+
+    jobs::start_pdfs_to_images_internal(&state, &ids, &range, format, dpi, callbacks)
 }
 
 /// Returns the PNG thumbnail of an item. `page` is used for a PDF only and

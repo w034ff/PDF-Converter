@@ -231,6 +231,8 @@ SVG Tracer の §5.3 と同じ規則にする。
 ### 6.5 保存とキャンセル
 
 - 保存は、保存先のフォルダに一時ファイルを作って全内容を書き、`persist_noclobber` で最終名にする（SVG Tracer §5.4 と同じ）。書き込みの途中で失敗・中断しても、不完全なファイルは残らない。
+- 一時ファイルは、保存先のフォルダに `.` で始まる名前で作る（ほかのアプリの一覧に途中のファイルが見えないようにするため）。
+- 保存先のフォルダは、「画像 → PDF」と「PDF → 画像」で 1 つずつ Rust の状態に持つ。`pick_output_dir` と設定の復元（§6.7、T09）が入れ、`start_images_to_pdfs`・`start_pdfs_to_images` はそれを使う。まだ選ばれていなければ `InvalidParams` で拒む（画面は、フォルダが未選択の間は開始のボタンを無効にする）。
 - キャンセルは共有フラグで行う。画像 → PDF は次のファイルの前に、PDF → 画像は次のページの前に確かめる。描画中のページは終わらせて保存する（pdfium の描画は途中で止められないため）。キャンセルした PDF は、保存済みのページ数を表示する。
 - 結合（1 つの PDF）をキャンセルしたときは、PDF を書かない。
 - キャンセルを押した直後に「キャンセル中…」を表示し、ボタンを無効にする（NFR-02）。
@@ -375,6 +377,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | `encrypted.pdf` | 閲覧のパスワード付きの PDF | `PasswordProtected` |
 | `restricted.pdf` | 閲覧のパスワードなし、制限だけを掛けた暗号化の PDF | 開けること |
 | `corrupt.pdf` / `corrupt.png` | 途中で切れたファイル | `PdfOpenFailed` / `DecodeFailed` |
+| `mixed_sizes.pdf` | 3 ページの PDF。1 ページ目と 3 ページ目は A4、2 ページ目は 3000×3000 pt（300 dpi で描くと `MAX_RENDER_PIXELS` を超える） | 途中のページだけ失敗する PDF → 画像（`partial`） |
 | `shapes_150dpi_p1.png`〜`p3.png` | `shapes.pdf` の各ページを 150 dpi で描いたときの期待の画像（`gen_fixtures` が同じ図形から計算する） | §11.2 の PDF → 画像の比較 |
 
 - 暗号化された PDF は、標準のセキュリティハンドラー（revision 3、128 ビットの RC4）を `gen_fixtures` に自前で書いて作る。`lopdf` の暗号化は乱数を使うので、生成し直すと同じファイルにならないため（T02 で決定）。
@@ -404,5 +407,6 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | フロントエンド | 単体 | 一覧の追加・並べ替え・削除、範囲の入力と開始ボタンの有効・無効、変換中の無効化、エラーコードから文言、状態の色と記号 |
 | 全体 | 手動 | 受け入れ基準（両 OS でインストーラーから）。文字を含む実際の PDF の描画、ブラウザーでの PDF の表示。`docs/manual-test.md` |
 
+- 一括変換の中で特定の PDF だけでワーカーが落ちる状況は、`test-hooks` 機能のときだけ、ワーカーが名前 `CRASH_ON_OPEN_FILE_NAME`（`crash-on-open-for-test.pdf`）の PDF の `Open` で異常終了することで作る（T08）。機能を付けないビルドには含まれない。
 - 性能（NFR-02）: `shapes.pdf` の A4 のページを 150 dpi で描画する時間を `--release` のテストで測る。CI では 3 秒を超えたら失敗とし、1 秒以内は基準環境（開発者の PC）で手動確認する。
 - CI は Windows と Ubuntu で、SVG Tracer と同じ検査に加え、`npm run pdfium:fetch` のあとにワーカーのテストを実行する。
