@@ -5,6 +5,7 @@
 //! raw bytes instead of base64.
 
 use std::io::{self, Read, Write};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -16,6 +17,22 @@ pub const MAX_HEADER_BYTES: u32 = 1024 * 1024;
 /// page at `MAX_RENDER_PIXELS`).
 pub const MAX_BODY_BYTES: u64 = 1024 * 1024 * 1024;
 
+/// The image format to render a PDF page to (design §4.4, §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RenderFormat {
+    Png,
+    Jpeg,
+}
+
+/// Width and height of a PDF page in points (1/72 inch) (design §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageDimensions {
+    pub width_pt: f32,
+    pub height_pt: f32,
+}
+
 /// A request from the main process.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -26,6 +43,18 @@ pub const MAX_BODY_BYTES: u64 = 1024 * 1024 * 1024;
 pub enum Request {
     /// Loads pdfium if needed and reports whether it works.
     Hello,
+    /// Opens a PDF document at `path` (design §5.1).
+    Open { path: PathBuf },
+    /// Renders page `page` (1-based) at `dpi` in `format` (design §5.1).
+    Render {
+        page: u32,
+        dpi: u32,
+        format: RenderFormat,
+    },
+    /// Renders page `page` (1-based) with the longer side at `max_side` as PNG (design §5.1).
+    Thumbnail { page: u32, max_side: u32 },
+    /// Closes any currently opened PDF document (design §5.1).
+    Close,
     /// Allocates and touches this much memory, to test the memory limit.
     #[cfg(feature = "test-hooks")]
     AllocateForTest { mebibytes: u64 },
@@ -38,7 +67,7 @@ pub enum Request {
 }
 
 /// A response from the worker.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
@@ -47,6 +76,17 @@ pub enum Request {
 pub enum Response {
     /// pdfium is loaded and could create a document.
     Hello,
+    /// A PDF was opened successfully (design §5.1).
+    Open {
+        page_count: u32,
+        pages: Vec<PageDimensions>,
+    },
+    /// A page was rendered; the image bytes are in the message body (design §5.1).
+    Render,
+    /// A thumbnail was rendered; the PNG bytes are in the message body (design §5.1).
+    Thumbnail,
+    /// The currently open PDF was closed (design §5.1).
+    Close,
     /// The request failed; `code` is one of the error codes of design §6.6.
     Error {
         code: String,
@@ -197,5 +237,49 @@ mod tests {
         })
         .unwrap();
         assert_eq!(json, r#"{"type":"error","code":"X","detail":"d"}"#);
+    }
+
+    #[test]
+    fn serializes_request_and_response_fields_as_camel_case() {
+        let req = Request::Thumbnail {
+            page: 2,
+            max_side: 160,
+        };
+        let req_json = serde_json::to_string(&req).unwrap();
+        assert_eq!(req_json, r#"{"type":"thumbnail","page":2,"maxSide":160}"#);
+
+        let render_req = Request::Render {
+            page: 1,
+            dpi: 150,
+            format: RenderFormat::Jpeg,
+        };
+        let render_json = serde_json::to_string(&render_req).unwrap();
+        assert_eq!(
+            render_json,
+            r#"{"type":"render","page":1,"dpi":150,"format":"jpeg"}"#
+        );
+
+        let resp = Response::Open {
+            page_count: 1,
+            pages: vec![PageDimensions {
+                width_pt: 595.28,
+                height_pt: 841.89,
+            }],
+        };
+        let resp_json = serde_json::to_string(&resp).unwrap();
+        assert!(resp_json.contains(r#""pageCount":1"#));
+        assert!(resp_json.contains(r#""widthPt":595.28"#));
+        assert!(resp_json.contains(r#""heightPt":841.89"#));
+    }
+
+    #[cfg(not(feature = "test-hooks"))]
+    #[test]
+    fn rejects_test_hooks_when_feature_is_disabled() {
+        assert!(serde_json::from_str::<Request>(r#"{"type":"crashForTest"}"#).is_err());
+        assert!(serde_json::from_str::<Request>(r#"{"type":"hangForTest"}"#).is_err());
+        assert!(
+            serde_json::from_str::<Request>(r#"{"type":"allocateForTest","mebibytes":10}"#)
+                .is_err()
+        );
     }
 }

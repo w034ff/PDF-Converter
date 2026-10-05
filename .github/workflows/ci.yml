@@ -76,3 +76,9 @@ jobs:
 
       - name: Rust Test
         run: cargo test --workspace --all-features
+
+      - name: Rust Test Without Test Hooks
+        run: cargo test -p pdfconv-worker --lib
+
+      - name: Worker Performance Test (Release)
+        run: cargo test -p pdfconv-worker --test worker --release performance_render_a4_150dpi
