@@ -221,7 +221,7 @@ Windows での確認、見た目の確認など、自動化できないもの。
 
 ### T08 変換の実行（Rust 側）
 
-内容: design.md §6.2〜§6.5 を `jobs.rs` に実装し、`save_merged_pdf`、`start_images_to_pdfs`、`start_pdfs_to_images`、`check_page_range`、`cancel_job` とイベントをつなぐ。
+内容: design.md §6.2〜§6.5 を `jobs.rs` に実装し、`save_merged_pdf`、`start_images_to_pdfs`、`start_pdfs_to_images`、`check_page_range`、`cancel_job` とイベントをつなぐ。テストのため、フィクスチャ `mixed_sizes.pdf` を `gen_fixtures` に加え、ワーカーに `test-hooks` の `CRASH_ON_OPEN_FILE_NAME`（design.md §11.3）を加える。
 
 完了条件: 一時フォルダを使う次のテスト。
 - 画像 → PDF の「1 枚ずつ」と、PDF → 画像で、成功と失敗が混ざった一覧の成功分が保存され、失敗分の理由が記録される。
