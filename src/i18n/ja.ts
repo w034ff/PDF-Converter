@@ -69,6 +69,54 @@ export const ja = {
     title: "エラー",
     dismiss: "閉じる",
   },
+  pdfToImages: {
+    settings: {
+      pagesTitle: "ページ",
+      pagesAll: "すべて",
+      pagesRange: "範囲を指定",
+      rangeLabel: "変換するページ（例：1-3, 5）",
+      rangePlaceholder: "1-3, 5",
+      rangeHintSingle: "{count} ページを変換します",
+      rangeHintBatch:
+        "すべての PDF に同じ範囲を当てはめます。ページが足りない PDF は、あるページだけを変換します",
+      formatTitle: "形式",
+      formatPng: "PNG",
+      formatJpeg: "JPEG",
+      dpiLabel: "解像度",
+      dpiChoices: {
+        dpi72: "72 dpi（画面で見る）",
+        dpi150: "150 dpi（標準）",
+        dpi300: "300 dpi（印刷する）",
+      },
+      renderDimension: "{size} の 1 ページ → {width} × {height} px",
+    },
+    single: {
+      meta: "{pages} ページ · {size} · {fileSize}",
+      convertPage: "{page}  ✓ 変換する",
+      thumbnailAlt: "{name} の {page} ページのサムネイル",
+    },
+    batch: {
+      pdfCount: "PDF {count} 件",
+      skippedSummary: "（スキップ: {details}）",
+      skippedUnsupported: "非対応 {count} 件",
+      skippedFolders: "フォルダ {count} 件",
+      skippedDuplicates: "重複 {count} 件",
+      skippedSeparator: "、",
+      table: {
+        filename: "ファイル名",
+        pages: "ページ / 全体",
+        savedFiles: "保存したファイル",
+        status: "状態",
+        actions: "操作",
+      },
+      noPagesReason: "指定した範囲のページがありません",
+      failedPagesReason: "失敗したページ：{pages}",
+      cancelledSavedReason: "{count} ページを保存済み",
+    },
+    remove: "外す",
+    clearAll: "すべて外す",
+    summaryFailuresHint: "失敗した PDF の理由は、下の一覧に表示しています",
+  },
 };
 
 export type Translations = typeof ja;

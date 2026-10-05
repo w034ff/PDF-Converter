@@ -4,6 +4,7 @@ import {
   appReducer,
   createInitialAppState,
   imagesToPdfReducer,
+  initialPdfToImagesState,
   languageReducer,
   pdfToImagesReducer,
   type ImagesToPdfState,
@@ -157,7 +158,10 @@ describe("state reducers", () => {
 
   describe("pdfToImagesReducer", () => {
     it("adds pdf items with ADD_PDF_ITEMS", () => {
-      const initial: PdfToImagesState = { items: [] };
+      const initial: PdfToImagesState = {
+        ...initialPdfToImagesState,
+        items: [],
+      };
       const updated = pdfToImagesReducer(initial, {
         type: "ADD_PDF_ITEMS",
         items: [samplePdfItem1, samplePdfItem2],
@@ -169,6 +173,7 @@ describe("state reducers", () => {
 
     it("removes pdf item by id with REMOVE_PDF_ITEM", () => {
       const initial: PdfToImagesState = {
+        ...initialPdfToImagesState,
         items: [samplePdfItem1, samplePdfItem2],
       };
       const updated = pdfToImagesReducer(initial, {
@@ -181,6 +186,7 @@ describe("state reducers", () => {
 
     it("clears all items with CLEAR_PDF_ITEMS", () => {
       const initial: PdfToImagesState = {
+        ...initialPdfToImagesState,
         items: [samplePdfItem1, samplePdfItem2],
       };
       const updated = pdfToImagesReducer(initial, {
