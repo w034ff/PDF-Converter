@@ -103,9 +103,11 @@
 
 - 対象の拡張子は `png` `jpg` `jpeg` `webp` `bmp`（大文字小文字を区別しない）。定数 `IMAGE_EXTENSIONS` にまとめる。
 - 形式は中身の先頭バイトで判定する。判定できない、または上記以外の形式なら `UnsupportedFormat`。
-- 一覧に追加するときは、ヘッダーだけを読んで、形式、寸法、EXIF の向き、解像度（dpi）を得る（`probe`）。画素は読まない。読めなければ `DecodeFailed`。
+- 一覧に追加するときは、ヘッダーだけを読んで、形式、寸法、EXIF の向き、解像度（dpi）を得る（`probe`）。画素は読まない。読めなければ `DecodeFailed`。ヘッダーより後ろだけが壊れているファイル（`corrupt.png`）は `probe` を通り、画素を読む変換のとき（§4.3）に `DecodeFailed` になる。
 - 総ピクセル数の上限 `MAX_IMAGE_PIXELS = 80_000_000`。A3 を 600 dpi で読み取った画像（約 7016×9921 = 6960 万画素）が収まる値。超えたら `TooLarge`。
 - 解像度は、PNG の `pHYs`、JPEG の JFIF の密度または EXIF の `XResolution`、BMP のヘッダーから読む。WebP と、値がない・単位が不明・`MIN_DPI`（36）〜`MAX_DPI`（2400）の外にある場合は `DEFAULT_DPI`（96）とする。
+  - JPEG は、JFIF の密度の単位が dpi か dpcm ならその値を、そうでなければ EXIF の `XResolution`（`ResolutionUnit` がインチかセンチメートルのとき。省略はインチ）を使う。
+  - 横と縦の値が違うときは横の値を使う。値は整数の dpi に四捨五入してから範囲を確かめる（pHYs の 11811 画素/m は 300 dpi になる）。
 - BMP は `image` で読み、`image` が返した RGBA をそのまま使う。32 ビットの BMP の 4 つ目の成分を透過として扱うかは `image` の解釈に従う（アルファのマスクを持つ BMP（`BITMAPV4HEADER` 以降）は透過ありとして読まれ、マスクのない 32 ビットの BMP（スパイクで使ったもの）は不透明として読まれ、透過の部分は黒になる）。BMP の透過の扱いは規格で曖昧なので、アプリでは手を加えない。
 
 ### 4.2 ページの大きさと配置（FR-02）
@@ -387,7 +389,8 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | 対象 | 種類 | 主な内容 |
 | --- | --- | --- |
 | crates/core | 単体 | probe（形式、寸法、向き、dpi、上限）、ページの配置（画像に合わせる、A4 の縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
-| crates/core | 品質 | §11.2 |
+| crates/core | 品質 | §11.2 の画像 → PDF |
+| crates/worker | 品質 | §11.2 の PDF → 画像 |
 | crates/worker | 単体 | メッセージの読み書き、`Open` / `Render` / `Thumbnail`、パスワード、壊れた PDF、ページ数の上限、描画の上限 |
 | crates/worker | 結合 | 単独のワーカー（`pdfconv-worker`）を起動し、テスト用の要求（`test-hooks` 機能の `CrashForTest`、`HangForTest`、`AllocateForTest`）で、異常終了、時間切れ、メモリの上限のあとにメインプロセスの側が続けて動くこと、新しいワーカーが起動することを確かめる（T01） |
 | src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。設定の読み書き |
