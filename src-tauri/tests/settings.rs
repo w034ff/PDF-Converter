@@ -204,6 +204,17 @@ fn a_missing_folder_resets_only_that_folder() {
 }
 
 #[test]
+fn a_relative_folder_resets_the_folder() {
+    // Tests run in the package folder, where `src` is a folder, so only the
+    // path being relative can reset it.
+    assert!(Path::new("src").is_dir(), "src is a folder from here");
+    assert_only_resets(
+        |json| json["imagesToPdf"]["outputDir"] = json!("src"),
+        |file| file.images_to_pdf.output_dir = None,
+    );
+}
+
+#[test]
 fn a_file_in_place_of_a_folder_resets_the_folder() {
     let temp = TempDir::new().expect("temp dir");
     let not_a_dir = temp.path().join("file.txt");

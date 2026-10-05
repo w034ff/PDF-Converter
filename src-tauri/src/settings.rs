@@ -231,8 +231,9 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
 }
 
 /// Reads the settings in `config_dir`. A missing or unreadable file gives the
-/// defaults, and a saved folder that is no longer a folder becomes `None`
-/// (design §6.7).
+/// defaults, and a saved folder that is not an absolute path to a folder
+/// becomes `None` (design §6.7): a relative one would resolve against
+/// wherever the app was started from.
 pub fn load_settings(config_dir: &Path) -> SettingsFile {
     let mut file = std::fs::read_to_string(config_dir.join(SETTINGS_FILE_NAME))
         .map(|text| parse_settings_json(&text))
@@ -241,7 +242,10 @@ pub fn load_settings(config_dir: &Path) -> SettingsFile {
         &mut file.images_to_pdf.output_dir,
         &mut file.pdf_to_images.output_dir,
     ] {
-        if dir.as_deref().is_some_and(|dir| !dir.is_dir()) {
+        if dir
+            .as_deref()
+            .is_some_and(|dir| !dir.is_absolute() || !dir.is_dir())
+        {
             *dir = None;
         }
     }

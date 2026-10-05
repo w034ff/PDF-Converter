@@ -73,7 +73,11 @@ pub fn run() {
                 [OsString::from(WORKER_FLAG), library_dir.into_os_string()],
             );
             let state = AppState::new(WorkerPool::new(config));
-            settings::restore_settings(&state, &app.path().app_config_dir()?);
+            // Without a settings folder the app still starts, with the
+            // defaults, and keeps changes in memory (design §6.7).
+            if let Ok(config_dir) = app.path().app_config_dir() {
+                settings::restore_settings(&state, &config_dir);
+            }
             app.manage(state);
             Ok(())
         })
