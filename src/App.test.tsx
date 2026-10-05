@@ -1,13 +1,22 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./App";
 
+// The app listens for job events on mount, so events are mocked too.
+function mockAppIpc(handler: Parameters<typeof mockIPC>[0]) {
+  mockIPC(handler, { shouldMockEvents: true });
+}
+
 describe("App", () => {
-  afterEach(() => clearMocks());
+  // Unmount first: unmounting unlistens, which needs the mocked events.
+  afterEach(() => {
+    cleanup();
+    clearMocks();
+  });
 
   it("shows the app name", () => {
-    mockIPC(() => new Promise(() => {}));
+    mockAppIpc(() => new Promise(() => {}));
     render(<App />);
     expect(
       screen.getByRole("heading", { name: "PDF Converter" }),
@@ -15,7 +24,7 @@ describe("App", () => {
   });
 
   it("shows that pdfium works", async () => {
-    mockIPC((cmd) =>
+    mockAppIpc((cmd) =>
       cmd === "get_about"
         ? {
             version: "0.1.0",
@@ -32,7 +41,7 @@ describe("App", () => {
   });
 
   it("shows why pdfium does not work", async () => {
-    mockIPC(() => ({
+    mockAppIpc(() => ({
       version: "0.1.0",
       pdfiumVersion: "chromium/8076",
       pdfiumReady: false,
@@ -45,7 +54,7 @@ describe("App", () => {
   });
 
   it("shows an unexpected answer as a failure", async () => {
-    mockIPC(() => ({ version: 1 }));
+    mockAppIpc(() => ({ version: 1 }));
     render(<App />);
     expect(await screen.findByTestId("pdfium-status")).toHaveTextContent(
       "unexpected value",
@@ -53,7 +62,7 @@ describe("App", () => {
   });
 
   it("switches tabs and updates aria-selected attributes", () => {
-    mockIPC(() => new Promise(() => {}));
+    mockAppIpc(() => new Promise(() => {}));
     render(<App initialNavLang="ja" />);
 
     const imagesTab = screen.getByRole("tab", { name: "画像 → PDF" });
@@ -81,7 +90,7 @@ describe("App", () => {
   });
 
   it("switches UI language on language select change", () => {
-    mockIPC(() => new Promise(() => {}));
+    mockAppIpc(() => new Promise(() => {}));
     render(<App initialNavLang="ja" />);
 
     const select = screen.getByRole("combobox");
@@ -104,7 +113,7 @@ describe("App", () => {
   });
 
   it("initializes with English when initialNavLang is en-US", () => {
-    mockIPC(() => new Promise(() => {}));
+    mockAppIpc(() => new Promise(() => {}));
     render(<App initialNavLang="en-US" />);
 
     expect(

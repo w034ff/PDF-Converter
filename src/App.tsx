@@ -1,7 +1,11 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { AboutDialog } from "./features/about/AboutDialog";
+import { ImagesToPdfAction } from "./features/images-to-pdf/ImagesToPdfAction";
 import { ImagesToPdfSettings } from "./features/images-to-pdf/ImagesToPdfSettings";
 import { ImagesToPdfView } from "./features/images-to-pdf/ImagesToPdfView";
+import { JobFooter } from "./features/job/JobFooter";
+import { useJobEvents } from "./features/job/useJobEvents";
+import { PdfToImagesAction } from "./features/pdf-to-images/PdfToImagesAction";
 import { PdfToImagesSettings } from "./features/pdf-to-images/PdfToImagesSettings";
 import { PdfToImagesView } from "./features/pdf-to-images/PdfToImagesView";
 import { getTranslations, type Language } from "./i18n";
@@ -23,6 +27,7 @@ function AppShell({ initialAbout = null }: AppShellProps) {
   const { language } = useAppState();
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language);
+  useJobEvents();
 
   // Preserve T01 pdfium status verification for installer check until T13
   const [about, setAbout] = useState<AboutInfo | null>(initialAbout);
@@ -119,24 +124,23 @@ function AppShell({ initialAbout = null }: AppShellProps) {
       </div>
 
       <footer className="app-footer">
-        <span className="hint" data-testid="pdfium-status">
-          {about
-            ? about.pdfiumReady
-              ? `pdfium ${about.pdfiumVersion}: OK (app ${about.version})`
-              : `pdfium ${about.pdfiumVersion}: ${about.pdfiumError ?? ""}`
-            : failure
-              ? failure
-              : isImages
-                ? t.footer.noImagesSelected
-                : t.footer.noPdfsSelected}
-        </span>
-        <button
-          type="button"
-          className="btn btn-primary app-footer-action"
-          disabled
-        >
-          {isImages ? t.footer.savePdf : t.footer.startConversion}
-        </button>
+        <JobFooter
+          tab={language.activeTab}
+          idleStatus={
+            <span className="hint" data-testid="pdfium-status">
+              {about
+                ? about.pdfiumReady
+                  ? `pdfium ${about.pdfiumVersion}: OK (app ${about.version})`
+                  : `pdfium ${about.pdfiumVersion}: ${about.pdfiumError ?? ""}`
+                : failure
+                  ? failure
+                  : isImages
+                    ? t.footer.noImagesSelected
+                    : t.footer.noPdfsSelected}
+            </span>
+          }
+          action={isImages ? <ImagesToPdfAction /> : <PdfToImagesAction />}
+        />
       </footer>
 
       <AboutDialog />
