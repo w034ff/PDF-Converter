@@ -52,18 +52,18 @@ describe("App", () => {
     );
   });
 
-  it("switches tabs and updates aria-selected and aria-pressed attributes", () => {
+  it("switches tabs and updates aria-selected attributes", () => {
     mockIPC(() => new Promise(() => {}));
     render(<App initialNavLang="ja" />);
 
     const imagesTab = screen.getByRole("tab", { name: "画像 → PDF" });
     const pdfsTab = screen.getByRole("tab", { name: "PDF → 画像" });
 
-    // Initially images tab is active
+    // Initially images tab is active (tabs use aria-selected, not aria-pressed)
     expect(imagesTab).toHaveAttribute("aria-selected", "true");
-    expect(imagesTab).toHaveAttribute("aria-pressed", "true");
+    expect(imagesTab).not.toHaveAttribute("aria-pressed");
     expect(pdfsTab).toHaveAttribute("aria-selected", "false");
-    expect(pdfsTab).toHaveAttribute("aria-pressed", "false");
+    expect(pdfsTab).not.toHaveAttribute("aria-pressed");
     expect(
       screen.getByRole("button", { name: "PDF を保存" }),
     ).toBeInTheDocument();
@@ -72,9 +72,9 @@ describe("App", () => {
     fireEvent.click(pdfsTab);
 
     expect(imagesTab).toHaveAttribute("aria-selected", "false");
-    expect(imagesTab).toHaveAttribute("aria-pressed", "false");
+    expect(imagesTab).not.toHaveAttribute("aria-pressed");
     expect(pdfsTab).toHaveAttribute("aria-selected", "true");
-    expect(pdfsTab).toHaveAttribute("aria-pressed", "true");
+    expect(pdfsTab).not.toHaveAttribute("aria-pressed");
     expect(
       screen.getByRole("button", { name: "変換を開始" }),
     ).toBeInTheDocument();

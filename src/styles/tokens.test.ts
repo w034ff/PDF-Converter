@@ -97,11 +97,15 @@ describe("design tokens and CSS rules", () => {
     const darkAccent = "#e07353";
     const darkBgSurface = "#262522";
     const darkBgApp = "#1c1b18";
+    const darkTextOnAccent = "#1c1b18";
 
     const darkVsSurface = contrastRatio(darkAccent, darkBgSurface);
     const darkVsApp = contrastRatio(darkAccent, darkBgApp);
+    const darkVsText = contrastRatio(darkAccent, darkTextOnAccent);
     // Over dark background, accent contrast ratio must be >= 4.5
     expect(darkVsSurface).toBeGreaterThanOrEqual(4.5);
     expect(darkVsApp).toBeGreaterThanOrEqual(4.5);
+    // On dark accent button, text contrast ratio must be >= 4.5
+    expect(darkVsText).toBeGreaterThanOrEqual(4.5);
   });
 });

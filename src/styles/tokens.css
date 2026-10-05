@@ -9,7 +9,6 @@
   --color-text-secondary: #5c5a56;
   --color-text-muted: #8a867e;
   --color-text-on-accent: #ffffff;
-  --color-text-on-accent-dark: #1c1b18;
 
   --color-border: #dcd9d3;
   --color-border-subtle: #cfcbc4;
@@ -46,8 +45,7 @@
     --color-text-primary: #f2efe9;
     --color-text-secondary: #a8a49c;
     --color-text-muted: #78756e;
-    --color-text-on-accent: #ffffff;
-    --color-text-on-accent-dark: #1c1b18;
+    --color-text-on-accent: #1c1b18;
 
     --color-border: #3e3c38;
     --color-border-subtle: #4a4742;

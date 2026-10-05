@@ -69,7 +69,6 @@ function AppShell({ initialAbout = null }: AppShellProps) {
             type="button"
             role="tab"
             aria-selected={isImages}
-            aria-pressed={isImages}
             className="app-nav-tab"
             onClick={() => handleTabChange("imagesToPdf")}
           >
@@ -79,7 +78,6 @@ function AppShell({ initialAbout = null }: AppShellProps) {
             type="button"
             role="tab"
             aria-selected={!isImages}
-            aria-pressed={!isImages}
             className="app-nav-tab"
             onClick={() => handleTabChange("pdfToImages")}
           >
@@ -102,9 +100,8 @@ function AppShell({ initialAbout = null }: AppShellProps) {
           </select>
           <button
             type="button"
-            className="btn btn-ghost"
+            className="btn btn-ghost app-about-btn"
             aria-label={t.app.aboutButtonAria}
-            style={{ width: "36px", padding: 0 }}
           >
             i
           </button>
@@ -135,9 +132,8 @@ function AppShell({ initialAbout = null }: AppShellProps) {
         </span>
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn btn-primary app-footer-action"
           disabled
-          style={{ marginLeft: "auto" }}
         >
           {isImages ? t.footer.savePdf : t.footer.startConversion}
         </button>
