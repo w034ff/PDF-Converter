@@ -77,6 +77,32 @@ impl fmt::Display for ProbeError {
 
 impl std::error::Error for ProbeError {}
 
+/// Error returned when writing/finishing a PDF document fails (design §4.3, §6.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PdfWriteError(pub(crate) String);
+
+impl PdfWriteError {
+    /// Returns the IPC error code name of design §6.6.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        "WriteFailed"
+    }
+
+    /// Returns the error detail string if applicable (design §6.6).
+    #[must_use]
+    pub fn detail(&self) -> Option<String> {
+        None
+    }
+}
+
+impl fmt::Display for PdfWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "failed to write PDF: {}", self.0)
+    }
+}
+
+impl std::error::Error for PdfWriteError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +130,13 @@ mod tests {
 
         assert_eq!(ProbeError::ReadFailed.code(), "ReadFailed");
         assert_eq!(ProbeError::ReadFailed.detail(), None);
+    }
+
+    #[test]
+    fn pdf_write_error_code_and_detail() {
+        let err = PdfWriteError("unexpected error".to_string());
+        assert_eq!(err.code(), "WriteFailed");
+        assert_eq!(err.detail(), None);
+        assert_eq!(err.to_string(), "failed to write PDF: unexpected error");
     }
 }
