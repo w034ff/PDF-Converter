@@ -1,0 +1,103 @@
+name: pdfium update
+
+# Dependabot does not see the pdfium build pinned in scripts/pdfium-version.json
+# (design §8.4), so this workflow opens an Issue when bblanchon/pdfium-binaries
+# has published a newer release. The update itself is done by hand.
+on:
+  schedule:
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+  # workflow_dispatch can only run a workflow that is on the default branch, so
+  # a pull request that changes this file runs it too. That run only reports
+  # what it would do; it never creates an Issue.
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/pdfium-update.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PDFIUM_BINARIES_REPO: bblanchon/pdfium-binaries
+  VERSION_FILE: scripts/pdfium-version.json
+  RELEASE_TAG_PREFIX: "chromium/"
+
+jobs:
+  check:
+    name: Check for a newer pdfium
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Compare the pinned and the latest release
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pinned_tag=$(jq -r .release "$VERSION_FILE")
+          latest_tag=$(gh api "repos/$PDFIUM_BINARIES_REPO/releases/latest" --jq .tag_name)
+          pinned=${pinned_tag#"$RELEASE_TAG_PREFIX"}
+          latest=${latest_tag#"$RELEASE_TAG_PREFIX"}
+          echo "Pinned: $pinned_tag, latest: $latest_tag"
+
+          # A tag that is not "chromium/<number>" must fail the run rather than
+          # compare as zero and silence the check.
+          for number in "$pinned" "$latest"; do
+            case "$number" in
+              ''|*[!0-9]*)
+                echo "::error::Unexpected release tag: $pinned_tag / $latest_tag"
+                exit 1
+                ;;
+            esac
+          done
+
+          if [ "$latest" -gt "$pinned" ]; then
+            echo "newer=true" >> "$GITHUB_OUTPUT"
+            echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+            echo "pinned_tag=$pinned_tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "newer=false" >> "$GITHUB_OUTPUT"
+            echo "pdfium is up to date; no Issue is created."
+          fi
+
+      # Closed Issues count too: closing one declines that version, and the
+      # next run must not open it again.
+      - name: Look for an Issue of that version
+        id: existing
+        if: steps.compare.outputs.newer == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Update pdfium to ${{ steps.compare.outputs.latest_tag }}
+        run: |
+          count=$(gh issue list --state all --limit 200 --json title \
+            --jq "[.[] | select(.title == env.TITLE)] | length")
+          echo "Issues titled \"$TITLE\": $count"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Create the Issue
+        if: >-
+          steps.compare.outputs.newer == 'true'
+          && steps.existing.outputs.count == '0'
+          && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Update pdfium to ${{ steps.compare.outputs.latest_tag }}
+          LATEST_TAG: ${{ steps.compare.outputs.latest_tag }}
+          PINNED_TAG: ${{ steps.compare.outputs.pinned_tag }}
+        run: |
+          gh issue create --title "$TITLE" --body "$(cat <<EOF
+          bblanchon/pdfium-binaries has published \`$LATEST_TAG\`; this repository bundles \`$PINNED_TAG\`.
+
+          Release notes: https://github.com/$PDFIUM_BINARIES_REPO/releases/tag/$LATEST_TAG
+
+          Steps (design §8.4):
+
+          - [ ] Rewrite the release and the SHA-256 hashes in \`scripts/pdfium-version.json\`.
+          - [ ] Pick the \`pdfium_NNNN\` feature of \`pdfium-render\` again (design §2).
+          - [ ] Run \`npm run licenses:generate\` and commit the list.
+          - [ ] Run the tests of design §11 on both OSes.
+          EOF
+          )"

@@ -82,3 +82,28 @@ jobs:
 
       - name: Worker Performance Test (Release)
         run: cargo test -p pdfconv-worker --test worker --release performance_render_a4_150dpi
+
+      # Both checks pin their target platforms (deny.toml, about.toml), so the
+      # result does not depend on the runner OS and one runner is enough.
+      - name: Install license tools
+        if: runner.os == 'Linux'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2,cargo-about@0.9.2
+
+      - name: License Check
+        if: runner.os == 'Linux'
+        run: npm run licenses:check
+
+      # The list includes the license files of the bundled pdfium, which the
+      # "Fetch pdfium" step above unpacked.
+      - name: Check third-party license list is current
+        if: runner.os == 'Linux'
+        run: |
+          npm run licenses:generate
+          status=$(git status --porcelain src/licenses)
+          if [ -n "$status" ]; then
+            echo "src/licenses/third-party-licenses.json is out of date. Run npm run licenses:generate and commit the result."
+            echo "$status"
+            exit 1
+          fi
