@@ -77,6 +77,18 @@ jobs:
       - name: Rust Test
         run: cargo test --workspace --all-features
 
+      # The Rust test above rewrites src/ipc/generated; the committed copy
+      # must already be what it writes.
+      - name: Check TypeScript bindings diff
+        shell: bash
+        run: |
+          status=$(git status --porcelain src/ipc/generated)
+          if [ -n "$status" ]; then
+            echo "src/ipc/generated is out of date. Run cargo test --workspace --all-features and commit the result."
+            echo "$status"
+            exit 1
+          fi
+
       - name: Rust Test Without Test Hooks
         run: cargo test -p pdfconv-worker --lib
 

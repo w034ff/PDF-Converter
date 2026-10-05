@@ -1,12 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { AboutInfo } from "./generated/AboutInfo";
 
-/** Answer of the `get_about` command (design §7.1). */
-export type AboutInfo = {
-  version: string;
-  pdfiumVersion: string;
-  pdfiumReady: boolean;
-  pdfiumError: string | null;
-};
+export type { AboutInfo };
 
 function isAboutInfo(value: unknown): value is AboutInfo {
   if (typeof value !== "object" || value === null) return false;

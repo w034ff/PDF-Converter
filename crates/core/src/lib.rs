@@ -1,5 +1,5 @@
 //! Conversion logic that does not depend on Tauri: image probing, page layout,
-//! PDF writing, page ranges and output names (design §4, §6.4).
+//! PDF writing, thumbnails, page ranges and output names (design §4, §6.1, §6.4).
 
 pub mod error;
 pub mod layout;
@@ -7,6 +7,7 @@ pub mod naming;
 pub mod page_range;
 pub mod pdf_write;
 pub mod probe;
+pub mod thumbnail;
 
 pub use error::{PdfWriteError, ProbeError};
 pub use layout::{
@@ -22,3 +23,4 @@ pub use probe::{
     DEFAULT_DPI, IMAGE_EXTENSIONS, ImageFormat, ImageInfo, MAX_DPI, MAX_IMAGE_PIXELS, MIN_DPI,
     probe, probe_reader,
 };
+pub use thumbnail::{THUMBNAIL_SIDE, thumbnail_png};

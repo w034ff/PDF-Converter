@@ -197,7 +197,7 @@
 
 - 「画像 → PDF」と「PDF → 画像」は、それぞれ 1 つの一覧を持つ。一覧の項目は Rust の表に登録し、フロントエンドには ID と表示用の情報だけを渡す。
 - 追加の方法: 「画像を追加」「PDF を追加」（複数選択のファイルダイアログ）、「フォルダを追加」（フォルダダイアログ）、D&D。
-- フォルダは直下だけを見る。サブフォルダ、シンボリックリンク、隠しファイル（`.` で始まる名前）、対応しない拡張子は追加せず、件数を返す。
+- フォルダは直下だけを見る。サブフォルダ、シンボリックリンク、隠しファイル（`.` で始まる名前）、対応しない拡張子は追加しない。§7.1 の `skipped` には、サブフォルダを `folders`、対応しない拡張子を `unsupported`、一覧にすでにあるものを `duplicates` として数える。隠しファイルとシンボリックリンクは、利用者が意図して選んだものではないので数えない。ファイルダイアログや D&D で直接選ばれたファイルは、名前が `.` で始まっていても追加する。
 - D&D は Rust の `WindowEvent::DragDrop` で受ける。落とされたものを拡張子で分け、画像は「画像 → PDF」の一覧に、PDF は「PDF → 画像」の一覧に入れる。フォルダは中を見て同じように分ける。フロントエンドは、追加があった一覧のタブに切り替える（両方に入ったときは、表示中のタブのまま）。
 - 同じファイル（正規化したパスが同じ）がすでに一覧にあれば、追加しない。
 - 追加のときに、画像は §4.1 の `probe`、PDF はワーカーの `Open` を行う。失敗したファイルも一覧に入れ、行にエラーの理由を表示する。エラーの行は変換の対象にしない。パスワード付きの PDF も、ここで分かる。
@@ -258,6 +258,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | InvalidParams | 引数が範囲外（UI からは通常送られない） | 無効な設定です / Invalid settings |
 
 - 「対象のページなし」はエラーではなく、`job-item` の状態 `noPages` で表す（FR-04）。
+- ワーカーが同梱の pdfium を読み込めないとき（ワーカー内のコード `PdfiumUnavailable`）は、IPC では `WorkerCrashed` として返す。配布物が壊れている場合にしか起きず、利用者に見せる文言は同じでよいため。
 - `TooLarge`、`TooManyPages` の `detail` には、Rust が上限の定数を 3 桁区切りの文字列にして入れる（上限の数値をフロントエンドに書き写さないため）。
 
 ### 6.7 設定の保存（FR-07、FR-10）
@@ -284,9 +285,9 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `check_page_range` | `text, ids` | `{ totalPages }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, dpi` | – |
 | `cancel_job` | – | – |
-| `get_about` | – | `{ version, pdfiumVersion }` |
+| `get_about` | – | `{ version, pdfiumVersion, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか） |
 
-- `ImageItem`: `{ id, name, width, height, format, bytes, error }`。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。
+- `ImageItem`: `{ id, name, width, height, format, bytes, error }`。`width` と `height` は EXIF の向きを反映した表示上の寸法（サムネイルと同じ向き）。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。失敗した項目では、`width`・`height`・`pageCount` は 0、`format`・`firstPageSizePt` は `null`。
 - どのコマンドもパスを引数に取らない。`dirLabel` は表示用で、送り返されない。
 - 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items` は `ConversionRunning` で拒む。
 
