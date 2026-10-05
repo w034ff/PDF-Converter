@@ -24,6 +24,24 @@ pub const WORKER_MEMORY_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 /// Error code for a pdfium library that cannot be loaded or used.
 const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
 
+/// Error code when opening or decoding a PDF fails.
+const CODE_PDF_OPEN_FAILED: &str = "PdfOpenFailed";
+
+/// Error code when a PDF requires a password to open.
+const CODE_PASSWORD_PROTECTED: &str = "PasswordProtected";
+
+/// Error code when reading a file fails at the I/O level.
+const CODE_READ_FAILED: &str = "ReadFailed";
+
+/// Error code when a PDF exceeds the maximum supported page count.
+const CODE_TOO_MANY_PAGES: &str = "TooManyPages";
+
+/// Error code when rendered page dimensions exceed the maximum pixel limit.
+const CODE_RENDER_TOO_LARGE: &str = "RenderTooLarge";
+
+/// Error code when arguments are out of range or no document is open.
+const CODE_INVALID_PARAMS: &str = "InvalidParams";
+
 /// Runs the worker loop. `library_dir` is the folder holding the bundled
 /// pdfium library; pdfium is loaded on the first request that needs it.
 ///
@@ -47,11 +65,10 @@ pub fn run(library_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Validates that a document page count does not exceed [`MAX_PDF_PAGES`] (design §5.1, §6.6).
-pub fn check_page_count(count: u32) -> Result<(), Response> {
+fn check_page_count(count: u32) -> Result<(), Response> {
     if count > MAX_PDF_PAGES {
         Err(Response::Error {
-            code: "TooManyPages".into(),
+            code: CODE_TOO_MANY_PAGES.into(),
             detail: Some(format_number_with_commas(MAX_PDF_PAGES)),
         })
     } else {
@@ -103,60 +120,41 @@ impl State {
                 if let Err(resp) = check_page_count(page_count) {
                     return (resp, Vec::new());
                 }
-                let mut pages = Vec::with_capacity(page_count as usize);
-                for i in 0..(page_count as i32) {
-                    match doc.pages().get(i) {
-                        Ok(page) => {
-                            pages.push(PageDimensions {
-                                width_pt: page.width().value,
-                                height_pt: page.height().value,
-                            });
-                        }
-                        Err(_) => {
-                            return (
-                                Response::Error {
-                                    code: "PdfOpenFailed".into(),
-                                    detail: None,
-                                },
-                                Vec::new(),
-                            );
-                        }
-                    }
-                }
-                self.document = Some(doc);
-                (Response::Open { page_count, pages }, Vec::new())
-            }
-            Request::Render { page, dpi, format } => {
-                let Some(doc) = &self.document else {
-                    return (
-                        Response::Error {
-                            code: "InvalidParams".into(),
-                            detail: None,
-                        },
-                        Vec::new(),
-                    );
-                };
-                let page_count = doc.pages().len() as u32;
-                if page == 0 || page > page_count || dpi == 0 {
-                    return (
-                        Response::Error {
-                            code: "InvalidParams".into(),
-                            detail: None,
-                        },
-                        Vec::new(),
-                    );
-                }
-                let pdf_page = match doc.pages().get((page - 1) as i32) {
-                    Ok(p) => p,
+                let page_sizes = match doc.pages().page_sizes() {
+                    Ok(sizes) => sizes,
                     Err(_) => {
                         return (
                             Response::Error {
-                                code: "InvalidParams".into(),
+                                code: CODE_PDF_OPEN_FAILED.into(),
                                 detail: None,
                             },
                             Vec::new(),
                         );
                     }
+                };
+                let pages = page_sizes
+                    .into_iter()
+                    .map(|rect| PageDimensions {
+                        width_pt: rect.width().value,
+                        height_pt: rect.height().value,
+                    })
+                    .collect();
+                self.document = Some(doc);
+                (Response::Open { page_count, pages }, Vec::new())
+            }
+            Request::Render { page, dpi, format } => {
+                if dpi == 0 {
+                    return (
+                        Response::Error {
+                            code: CODE_INVALID_PARAMS.into(),
+                            detail: None,
+                        },
+                        Vec::new(),
+                    );
+                }
+                let pdf_page = match self.page_for_rendering(page) {
+                    Ok(p) => p,
+                    Err(resp) => return (resp, Vec::new()),
                 };
                 let width_pt = f64::from(pdf_page.width().value);
                 let height_pt = f64::from(pdf_page.height().value);
@@ -167,7 +165,7 @@ impl State {
                 if total_pixels > MAX_RENDER_PIXELS {
                     return (
                         Response::Error {
-                            code: "RenderTooLarge".into(),
+                            code: CODE_RENDER_TOO_LARGE.into(),
                             detail: None,
                         },
                         Vec::new(),
@@ -198,7 +196,7 @@ impl State {
                     Ok(()) => (Response::Render, encoded),
                     Err(e) => (
                         Response::Error {
-                            code: "PdfOpenFailed".into(),
+                            code: CODE_PDF_OPEN_FAILED.into(),
                             detail: Some(format!("{e:?}")),
                         },
                         Vec::new(),
@@ -206,36 +204,18 @@ impl State {
                 }
             }
             Request::Thumbnail { page, max_side } => {
-                let Some(doc) = &self.document else {
+                if max_side == 0 {
                     return (
                         Response::Error {
-                            code: "InvalidParams".into(),
-                            detail: None,
-                        },
-                        Vec::new(),
-                    );
-                };
-                let page_count = doc.pages().len() as u32;
-                if page == 0 || page > page_count || max_side == 0 {
-                    return (
-                        Response::Error {
-                            code: "InvalidParams".into(),
+                            code: CODE_INVALID_PARAMS.into(),
                             detail: None,
                         },
                         Vec::new(),
                     );
                 }
-                let pdf_page = match doc.pages().get((page - 1) as i32) {
+                let pdf_page = match self.page_for_rendering(page) {
                     Ok(p) => p,
-                    Err(_) => {
-                        return (
-                            Response::Error {
-                                code: "InvalidParams".into(),
-                                detail: None,
-                            },
-                            Vec::new(),
-                        );
-                    }
+                    Err(resp) => return (resp, Vec::new()),
                 };
                 let width_pt = f64::from(pdf_page.width().value);
                 let height_pt = f64::from(pdf_page.height().value);
@@ -262,6 +242,17 @@ impl State {
                     (w, h)
                 };
 
+                let total_pixels = (target_w as u64).saturating_mul(target_h as u64);
+                if total_pixels > MAX_RENDER_PIXELS {
+                    return (
+                        Response::Error {
+                            code: CODE_RENDER_TOO_LARGE.into(),
+                            detail: None,
+                        },
+                        Vec::new(),
+                    );
+                }
+
                 let rgb = match render_page_to_rgb(&pdf_page, target_w, target_h) {
                     Ok(bytes) => bytes,
                     Err(resp) => return (resp, Vec::new()),
@@ -277,7 +268,7 @@ impl State {
                     Ok(()) => (Response::Thumbnail, encoded),
                     Err(e) => (
                         Response::Error {
-                            code: "PdfOpenFailed".into(),
+                            code: CODE_PDF_OPEN_FAILED.into(),
                             detail: Some(format!("{e:?}")),
                         },
                         Vec::new(),
@@ -312,6 +303,28 @@ impl State {
         }
     }
 
+    fn page_for_rendering(&self, page: u32) -> Result<PdfPage<'_>, Response> {
+        let Some(doc) = &self.document else {
+            return Err(Response::Error {
+                code: CODE_INVALID_PARAMS.into(),
+                detail: None,
+            });
+        };
+        let page_count = doc.pages().len() as u32;
+        if page == 0 || page > page_count {
+            return Err(Response::Error {
+                code: CODE_INVALID_PARAMS.into(),
+                detail: None,
+            });
+        }
+        doc.pages()
+            .get((page - 1) as i32)
+            .map_err(|_| Response::Error {
+                code: CODE_INVALID_PARAMS.into(),
+                detail: None,
+            })
+    }
+
     fn pdfium(&mut self) -> Result<&'static Pdfium, Response> {
         if self.pdfium.is_none() {
             let path = Pdfium::pdfium_platform_library_name_at_path(&self.library_dir);
@@ -329,16 +342,16 @@ fn map_pdfium_open_error(error: &PdfiumError) -> Response {
     match error {
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::PasswordError) => {
             Response::Error {
-                code: "PasswordProtected".into(),
+                code: CODE_PASSWORD_PROTECTED.into(),
                 detail: None,
             }
         }
         PdfiumError::IoError(_) => Response::Error {
-            code: "ReadFailed".into(),
+            code: CODE_READ_FAILED.into(),
             detail: None,
         },
         _ => Response::Error {
-            code: "PdfOpenFailed".into(),
+            code: CODE_PDF_OPEN_FAILED.into(),
             detail: None,
         },
     }
@@ -356,7 +369,7 @@ fn render_page_to_rgb(
     let bitmap = page
         .render_with_config(&config)
         .map_err(|e| Response::Error {
-            code: "PdfOpenFailed".into(),
+            code: CODE_PDF_OPEN_FAILED.into(),
             detail: Some(format!("{e:?}")),
         })?;
 
@@ -405,7 +418,7 @@ mod tests {
         assert_eq!(
             err,
             Response::Error {
-                code: "TooManyPages".into(),
+                code: CODE_TOO_MANY_PAGES.into(),
                 detail: Some("10,000".into()),
             }
         );

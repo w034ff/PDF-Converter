@@ -77,18 +77,15 @@ pub enum Response {
     /// pdfium is loaded and could create a document.
     Hello,
     /// A PDF was opened successfully (design §5.1).
-    #[serde(alias = "opened")]
     Open {
         page_count: u32,
         pages: Vec<PageDimensions>,
     },
     /// A page was rendered; the image bytes are in the message body (design §5.1).
-    #[serde(alias = "rendered")]
     Render,
     /// A thumbnail was rendered; the PNG bytes are in the message body (design §5.1).
     Thumbnail,
     /// The currently open PDF was closed (design §5.1).
-    #[serde(alias = "closed")]
     Close,
     /// The request failed; `code` is one of the error codes of design §6.6.
     Error {

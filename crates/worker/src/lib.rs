@@ -27,5 +27,3 @@ pub const DPI_CHOICES: [u32; 3] = [72, 150, 300];
 
 /// Default render resolution in DPI (design §4.4).
 pub const DEFAULT_RENDER_DPI: u32 = 150;
-
-pub use server::check_page_count;

@@ -96,9 +96,32 @@ fn worker_count_does_not_exceed_limit_under_concurrent_load() {
 }
 
 #[cfg(feature = "test-hooks")]
+fn acquire_with_timeout(
+    pool: &WorkerPool,
+    timeout: Duration,
+) -> Result<pdf_converter_lib::worker_pool::PooledWorker, String> {
+    let pool = pool.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let res = pool.acquire();
+        let _ = tx.send(res);
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(worker)) => Ok(worker),
+        Ok(Err(e)) => Err(format!("acquire error: {e}")),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err("acquire timed out waiting for worker slot".into())
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err("acquire thread exited unexpectedly".into())
+        }
+    }
+}
+
+#[cfg(feature = "test-hooks")]
 #[test]
 fn recovers_after_worker_crashes() {
-    let pool = WorkerPool::new(test_pool_config(2));
+    let pool = WorkerPool::new(test_pool_config(1));
 
     let mut worker = pool.acquire().expect("acquire should succeed");
     let res = worker.request(&Request::CrashForTest, Duration::from_secs(10));
@@ -106,8 +129,9 @@ fn recovers_after_worker_crashes() {
     // Worker is dropped here and discarded by pool.
     drop(worker);
 
-    // Next acquire should spawn a fresh worker and succeed
-    let mut next_worker = pool.acquire().expect("acquire after crash should succeed");
+    // Next acquire should spawn a fresh worker within timeout (not block forever if slot leaked)
+    let mut next_worker = acquire_with_timeout(&pool, Duration::from_secs(10))
+        .expect("acquire after crash should succeed");
     let (resp, _) = next_worker
         .request(&Request::Hello, Duration::from_secs(10))
         .expect("Hello should succeed on fresh worker");
@@ -117,7 +141,7 @@ fn recovers_after_worker_crashes() {
 #[cfg(feature = "test-hooks")]
 #[test]
 fn recovers_after_worker_times_out() {
-    let pool = WorkerPool::new(test_pool_config(2));
+    let pool = WorkerPool::new(test_pool_config(1));
 
     let mut worker = pool.acquire().expect("acquire should succeed");
     // Short timeout so the test runs quickly
@@ -126,9 +150,8 @@ fn recovers_after_worker_times_out() {
     // Worker is dropped here and discarded by pool.
     drop(worker);
 
-    // Next acquire should spawn a fresh worker and succeed
-    let mut next_worker = pool
-        .acquire()
+    // Next acquire should spawn a fresh worker within timeout (not block forever if slot leaked)
+    let mut next_worker = acquire_with_timeout(&pool, Duration::from_secs(10))
         .expect("acquire after timeout should succeed");
     let (resp, _) = next_worker
         .request(&Request::Hello, Duration::from_secs(10))

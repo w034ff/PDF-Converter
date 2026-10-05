@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 use pdfconv_worker::client::{WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::{RenderFormat, Request, Response};
-use pdfconv_worker::{MAX_PDF_PAGES, check_page_count};
 
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -296,16 +295,28 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
 }
 
 #[test]
-fn checks_page_count_limit_purely() {
-    assert!(check_page_count(MAX_PDF_PAGES).is_ok());
-    let err = check_page_count(MAX_PDF_PAGES + 1).unwrap_err();
-    assert_eq!(
-        err,
-        Response::Error {
-            code: "TooManyPages".into(),
-            detail: Some("10,000".into()),
-        }
-    );
+fn rejects_thumbnail_exceeding_max_render_pixels() {
+    let mut worker = start();
+    worker
+        .request(
+            &Request::Open {
+                path: fixtures_dir().join("shapes.pdf"),
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("Open should succeed");
+
+    // Thumbnail with max_side = 200_000 produces ~2.8e10 pixels (> 100_000_000 MAX_RENDER_PIXELS)
+    match worker.request(
+        &Request::Thumbnail {
+            page: 1,
+            max_side: 200_000,
+        },
+        ANSWER_TIMEOUT,
+    ) {
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "RenderTooLarge"),
+        other => panic!("expected RenderTooLarge, got {other:?}"),
+    }
 }
 
 #[test]
