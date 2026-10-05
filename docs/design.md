@@ -334,6 +334,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - PDF はワーカーでだけ開く（§1、§5）。メインプロセスに pdfium を読み込まない。`crates/worker` 以外の crate が `pdfium-render` に依存していないことを、`cargo-deny` の `bans`（`wrappers` の指定）で確かめる。
 - ワーカーには、開く PDF のパスと pdfium の場所だけを渡す。ワーカーはファイルを書かない。
 - サムネイルと描画した画像は、`blob:` URL にして `<img>` で表示する。
+- WebView2 の起動オプションの `--host-resolver-rules` は、SVG Tracer の `MAP * ~NOTFOUND` に `EXCLUDE localhost` を加える。`tauri dev` の画面は Vite（`devUrl` の `http://localhost:5173`）から読むので、`localhost` の名前解決まで失敗させると Windows で開発用の画面が開かない（`ERR_NAME_NOT_RESOLVED`）。製品版で `localhost` の名前解決が通っても、CSP が許す接続先は画面自身（`'self'`）と IPC だけなので、画面から `localhost` には接続できない。PAC や外部のサーバーへの名前解決は、これまでどおりすべて失敗する。
 
 ## 10. フロントエンド
 

@@ -1,0 +1,224 @@
+import { describe, expect, it } from "vitest";
+import type { ImageItem, PdfItem } from "../ipc";
+import {
+  appReducer,
+  createInitialAppState,
+  imagesToPdfReducer,
+  languageReducer,
+  pdfToImagesReducer,
+  type ImagesToPdfState,
+  type LanguageState,
+  type PdfToImagesState,
+} from "./index";
+
+const sampleImageItem1: ImageItem = {
+  id: 1,
+  name: "image1.png",
+  width: 800,
+  height: 600,
+  format: "png",
+  bytes: 12345,
+  error: null,
+};
+
+const sampleImageItem2: ImageItem = {
+  id: 2,
+  name: "image2.jpg",
+  width: 1920,
+  height: 1080,
+  format: "jpeg",
+  bytes: 54321,
+  error: null,
+};
+
+const samplePdfItem1: PdfItem = {
+  id: 10,
+  name: "document.pdf",
+  pageCount: 5,
+  firstPageSizePt: { widthPt: 595.28, heightPt: 841.89 },
+  bytes: 99999,
+  error: null,
+};
+
+const samplePdfItem2: PdfItem = {
+  id: 11,
+  name: "report.pdf",
+  pageCount: 1,
+  firstPageSizePt: { widthPt: 612, heightPt: 792 },
+  bytes: 88888,
+  error: null,
+};
+
+describe("state reducers", () => {
+  describe("languageReducer", () => {
+    it("updates language with SET_LANGUAGE", () => {
+      const initial: LanguageState = {
+        language: "ja",
+        activeTab: "imagesToPdf",
+      };
+      const updated = languageReducer(initial, {
+        type: "SET_LANGUAGE",
+        language: "en",
+      });
+      expect(updated.language).toBe("en");
+      expect(updated.activeTab).toBe("imagesToPdf");
+    });
+
+    it("returns same state when language does not change", () => {
+      const initial: LanguageState = {
+        language: "ja",
+        activeTab: "imagesToPdf",
+      };
+      const updated = languageReducer(initial, {
+        type: "SET_LANGUAGE",
+        language: "ja",
+      });
+      expect(updated).toBe(initial);
+    });
+
+    it("updates active tab with SET_ACTIVE_TAB", () => {
+      const initial: LanguageState = {
+        language: "ja",
+        activeTab: "imagesToPdf",
+      };
+      const updated = languageReducer(initial, {
+        type: "SET_ACTIVE_TAB",
+        tab: "pdfToImages",
+      });
+      expect(updated.activeTab).toBe("pdfToImages");
+      expect(updated.language).toBe("ja");
+    });
+
+    it("returns same state when active tab does not change", () => {
+      const initial: LanguageState = {
+        language: "ja",
+        activeTab: "imagesToPdf",
+      };
+      const updated = languageReducer(initial, {
+        type: "SET_ACTIVE_TAB",
+        tab: "imagesToPdf",
+      });
+      expect(updated).toBe(initial);
+    });
+  });
+
+  describe("imagesToPdfReducer", () => {
+    it("adds image items with ADD_IMAGE_ITEMS", () => {
+      const initial: ImagesToPdfState = { items: [] };
+      const updated = imagesToPdfReducer(initial, {
+        type: "ADD_IMAGE_ITEMS",
+        items: [sampleImageItem1, sampleImageItem2],
+      });
+      expect(updated.items).toHaveLength(2);
+      expect(updated.items[0]).toEqual(sampleImageItem1);
+      expect(updated.items[1]).toEqual(sampleImageItem2);
+    });
+
+    it("returns same state when ADD_IMAGE_ITEMS is given empty list", () => {
+      const initial: ImagesToPdfState = { items: [sampleImageItem1] };
+      const updated = imagesToPdfReducer(initial, {
+        type: "ADD_IMAGE_ITEMS",
+        items: [],
+      });
+      expect(updated).toBe(initial);
+    });
+
+    it("removes image item by id with REMOVE_IMAGE_ITEM", () => {
+      const initial: ImagesToPdfState = {
+        items: [sampleImageItem1, sampleImageItem2],
+      };
+      const updated = imagesToPdfReducer(initial, {
+        type: "REMOVE_IMAGE_ITEM",
+        id: 1,
+      });
+      expect(updated.items).toHaveLength(1);
+      expect(updated.items[0]).toEqual(sampleImageItem2);
+    });
+
+    it("returns same state when REMOVE_IMAGE_ITEM id does not exist", () => {
+      const initial: ImagesToPdfState = { items: [sampleImageItem1] };
+      const updated = imagesToPdfReducer(initial, {
+        type: "REMOVE_IMAGE_ITEM",
+        id: 999,
+      });
+      expect(updated).toBe(initial);
+    });
+
+    it("clears all items with CLEAR_IMAGE_ITEMS", () => {
+      const initial: ImagesToPdfState = {
+        items: [sampleImageItem1, sampleImageItem2],
+      };
+      const updated = imagesToPdfReducer(initial, {
+        type: "CLEAR_IMAGE_ITEMS",
+      });
+      expect(updated.items).toHaveLength(0);
+    });
+  });
+
+  describe("pdfToImagesReducer", () => {
+    it("adds pdf items with ADD_PDF_ITEMS", () => {
+      const initial: PdfToImagesState = { items: [] };
+      const updated = pdfToImagesReducer(initial, {
+        type: "ADD_PDF_ITEMS",
+        items: [samplePdfItem1, samplePdfItem2],
+      });
+      expect(updated.items).toHaveLength(2);
+      expect(updated.items[0]).toEqual(samplePdfItem1);
+      expect(updated.items[1]).toEqual(samplePdfItem2);
+    });
+
+    it("removes pdf item by id with REMOVE_PDF_ITEM", () => {
+      const initial: PdfToImagesState = {
+        items: [samplePdfItem1, samplePdfItem2],
+      };
+      const updated = pdfToImagesReducer(initial, {
+        type: "REMOVE_PDF_ITEM",
+        id: 10,
+      });
+      expect(updated.items).toHaveLength(1);
+      expect(updated.items[0]).toEqual(samplePdfItem2);
+    });
+
+    it("clears all items with CLEAR_PDF_ITEMS", () => {
+      const initial: PdfToImagesState = {
+        items: [samplePdfItem1, samplePdfItem2],
+      };
+      const updated = pdfToImagesReducer(initial, {
+        type: "CLEAR_PDF_ITEMS",
+      });
+      expect(updated.items).toHaveLength(0);
+    });
+  });
+
+  describe("appReducer", () => {
+    it("initializes default app state with ja language", () => {
+      const state = createInitialAppState("ja-JP");
+      expect(state.language.language).toBe("ja");
+      expect(state.language.activeTab).toBe("imagesToPdf");
+      expect(state.imagesToPdf.items).toHaveLength(0);
+      expect(state.pdfToImages.items).toHaveLength(0);
+    });
+
+    it("dispatches actions to appropriate sub-reducers", () => {
+      let state = createInitialAppState("ja-JP");
+
+      state = appReducer(state, {
+        type: "SET_ACTIVE_TAB",
+        tab: "pdfToImages",
+      });
+      expect(state.language.activeTab).toBe("pdfToImages");
+
+      state = appReducer(state, {
+        type: "ADD_PDF_ITEMS",
+        items: [samplePdfItem1],
+      });
+      expect(state.pdfToImages.items).toHaveLength(1);
+
+      state = appReducer(state, {
+        type: "ADD_IMAGE_ITEMS",
+        items: [sampleImageItem1],
+      });
+      expect(state.imagesToPdf.items).toHaveLength(1);
+    });
+  });
+});

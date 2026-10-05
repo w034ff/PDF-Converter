@@ -19,7 +19,7 @@
         "minWidth": 960,
         "minHeight": 640,
         "resizable": true,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --no-proxy-server --host-resolver-rules=\"MAP * ~NOTFOUND\""
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --no-proxy-server --host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE localhost\""
       }
     ],
     "security": {
