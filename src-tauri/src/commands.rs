@@ -19,6 +19,7 @@ use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
     self, CheckPageRangeResult, PageSizeChoice, RenderFormatChoice, SaveMergedPdfResult,
 };
+use crate::settings::{self, OutputDirLabel, OutputKind, Settings, SettingsInput};
 
 /// Name of the image filter of the file dialog.
 const IMAGE_FILTER_NAME: &str = "Images";
@@ -73,6 +74,51 @@ fn check_worker(app: &AppHandle) -> Result<(), String> {
         }
         Err(e) => Err(format!("{e:?}")),
     }
+}
+
+/// Returns the settings, with the output folders as labels (design §6.7).
+#[tauri::command]
+pub fn get_settings(state: tauri::State<'_, AppState>) -> Settings {
+    settings::get_settings_internal(&state)
+}
+
+/// Saves the settings except the output folders (design §6.7). Nothing is
+/// saved if a value is invalid.
+#[tauri::command]
+pub async fn save_settings(
+    state: tauri::State<'_, AppState>,
+    settings: SettingsInput,
+) -> Result<(), IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.settings.save(&settings))
+        .await
+        .map_err(task_failed)?
+}
+
+/// Asks for a folder and makes it the output folder of `kind`. Returns `None`
+/// if the dialog was cancelled (design §6.7).
+#[tauri::command]
+pub async fn pick_output_dir(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    kind: OutputKind,
+) -> Result<Option<OutputDirLabel>, IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(dir) = pick_folder(&app)? else {
+            return Ok(None);
+        };
+        let (label, persisted) = settings::apply_picked_dir(&state, kind, dir);
+        #[cfg(debug_assertions)]
+        if let Err(error) = &persisted {
+            eprintln!("[debug] settings were not saved: {error}");
+        }
+        // The folder is in use even if the file could not be written.
+        let _ = persisted;
+        Ok(Some(label))
+    })
+    .await
+    .map_err(task_failed)?
 }
 
 /// Where `add_images` and `add_pdfs` take their files from (design §7.1).
