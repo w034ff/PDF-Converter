@@ -27,6 +27,11 @@ export const en: Translations = {
     remove: "Remove from list",
     thumbnailAlt: "Thumbnail of {name}",
   },
+  outputDir: {
+    title: "Output folder",
+    choose: "Choose folder",
+    notChosen: "Not chosen",
+  },
   footer: {
     noImagesSelected: "No images selected",
     noPdfsSelected: "No PDFs selected",

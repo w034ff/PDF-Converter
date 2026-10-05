@@ -25,6 +25,11 @@ export const ja = {
     remove: "一覧から外す",
     thumbnailAlt: "{name} のサムネイル",
   },
+  outputDir: {
+    title: "保存先フォルダ",
+    choose: "フォルダを選ぶ",
+    notChosen: "未選択",
+  },
   footer: {
     noImagesSelected: "画像が選ばれていません",
     noPdfsSelected: "PDF が選ばれていません",
