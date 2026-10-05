@@ -11,14 +11,17 @@ workspace = true
 [dependencies]
 # Reads the input images: size, EXIF orientation and BMP pixels (design §2).
 image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png", "webp"] }
+# Writes the PDF; JPEG bytes go in unchanged (design §2, §4.3).
+krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }
 
-# Only examples/gen_fixtures.rs and the test that checks its output use these
-# (design §11.1).
+# Only examples/gen_fixtures.rs and the tests use these (design §11.1, §11.2).
 [dev-dependencies]
 # Writes CMYK JPEGs, which image cannot, and the EXIF and JFIF density segments.
 jpeg-encoder = "0.7.1"
-krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }
 # The standard security handler of encrypted.pdf and restricted.pdf is MD5-based.
 md-5 = "0.11"
+# Renders the written PDFs in the quality test (design §11.2); the app loads
+# pdfium only in the worker. Same API level as crates/worker.
+pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
 # Writes the pHYs chunk, which image's PNG encoder cannot.
 png = "0.18"
