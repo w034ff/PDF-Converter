@@ -13,5 +13,5 @@ pub use naming::{
 pub use page_range::{PageSet, ParsePageRangeError, parse_page_range};
 pub use probe::{
     DEFAULT_DPI, IMAGE_EXTENSIONS, ImageFormat, ImageInfo, MAX_DPI, MAX_IMAGE_PIXELS, MIN_DPI,
-    parse_bmp_dpi, parse_exif_dpi, parse_jfif_dpi, parse_png_dpi, probe, probe_reader,
+    probe, probe_reader,
 };

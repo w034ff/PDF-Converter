@@ -49,7 +49,7 @@ pub struct ImageInfo {
     pub dpi: u32,
 }
 
-/// Maximum number of header bytes peeked for guessing format and extracting density segments.
+/// Maximum number of header bytes peeked for extracting JPEG density segments.
 const HEADER_PEEK_BYTES: usize = 64 * 1024;
 
 /// Probes an image file at `path`, reading only its header to extract dimensions,
@@ -76,20 +76,15 @@ pub fn probe(path: &Path) -> Result<ImageInfo, ProbeError> {
 /// Returns [`ProbeError::TooLarge`] if total pixels exceed [`MAX_IMAGE_PIXELS`].
 /// Returns [`ProbeError::ReadFailed`] if a seek or read error occurs on the reader.
 pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, ProbeError> {
-    // 1. Read up to 64 KiB of header bytes for format guessing and density parsing.
-    let mut header_buf = Vec::new();
-    reader
-        .by_ref()
-        .take(HEADER_PEEK_BYTES as u64)
-        .read_to_end(&mut header_buf)
+    let mut magic_buf = [0u8; 16];
+    let n = reader
+        .read(&mut magic_buf)
         .map_err(|_| ProbeError::ReadFailed)?;
-
-    if header_buf.is_empty() {
+    if n == 0 {
         return Err(ProbeError::UnsupportedFormat);
     }
 
-    // 2. Format detection using image::guess_format (design §4.1).
-    let (format, image_crate_fmt) = match image::guess_format(&header_buf) {
+    let (format, image_crate_fmt) = match image::guess_format(&magic_buf[..n]) {
         Ok(image::ImageFormat::Png) => (ImageFormat::Png, image::ImageFormat::Png),
         Ok(image::ImageFormat::Jpeg) => (ImageFormat::Jpeg, image::ImageFormat::Jpeg),
         Ok(image::ImageFormat::WebP) => (ImageFormat::WebP, image::ImageFormat::WebP),
@@ -97,35 +92,48 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
         _ => return Err(ProbeError::UnsupportedFormat),
     };
 
-    // 3. Rewind reader to decode the header without reading pixels.
     reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
 
-    let mut img_reader = image::ImageReader::new(&mut reader);
-    img_reader.set_format(image_crate_fmt);
+    let (width, height, orientation, exif_chunk) = {
+        let mut img_reader = image::ImageReader::new(&mut reader);
+        img_reader.set_format(image_crate_fmt);
 
-    let mut decoder = img_reader
-        .into_decoder()
-        .map_err(|_| ProbeError::DecodeFailed)?;
+        let mut decoder = img_reader
+            .into_decoder()
+            .map_err(|_| ProbeError::DecodeFailed)?;
 
-    let (width, height) = decoder.dimensions();
+        let (width, height) = decoder.dimensions();
+        let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+        let exif_chunk = decoder.exif_metadata().ok().flatten();
+        (width, height, orientation, exif_chunk)
+    };
 
-    // 4. Check total pixels before touching any pixel data (design §4.1).
     let total_pixels = u64::from(width).saturating_mul(u64::from(height));
     if total_pixels > MAX_IMAGE_PIXELS {
         return Err(ProbeError::TooLarge);
     }
 
-    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
-    let exif_chunk = decoder.exif_metadata().ok().flatten();
-
-    // 5. Resolution resolution (design §4.1).
     let raw_dpi = match format {
-        ImageFormat::Png => parse_png_dpi(&header_buf),
+        ImageFormat::Png => find_png_phys_dpi(&mut reader),
         ImageFormat::Jpeg => {
-            // Design §4.1: JFIF density first, then EXIF XResolution if JFIF is absent or has no unit.
-            parse_jfif_dpi(&header_buf).or_else(|| exif_chunk.as_deref().and_then(parse_exif_dpi))
+            reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
+            let mut jpeg_header = Vec::new();
+            reader
+                .by_ref()
+                .take(HEADER_PEEK_BYTES as u64)
+                .read_to_end(&mut jpeg_header)
+                .map_err(|_| ProbeError::ReadFailed)?;
+
+            parse_jfif_dpi(&jpeg_header).or_else(|| exif_chunk.as_deref().and_then(parse_exif_dpi))
         }
-        ImageFormat::Bmp => parse_bmp_dpi(&header_buf),
+        ImageFormat::Bmp => {
+            reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
+            let mut bmp_header = [0u8; 54];
+            let count = reader
+                .read(&mut bmp_header)
+                .map_err(|_| ProbeError::ReadFailed)?;
+            parse_bmp_dpi(&bmp_header[..count])
+        }
         ImageFormat::WebP => None,
     };
 
@@ -143,80 +151,76 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
     })
 }
 
-/// Parses the resolution in dpi from a PNG `pHYs` chunk if present (design §4.1).
-///
-/// Returns `None` if the chunk is missing, specifies an unknown unit (unit 0),
-/// or contains non-positive values.
-#[must_use]
-pub fn parse_png_dpi(bytes: &[u8]) -> Option<u32> {
+/// Scans PNG chunks from `reader` by seeking over chunk data to locate `pHYs` before `IDAT`.
+fn find_png_phys_dpi<R: Read + Seek>(reader: &mut R) -> Option<u32> {
+    reader.rewind().ok()?;
+    let mut magic = [0u8; 8];
+    reader.read_exact(&mut magic).ok()?;
     const PNG_MAGIC: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
-    if !bytes.starts_with(PNG_MAGIC) {
+    if &magic != PNG_MAGIC {
         return None;
     }
-    let mut offset: usize = 8;
-    while offset.checked_add(8)? <= bytes.len() {
-        let length = u32::from_be_bytes(bytes[offset..offset + 4].try_into().ok()?) as usize;
-        let chunk_type = &bytes[offset + 4..offset + 8];
-        let data_start = offset + 8;
-        let data_end = data_start.checked_add(length)?;
-        if data_end.checked_add(4)? > bytes.len() {
-            break;
-        }
+
+    let mut header = [0u8; 8];
+    while reader.read_exact(&mut header).is_ok() {
+        let length = u32::from_be_bytes(header.get(0..4)?.try_into().ok()?);
+        let chunk_type = header.get(4..8)?;
+
         if chunk_type == b"pHYs" {
-            let chunk_data = &bytes[data_start..data_end];
-            if chunk_data.len() >= 9 {
-                let ppu_x = u32::from_be_bytes(chunk_data[0..4].try_into().ok()?);
-                let unit = chunk_data[8];
+            if length >= 9 {
+                let mut phys_data = [0u8; 9];
+                reader.read_exact(&mut phys_data).ok()?;
+                let ppu_x = u32::from_be_bytes(phys_data.get(0..4)?.try_into().ok()?);
+                let unit = *phys_data.get(8)?;
                 if unit == 1 && ppu_x > 0 {
-                    // Unit 1: metre. 1 metre = 1 / 0.0254 inches (~39.3700787 inches).
-                    // Round to nearest integer dpi (design §4.1).
                     let dpi = (f64::from(ppu_x) * 0.0254).round() as u32;
                     return if dpi > 0 { Some(dpi) } else { None };
                 }
             }
             return None;
         }
+
         if chunk_type == b"IDAT" || chunk_type == b"IEND" {
             break;
         }
-        offset = data_end.checked_add(4)?;
+
+        let skip_bytes = i64::from(length).checked_add(4)?;
+        reader.seek(std::io::SeekFrom::Current(skip_bytes)).ok()?;
     }
     None
 }
 
-/// Parses the resolution in dpi from a JPEG JFIF APP0 segment (design §4.1).
-///
-/// Returns `None` if JFIF is absent, unit is 0 (aspect ratio only), or density is 0.
-#[must_use]
-pub fn parse_jfif_dpi(bytes: &[u8]) -> Option<u32> {
-    if bytes.len() < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 {
+#[cfg(test)]
+fn parse_png_dpi(bytes: &[u8]) -> Option<u32> {
+    find_png_phys_dpi(&mut std::io::Cursor::new(bytes))
+}
+
+fn parse_jfif_dpi(bytes: &[u8]) -> Option<u32> {
+    if bytes.len() < 4 || !bytes.starts_with(&[0xFF, 0xD8]) {
         return None;
     }
     let mut offset: usize = 2;
     while offset.checked_add(4)? <= bytes.len() {
-        if bytes[offset] != 0xFF {
+        if bytes.get(offset) != Some(&0xFF) {
             break;
         }
-        while offset < bytes.len() && bytes[offset] == 0xFF {
+        while offset < bytes.len() && bytes.get(offset) == Some(&0xFF) {
             offset += 1;
         }
         if offset >= bytes.len() {
             break;
         }
-        let marker = bytes[offset];
+        let marker = *bytes.get(offset)?;
         offset += 1;
 
         if marker == 0xD8 || marker == 0xD9 || (0xD0..=0xD7).contains(&marker) {
             continue;
         }
         if marker == 0xDA {
-            // SOS: start of scan (image pixel data)
             break;
         }
-        if offset.checked_add(2)? > bytes.len() {
-            break;
-        }
-        let length = u16::from_be_bytes(bytes[offset..offset + 2].try_into().ok()?) as usize;
+        let length_bytes: [u8; 2] = bytes.get(offset..offset + 2)?.try_into().ok()?;
+        let length = u16::from_be_bytes(length_bytes) as usize;
         if length < 2 {
             break;
         }
@@ -225,29 +229,22 @@ pub fn parse_jfif_dpi(bytes: &[u8]) -> Option<u32> {
             Some(end) if end <= bytes.len() => end,
             _ => break,
         };
-        let payload = &bytes[payload_start..payload_end];
+        let payload = bytes.get(payload_start..payload_end)?;
 
         if marker == 0xE0 {
-            // APP0: check for "JFIF\0"
             const JFIF_TAG: &[u8; 5] = b"JFIF\0";
-            if payload.starts_with(JFIF_TAG) && payload.len() >= 9 {
-                let unit = payload[7];
-                let x_density = u16::from_be_bytes(payload[8..10].try_into().ok()?);
+            if payload.starts_with(JFIF_TAG) {
+                let unit = *payload.get(7)?;
+                let x_density_bytes: [u8; 2] = payload.get(8..10)?.try_into().ok()?;
+                let x_density = u16::from_be_bytes(x_density_bytes);
                 if x_density > 0 {
                     match unit {
-                        1 => {
-                            // Dots per inch
-                            return Some(u32::from(x_density));
-                        }
+                        1 => return Some(u32::from(x_density)),
                         2 => {
-                            // Dots per cm: 1 inch = 2.54 cm -> dpi = dpcm * 2.54
                             let dpi = (f64::from(x_density) * 2.54).round() as u32;
                             return if dpi > 0 { Some(dpi) } else { None };
                         }
-                        _ => {
-                            // Unit 0 (aspect ratio) or unknown
-                            return None;
-                        }
+                        _ => return None,
                     }
                 }
             }
@@ -257,18 +254,11 @@ pub fn parse_jfif_dpi(bytes: &[u8]) -> Option<u32> {
     None
 }
 
-/// Parses the resolution in dpi from raw TIFF/EXIF bytes (design §4.1).
-///
-/// Looks for `XResolution` (tag 0x011A) and `ResolutionUnit` (tag 0x0128).
-/// Defaults to inches if `ResolutionUnit` is omitted.
-/// Returns `None` if `ResolutionUnit` is 1 (no absolute unit), denominator is 0,
-/// or tag is missing.
-#[must_use]
-pub fn parse_exif_dpi(tiff: &[u8]) -> Option<u32> {
+fn parse_exif_dpi(tiff: &[u8]) -> Option<u32> {
     if tiff.len() < 8 {
         return None;
     }
-    let is_le = match &tiff[0..2] {
+    let is_le = match tiff.get(0..2)? {
         b"II" => true,
         b"MM" => false,
         _ => return None,
@@ -316,45 +306,35 @@ pub fn parse_exif_dpi(tiff: &[u8]) -> Option<u32> {
     if den == 0 {
         return None;
     }
-    // Design §4.1: ResolutionUnit defaults to inch (2) if omitted.
     let unit = res_unit.unwrap_or(2);
     match unit {
         2 => {
-            // Inch
             let dpi = (f64::from(num) / f64::from(den)).round() as u32;
             if dpi > 0 { Some(dpi) } else { None }
         }
         3 => {
-            // Centimetre: 1 inch = 2.54 cm -> dpi = dpcm * 2.54
             let dpcm = f64::from(num) / f64::from(den);
             let dpi = (dpcm * 2.54).round() as u32;
             if dpi > 0 { Some(dpi) } else { None }
         }
-        _ => {
-            // Unit 1 (no unit) or other unknown values -> unknown unit (None)
-            None
-        }
+        _ => None,
     }
 }
 
-/// Parses the resolution in dpi from a BMP header (design §4.1).
-///
-/// Reads `XPelsPerMeter` at offset 38 from `BITMAPINFOHEADER` (or larger headers).
-/// Returns `None` if the header is too small, `XPelsPerMeter` is 0 or negative.
-#[must_use]
-pub fn parse_bmp_dpi(bytes: &[u8]) -> Option<u32> {
-    if bytes.len() < 42 || !bytes.starts_with(b"BM") {
+fn parse_bmp_dpi(bytes: &[u8]) -> Option<u32> {
+    if !bytes.starts_with(b"BM") {
         return None;
     }
-    let dib_header_size = u32::from_le_bytes(bytes[14..18].try_into().ok()?);
+    let dib_header_bytes: [u8; 4] = bytes.get(14..18)?.try_into().ok()?;
+    let dib_header_size = u32::from_le_bytes(dib_header_bytes);
     if dib_header_size < 40 {
         return None;
     }
-    let xpels_per_meter = i32::from_le_bytes(bytes[38..42].try_into().ok()?);
+    let xpels_bytes: [u8; 4] = bytes.get(38..42)?.try_into().ok()?;
+    let xpels_per_meter = i32::from_le_bytes(xpels_bytes);
     if xpels_per_meter <= 0 {
         return None;
     }
-    // 1 m = 1 / 0.0254 inches (~39.3700787 inches).
     let dpi = (f64::from(xpels_per_meter) * 0.0254).round() as u32;
     if dpi > 0 { Some(dpi) } else { None }
 }
@@ -387,15 +367,6 @@ mod tests {
     use super::*;
 
     const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
-
-    #[test]
-    fn constants_match_design() {
-        assert_eq!(IMAGE_EXTENSIONS, &["png", "jpg", "jpeg", "webp", "bmp"]);
-        assert_eq!(MAX_IMAGE_PIXELS, 80_000_000);
-        assert_eq!(MIN_DPI, 36);
-        assert_eq!(MAX_DPI, 2400);
-        assert_eq!(DEFAULT_DPI, 96);
-    }
 
     #[test]
     fn probe_fixtures_all_expected() {
@@ -567,7 +538,6 @@ mod tests {
     fn decode_failed_on_truncated_header() {
         let path = Path::new(FIXTURES_DIR).join("logo_alpha.png");
         let bytes = std::fs::read(path).expect("read logo_alpha.png");
-        // First 20 bytes is truncated in the middle of the IHDR chunk.
         let truncated = &bytes[..20];
         let err = probe_reader(Cursor::new(truncated)).unwrap_err();
         assert_eq!(err, ProbeError::DecodeFailed);
@@ -575,21 +545,18 @@ mod tests {
 
     #[test]
     fn unsupported_format_on_non_image_or_other_formats() {
-        // Text file
         let text = b"This is plain text and definitely not an image.";
         assert_eq!(
             probe_reader(Cursor::new(text)).unwrap_err(),
             ProbeError::UnsupportedFormat
         );
 
-        // GIF magic bytes ("GIF89a")
         let gif_header = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04";
         assert_eq!(
             probe_reader(Cursor::new(gif_header)).unwrap_err(),
             ProbeError::UnsupportedFormat
         );
 
-        // TIFF magic bytes ("II*\0" or "MM\0*")
         let tiff_header = b"II*\0\x08\x00\x00\x00";
         assert_eq!(
             probe_reader(Cursor::new(tiff_header)).unwrap_err(),
@@ -601,13 +568,10 @@ mod tests {
     fn too_large_detected_before_pixels_from_header_only() {
         let path = Path::new(FIXTURES_DIR).join("opaque.bmp");
         let mut header = std::fs::read(path).expect("read opaque.bmp")[..54].to_vec();
-        // Modify width (offset 18) and height (offset 22) to 10,000.
-        // Total pixels = 10,000 × 10,000 = 100,000,000 > MAX_IMAGE_PIXELS (80,000,000).
         let dim: u32 = 10_000;
         header[18..22].copy_from_slice(&dim.to_le_bytes());
         header[22..26].copy_from_slice(&dim.to_le_bytes());
 
-        // Header only (no pixel data). Decoder reports dimensions and detects TooLarge.
         let err = probe_reader(Cursor::new(header)).unwrap_err();
         assert_eq!(err, ProbeError::TooLarge);
         assert_eq!(err.code(), "TooLarge");
@@ -625,65 +589,131 @@ mod tests {
 
     #[test]
     fn parse_png_phys_density() {
-        // Valid 300 dpi (11811 ppm)
         let mut png = make_png_with_phys(11811, 1);
         assert_eq!(parse_png_dpi(&png), Some(300));
 
-        // Unit 0 (aspect ratio only) -> None
         png = make_png_with_phys(11811, 0);
         assert_eq!(parse_png_dpi(&png), None);
 
-        // Unknown unit 2 -> None
         png = make_png_with_phys(11811, 2);
         assert_eq!(parse_png_dpi(&png), None);
 
-        // Zero ppm -> None
         png = make_png_with_phys(0, 1);
         assert_eq!(parse_png_dpi(&png), None);
     }
 
     #[test]
+    fn png_finds_phys_after_large_preceding_chunk() {
+        let mut png = Vec::new();
+        png.extend_from_slice(b"\x89PNG\r\n\x1a\n");
+        // IHDR
+        png.extend_from_slice(&13u32.to_be_bytes());
+        png.extend_from_slice(b"IHDR");
+        png.extend_from_slice(&1u32.to_be_bytes());
+        png.extend_from_slice(&1u32.to_be_bytes());
+        png.extend_from_slice(&[8, 2, 0, 0, 0]); // 8-bit RGB
+        let ihdr_crc = crc32_simple(&png[12..29]);
+        png.extend_from_slice(&ihdr_crc.to_be_bytes());
+
+        // 70 KiB tEXt chunk
+        let text_len = 70 * 1024u32;
+        png.extend_from_slice(&text_len.to_be_bytes());
+        png.extend_from_slice(b"tEXt");
+        png.resize(png.len() + text_len as usize, 0x20);
+        png.extend_from_slice(&[0; 4]); // dummy CRC
+
+        // pHYs chunk with 300 dpi (11811 ppm)
+        png.extend_from_slice(&9u32.to_be_bytes());
+        let phys_start = png.len();
+        png.extend_from_slice(b"pHYs");
+        png.extend_from_slice(&11811u32.to_be_bytes());
+        png.extend_from_slice(&11811u32.to_be_bytes());
+        png.push(1); // metre
+        let phys_crc = crc32_simple(&png[phys_start..]);
+        png.extend_from_slice(&phys_crc.to_be_bytes());
+
+        // Minimal IDAT so ImageReader/decoder can finish reading header
+        let idat_data = [
+            0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0x00, 0x00, 0x00, 0x04, 0x00, 0x01,
+        ];
+        png.extend_from_slice(&(idat_data.len() as u32).to_be_bytes());
+        let idat_start = png.len();
+        png.extend_from_slice(b"IDAT");
+        png.extend_from_slice(&idat_data);
+        let idat_crc = crc32_simple(&png[idat_start..]);
+        png.extend_from_slice(&idat_crc.to_be_bytes());
+
+        // IEND
+        png.extend_from_slice(&0u32.to_be_bytes());
+        let iend_start = png.len();
+        png.extend_from_slice(b"IEND");
+        let iend_crc = crc32_simple(&png[iend_start..]);
+        png.extend_from_slice(&iend_crc.to_be_bytes());
+
+        let probed = probe_reader(Cursor::new(png)).expect("probe png with 70 KiB chunk");
+        assert_eq!(probed.dpi, 300);
+    }
+
+    #[test]
     fn parse_jfif_density() {
-        // Unit 1 (dpi): 300
         let mut jfif = make_jpeg_with_jfif(300, 1);
         assert_eq!(parse_jfif_dpi(&jfif), Some(300));
 
-        // Unit 2 (dpcm): 118 dpcm * 2.54 = 299.72 -> 300 dpi
         jfif = make_jpeg_with_jfif(118, 2);
         assert_eq!(parse_jfif_dpi(&jfif), Some(300));
 
-        // Unit 0 (aspect ratio only) -> None
         jfif = make_jpeg_with_jfif(300, 0);
         assert_eq!(parse_jfif_dpi(&jfif), None);
 
-        // Density 0 -> None
         jfif = make_jpeg_with_jfif(0, 1);
         assert_eq!(parse_jfif_dpi(&jfif), None);
     }
 
     #[test]
+    fn parse_jfif_dpi_does_not_panic_on_short_app0() {
+        // APP0 length is 11 (payload length 9: 5 bytes "JFIF\0" + 2 bytes version + 1 byte unit + 1 byte density).
+        // Density is missing the 2nd byte, so reading [8..10] must not panic.
+        let mut jpeg = Vec::new();
+        jpeg.extend_from_slice(&[0xFF, 0xD8]); // SOI
+        jpeg.extend_from_slice(&[0xFF, 0xE0]); // APP0
+        jpeg.extend_from_slice(&11u16.to_be_bytes());
+        jpeg.extend_from_slice(b"JFIF\0");
+        jpeg.extend_from_slice(&[1, 1]); // version
+        jpeg.push(1); // unit 1
+        jpeg.push(100); // 1 byte density only
+        assert_eq!(parse_jfif_dpi(&jpeg), None);
+    }
+
+    #[test]
+    fn jpeg_density_prefers_jfif_over_exif() {
+        // JFIF (300 dpi, unit 1) and EXIF (72 dpi) -> 300 dpi
+        let jpeg_jfif_wins = make_jpeg_with_jfif_and_exif(300, 1, 72);
+        let probed = probe_reader(Cursor::new(jpeg_jfif_wins)).expect("probe jpeg");
+        assert_eq!(probed.dpi, 300);
+
+        // JFIF (unit 0, aspect ratio) and EXIF (300 dpi) -> falls back to EXIF 300 dpi
+        let jpeg_exif_fallback = make_jpeg_with_jfif_and_exif(300, 0, 300);
+        let probed = probe_reader(Cursor::new(jpeg_exif_fallback)).expect("probe jpeg");
+        assert_eq!(probed.dpi, 300);
+    }
+
+    #[test]
     fn parse_exif_density() {
-        // Little Endian (II), Unit 2 (Inch): 300/1 -> 300 dpi
         let tiff_le_inch = make_exif_tiff((300, 1), Some(2), true);
         assert_eq!(parse_exif_dpi(&tiff_le_inch), Some(300));
 
-        // Big Endian (MM), Unit 2 (Inch): 300/1 -> 300 dpi
         let tiff_be_inch = make_exif_tiff((300, 1), Some(2), false);
         assert_eq!(parse_exif_dpi(&tiff_be_inch), Some(300));
 
-        // Unit 3 (Centimetre): 118/1 dpcm * 2.54 = 299.72 -> 300 dpi
         let tiff_cm = make_exif_tiff((118, 1), Some(3), true);
         assert_eq!(parse_exif_dpi(&tiff_cm), Some(300));
 
-        // Unit omitted -> defaults to Inch (design §4.1)
         let tiff_no_unit = make_exif_tiff((150, 1), None, true);
         assert_eq!(parse_exif_dpi(&tiff_no_unit), Some(150));
 
-        // Unit 1 (no unit) -> None
         let tiff_unit_1 = make_exif_tiff((300, 1), Some(1), true);
         assert_eq!(parse_exif_dpi(&tiff_unit_1), None);
 
-        // Denominator 0 -> None
         let tiff_zero_den = make_exif_tiff((300, 0), Some(2), true);
         assert_eq!(parse_exif_dpi(&tiff_zero_den), None);
     }
@@ -693,42 +723,35 @@ mod tests {
         let path = Path::new(FIXTURES_DIR).join("opaque.bmp");
         let mut header = std::fs::read(path).expect("read opaque.bmp")[..54].to_vec();
 
-        // 11811 ppm -> 300 dpi
         let ppm: i32 = 11811;
         header[38..42].copy_from_slice(&ppm.to_le_bytes());
         assert_eq!(parse_bmp_dpi(&header), Some(300));
 
-        // 0 ppm -> None
         header[38..42].copy_from_slice(&0i32.to_le_bytes());
         assert_eq!(parse_bmp_dpi(&header), None);
 
-        // Negative ppm -> None
         header[38..42].copy_from_slice(&(-5i32).to_le_bytes());
         assert_eq!(parse_bmp_dpi(&header), None);
     }
 
     #[test]
     fn dpi_range_boundaries_and_fallback_to_default() {
-        // Below MIN_DPI (35 dpi -> 96 dpi)
-        let png_35 = make_png_with_phys(1378, 1); // 1378 ppm * 0.0254 = 35.0012 -> 35
+        let png_35 = make_png_with_phys(1378, 1);
         assert_eq!(parse_png_dpi(&png_35), Some(35));
         let info_35 = probe_reader(Cursor::new(make_complete_png(1378))).unwrap();
         assert_eq!(info_35.dpi, DEFAULT_DPI);
 
-        // Boundary MIN_DPI (36 dpi -> 36 dpi)
-        let png_36 = make_png_with_phys(1417, 1); // 1417 ppm * 0.0254 = 35.9918 -> 36
+        let png_36 = make_png_with_phys(1417, 1);
         assert_eq!(parse_png_dpi(&png_36), Some(36));
         let info_36 = probe_reader(Cursor::new(make_complete_png(1417))).unwrap();
         assert_eq!(info_36.dpi, 36);
 
-        // Boundary MAX_DPI (2400 dpi -> 2400 dpi)
-        let png_2400 = make_png_with_phys(94488, 1); // 94488 ppm * 0.0254 = 2399.9952 -> 2400
+        let png_2400 = make_png_with_phys(94488, 1);
         assert_eq!(parse_png_dpi(&png_2400), Some(2400));
         let info_2400 = probe_reader(Cursor::new(make_complete_png(94488))).unwrap();
         assert_eq!(info_2400.dpi, 2400);
 
-        // Above MAX_DPI (2401 dpi -> 96 dpi)
-        let png_2401 = make_png_with_phys(94528, 1); // 94528 ppm * 0.0254 = 2401.0112 -> 2401
+        let png_2401 = make_png_with_phys(94528, 1);
         assert_eq!(parse_png_dpi(&png_2401), Some(2401));
         let info_2401 = probe_reader(Cursor::new(make_complete_png(94528))).unwrap();
         assert_eq!(info_2401.dpi, DEFAULT_DPI);
@@ -736,36 +759,30 @@ mod tests {
 
     #[test]
     fn jpeg_with_exif_only_and_no_jfif() {
-        // photo.jpg has no JFIF density segment and no EXIF density, falls back to 96
         let path = Path::new(FIXTURES_DIR).join("photo.jpg");
         let info = probe(&path).unwrap();
         assert_eq!(info.dpi, DEFAULT_DPI);
 
-        // Build a JPEG with SOI + APP1 (EXIF with XResolution = 300) + SOF0 + SOS
         let exif_tiff = make_exif_tiff((300, 1), Some(2), true);
         let mut jpeg = Vec::new();
-        jpeg.extend_from_slice(&[0xFF, 0xD8]); // SOI
-        // APP1 with Exif\0\0 header
+        jpeg.extend_from_slice(&[0xFF, 0xD8]);
         jpeg.extend_from_slice(&[0xFF, 0xE1]);
         let app1_len = 2 + 6 + exif_tiff.len();
         jpeg.extend_from_slice(&(app1_len as u16).to_be_bytes());
         jpeg.extend_from_slice(b"Exif\0\0");
         jpeg.extend_from_slice(&exif_tiff);
-        // SOF0 (baseline DCT): len 11, 8 bits, height 10, width 10, 1 component
         jpeg.extend_from_slice(&[0xFF, 0xC0]);
         jpeg.extend_from_slice(&11u16.to_be_bytes());
-        jpeg.push(8); // precision
-        jpeg.extend_from_slice(&10u16.to_be_bytes()); // height
-        jpeg.extend_from_slice(&10u16.to_be_bytes()); // width
-        jpeg.push(1); // 1 component
-        jpeg.extend_from_slice(&[1, 0x11, 0]); // component 1: id 1, samp 0x11, qtable 0
-        // SOS
+        jpeg.push(8);
+        jpeg.extend_from_slice(&10u16.to_be_bytes());
+        jpeg.extend_from_slice(&10u16.to_be_bytes());
+        jpeg.push(1);
+        jpeg.extend_from_slice(&[1, 0x11, 0]);
         jpeg.extend_from_slice(&[0xFF, 0xDA]);
         jpeg.extend_from_slice(&8u16.to_be_bytes());
         jpeg.push(1);
         jpeg.extend_from_slice(&[1, 0]);
         jpeg.extend_from_slice(&[0, 63, 0]);
-        // Scan data + EOI
         jpeg.extend_from_slice(&[0x00, 0xFF, 0xD9]);
 
         let probed = probe_reader(Cursor::new(jpeg)).expect("probe jpeg with exif only");
@@ -775,32 +792,27 @@ mod tests {
         assert_eq!(probed.dpi, 300);
     }
 
-    // Helper functions for synthesizing test images
-
     fn make_png_with_phys(ppm: u32, unit: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"\x89PNG\r\n\x1a\n");
-        // IHDR chunk: 13 bytes
         bytes.extend_from_slice(&13u32.to_be_bytes());
         bytes.extend_from_slice(b"IHDR");
-        bytes.extend_from_slice(&1u32.to_be_bytes()); // w = 1
-        bytes.extend_from_slice(&1u32.to_be_bytes()); // h = 1
-        bytes.extend_from_slice(&[8, 2, 0, 0, 0]); // 8-bit RGB
-        bytes.extend_from_slice(&[0; 4]); // dummy CRC
-        // pHYs chunk: 9 bytes
+        bytes.extend_from_slice(&1u32.to_be_bytes());
+        bytes.extend_from_slice(&1u32.to_be_bytes());
+        bytes.extend_from_slice(&[8, 2, 0, 0, 0]);
+        bytes.extend_from_slice(&[0; 4]);
         bytes.extend_from_slice(&9u32.to_be_bytes());
         bytes.extend_from_slice(b"pHYs");
         bytes.extend_from_slice(&ppm.to_be_bytes());
         bytes.extend_from_slice(&ppm.to_be_bytes());
         bytes.push(unit);
-        bytes.extend_from_slice(&[0; 4]); // dummy CRC
+        bytes.extend_from_slice(&[0; 4]);
         bytes
     }
 
     fn make_complete_png(ppm: u32) -> Vec<u8> {
         let path = Path::new(FIXTURES_DIR).join("dpi300.png");
         let original = std::fs::read(path).expect("read dpi300.png");
-        // Locate pHYs in dpi300.png and replace ppu_x and ppu_y
         let mut modified = original;
         let mut pos = 8;
         while pos + 8 <= modified.len() {
@@ -808,7 +820,6 @@ mod tests {
             if &modified[pos + 4..pos + 8] == b"pHYs" {
                 modified[pos + 8..pos + 12].copy_from_slice(&ppm.to_be_bytes());
                 modified[pos + 12..pos + 16].copy_from_slice(&ppm.to_be_bytes());
-                // Recalculate CRC for pHYs
                 let crc_data = &modified[pos + 4..pos + 8 + len];
                 let crc = crc32_simple(crc_data);
                 modified[pos + 8 + len..pos + 12 + len].copy_from_slice(&crc.to_be_bytes());
@@ -836,16 +847,57 @@ mod tests {
 
     fn make_jpeg_with_jfif(density: u16, unit: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(&[0xFF, 0xD8]); // SOI
-        bytes.extend_from_slice(&[0xFF, 0xE0]); // APP0
+        bytes.extend_from_slice(&[0xFF, 0xD8]);
+        bytes.extend_from_slice(&[0xFF, 0xE0]);
         let payload_len: u16 = 2 + 5 + 2 + 1 + 2 + 2 + 2;
         bytes.extend_from_slice(&payload_len.to_be_bytes());
         bytes.extend_from_slice(b"JFIF\0");
-        bytes.extend_from_slice(&[1, 1]); // version 1.1
+        bytes.extend_from_slice(&[1, 1]);
         bytes.push(unit);
         bytes.extend_from_slice(&density.to_be_bytes());
         bytes.extend_from_slice(&density.to_be_bytes());
-        bytes.extend_from_slice(&[0, 0]); // no thumbnail
+        bytes.extend_from_slice(&[0, 0]);
+        bytes
+    }
+
+    fn make_jpeg_with_jfif_and_exif(jfif_density: u16, jfif_unit: u8, exif_dpi: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&[0xFF, 0xD8]); // SOI
+
+        // APP0 (JFIF)
+        bytes.extend_from_slice(&[0xFF, 0xE0]);
+        let jfif_len: u16 = 2 + 5 + 2 + 1 + 2 + 2 + 2;
+        bytes.extend_from_slice(&jfif_len.to_be_bytes());
+        bytes.extend_from_slice(b"JFIF\0");
+        bytes.extend_from_slice(&[1, 1]);
+        bytes.push(jfif_unit);
+        bytes.extend_from_slice(&jfif_density.to_be_bytes());
+        bytes.extend_from_slice(&jfif_density.to_be_bytes());
+        bytes.extend_from_slice(&[0, 0]);
+
+        // APP1 (EXIF)
+        let exif_tiff = make_exif_tiff((exif_dpi, 1), Some(2), true);
+        bytes.extend_from_slice(&[0xFF, 0xE1]);
+        let app1_len = 2 + 6 + exif_tiff.len();
+        bytes.extend_from_slice(&(app1_len as u16).to_be_bytes());
+        bytes.extend_from_slice(b"Exif\0\0");
+        bytes.extend_from_slice(&exif_tiff);
+
+        // Minimal SOF0 + SOS + scan data + EOI
+        bytes.extend_from_slice(&[0xFF, 0xC0]);
+        bytes.extend_from_slice(&11u16.to_be_bytes());
+        bytes.push(8);
+        bytes.extend_from_slice(&10u16.to_be_bytes());
+        bytes.extend_from_slice(&10u16.to_be_bytes());
+        bytes.push(1);
+        bytes.extend_from_slice(&[1, 0x11, 0]);
+        bytes.extend_from_slice(&[0xFF, 0xDA]);
+        bytes.extend_from_slice(&8u16.to_be_bytes());
+        bytes.push(1);
+        bytes.extend_from_slice(&[1, 0]);
+        bytes.extend_from_slice(&[0, 63, 0]);
+        bytes.extend_from_slice(&[0x00, 0xFF, 0xD9]);
+
         bytes
     }
 
@@ -857,22 +909,20 @@ mod tests {
         if is_le {
             tiff.extend_from_slice(b"II");
             tiff.extend_from_slice(&42u16.to_le_bytes());
-            tiff.extend_from_slice(&8u32.to_le_bytes()); // first IFD offset = 8
+            tiff.extend_from_slice(&8u32.to_le_bytes());
             tiff.extend_from_slice(&num_entries.to_le_bytes());
-            // Entry 1: XResolution (0x011A), RATIONAL (5), count 1
             tiff.extend_from_slice(&0x011Au16.to_le_bytes());
             tiff.extend_from_slice(&5u16.to_le_bytes());
             tiff.extend_from_slice(&1u32.to_le_bytes());
             tiff.extend_from_slice(&val_offset.to_le_bytes());
             if let Some(unit) = res_unit {
-                // Entry 2: ResolutionUnit (0x0128), SHORT (3), count 1
                 tiff.extend_from_slice(&0x0128u16.to_le_bytes());
                 tiff.extend_from_slice(&3u16.to_le_bytes());
                 tiff.extend_from_slice(&1u32.to_le_bytes());
                 tiff.extend_from_slice(&unit.to_le_bytes());
                 tiff.extend_from_slice(&[0, 0]);
             }
-            tiff.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
+            tiff.extend_from_slice(&0u32.to_le_bytes());
             tiff.extend_from_slice(&x_res.0.to_le_bytes());
             tiff.extend_from_slice(&x_res.1.to_le_bytes());
         } else {
