@@ -1,0 +1,65 @@
+:root {
+  /* Light theme colors (design §10.3, mockup Main.dc.html) */
+  --color-bg-app: #f4f3f0;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #faf9f7;
+  --color-bg-muted: #f4f3f0;
+
+  --color-text-primary: #1f1f1f;
+  --color-text-secondary: #5c5a56;
+  --color-text-muted: #8a867e;
+  --color-text-on-accent: #ffffff;
+  --color-text-on-accent-dark: #1c1b18;
+
+  --color-border: #dcd9d3;
+  --color-border-subtle: #cfcbc4;
+  --color-border-dashed: #b9b5ad;
+
+  --color-accent: #b4492b;
+  --color-accent-hover: #8a3520;
+  --color-accent-subtle: #faebe6;
+
+  --color-success: #1f6b3a;
+  --color-error: #c93b2b;
+
+  --color-progress-track: #e4e1db;
+
+  /* Typography */
+  --font-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark theme colors (design §10.3) */
+    --color-bg-app: #1c1b18;
+    --color-bg-surface: #262522;
+    --color-bg-subtle: #1f1e1b;
+    --color-bg-muted: #2f2e2a;
+
+    --color-text-primary: #f2efe9;
+    --color-text-secondary: #a8a49c;
+    --color-text-muted: #78756e;
+    --color-text-on-accent: #ffffff;
+    --color-text-on-accent-dark: #1c1b18;
+
+    --color-border: #3e3c38;
+    --color-border-subtle: #4a4742;
+    --color-border-dashed: #5c5952;
+
+    --color-accent: #e07353;
+    --color-accent-hover: #e88a6f;
+    --color-accent-subtle: #3a251e;
+
+    --color-success: #43a047;
+    --color-error: #ef5350;
+
+    --color-progress-track: #363430;
+  }
+}

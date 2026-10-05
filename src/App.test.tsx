@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./App";
 
 describe("App", () => {
@@ -49,5 +50,68 @@ describe("App", () => {
     expect(await screen.findByTestId("pdfium-status")).toHaveTextContent(
       "unexpected value",
     );
+  });
+
+  it("switches tabs and updates aria-selected and aria-pressed attributes", () => {
+    mockIPC(() => new Promise(() => {}));
+    render(<App initialNavLang="ja" />);
+
+    const imagesTab = screen.getByRole("tab", { name: "画像 → PDF" });
+    const pdfsTab = screen.getByRole("tab", { name: "PDF → 画像" });
+
+    // Initially images tab is active
+    expect(imagesTab).toHaveAttribute("aria-selected", "true");
+    expect(imagesTab).toHaveAttribute("aria-pressed", "true");
+    expect(pdfsTab).toHaveAttribute("aria-selected", "false");
+    expect(pdfsTab).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: "PDF を保存" }),
+    ).toBeInTheDocument();
+
+    // Click PDF to Images tab
+    fireEvent.click(pdfsTab);
+
+    expect(imagesTab).toHaveAttribute("aria-selected", "false");
+    expect(imagesTab).toHaveAttribute("aria-pressed", "false");
+    expect(pdfsTab).toHaveAttribute("aria-selected", "true");
+    expect(pdfsTab).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "変換を開始" }),
+    ).toBeInTheDocument();
+  });
+
+  it("switches UI language on language select change", () => {
+    mockIPC(() => new Promise(() => {}));
+    render(<App initialNavLang="ja" />);
+
+    const select = screen.getByRole("combobox");
+    expect(select).toHaveValue("ja");
+    expect(screen.getByRole("tab", { name: "画像 → PDF" })).toBeInTheDocument();
+
+    // Switch to English
+    fireEvent.change(select, { target: { value: "en" } });
+
+    expect(select).toHaveValue("en");
+    expect(
+      screen.getByRole("tab", { name: "Images → PDF" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "PDF → Images" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save PDF" }),
+    ).toBeInTheDocument();
+  });
+
+  it("initializes with English when initialNavLang is en-US", () => {
+    mockIPC(() => new Promise(() => {}));
+    render(<App initialNavLang="en-US" />);
+
+    expect(
+      screen.getByRole("tab", { name: "Images → PDF" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save PDF" }),
+    ).toBeInTheDocument();
   });
 });
