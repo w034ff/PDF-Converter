@@ -24,6 +24,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "ADD_IMAGE_ITEMS":
     case "REMOVE_IMAGE_ITEM":
     case "CLEAR_IMAGE_ITEMS":
+    case "SET_IMAGES_OUTPUT_MODE":
+    case "SET_IMAGES_PAGE_SIZE":
+    case "SET_IMAGES_OUTPUT_DIR":
+    case "MOVE_IMAGE_ITEM":
       return {
         ...state,
         imagesToPdf: imagesToPdfReducer(state.imagesToPdf, action),

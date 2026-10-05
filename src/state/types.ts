@@ -1,5 +1,11 @@
 import type { Language } from "../i18n";
-import type { ImageItem, PdfItem } from "../ipc";
+import type {
+  ImageItem,
+  OutputDirLabel,
+  OutputMode,
+  PageSizeChoice,
+  PdfItem,
+} from "../ipc";
 import type { JobAction, JobState } from "./job";
 
 export type ActiveTab = "imagesToPdf" | "pdfToImages";
@@ -15,12 +21,19 @@ export type LanguageAction =
 
 export interface ImagesToPdfState {
   items: ImageItem[];
+  output: OutputMode;
+  pageSize: PageSizeChoice;
+  outputDir: OutputDirLabel | null;
 }
 
 export type ImagesToPdfAction =
   | { type: "ADD_IMAGE_ITEMS"; items: ImageItem[] }
   | { type: "REMOVE_IMAGE_ITEM"; id: number }
-  | { type: "CLEAR_IMAGE_ITEMS" };
+  | { type: "CLEAR_IMAGE_ITEMS" }
+  | { type: "SET_IMAGES_OUTPUT_MODE"; output: OutputMode }
+  | { type: "SET_IMAGES_PAGE_SIZE"; pageSize: PageSizeChoice }
+  | { type: "SET_IMAGES_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
+  | { type: "MOVE_IMAGE_ITEM"; fromIndex: number; toIndex: number };
 
 export interface PdfToImagesState {
   items: PdfItem[];
