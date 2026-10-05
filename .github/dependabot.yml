@@ -6,6 +6,11 @@
 # CI step until `npm run licenses:generate` is run on the branch and the result
 # committed (src/licenses/third-party-licenses.json).
 #
+# Cargo and npm updates wait 7 days after a version is published (design §9), so
+# that a malicious release has time to be found and pulled first. Both use the
+# same number of days so that the Tauri PRs of the two ecosystems still come
+# out together. Security updates are not delayed by the cooldown.
+#
 # The Rust version is pinned in rust-toolchain.toml and is not a dependency
 # Dependabot manages; it is bumped by hand.
 version: 2
@@ -14,6 +19,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     groups:
       # The tauri crate and @tauri-apps/* must be on the same minor version, so
       # every Tauri crate moves in one PR whatever the update type. Dependabot
@@ -33,6 +40,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     groups:
       # See tauri-cargo above.
       tauri-npm:

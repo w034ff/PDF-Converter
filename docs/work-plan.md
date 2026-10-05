@@ -291,7 +291,7 @@ Windows での確認、見た目の確認など、自動化できないもの。
 ### T15 リリース用ワークフローと README
 
 内容:
-- `.github/workflows/release.yml`: `v*` タグの push で、pdfium を取得し、Windows（MSI、NSIS）と Linux（AppImage、.deb）をビルドして下書きの Release に添付する。依存の検査が失敗したら下書きを作らない。`package.json`、`tauri.conf.json`、`Cargo.toml` の版の一致を確かめる。
+- `.github/workflows/release.yml`: `v*` タグの push で、pdfium を取得し、Windows（MSI、NSIS）と Linux（AppImage、.deb）をビルドして下書きの Release に添付する。依存の検査が失敗したら下書きを作らない。依存は `npm ci` と、`tauri build` の前の `cargo fetch --locked` でロックファイルのとおりに入れる（design §9「依存の入手経路」、`bundle-check.yml` と同じ）。`package.json`、`tauri.conf.json`、`Cargo.toml` の版の一致を確かめる。
 - `README.md`（英語）と `README.ja.md`: 概要、インストール方法（Windows は NSIS をおすすめとし、MSI は管理者の一括配布向けと書く）、SmartScreen の警告、WebView2 の通信、ソースからのビルド方法（`npm run pdfium:fetch` を含む）、ライセンス。
 - `docs/manual-test.md`（要件 §7 の 2〜9 の手動確認の手順）。
 

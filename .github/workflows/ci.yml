@@ -72,10 +72,10 @@ jobs:
         run: cargo fmt --check
 
       - name: Rust Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Rust Test
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --locked
 
       # The Rust test above rewrites src/ipc/generated; the committed copy
       # must already be what it writes.
@@ -90,10 +90,10 @@ jobs:
           fi
 
       - name: Rust Test Without Test Hooks
-        run: cargo test -p pdfconv-worker --lib
+        run: cargo test -p pdfconv-worker --lib --locked
 
       - name: Worker Performance Test (Release)
-        run: cargo test -p pdfconv-worker --test worker --release performance_render_a4_150dpi
+        run: cargo test -p pdfconv-worker --test worker --release --locked performance_render_a4_150dpi
 
       # Both checks pin their target platforms (deny.toml, about.toml), so the
       # result does not depend on the runner OS and one runner is enough.

@@ -331,6 +331,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 
 SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、CSP、HTTP クライアントを `cargo-deny` の `bans` で禁止、WebView2 の起動オプション、止められない通信の README への記載、既知の脆弱性の検査）。加えて次のとおり。
 
+- **依存の入手経路**: 悪意のある版が公開されても、多くは数日のうちに見つかって取り下げられる。そこで、公開から 7 日たっていない版は入れない（Dependabot の `cooldown`、npm の `min-release-age`。Dependabot のセキュリティ更新は待たない）。Tauri の crate と `@tauri-apps/*` の PR が同時に出るよう、cargo と npm の日数はそろえる。npm の依存のインストール時スクリプトは実行しない（`ignore-scripts`）。Rust の `build.rs` と proc-macro はビルドのたびに実行され、止められないため、入口を絞って補う。crate は crates.io からだけ取る（`cargo-deny` の `sources`）。CI とインストーラーのビルドは `Cargo.lock` と `package-lock.json` のとおりに入れる（`--locked`、`npm ci`）。pdfium は §8.1 のとおり SHA-256 で照合する。
 - PDF はワーカーでだけ開く（§1、§5）。メインプロセスに pdfium を読み込まない。`crates/worker` 以外の crate が `pdfium-render` に依存していないことを、`cargo-deny` の `bans`（`wrappers` の指定）で確かめる。
 - ワーカーには、開く PDF のパスと pdfium の場所だけを渡す。ワーカーはファイルを書かない。
 - サムネイルと描画した画像は、`blob:` URL にして `<img>` で表示する。
