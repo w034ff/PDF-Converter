@@ -1,5 +1,6 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -188,20 +189,34 @@ describe("PdfToImagesSettings", () => {
     // 2nd request (fast)
     fireEvent.change(input, { target: { value: "fast" } });
 
-    // Fast one resolves first with 2 pages
-    resolvers.second?.({
-      totalPages: 2,
-      intervals: [[2, 3]],
+    // Wait until both requests have been dispatched to mock and both resolvers are ready
+    await waitFor(() => {
+      expect(resolvers.first).toBeDefined();
+      expect(resolvers.second).toBeDefined();
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
+    const resolveFirst = resolvers.first;
+    const resolveSecond = resolvers.second;
+    if (resolveFirst === undefined || resolveSecond === undefined) {
+      throw new Error("Both resolvers must be defined");
+    }
+
+    // Fast one resolves first with 2 pages
+    await act(async () => {
+      resolveSecond({
+        totalPages: 2,
+        intervals: [[2, 3]],
+      });
     });
+
+    expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
 
     // Slow one resolves later with 10 pages
-    resolvers.first?.({
-      totalPages: 10,
-      intervals: [[1, 10]],
+    await act(async () => {
+      resolveFirst({
+        totalPages: 10,
+        intervals: [[1, 10]],
+      });
     });
 
     // It should STILL be 2 pages, not 10!

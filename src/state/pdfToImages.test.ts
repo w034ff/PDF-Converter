@@ -149,16 +149,16 @@ describe("pdfToImagesReducer", () => {
     expect(unchanged).toBe(next);
   });
 
-  it("handles SET_OUTPUT_DIR", () => {
+  it("handles SET_PDFS_OUTPUT_DIR", () => {
     const label = { dirLabel: "my-images" };
     const next = pdfToImagesReducer(initialPdfToImagesState, {
-      type: "SET_OUTPUT_DIR",
+      type: "SET_PDFS_OUTPUT_DIR",
       outputDir: label,
     });
     expect(next.outputDir).toEqual(label);
 
     const cleared = pdfToImagesReducer(next, {
-      type: "SET_OUTPUT_DIR",
+      type: "SET_PDFS_OUTPUT_DIR",
       outputDir: null,
     });
     expect(cleared.outputDir).toBeNull();

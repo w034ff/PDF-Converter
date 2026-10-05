@@ -93,7 +93,7 @@ export function pdfToImagesReducer(
         dpi: action.dpi,
       };
     }
-    case "SET_OUTPUT_DIR": {
+    case "SET_PDFS_OUTPUT_DIR": {
       return {
         ...state,
         outputDir: action.outputDir,

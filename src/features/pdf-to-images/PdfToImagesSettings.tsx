@@ -1,12 +1,18 @@
 import { useEffect, useRef, type ChangeEvent } from "react";
 import { SegmentedControl, type SegmentedOption } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import {
+  formatErrorMessage,
+  formatMessage,
+  getTranslations,
+  type Translations,
+} from "../../i18n";
 import {
   checkPageRange,
   normalizeIpcError,
   type RenderFormatChoice,
 } from "../../ipc";
 import {
+  DPI_CHOICES,
   isJobActive,
   useAppDispatch,
   useAppState,
@@ -15,6 +21,15 @@ import {
 import { OutputDirField } from "../output/OutputDirField";
 import { calculateRenderDimensions, formatPaperSize } from "./pdfUtils";
 import "./pdfToImages.css";
+
+const DPI_LABEL_KEYS: Record<
+  number,
+  keyof Translations["pdfToImages"]["settings"]["dpiChoices"]
+> = {
+  72: "dpi72",
+  150: "dpi150",
+  300: "dpi300",
+};
 
 /**
  * Settings panel for PDF to Images (mockups `PdfSingle` and `PdfBatch`).
@@ -184,13 +199,17 @@ export function PdfToImagesSettings() {
           onChange={handleDpiChange}
           disabled={busy}
         >
-          <option value={72}>{t.pdfToImages.settings.dpiChoices.dpi72}</option>
-          <option value={150}>
-            {t.pdfToImages.settings.dpiChoices.dpi150}
-          </option>
-          <option value={300}>
-            {t.pdfToImages.settings.dpiChoices.dpi300}
-          </option>
+          {DPI_CHOICES.map((choice) => {
+            const key = DPI_LABEL_KEYS[choice];
+            const label = key
+              ? t.pdfToImages.settings.dpiChoices[key]
+              : `${choice} dpi`;
+            return (
+              <option key={choice} value={choice}>
+                {label}
+              </option>
+            );
+          })}
         </select>
         {renderDimensionHint !== null && (
           <span className="mono">{renderDimensionHint}</span>
@@ -202,7 +221,7 @@ export function PdfToImagesSettings() {
         kind="pdfToImages"
         value={pdfToImages.outputDir}
         onChange={(outputDir) =>
-          dispatch({ type: "SET_OUTPUT_DIR", outputDir })
+          dispatch({ type: "SET_PDFS_OUTPUT_DIR", outputDir })
         }
         disabled={busy}
       />

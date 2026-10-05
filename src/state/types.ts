@@ -51,7 +51,7 @@ export type PdfToImagesAction =
   | { type: "SET_RANGE_TEXT"; rangeText: string }
   | { type: "SET_RENDER_FORMAT"; format: RenderFormatChoice }
   | { type: "SET_RENDER_DPI"; dpi: number }
-  | { type: "SET_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
+  | { type: "SET_PDFS_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
   | { type: "CHECK_RANGE_STARTED" }
   | { type: "CHECK_RANGE_SUCCESS"; result: CheckPageRangeResult }
   | { type: "CHECK_RANGE_FAILURE"; error: IpcError }

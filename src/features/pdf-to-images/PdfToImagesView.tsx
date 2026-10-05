@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DropZone } from "../../components";
+import { DropZone, ErrorDisplay } from "../../components";
 import {
   formatErrorMessage,
   formatMessage,
@@ -9,9 +9,11 @@ import {
 } from "../../i18n";
 import {
   addPdfs,
+  normalizeIpcError,
   removeItems,
   type AddSource,
   type CheckPageRangeResult,
+  type IpcError,
   type PageSizePt,
   type PdfItem,
   type Skipped,
@@ -251,8 +253,10 @@ export function PdfToImagesView() {
   const t = getTranslations(language.language);
   const busy = isJobActive(job);
   const [lastSkipped, setLastSkipped] = useState<Skipped | null>(null);
+  const [error, setError] = useState<IpcError | null>(null);
 
   async function handleAdd(source: AddSource) {
+    setError(null);
     try {
       const result = await addPdfs(source);
       if (result !== null) {
@@ -261,41 +265,56 @@ export function PdfToImagesView() {
         }
         setLastSkipped(result.skipped);
       }
-    } catch {
-      // Handled silently
+    } catch (err: unknown) {
+      setError(normalizeIpcError(err));
     }
   }
 
   async function handleRemove(id: number) {
+    setError(null);
     try {
       await removeItems([id]);
-    } catch {
-      // Ignore failure to ensure UI consistency
+      dispatch({ type: "REMOVE_PDF_ITEM", id });
+    } catch (err: unknown) {
+      setError(normalizeIpcError(err));
     }
-    dispatch({ type: "REMOVE_PDF_ITEM", id });
   }
 
   async function handleClearAll() {
+    setError(null);
     const ids = pdfToImages.items.map((i) => i.id);
     try {
       await removeItems(ids);
-    } catch {
-      // Ignore failure to ensure UI consistency
+      dispatch({ type: "CLEAR_PDF_ITEMS" });
+      setLastSkipped(null);
+    } catch (err: unknown) {
+      setError(normalizeIpcError(err));
     }
-    dispatch({ type: "CLEAR_PDF_ITEMS" });
-    setLastSkipped(null);
   }
 
   if (pdfToImages.items.length === 0) {
     return (
-      <DropZone
-        title={t.dropZone.titlePdfs}
-        description={t.dropZone.descriptionPdfs}
-        addFilesLabel={t.dropZone.addPdfs}
-        addFolderLabel={t.dropZone.addFolder}
-        onAddFiles={() => void handleAdd("files")}
-        onAddFolder={() => void handleAdd("folder")}
-      />
+      <div className="pdf-view">
+        {error !== null && (
+          <ErrorDisplay
+            message={formatErrorMessage(
+              error.code,
+              error.detail,
+              language.language,
+            )}
+            onDismiss={() => setError(null)}
+            dismissLabel={t.errors.dismiss}
+          />
+        )}
+        <DropZone
+          title={t.dropZone.titlePdfs}
+          description={t.dropZone.descriptionPdfs}
+          addFilesLabel={t.dropZone.addPdfs}
+          addFolderLabel={t.dropZone.addFolder}
+          onAddFiles={busy ? undefined : () => void handleAdd("files")}
+          onAddFolder={busy ? undefined : () => void handleAdd("folder")}
+        />
+      </div>
     );
   }
 
@@ -305,6 +324,17 @@ export function PdfToImagesView() {
 
   return (
     <div className="pdf-view">
+      {error !== null && (
+        <ErrorDisplay
+          message={formatErrorMessage(
+            error.code,
+            error.detail,
+            language.language,
+          )}
+          onDismiss={() => setError(null)}
+          dismissLabel={t.errors.dismiss}
+        />
+      )}
       {/* Top summary banner when conversion ends (design §6.3, mockup PdfBatch) */}
       {job.kind === "pdfToImages" && job.finished !== null && (
         <div role="status" className="pdf-summary-banner">
@@ -455,14 +485,14 @@ export function PdfToImagesView() {
             <thead>
               <tr>
                 <th>{t.pdfToImages.batch.table.filename}</th>
-                <th style={{ width: 120 }}>
+                <th className="pdf-col-pages">
                   {t.pdfToImages.batch.table.pages}
                 </th>
                 <th>{t.pdfToImages.batch.table.savedFiles}</th>
-                <th style={{ width: 200 }}>
+                <th className="pdf-col-status">
                   {t.pdfToImages.batch.table.status}
                 </th>
-                <th style={{ width: 80 }}>
+                <th className="pdf-col-actions">
                   {t.pdfToImages.batch.table.actions}
                 </th>
               </tr>

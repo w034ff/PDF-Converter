@@ -63,7 +63,12 @@ function mockCommands(answer: (cmd: string, args: unknown) => unknown): Call[] {
 }
 
 function renderView(stateModifier?: (state: AppState) => void) {
-  const state = createInitialAppState("ja-JP");
+  const base = createInitialAppState("ja-JP");
+  const state: AppState = {
+    ...base,
+    job: { ...base.job, results: { ...base.job.results } },
+    pdfToImages: { ...base.pdfToImages, items: [...base.pdfToImages.items] },
+  };
   state.language.activeTab = "pdfToImages";
   stateModifier?.(state);
   return render(
@@ -136,6 +141,24 @@ describe("PdfToImagesView", () => {
         cmd: "add_pdfs",
         args: { source: "folder" },
       });
+    });
+
+    it("displays error when add_pdfs rejects with an error", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "add_pdfs") {
+          throw { code: "ReadFailed", detail: "broken.pdf" };
+        }
+        return undefined;
+      });
+
+      renderView();
+      const addFilesBtn = screen.getByRole("button", { name: "PDF を追加" });
+      fireEvent.click(addFilesBtn);
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(
+        screen.getByText("ファイルの読み込みに失敗しました"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -259,6 +282,48 @@ describe("PdfToImagesView", () => {
       });
     });
 
+    it("keeps item in list and displays error when remove_items fails on '外す'", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "remove_items") {
+          throw { code: "InvalidParams", detail: "failed to remove" };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+      });
+
+      expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
+
+      const removeBtn = screen.getByRole("button", { name: "外す" });
+      fireEvent.click(removeBtn);
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText("無効な設定です")).toBeInTheDocument();
+      expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
+    });
+
+    it("keeps items in list and displays error when remove_items fails on 'すべて外す'", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "remove_items") {
+          throw { code: "InvalidParams", detail: "cannot clear" };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+      });
+
+      const clearAllBtn = screen.getByRole("button", { name: "すべて外す" });
+      fireEvent.click(clearAllBtn);
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText("無効な設定です")).toBeInTheDocument();
+      expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
+    });
+
     it("displays error reason when single PDF has an error", () => {
       mockCommands(() => undefined);
       renderView((state) => {
@@ -377,6 +442,27 @@ describe("PdfToImagesView", () => {
       for (const btn of removeBtns) {
         expect(btn).toBeDisabled();
       }
+    });
+
+    it("keeps row in batch table and displays error when remove_items fails on row '外す'", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "remove_items") {
+          throw { code: "InvalidParams", detail: "cannot remove row" };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, samplePdf2];
+      });
+
+      const removeBtns = screen.getAllByRole("button", { name: "外す" });
+      fireEvent.click(removeBtns[0]);
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText("無効な設定です")).toBeInTheDocument();
+      expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
+      expect(screen.getByText("invoice.pdf")).toBeInTheDocument();
     });
   });
 });

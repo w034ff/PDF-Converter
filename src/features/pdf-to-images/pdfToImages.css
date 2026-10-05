@@ -152,6 +152,18 @@
   background: var(--color-bg-subtle);
 }
 
+.pdf-table .pdf-col-pages {
+  width: 120px;
+}
+
+.pdf-table .pdf-col-status {
+  width: 200px;
+}
+
+.pdf-table .pdf-col-actions {
+  width: 80px;
+}
+
 .pdf-table td {
   font-size: 13px;
   padding: 8px 12px;

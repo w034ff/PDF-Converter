@@ -35,7 +35,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_RANGE_TEXT":
     case "SET_RENDER_FORMAT":
     case "SET_RENDER_DPI":
-    case "SET_OUTPUT_DIR":
+    case "SET_PDFS_OUTPUT_DIR":
     case "CHECK_RANGE_STARTED":
     case "CHECK_RANGE_SUCCESS":
     case "CHECK_RANGE_FAILURE":
