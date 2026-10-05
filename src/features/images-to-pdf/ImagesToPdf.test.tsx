@@ -95,9 +95,9 @@ function Harness() {
   );
 }
 
-function renderHarness() {
+function renderHarness(initialLang = "ja-JP") {
   return render(
-    <AppStateProvider initialState={createInitialAppState("ja-JP")}>
+    <AppStateProvider initialState={createInitialAppState(initialLang)}>
       <Harness />
     </AppStateProvider>,
   );
@@ -631,5 +631,135 @@ describe("ImagesToPdf (T11)", () => {
     expect(
       screen.getByText("変換が終わりました：成功 1 件 · 失敗 1 件"),
     ).toBeInTheDocument();
+  });
+
+  it("retains items in list and displays error when remove_items IPC fails", async () => {
+    const calls = mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        const result: AddResult<ImageItem> = {
+          added: [sampleImage1, sampleImage2],
+          skipped: { unsupported: 1, folders: 0, duplicates: 0 },
+        };
+        return result;
+      }
+      if (cmd === "remove_items") {
+        throw { code: "Failed", detail: "failed to remove item" };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    // Add images
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+      expect(screen.getByText("diagram.png")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("（対象外 1 件：非対応の形式）"),
+    ).toBeInTheDocument();
+
+    // 1. Try removing first item (photo.jpg)
+    const removeButtons = screen.getAllByRole("button", {
+      name: "一覧から外す",
+    });
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "remove_items",
+        args: { ids: [1] },
+      });
+    });
+
+    // Item remains in the list, and error is shown
+    expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    expect(screen.getByText("diagram.png")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    // Dismiss the error before testing clear all
+    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // 2. Try clearing all items
+    const clearAllBtn = screen.getByRole("button", { name: "すべて外す" });
+    fireEvent.click(clearAllBtn);
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "remove_items",
+        args: { ids: [1, 2] },
+      });
+    });
+
+    // Items and skipped note remain in the list, not reverted to DropZone, and error is shown
+    expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    expect(screen.getByText("diagram.png")).toBeInTheDocument();
+    expect(screen.queryByTestId("drop-zone")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("（対象外 1 件：非対応の形式）"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("does not contain full-width parentheses in skipped notice and saved name in English locale", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        const result: AddResult<ImageItem> = {
+          added: [sampleImage1, sampleImage2],
+          skipped: {
+            unsupported: 1,
+            folders: 1,
+            duplicates: 0,
+          },
+        };
+        return result;
+      }
+      if (cmd === "save_merged_pdf") {
+        return { savedName: "merged.pdf" };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness("en-US");
+
+    // Add images in English locale
+    fireEvent.click(screen.getByRole("button", { name: "Add images" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    // Skipped notice has half-width parentheses and no full-width parentheses
+    const skippedNotice = screen.getByText(
+      "(2 skipped: subfolders, unsupported formats)",
+    );
+    expect(skippedNotice).toBeInTheDocument();
+    expect(skippedNotice.textContent).not.toMatch(/[（）]/);
+
+    // Save PDF
+    fireEvent.click(screen.getByRole("button", { name: "Save PDF" }));
+
+    // Finish job
+    await act(async () => {
+      await emit(JOB_FINISHED_EVENT, {
+        succeeded: 2,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      } satisfies JobFinishedPayload);
+    });
+
+    // Saved name has half-width parentheses and no full-width parentheses
+    const savedNameNotice = screen.getByText("(merged.pdf)");
+    expect(savedNameNotice).toBeInTheDocument();
+    expect(savedNameNotice.textContent).not.toMatch(/[（）]/);
   });
 });

@@ -103,10 +103,10 @@ function formatSkippedMessage(
   if (skipped.duplicates > 0) {
     reasons.push(t.imagesToPdf.skippedDuplicates);
   }
-  return `（${formatMessage(t.imagesToPdf.skipped, {
+  return formatMessage(t.imagesToPdf.skipped, {
     count: total,
     reasons: reasons.join(t.imagesToPdf.skippedSeparator),
-  })}）`;
+  });
 }
 
 function findRowElement(target: EventTarget | null): HTMLElement | null {
@@ -197,21 +197,21 @@ export function ImagesToPdfView() {
   async function handleRemove(id: number) {
     try {
       await removeItems([id]);
+      dispatch({ type: "REMOVE_IMAGE_ITEM", id });
     } catch (err: unknown) {
       setError(normalizeIpcError(err));
     }
-    dispatch({ type: "REMOVE_IMAGE_ITEM", id });
   }
 
   async function handleClearAll() {
     const ids = imagesToPdf.items.map((item) => item.id);
     try {
       await removeItems(ids);
+      dispatch({ type: "CLEAR_IMAGE_ITEMS" });
+      setSkipped(null);
     } catch (err: unknown) {
       setError(normalizeIpcError(err));
     }
-    dispatch({ type: "CLEAR_IMAGE_ITEMS" });
-    setSkipped(null);
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLOListElement>) => {
@@ -477,7 +477,7 @@ export function ImagesToPdfView() {
           <span>{summaryText}</span>
           {job.savedName && (
             <span className="mono images-job-saved-name">
-              （{job.savedName}）
+              {formatMessage(t.imagesToPdf.savedName, { name: job.savedName })}
             </span>
           )}
         </div>
