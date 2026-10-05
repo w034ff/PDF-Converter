@@ -425,6 +425,65 @@ describe("PdfToImagesView", () => {
       ).toBeInTheDocument();
     });
 
+    it("shows the result of a single PDF under its name and marks the failed pages", () => {
+      mockCommands(() => undefined);
+      const finished: JobFinishedPayload = {
+        succeeded: 0,
+        failed: 1,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      };
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [{ id: 1, name: "annual-report.pdf" }];
+        state.job.results = {
+          1: {
+            id: 1,
+            status: "partial",
+            outputs: [
+              "annual-report_p1.png",
+              "annual-report_p3.png",
+              "annual-report_p4.png",
+            ],
+            failedPages: [2],
+          },
+        };
+        state.job.finished = finished;
+      });
+
+      const result = screen.getByTestId("single-result");
+      expect(result).toHaveTextContent("✕ 一部失敗");
+      expect(result).toHaveTextContent("失敗したページ：2");
+
+      expect(screen.getByTestId("page-thumbnail-2")).toHaveTextContent(
+        "2 ✕ 失敗",
+      );
+      expect(screen.getByTestId("page-thumbnail-1")).not.toHaveTextContent(
+        "失敗",
+      );
+
+      // The partly failed PDF is not counted as a failure, and there is no
+      // table below to point to.
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "変換が終わりました：成功 0 件 · 一部失敗 1 件",
+      );
+      expect(
+        screen.queryByText("失敗した PDF の理由は、下の一覧に表示しています"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows nothing under a single PDF before any conversion", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+      });
+
+      expect(screen.queryByTestId("single-result")).not.toBeInTheDocument();
+    });
+
     it("disables view action buttons during conversion", () => {
       mockCommands(() => undefined);
       renderView((state) => {

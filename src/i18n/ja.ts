@@ -51,6 +51,7 @@ export const ja = {
     counts: {
       succeeded: "成功 {count} 件",
       failed: "失敗 {count} 件",
+      partial: "一部失敗 {count} 件",
       noPages: "対象のページなし {count} 件",
       unprocessed: "未処理 {count} 件",
     },
@@ -93,6 +94,7 @@ export const ja = {
     single: {
       meta: "{pages} ページ · {size} · {fileSize}",
       convertPage: "{page}  ✓ 変換する",
+      failedPage: "{page}  ✕ 失敗",
       thumbnailAlt: "{name} の {page} ページのサムネイル",
     },
     batch: {

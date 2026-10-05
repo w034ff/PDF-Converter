@@ -350,7 +350,11 @@ describe("PdfToImages integration workflow", () => {
     ).toBeInTheDocument();
 
     // Check row status: 一部失敗 and reason 失敗したページ：2
-    expect(screen.getByText(/一部失敗/)).toBeInTheDocument();
+    expect(screen.getByText("✕ 一部失敗")).toBeInTheDocument();
+    // The summary lists it as a partial failure, not a failure.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "キャンセルしました：成功 0 件 · 一部失敗 1 件 · 未処理 1 件",
+    );
     expect(screen.getByText("失敗したページ：2")).toBeInTheDocument();
   });
 });

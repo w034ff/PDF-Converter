@@ -43,6 +43,8 @@ interface PdfPageThumbnailProps {
   name: string;
   firstPageSizePt: PageSizePt | null;
   isHighlighted: boolean;
+  /** The last conversion failed on this page (`failedPages`). */
+  isFailed: boolean;
   translations: Translations;
 }
 
@@ -52,6 +54,7 @@ function PdfPageThumbnail({
   name,
   firstPageSizePt,
   isHighlighted,
+  isFailed,
   translations: t,
 }: PdfPageThumbnailProps) {
   const { ref, src, failed } = useThumbnail(id, page);
@@ -67,7 +70,7 @@ function PdfPageThumbnail({
     >
       <div
         ref={ref}
-        className={`pdf-page-container ${isHighlighted ? "is-highlighted" : ""}`}
+        className={`pdf-page-container ${isHighlighted ? "is-highlighted" : ""} ${isFailed ? "is-failed" : ""}`}
         style={{ aspectRatio }}
       >
         {src !== null ? (
@@ -85,74 +88,35 @@ function PdfPageThumbnail({
           </div>
         )}
       </div>
-      <figcaption className="mono">
-        {isHighlighted
-          ? formatMessage(t.pdfToImages.single.convertPage, { page })
-          : String(page)}
+      <figcaption className={`mono ${isFailed ? "pdf-status-failed" : ""}`}>
+        {isFailed
+          ? formatMessage(t.pdfToImages.single.failedPage, { page })
+          : isHighlighted
+            ? formatMessage(t.pdfToImages.single.convertPage, { page })
+            : String(page)}
       </figcaption>
     </figure>
   );
 }
 
-interface PdfTableRowProps {
-  item: PdfItem;
-  job: JobState;
-  pageSelection: PageSelection;
-  rangeResult: CheckPageRangeResult | null;
-  onRemove: () => void;
-  disabled: boolean;
-  translations: Translations;
-  language: Language;
+interface ItemStatus {
+  text: string;
+  className: string;
+  reason: string | null;
 }
 
-function PdfTableRow({
-  item,
-  job,
-  pageSelection,
-  rangeResult,
-  onRemove,
-  disabled,
-  translations: t,
-  language,
-}: PdfTableRowProps) {
-  let pagesText = "—";
-  if (item.error === null) {
-    if (job.kind === "pdfToImages" && job.results[item.id] !== undefined) {
-      const res = job.results[item.id];
-      if (res.status === "noPages") {
-        pagesText = `— / ${item.pageCount}`;
-      } else if (res.status === "failed") {
-        pagesText = `— / ${item.pageCount}`;
-      } else {
-        pagesText = `${res.outputs.length} / ${item.pageCount}`;
-      }
-    } else {
-      if (pageSelection === "all") {
-        pagesText = `${item.pageCount} / ${item.pageCount}`;
-      } else if (rangeResult !== null) {
-        const count = countPagesInIntervals(
-          rangeResult.intervals,
-          item.pageCount,
-        );
-        pagesText =
-          count > 0 ? `${count} / ${item.pageCount}` : `— / ${item.pageCount}`;
-      } else {
-        pagesText = `— / ${item.pageCount}`;
-      }
-    }
-  }
-
-  let savedFilesText = "—";
-  if (job.kind === "pdfToImages" && job.results[item.id] !== undefined) {
-    const outputs = job.results[item.id].outputs;
-    if (outputs.length === 1) {
-      savedFilesText = outputs[0];
-    } else if (outputs.length > 1) {
-      savedFilesText = `${outputs[0]} …`;
-    }
-  }
-
-  let statusText = "—";
+/**
+ * How item `item` reads after being added or converted: its own error, or
+ * the result of the last conversion of this screen. `null` when there is
+ * neither. Shared by the table and the single-PDF view so both say the same.
+ */
+function describeItemStatus(
+  item: PdfItem,
+  job: JobState,
+  t: Translations,
+  language: Language,
+): ItemStatus | null {
+  let statusText: string | null = null;
   let statusClass = "";
   let reasonText: string | null = null;
 
@@ -218,6 +182,74 @@ function PdfTableRow({
       }
     }
   }
+
+  return statusText === null
+    ? null
+    : { text: statusText, className: statusClass, reason: reasonText };
+}
+
+interface PdfTableRowProps {
+  item: PdfItem;
+  job: JobState;
+  pageSelection: PageSelection;
+  rangeResult: CheckPageRangeResult | null;
+  onRemove: () => void;
+  disabled: boolean;
+  translations: Translations;
+  language: Language;
+}
+
+function PdfTableRow({
+  item,
+  job,
+  pageSelection,
+  rangeResult,
+  onRemove,
+  disabled,
+  translations: t,
+  language,
+}: PdfTableRowProps) {
+  let pagesText = "—";
+  if (item.error === null) {
+    if (job.kind === "pdfToImages" && job.results[item.id] !== undefined) {
+      const res = job.results[item.id];
+      if (res.status === "noPages") {
+        pagesText = `— / ${item.pageCount}`;
+      } else if (res.status === "failed") {
+        pagesText = `— / ${item.pageCount}`;
+      } else {
+        pagesText = `${res.outputs.length} / ${item.pageCount}`;
+      }
+    } else {
+      if (pageSelection === "all") {
+        pagesText = `${item.pageCount} / ${item.pageCount}`;
+      } else if (rangeResult !== null) {
+        const count = countPagesInIntervals(
+          rangeResult.intervals,
+          item.pageCount,
+        );
+        pagesText =
+          count > 0 ? `${count} / ${item.pageCount}` : `— / ${item.pageCount}`;
+      } else {
+        pagesText = `— / ${item.pageCount}`;
+      }
+    }
+  }
+
+  let savedFilesText = "—";
+  if (job.kind === "pdfToImages" && job.results[item.id] !== undefined) {
+    const outputs = job.results[item.id].outputs;
+    if (outputs.length === 1) {
+      savedFilesText = outputs[0];
+    } else if (outputs.length > 1) {
+      savedFilesText = `${outputs[0]} …`;
+    }
+  }
+
+  const described = describeItemStatus(item, job, t, language);
+  const statusText = described?.text ?? "—";
+  const statusClass = described?.className ?? "";
+  const reasonText = described?.reason ?? null;
 
   return (
     <tr>
@@ -321,6 +353,17 @@ export function PdfToImagesView() {
   const isSingle = pdfToImages.items.length === 1;
   const singleItem = isSingle ? pdfToImages.items[0] : null;
   const skippedText = formatSkippedSummary(t, lastSkipped);
+  const results = job.kind === "pdfToImages" ? job.results : {};
+  const partialCount = Object.values(results).filter(
+    (result) => result.status === "partial",
+  ).length;
+  // The single-PDF view has no table, so its result goes under its name.
+  const singleStatus =
+    singleItem !== null && singleItem.error === null
+      ? describeItemStatus(singleItem, job, t, language.language)
+      : null;
+  const singleFailedPages =
+    singleItem !== null ? (results[singleItem.id]?.failedPages ?? []) : [];
 
   return (
     <div className="pdf-view">
@@ -339,9 +382,9 @@ export function PdfToImagesView() {
       {job.kind === "pdfToImages" && job.finished !== null && (
         <div role="status" className="pdf-summary-banner">
           <span className="pdf-summary-title">
-            {formatJobSummary(t, job.finished)}
+            {formatJobSummary(t, job.finished, partialCount)}
           </span>
-          {job.finished.failed > 0 && (
+          {!isSingle && job.finished.failed > 0 && (
             <span className="hint">{t.pdfToImages.summaryFailuresHint}</span>
           )}
         </div>
@@ -367,6 +410,16 @@ export function PdfToImagesView() {
                   size: formatPaperSize(singleItem.firstPageSizePt),
                   fileSize: formatFileSize(singleItem.bytes),
                 })}
+              </span>
+            )}
+            {singleStatus !== null && (
+              <span className="pdf-single-result" data-testid="single-result">
+                <span className={singleStatus.className}>
+                  {singleStatus.text}
+                </span>
+                {singleStatus.reason !== null && (
+                  <span className="hint">{singleStatus.reason}</span>
+                )}
               </span>
             )}
             <div className="pdf-view-actions">
@@ -472,6 +525,7 @@ export function PdfToImagesView() {
                     name={singleItem.name}
                     firstPageSizePt={singleItem.firstPageSizePt}
                     isHighlighted={isHighlighted}
+                    isFailed={singleFailedPages.includes(page)}
                     translations={t}
                   />
                 );

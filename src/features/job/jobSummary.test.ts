@@ -27,6 +27,22 @@ describe("formatJobSummary", () => {
     ).toBe("変換が終わりました：成功 0 件 · 失敗 1 件");
   });
 
+  it("lists partly failed PDFs on their own instead of as failures", () => {
+    expect(
+      formatJobSummary(
+        ja,
+        {
+          succeeded: 1,
+          failed: 3,
+          noPages: 0,
+          unprocessed: 0,
+          cancelled: false,
+        },
+        1,
+      ),
+    ).toBe("変換が終わりました：成功 1 件 · 失敗 2 件 · 一部失敗 1 件");
+  });
+
   it("says a cancelled job was cancelled and counts what was left", () => {
     expect(
       formatJobSummary(en, {

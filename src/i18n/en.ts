@@ -53,6 +53,7 @@ export const en: Translations = {
     counts: {
       succeeded: "{count} succeeded",
       failed: "{count} failed",
+      partial: "{count} partly failed",
       noPages: "{count} with no pages in range",
       unprocessed: "{count} not processed",
     },
@@ -95,6 +96,7 @@ export const en: Translations = {
     single: {
       meta: "{pages} pages · {size} · {fileSize}",
       convertPage: "{page}  ✓ Convert",
+      failedPage: "{page}  ✕ Failed",
       thumbnailAlt: "Thumbnail of {name} page {page}",
     },
     batch: {
