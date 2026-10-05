@@ -1,0 +1,38 @@
+.error-display {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-primary);
+}
+
+.error-display-icon {
+  stroke: var(--color-error);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.error-display-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.error-display-message {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-error);
+}
+
+.error-display-detail {
+  font-size: 12px;
+}
+
+.error-display-dismiss {
+  margin-left: auto;
+  align-self: flex-start;
+}
