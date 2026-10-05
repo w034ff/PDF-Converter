@@ -1,0 +1,22 @@
+# Configuration for `cargo about generate`, run by scripts/generate-licenses.ts.
+# `accepted` mirrors the allow list and MPL-2.0 exceptions in deny.toml; for a
+# dual-licensed crate, the first accepted license is the one whose text ships.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+]
+# Same release targets as deny.toml: the list covers what the Windows and Linux
+# binaries contain, whichever OS generates it.
+targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+# Neither is linked into the shipped binary.
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+# The workspace's own crates are covered by LICENSE.
+private = { ignore = true }

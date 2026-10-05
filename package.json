@@ -16,7 +16,9 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "pdfium:fetch": "node scripts/fetch-pdfium.ts"
+    "pdfium:fetch": "node scripts/fetch-pdfium.ts",
+    "licenses:check": "cargo deny check licenses bans && license-checker-rseidelsohn --production --excludePrivatePackages --summary --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;Zlib\"",
+    "licenses:generate": "node scripts/generate-licenses.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",
@@ -37,6 +39,7 @@
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
     "jsdom": "^30.1.1",
+    "license-checker-rseidelsohn": "^5.0.1",
     "prettier": "^3.5.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0",

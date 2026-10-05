@@ -1,0 +1,71 @@
+# Dependency policy checked by `cargo deny check licenses bans` (requirements NFR-05,
+# design §9) and, for known vulnerabilities, `cargo deny check advisories`
+# (.github/workflows/audit.yml). The frontend's npm dependencies are checked
+# separately by the `licenses:check` script and `npm audit`.
+
+[graph]
+# Release targets only. Tauri pulls an HTTP client (reqwest) for Android and iOS,
+# which this app does not ship; checking every target would ban Tauri itself.
+targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+# Dev-dependencies (the quality tests and the fixture generator in crates/core)
+# are not shipped in the binary (design §8.3).
+exclude-dev = true
+
+[licenses]
+# Licenses that allow bundling in the MIT-licensed binary. GPL, LGPL and AGPL
+# are deliberately absent.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+# The list states the policy, not the current graph, so an allowed license that
+# no crate uses yet is not an error.
+unused-allowed-license = "allow"
+
+# MPL-2.0 is file-level copyleft: shipping unmodified MPL code inside an MIT
+# binary is fine as long as the notice is listed, but it is not on the general
+# allow list, so each crate is approved by name. All of these come in through
+# Tauri (tauri-utils and dirs-sys); a new MPL crate fails the check until it is
+# reviewed and added here.
+exceptions = [
+    { name = "cssparser", allow = ["MPL-2.0"] },
+    { name = "cssparser-macros", allow = ["MPL-2.0"] },
+    { name = "dtoa-short", allow = ["MPL-2.0"] },
+    { name = "option-ext", allow = ["MPL-2.0"] },
+    { name = "selectors", allow = ["MPL-2.0"] },
+]
+
+[licenses.private]
+# The workspace's own crates are marked `publish = false` and covered by LICENSE.
+ignore = true
+
+[bans]
+# The app never talks to the network (design §9): no HTTP clients, no updater.
+deny = [
+    { name = "reqwest" },
+    { name = "ureq" },
+    { name = "hyper" },
+    { name = "isahc" },
+    { name = "curl" },
+    { name = "tauri-plugin-updater" },
+    { name = "tauri-plugin-http" },
+    # PDFs are opened only in the worker process (design §9): a crate that links
+    # pdfium into the main process would defeat the isolation.
+    { name = "pdfium-render", wrappers = ["pdfconv-worker"] },
+]
+# Duplicate versions are common in the Tauri graph and are not a policy concern here.
+multiple-versions = "allow"
+
+[advisories]
+# Vulnerabilities and unsoundness fail the check wherever they are in the graph.
+# "Unmaintained" notices are reported only for crates this workspace depends on
+# directly: the transitive ones come from Tauri's GTK bindings, which this
+# project cannot replace.
+unmaintained = "workspace"
