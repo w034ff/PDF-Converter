@@ -268,7 +268,13 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
 - 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a4", outputDir }`、`pdfToImages: { format: "png" | "jpeg", dpi, outputDir }`。
 - 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。
-- 既定値: 「1 つの PDF」、「画像に合わせる」、PNG、150 dpi。
+- 既定値: 「1 つの PDF」、「画像に合わせる」、PNG、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
+- `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
+- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, outputDir }, pdfToImages: { format, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
+- `save_settings` は、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の `DPI_CHOICES` にないなどの不正な値は `InvalidParams` で拒み、何も保存しない。書き込みに失敗したら `WriteFailed` を返す。
+- `pick_output_dir` は、選ばれたフォルダを §6.5 の Rust の状態と設定に入れ、設定ファイルを書き直す。書き込みに失敗しても、選んだフォルダはそのセッションで使い、`{ dirLabel }` を返す（設定ファイルの問題で変換を始められなくならないようにするため）。
+- 起動時、保存されたフォルダが存在すればそれを §6.5 の状態に入れ、存在しなければ未選択に戻す。
+- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
 
 ## 7. IPC
 

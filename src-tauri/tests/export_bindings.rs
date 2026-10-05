@@ -12,6 +12,10 @@ use pdf_converter_lib::jobs::{
     CheckPageRangeResult, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
     PageSizeChoice, RenderFormatChoice, SaveMergedPdfResult,
 };
+use pdf_converter_lib::settings::{
+    ImagesToPdfOptions, ImagesToPdfSettings, Language, OutputDirLabel, OutputKind, OutputMode,
+    PdfToImagesOptions, PdfToImagesSettings, Settings, SettingsInput,
+};
 use ts_rs::{Config, TS};
 
 #[test]
@@ -39,4 +43,14 @@ fn export_typescript_bindings() {
     JobFinishedPayload::export_all(&cfg).expect("exporting JobFinishedPayload");
     CheckPageRangeResult::export_all(&cfg).expect("exporting CheckPageRangeResult");
     SaveMergedPdfResult::export_all(&cfg).expect("exporting SaveMergedPdfResult");
+    Language::export_all(&cfg).expect("exporting Language");
+    OutputMode::export_all(&cfg).expect("exporting OutputMode");
+    OutputKind::export_all(&cfg).expect("exporting OutputKind");
+    OutputDirLabel::export_all(&cfg).expect("exporting OutputDirLabel");
+    ImagesToPdfOptions::export_all(&cfg).expect("exporting ImagesToPdfOptions");
+    PdfToImagesOptions::export_all(&cfg).expect("exporting PdfToImagesOptions");
+    ImagesToPdfSettings::export_all(&cfg).expect("exporting ImagesToPdfSettings");
+    PdfToImagesSettings::export_all(&cfg).expect("exporting PdfToImagesSettings");
+    Settings::export_all(&cfg).expect("exporting Settings");
+    SettingsInput::export_all(&cfg).expect("exporting SettingsInput");
 }

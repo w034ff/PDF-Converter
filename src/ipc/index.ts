@@ -10,10 +10,14 @@ import type { ItemsDropped } from "./generated/ItemsDropped";
 import type { JobFinishedPayload } from "./generated/JobFinishedPayload";
 import type { JobItemPayload } from "./generated/JobItemPayload";
 import type { JobProgressPayload } from "./generated/JobProgressPayload";
+import type { OutputDirLabel } from "./generated/OutputDirLabel";
+import type { OutputKind } from "./generated/OutputKind";
 import type { PageSizeChoice } from "./generated/PageSizeChoice";
 import type { PdfItem } from "./generated/PdfItem";
 import type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
+import type { Settings } from "./generated/Settings";
+import type { SettingsInput } from "./generated/SettingsInput";
 
 export type { AboutInfo } from "./generated/AboutInfo";
 export type { AddResult } from "./generated/AddResult";
@@ -22,17 +26,27 @@ export type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
 export type { ErrorCode } from "./generated/ErrorCode";
 export type { ImageFormatName } from "./generated/ImageFormatName";
 export type { ImageItem } from "./generated/ImageItem";
+export type { ImagesToPdfOptions } from "./generated/ImagesToPdfOptions";
+export type { ImagesToPdfSettings } from "./generated/ImagesToPdfSettings";
 export type { IpcError } from "./generated/IpcError";
 export type { ItemsDropped } from "./generated/ItemsDropped";
 export type { JobFinishedPayload } from "./generated/JobFinishedPayload";
 export type { JobItemPayload } from "./generated/JobItemPayload";
 export type { JobItemStatus } from "./generated/JobItemStatus";
 export type { JobProgressPayload } from "./generated/JobProgressPayload";
+export type { Language } from "./generated/Language";
+export type { OutputDirLabel } from "./generated/OutputDirLabel";
+export type { OutputKind } from "./generated/OutputKind";
+export type { OutputMode } from "./generated/OutputMode";
 export type { PageSizeChoice } from "./generated/PageSizeChoice";
 export type { PageSizePt } from "./generated/PageSizePt";
 export type { PdfItem } from "./generated/PdfItem";
+export type { PdfToImagesOptions } from "./generated/PdfToImagesOptions";
+export type { PdfToImagesSettings } from "./generated/PdfToImagesSettings";
 export type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 export type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
+export type { Settings } from "./generated/Settings";
+export type { SettingsInput } from "./generated/SettingsInput";
 export type { Skipped } from "./generated/Skipped";
 export type { UnlistenFn };
 
@@ -121,6 +135,29 @@ async function invokeWrapped<T>(
   } catch (error: unknown) {
     throw normalizeIpcError(error);
   }
+}
+
+/** Fetches the settings. Output folders come as names, never as paths (design §6.7). */
+export async function getSettings(): Promise<Settings> {
+  return invokeWrapped<Settings>("get_settings");
+}
+
+/**
+ * Saves the settings except the output folders, which only `pickOutputDir`
+ * changes (design §6.7). Rejects with `InvalidParams` for a value Rust refuses.
+ */
+export async function saveSettings(settings: SettingsInput): Promise<void> {
+  return invokeWrapped<void>("save_settings", { settings });
+}
+
+/**
+ * Asks Rust to open a folder dialog and make the folder the output folder of
+ * `kind`. Resolves to `null` when the dialog was cancelled.
+ */
+export async function pickOutputDir(
+  kind: OutputKind,
+): Promise<OutputDirLabel | null> {
+  return invokeWrapped<OutputDirLabel | null>("pick_output_dir", { kind });
 }
 
 /**

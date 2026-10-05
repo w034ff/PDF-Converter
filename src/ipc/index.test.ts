@@ -5,6 +5,7 @@ import {
   addPdfs,
   cancelJob,
   checkPageRange,
+  getSettings,
   getThumbnail,
   isErrorCode,
   isIpcError,
@@ -17,8 +18,10 @@ import {
   onJobFinished,
   onJobItem,
   onJobProgress,
+  pickOutputDir,
   removeItems,
   saveMergedPdf,
+  saveSettings,
   startImagesToPdfs,
   startPdfsToImages,
   type AddResult,
@@ -28,6 +31,8 @@ import {
   type JobItemPayload,
   type JobProgressPayload,
   type PdfItem,
+  type Settings,
+  type SettingsInput,
 } from ".";
 
 const NO_SKIPS = { unsupported: 0, folders: 0, duplicates: 0 };
@@ -134,6 +139,73 @@ describe("ipc", () => {
       expect(calls).toEqual([
         ["check_page_range", { text: "1-3, 5", ids: [1, 2] }],
       ]);
+    });
+
+    it("asks get_settings for the settings, which hold labels and no path", async () => {
+      const settings: Settings = {
+        language: null,
+        imagesToPdf: {
+          output: "merge",
+          pageSize: "fit",
+          outputDir: { dirLabel: "out" },
+        },
+        pdfToImages: { format: "png", dpi: 150, outputDir: null },
+      };
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return settings;
+      });
+
+      expect(await getSettings()).toEqual(settings);
+      expect(calls).toEqual([["get_settings", {}]]);
+    });
+
+    it("sends the settings to save_settings under one argument, without folders", async () => {
+      const settings: SettingsInput = {
+        language: "ja",
+        imagesToPdf: { output: "each", pageSize: "a4" },
+        pdfToImages: { format: "jpeg", dpi: 300 },
+      };
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await saveSettings(settings);
+      expect(calls).toEqual([["save_settings", { settings }]]);
+    });
+
+    it("rejects save_settings with the InvalidParams Rust returned", async () => {
+      mockIPC(() => {
+        throw { code: "InvalidParams", detail: null };
+      });
+
+      await expect(
+        saveSettings({
+          language: null,
+          imagesToPdf: { output: "merge", pageSize: "fit" },
+          pdfToImages: { format: "png", dpi: 100 },
+        }),
+      ).rejects.toEqual({ code: "InvalidParams", detail: null });
+    });
+
+    it("asks pick_output_dir for the kind and returns the label", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return { dirLabel: "out" };
+      });
+
+      expect(await pickOutputDir("pdfToImages")).toEqual({ dirLabel: "out" });
+      expect(calls).toEqual([["pick_output_dir", { kind: "pdfToImages" }]]);
+    });
+
+    it("returns null from pick_output_dir when the dialog was cancelled", async () => {
+      mockIPC(() => null);
+
+      expect(await pickOutputDir("imagesToPdf")).toBeNull();
     });
 
     it("calls cancelJob", async () => {

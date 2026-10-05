@@ -13,9 +13,11 @@ pub mod error;
 pub mod items;
 pub mod jobs;
 pub mod pdfium;
+pub mod settings;
 pub mod worker_pool;
 
 use items::ItemTable;
+use settings::SettingsStore;
 use worker_pool::{WorkerPool, WorkerPoolConfig};
 
 /// Name of the event that reports what a drop added (design §7.2).
@@ -36,6 +38,8 @@ pub struct AppState {
     pub images_output_dir: Arc<Mutex<Option<PathBuf>>>,
     /// Output folder for PDF to images conversion (design §6.5).
     pub pdfs_output_dir: Arc<Mutex<Option<PathBuf>>>,
+    /// The settings in memory and the file they are written to (design §6.7).
+    pub settings: Arc<SettingsStore>,
 }
 
 impl AppState {
@@ -48,6 +52,7 @@ impl AppState {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             images_output_dir: Arc::new(Mutex::new(None)),
             pdfs_output_dir: Arc::new(Mutex::new(None)),
+            settings: Arc::new(SettingsStore::default()),
         }
     }
 }
@@ -67,11 +72,20 @@ pub fn run() {
                 exe,
                 [OsString::from(WORKER_FLAG), library_dir.into_os_string()],
             );
-            app.manage(AppState::new(WorkerPool::new(config)));
+            let state = AppState::new(WorkerPool::new(config));
+            // Without a settings folder the app still starts, with the
+            // defaults, and keeps changes in memory (design §6.7).
+            if let Ok(config_dir) = app.path().app_config_dir() {
+                settings::restore_settings(&state, &config_dir);
+            }
+            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_about,
+            commands::get_settings,
+            commands::save_settings,
+            commands::pick_output_dir,
             commands::add_images,
             commands::add_pdfs,
             commands::remove_items,
