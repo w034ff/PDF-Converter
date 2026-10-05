@@ -17,11 +17,14 @@ use crate::probe::{ImageFormat, probe_reader};
 /// We disable the image crate's default 512 MiB allocation limit so that valid large
 /// 16-bit RGBA PNGs (up to 80M pixels * 8 bytes = 640 MiB) are not rejected.
 pub(crate) fn decode_image_pixels(image_bytes: &[u8]) -> Result<image::DynamicImage, ProbeError> {
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(image_bytes))
-        .with_guessed_format()
-        .map_err(|_| ProbeError::DecodeFailed)?;
+    decode_without_limits(image_bytes).map_err(|_| ProbeError::DecodeFailed)
+}
+
+fn decode_without_limits(image_bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
+    let mut reader =
+        image::ImageReader::new(std::io::Cursor::new(image_bytes)).with_guessed_format()?;
     reader.no_limits();
-    reader.decode().map_err(|_| ProbeError::DecodeFailed)
+    reader.decode()
 }
 
 /// Writes image pages into a PDF document using `krilla` (design §4.3).
@@ -161,22 +164,14 @@ mod tests {
             "default reader must fail with Limits error, got: {default_err:?}"
         );
 
-        // decode_image_pixels disables limits, bypassing the 512 MiB check.
-        // It fails with normal decoding error (incomplete scanlines) rather than Limits.
-        let mut no_limits_reader = image::ImageReader::new(std::io::Cursor::new(&png_bytes))
-            .with_guessed_format()
-            .expect("should guess PNG format");
-        no_limits_reader.no_limits();
-        let no_limits_err = no_limits_reader
-            .decode()
-            .expect_err("incomplete scanlines should fail decoding");
+        // The scanlines are missing, so decoding still fails, but not on the
+        // allocation limit.
+        let no_limits_err =
+            decode_without_limits(&png_bytes).expect_err("incomplete scanlines should fail");
         assert!(
             !matches!(no_limits_err, image::ImageError::Limits(_)),
-            "reader with no_limits must not fail with Limits error, got: {no_limits_err:?}"
+            "decoding for a page must not apply the allocation limit, got: {no_limits_err:?}"
         );
-
-        // decode_image_pixels internally uses no_limits(), returning DecodeFailed
-        // from incomplete scanlines rather than failing on allocation limits.
         let decode_res = decode_image_pixels(&png_bytes);
         assert_eq!(decode_res.unwrap_err(), ProbeError::DecodeFailed);
     }
