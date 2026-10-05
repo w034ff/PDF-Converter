@@ -9,11 +9,12 @@ publish = false
 workspace = true
 
 [dependencies]
+# Reads the input images: size, EXIF orientation and BMP pixels (design §2).
+image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png", "webp"] }
 
 # Only examples/gen_fixtures.rs and the test that checks its output use these
 # (design §11.1).
 [dev-dependencies]
-image = { version = "0.25", default-features = false, features = ["bmp", "webp"] }
 # Writes CMYK JPEGs, which image cannot, and the EXIF and JFIF density segments.
 jpeg-encoder = "0.7.1"
 krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }

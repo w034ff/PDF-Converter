@@ -14,6 +14,8 @@ workspace = true
 test-hooks = []
 
 [dependencies]
+# Encodes rendered pages as PNG or JPEG (design §2).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # pdfium_7881 is the newest API the bundled pdfium (chromium/8076) supports
 # (design §2); pdfium_latest would follow the crate instead of the binary.
 pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
