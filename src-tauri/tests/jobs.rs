@@ -1033,6 +1033,13 @@ fn images_to_pdfs_each_skips_initial_error_and_does_not_claim_output_name() {
     let temp_in = TempDir::new().unwrap();
     let temp_out = TempDir::new().unwrap();
 
+    // b.bmp comes first in the list and has another stem: if error items
+    // took resolved names, a.png would be saved as b.pdf.
+    let other_bmp_path = temp_in.path().join("b.bmp");
+    fs::write(&other_bmp_path, b"not an image").unwrap();
+    let other_res = add_images(&app_state, &[other_bmp_path]);
+    assert!(other_res.added[0].error.is_some());
+
     let bmp_path = temp_in.path().join("a.bmp");
     fs::write(&bmp_path, b"not an image").unwrap();
     let png_path = copy_fixture(temp_in.path(), "logo_alpha.png", "a.png");
@@ -1051,7 +1058,9 @@ fn images_to_pdfs_each_skips_initial_error_and_does_not_claim_output_name() {
     // to verify that run_images_to_pdfs does not re-read files that failed probe.
     fs::write(&bmp_path, fs::read(fixture("logo_alpha.png")).unwrap()).unwrap();
 
-    let ids: Vec<u64> = add_res.added.iter().map(|item| item.id).collect();
+    let ids: Vec<u64> = std::iter::once(other_res.added[0].id)
+        .chain(add_res.added.iter().map(|item| item.id))
+        .collect();
 
     let recorder = TestRecorder::new();
     run_images_to_pdfs(
@@ -1065,19 +1074,19 @@ fn images_to_pdfs_each_skips_initial_error_and_does_not_claim_output_name() {
 
     let finished = recorder.finished();
     assert_eq!(finished.succeeded, 1);
-    assert_eq!(finished.failed, 1);
+    assert_eq!(finished.failed, 2);
     assert_eq!(finished.unprocessed, 0);
     assert!(!finished.cancelled);
 
     let items = recorder.items();
-    assert_eq!(items.len(), 2);
+    assert_eq!(items.len(), 3);
 
-    let bmp_item = items.iter().find(|i| i.id == ids[0]).unwrap();
+    let bmp_item = items.iter().find(|i| i.id == ids[1]).unwrap();
     assert_eq!(bmp_item.status, JobItemStatus::Failed);
     assert_eq!(bmp_item.error.as_ref().map(|e| e.code), Some(bmp_err.code));
     assert!(bmp_item.outputs.is_empty());
 
-    let png_item = items.iter().find(|i| i.id == ids[1]).unwrap();
+    let png_item = items.iter().find(|i| i.id == ids[2]).unwrap();
     assert_eq!(png_item.status, JobItemStatus::Ok);
     assert_eq!(png_item.outputs, vec!["a.pdf".to_string()]);
     assert!(temp_out.path().join("a.pdf").exists());
