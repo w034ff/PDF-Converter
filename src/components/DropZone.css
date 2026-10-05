@@ -35,7 +35,6 @@
   margin: 0;
   font-size: 12px;
   color: var(--color-text-secondary);
-  max-width: 480px;
 }
 
 .drop-zone-actions {
