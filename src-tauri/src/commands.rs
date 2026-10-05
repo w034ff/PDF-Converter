@@ -170,8 +170,7 @@ pub async fn save_merged_pdf(
     state.cancel_flag.store(false, Ordering::SeqCst);
 
     let state_inner = state.inner().clone();
-    let is_running_clone = Arc::clone(&state_inner.is_running);
-    let _running_guard = jobs::RunningGuard(is_running_clone);
+    let running_guard = jobs::RunningGuard::new(Arc::clone(&state_inner.is_running));
 
     let default_name = {
         let first_id = ids
@@ -219,9 +218,9 @@ pub async fn save_merged_pdf(
         on_item: move |item| {
             let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
         },
-        on_finished: move |fin| {
+        on_finished: running_guard.wrap_on_finished(move |fin| {
             let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
-        },
+        }),
     };
 
     tauri::async_runtime::spawn_blocking(move || {

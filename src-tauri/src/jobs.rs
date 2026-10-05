@@ -152,12 +152,47 @@ pub struct JobCallbacks<FProg, FItem, FFin> {
     pub on_finished: FFin,
 }
 
-/// RAII guard to reset the running flag when dropped.
-pub struct RunningGuard(pub Arc<AtomicBool>);
+/// RAII guard to reset the running flag when dropped if not already reset.
+pub struct RunningGuard {
+    flag: Arc<AtomicBool>,
+    active: Arc<AtomicBool>,
+}
+
+impl RunningGuard {
+    /// Creates a new guard for the given running flag.
+    pub fn new(flag: Arc<AtomicBool>) -> Self {
+        Self {
+            flag,
+            active: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    /// Wraps an `on_finished` callback so that `is_running` is reset to `false`
+    /// before `on_finished` is invoked, and disarms this guard so that
+    /// dropping it later does not reset the flag again.
+    pub fn wrap_on_finished<FFin>(
+        &self,
+        on_finished: FFin,
+    ) -> impl FnOnce(JobFinishedPayload) + Send + Sync + 'static + use<FFin>
+    where
+        FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
+    {
+        let flag = Arc::clone(&self.flag);
+        let active = Arc::clone(&self.active);
+        move |payload| {
+            if active.swap(false, Ordering::SeqCst) {
+                flag.store(false, Ordering::SeqCst);
+            }
+            on_finished(payload);
+        }
+    }
+}
 
 impl Drop for RunningGuard {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
+        if self.active.swap(false, Ordering::SeqCst) {
+            self.flag.store(false, Ordering::SeqCst);
+        }
     }
 }
 
@@ -1107,8 +1142,10 @@ where
     let ids_owned = ids.to_vec();
 
     std::thread::spawn(move || {
-        let _running_guard = RunningGuard(Arc::clone(&state_clone.is_running));
-        let on_finished_cell = Arc::new(Mutex::new(Some(callbacks.on_finished)));
+        let running_guard = RunningGuard::new(Arc::clone(&state_clone.is_running));
+        let on_finished_cell = Arc::new(Mutex::new(Some(
+            running_guard.wrap_on_finished(callbacks.on_finished),
+        )));
         let on_finished_for_run = {
             let cell = Arc::clone(&on_finished_cell);
             move |finished: JobFinishedPayload| {
@@ -1214,8 +1251,10 @@ where
     let ids_owned = ids.to_vec();
 
     std::thread::spawn(move || {
-        let _running_guard = RunningGuard(Arc::clone(&state_clone.is_running));
-        let on_finished_cell = Arc::new(Mutex::new(Some(callbacks.on_finished)));
+        let running_guard = RunningGuard::new(Arc::clone(&state_clone.is_running));
+        let on_finished_cell = Arc::new(Mutex::new(Some(
+            running_guard.wrap_on_finished(callbacks.on_finished),
+        )));
         let on_finished_for_run = {
             let cell = Arc::clone(&on_finished_cell);
             move |finished: JobFinishedPayload| {

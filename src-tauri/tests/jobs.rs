@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -12,8 +12,8 @@ use pdf_converter_lib::error::ErrorCode;
 use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items};
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
-    PageSizeChoice, RenderFormatChoice, check_page_range_internal, list_existing_files,
-    run_images_to_pdfs, run_pdfs_to_images, run_save_merged_pdf, save_atomic,
+    PageSizeChoice, RenderFormatChoice, RunningGuard, check_page_range_internal,
+    list_existing_files, run_images_to_pdfs, run_pdfs_to_images, run_save_merged_pdf, save_atomic,
     start_images_to_pdfs_internal, start_pdfs_to_images_internal,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
@@ -65,6 +65,7 @@ struct TestRecorder {
     progress: Arc<Mutex<Vec<JobProgressPayload>>>,
     items: Arc<Mutex<Vec<JobItemPayload>>>,
     finished: Arc<Mutex<Option<JobFinishedPayload>>>,
+    is_running_at_finished: Arc<Mutex<Option<bool>>>,
 }
 
 impl TestRecorder {
@@ -73,6 +74,7 @@ impl TestRecorder {
             progress: Arc::new(Mutex::new(Vec::new())),
             items: Arc::new(Mutex::new(Vec::new())),
             finished: Arc::new(Mutex::new(None)),
+            is_running_at_finished: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -91,6 +93,32 @@ impl TestRecorder {
             on_item: move |item| i.lock().unwrap().push(item),
             on_finished: move |fin| *f.lock().unwrap() = Some(fin),
         }
+    }
+
+    fn callbacks_recording_running(
+        &self,
+        is_running: Arc<AtomicBool>,
+    ) -> JobCallbacks<
+        impl Fn(JobProgressPayload) + Send + Sync + 'static,
+        impl Fn(JobItemPayload) + Send + Sync + 'static,
+        impl FnOnce(JobFinishedPayload) + Send + Sync + 'static,
+    > {
+        let p = Arc::clone(&self.progress);
+        let i = Arc::clone(&self.items);
+        let f = Arc::clone(&self.finished);
+        let r = Arc::clone(&self.is_running_at_finished);
+        JobCallbacks {
+            on_progress: move |prog| p.lock().unwrap().push(prog),
+            on_item: move |item| i.lock().unwrap().push(item),
+            on_finished: move |fin| {
+                *r.lock().unwrap() = Some(is_running.load(Ordering::SeqCst));
+                *f.lock().unwrap() = Some(fin);
+            },
+        }
+    }
+
+    fn is_running_at_finished(&self) -> Option<bool> {
+        *self.is_running_at_finished.lock().unwrap()
     }
 
     fn items(&self) -> Vec<JobItemPayload> {
@@ -754,7 +782,7 @@ fn start_internal_ok_delivers_job_finished() {
         &app_state,
         &[img_id],
         PageSizeChoice::Fit,
-        recorder.callbacks(),
+        recorder.callbacks_recording_running(Arc::clone(&app_state.is_running)),
     )
     .expect("start_images_to_pdfs_internal should succeed");
 
@@ -762,6 +790,7 @@ fn start_internal_ok_delivers_job_finished() {
     assert_eq!(finished.succeeded, 1);
     assert_eq!(finished.failed, 0);
     assert!(!finished.cancelled);
+    assert_eq!(recorder.is_running_at_finished(), Some(false));
     assert!(!app_state.is_running.load(Ordering::SeqCst));
 
     let recorder = TestRecorder::new();
@@ -771,7 +800,7 @@ fn start_internal_ok_delivers_job_finished() {
         "1",
         RenderFormatChoice::Png,
         150,
-        recorder.callbacks(),
+        recorder.callbacks_recording_running(Arc::clone(&app_state.is_running)),
     )
     .expect("start_pdfs_to_images_internal should succeed");
 
@@ -779,6 +808,7 @@ fn start_internal_ok_delivers_job_finished() {
     assert_eq!(finished.succeeded, 1);
     assert_eq!(finished.failed, 0);
     assert!(!finished.cancelled);
+    assert_eq!(recorder.is_running_at_finished(), Some(false));
     assert!(!app_state.is_running.load(Ordering::SeqCst));
 }
 
@@ -945,4 +975,159 @@ fn cancellation_during_merged_pdf_on_item_writes_no_file() {
     let finished = recorder.finished();
     assert!(finished.cancelled);
     assert_eq!(finished.succeeded, 0);
+}
+
+#[test]
+fn running_guard_drop_does_not_clear_subsequent_running_flag() {
+    let flag = Arc::new(AtomicBool::new(true));
+    let guard = RunningGuard::new(Arc::clone(&flag));
+
+    let running_during_callback = Arc::new(AtomicBool::new(true));
+    let r_clone = Arc::clone(&running_during_callback);
+    let flag_clone = Arc::clone(&flag);
+    let wrapped = guard.wrap_on_finished(move |_| {
+        r_clone.store(flag_clone.load(Ordering::SeqCst), Ordering::SeqCst);
+        // Simulate next conversion starting immediately and acquiring running flag
+        flag_clone.store(true, Ordering::SeqCst);
+    });
+
+    wrapped(JobFinishedPayload {
+        succeeded: 1,
+        failed: 0,
+        no_pages: 0,
+        unprocessed: 0,
+        cancelled: false,
+    });
+
+    assert!(
+        !running_during_callback.load(Ordering::SeqCst),
+        "flag must be false when on_finished is called"
+    );
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "flag should be true after new conversion started"
+    );
+
+    // Old guard is dropped now
+    drop(guard);
+
+    // Old guard must not clear the new conversion's running flag
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "flag must remain true after old guard is dropped"
+    );
+}
+
+#[test]
+fn running_guard_resets_flag_on_drop_when_unfinished() {
+    let flag = Arc::new(AtomicBool::new(true));
+    let guard = RunningGuard::new(Arc::clone(&flag));
+    assert!(flag.load(Ordering::SeqCst));
+    drop(guard);
+    assert!(!flag.load(Ordering::SeqCst));
+}
+
+#[test]
+fn images_to_pdfs_each_skips_initial_error_and_does_not_claim_output_name() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let bmp_path = temp_in.path().join("a.bmp");
+    fs::write(&bmp_path, b"not an image").unwrap();
+    let png_path = copy_fixture(temp_in.path(), "logo_alpha.png", "a.png");
+
+    let add_res = add_images(&app_state, &[bmp_path.clone(), png_path]);
+    assert_eq!(add_res.added.len(), 2);
+    assert_eq!(add_res.added[0].name, "a.bmp");
+    let bmp_err = add_res.added[0]
+        .error
+        .clone()
+        .expect("a.bmp must have error upon addition");
+    assert_eq!(add_res.added[1].name, "a.png");
+    assert!(add_res.added[1].error.is_none());
+
+    // Overwrite a.bmp with valid image bytes after adding to item table
+    // to verify that run_images_to_pdfs does not re-read files that failed probe.
+    fs::write(&bmp_path, fs::read(fixture("logo_alpha.png")).unwrap()).unwrap();
+
+    let ids: Vec<u64> = add_res.added.iter().map(|item| item.id).collect();
+
+    let recorder = TestRecorder::new();
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .expect("run_images_to_pdfs should succeed");
+
+    let finished = recorder.finished();
+    assert_eq!(finished.succeeded, 1);
+    assert_eq!(finished.failed, 1);
+    assert_eq!(finished.unprocessed, 0);
+    assert!(!finished.cancelled);
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 2);
+
+    let bmp_item = items.iter().find(|i| i.id == ids[0]).unwrap();
+    assert_eq!(bmp_item.status, JobItemStatus::Failed);
+    assert_eq!(bmp_item.error.as_ref().map(|e| e.code), Some(bmp_err.code));
+    assert!(bmp_item.outputs.is_empty());
+
+    let png_item = items.iter().find(|i| i.id == ids[1]).unwrap();
+    assert_eq!(png_item.status, JobItemStatus::Ok);
+    assert_eq!(png_item.outputs, vec!["a.pdf".to_string()]);
+    assert!(temp_out.path().join("a.pdf").exists());
+
+    assert_no_temp_files(temp_out.path());
+}
+
+#[test]
+fn merged_pdf_skips_initial_error_without_rereading_file() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let bmp_path = temp_in.path().join("a.bmp");
+    fs::write(&bmp_path, b"not an image").unwrap();
+
+    let add_res = add_images(&app_state, std::slice::from_ref(&bmp_path));
+    assert_eq!(add_res.added.len(), 1);
+    let bmp_err = add_res.added[0]
+        .error
+        .clone()
+        .expect("a.bmp must have error upon addition");
+    let id = add_res.added[0].id;
+
+    // Overwrite a.bmp with valid image bytes after adding to item table
+    fs::write(&bmp_path, fs::read(fixture("logo_alpha.png")).unwrap()).unwrap();
+
+    let dest_path = temp_out.path().join("merged.pdf");
+    let recorder = TestRecorder::new();
+    let res = run_save_merged_pdf(
+        &app_state,
+        &[id],
+        PageSizeChoice::Fit,
+        &dest_path,
+        recorder.callbacks(),
+    )
+    .expect("run_save_merged_pdf should succeed");
+
+    assert!(res.is_none());
+    assert!(!dest_path.exists());
+
+    let finished = recorder.finished();
+    assert_eq!(finished.succeeded, 0);
+    assert_eq!(finished.failed, 1);
+    assert!(!finished.cancelled);
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Failed);
+    assert_eq!(items[0].error.as_ref().map(|e| e.code), Some(bmp_err.code));
+
+    assert_no_temp_files(temp_out.path());
 }
