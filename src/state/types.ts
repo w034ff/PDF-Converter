@@ -1,10 +1,13 @@
 import type { Language } from "../i18n";
 import type {
+  CheckPageRangeResult,
   ImageItem,
+  IpcError,
   OutputDirLabel,
   OutputMode,
   PageSizeChoice,
   PdfItem,
+  RenderFormatChoice,
 } from "../ipc";
 import type { JobAction, JobState } from "./job";
 
@@ -35,14 +38,33 @@ export type ImagesToPdfAction =
   | { type: "SET_IMAGES_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
   | { type: "MOVE_IMAGE_ITEM"; fromIndex: number; toIndex: number };
 
+export type PageSelection = "all" | "range";
+
 export interface PdfToImagesState {
   items: PdfItem[];
+  pageSelection: PageSelection;
+  rangeText: string;
+  format: RenderFormatChoice;
+  dpi: number;
+  outputDir: OutputDirLabel | null;
+  rangeResult: CheckPageRangeResult | null;
+  rangeError: IpcError | null;
+  rangeChecking: boolean;
 }
 
 export type PdfToImagesAction =
   | { type: "ADD_PDF_ITEMS"; items: PdfItem[] }
   | { type: "REMOVE_PDF_ITEM"; id: number }
-  | { type: "CLEAR_PDF_ITEMS" };
+  | { type: "CLEAR_PDF_ITEMS" }
+  | { type: "SET_PAGE_SELECTION"; selection: PageSelection }
+  | { type: "SET_RANGE_TEXT"; rangeText: string }
+  | { type: "SET_RENDER_FORMAT"; format: RenderFormatChoice }
+  | { type: "SET_RENDER_DPI"; dpi: number }
+  | { type: "SET_PDFS_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
+  | { type: "CHECK_RANGE_STARTED" }
+  | { type: "CHECK_RANGE_SUCCESS"; result: CheckPageRangeResult }
+  | { type: "CHECK_RANGE_FAILURE"; error: IpcError }
+  | { type: "CHECK_RANGE_RESET" };
 
 export interface AppState {
   language: LanguageState;

@@ -53,6 +53,7 @@ export const en: Translations = {
     counts: {
       succeeded: "{count} succeeded",
       failed: "{count} failed",
+      partial: "{count} partly failed",
       noPages: "{count} with no pages in range",
       unprocessed: "{count} not processed",
     },
@@ -70,6 +71,55 @@ export const en: Translations = {
   errors: {
     title: "Error",
     dismiss: "Dismiss",
+  },
+  pdfToImages: {
+    settings: {
+      pagesTitle: "Pages",
+      pagesAll: "All",
+      pagesRange: "Select range",
+      rangeLabel: "Pages to convert (e.g. 1-3, 5)",
+      rangePlaceholder: "1-3, 5",
+      rangeHintSingle: "Will convert {count} pages",
+      rangeHintBatch:
+        "Applies the same range to all PDFs. PDFs with fewer pages convert only existing pages.",
+      formatTitle: "Format",
+      formatPng: "PNG",
+      formatJpeg: "JPEG",
+      dpiLabel: "Resolution",
+      dpiChoices: {
+        dpi72: "72 dpi (screen)",
+        dpi150: "150 dpi (standard)",
+        dpi300: "300 dpi (print)",
+      },
+      renderDimension: "1 page of {size} → {width} × {height} px",
+    },
+    single: {
+      meta: "{pages} pages · {size} · {fileSize}",
+      convertPage: "{page}  ✓ Convert",
+      failedPage: "{page}  ✕ Failed",
+      thumbnailAlt: "Thumbnail of {name} page {page}",
+    },
+    batch: {
+      pdfCount: "{count} PDFs",
+      skippedSummary: "({details} skipped)",
+      skippedUnsupported: "{count} unsupported",
+      skippedFolders: "{count} folders",
+      skippedDuplicates: "{count} duplicates",
+      skippedSeparator: ", ",
+      table: {
+        filename: "File name",
+        pages: "Pages / Total",
+        savedFiles: "Saved files",
+        status: "Status",
+        actions: "Actions",
+      },
+      noPagesReason: "No pages in the specified range",
+      failedPagesReason: "Failed pages: {pages}",
+      cancelledSavedReason: "{count} pages saved",
+    },
+    remove: "Remove",
+    clearAll: "Clear all",
+    summaryFailuresHint: "Reasons for failed PDFs are shown in the list below",
   },
   imagesToPdf: {
     outputLabel: "Output",

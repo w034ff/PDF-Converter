@@ -35,6 +35,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "ADD_PDF_ITEMS":
     case "REMOVE_PDF_ITEM":
     case "CLEAR_PDF_ITEMS":
+    case "SET_PAGE_SELECTION":
+    case "SET_RANGE_TEXT":
+    case "SET_RENDER_FORMAT":
+    case "SET_RENDER_DPI":
+    case "SET_PDFS_OUTPUT_DIR":
+    case "CHECK_RANGE_STARTED":
+    case "CHECK_RANGE_SUCCESS":
+    case "CHECK_RANGE_FAILURE":
+    case "CHECK_RANGE_RESET":
       return {
         ...state,
         pdfToImages: pdfToImagesReducer(state.pdfToImages, action),
