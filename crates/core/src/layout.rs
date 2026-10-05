@@ -13,6 +13,12 @@ pub const A4_HEIGHT_PT: f32 = 841.89;
 /// Margin around an A4 page in millimeters (design §4.2).
 pub const A4_MARGIN_MM: f32 = 10.0;
 
+/// Points per inch in PDF coordinate space (72 pt = 1 inch).
+pub const POINTS_PER_INCH: f32 = 72.0;
+
+/// Millimeters per inch (25.4 mm = 1 inch).
+pub const MM_PER_INCH: f32 = 25.4;
+
 /// Maximum page side length in points (design §4.2).
 ///
 /// Corresponds to 200 inches (14,400 pt), Acrobat's page limit.
@@ -51,18 +57,24 @@ pub struct PageLayout {
     pub image_rect: Rect,
 }
 
+/// Returns whether the given EXIF orientation swaps width and height (design §4.2).
+#[must_use]
+pub fn orientation_swaps_dimensions(orientation: Orientation) -> bool {
+    matches!(
+        orientation,
+        Orientation::Rotate90
+            | Orientation::Rotate270
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
+    )
+}
+
 /// Calculates the page size and image placement rectangle (design §4.2).
 ///
 /// This is a pure function. Coordinates use top-left origin with Y pointing down.
 #[must_use]
 pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
-    let swaps = matches!(
-        info.orientation,
-        Orientation::Rotate90
-            | Orientation::Rotate270
-            | Orientation::Rotate90FlipH
-            | Orientation::Rotate270FlipH
-    );
+    let swaps = orientation_swaps_dimensions(info.orientation);
     let (display_w, display_h) = if swaps {
         (info.height as f32, info.width as f32)
     } else {
@@ -71,9 +83,8 @@ pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
 
     match page_size {
         PageSize::Fit => {
-            // raw pt = pixels / dpi * 72
-            let raw_w = (display_w * 72.0) / info.dpi as f32;
-            let raw_h = (display_h * 72.0) / info.dpi as f32;
+            let raw_w = (display_w * POINTS_PER_INCH) / info.dpi as f32;
+            let raw_h = (display_h * POINTS_PER_INCH) / info.dpi as f32;
             let max_side = raw_w.max(raw_h);
             let scale = if max_side > MAX_PAGE_SIDE_PT {
                 MAX_PAGE_SIDE_PT / max_side
@@ -104,7 +115,7 @@ pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
                 (A4_WIDTH_PT, A4_HEIGHT_PT)
             };
 
-            let margin_pt = A4_MARGIN_MM * 72.0 / 25.4;
+            let margin_pt = A4_MARGIN_MM * POINTS_PER_INCH / MM_PER_INCH;
             let avail_w = page_w - 2.0 * margin_pt;
             let avail_h = page_h - 2.0 * margin_pt;
 
@@ -187,7 +198,7 @@ mod tests {
     #[test]
     fn a4_applies_margin_and_centers() {
         assert_eq!(A4_MARGIN_MM, 10.0);
-        let expected_margin_pt = 10.0 * 72.0 / 25.4; // 10 mm in pt (~28.346 pt)
+        let expected_margin_pt = 10.0 * POINTS_PER_INCH / MM_PER_INCH;
         let img = make_info(400, 200, Orientation::NoTransforms, 96);
         let layout = calculate_layout(&img, PageSize::A4);
 
@@ -207,7 +218,7 @@ mod tests {
 
     #[test]
     fn a4_scales_up_small_images_and_scales_down_large_images() {
-        let margin_pt = A4_MARGIN_MM * 72.0 / 25.4;
+        let margin_pt = A4_MARGIN_MM * POINTS_PER_INCH / MM_PER_INCH;
 
         // Very small image (10x20 px)
         let small = make_info(10, 20, Orientation::NoTransforms, 96);
@@ -225,7 +236,12 @@ mod tests {
     fn fit_scales_down_when_exceeding_max_page_side() {
         // Image producing raw dimension > MAX_PAGE_SIDE_PT (14,400 pt)
         // At 72 dpi, 20,000 px = 20,000 pt.
-        let huge = make_info(20000, 10000, Orientation::NoTransforms, 72);
+        let huge = make_info(
+            20000,
+            10000,
+            Orientation::NoTransforms,
+            POINTS_PER_INCH as u32,
+        );
         let layout = calculate_layout(&huge, PageSize::Fit);
         assert!((layout.page_width - MAX_PAGE_SIDE_PT).abs() < 1e-2);
         assert!((layout.page_height - 7200.0).abs() < 1e-2);
@@ -233,6 +249,18 @@ mod tests {
         assert_eq!(layout.image_rect.y, 0.0);
         assert!((layout.image_rect.width - MAX_PAGE_SIDE_PT).abs() < 1e-2);
         assert!((layout.image_rect.height - 7200.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn orientation_swaps_dimensions_cases() {
+        assert!(!orientation_swaps_dimensions(Orientation::NoTransforms));
+        assert!(!orientation_swaps_dimensions(Orientation::FlipHorizontal));
+        assert!(!orientation_swaps_dimensions(Orientation::Rotate180));
+        assert!(!orientation_swaps_dimensions(Orientation::FlipVertical));
+        assert!(orientation_swaps_dimensions(Orientation::Rotate90FlipH));
+        assert!(orientation_swaps_dimensions(Orientation::Rotate90));
+        assert!(orientation_swaps_dimensions(Orientation::Rotate270FlipH));
+        assert!(orientation_swaps_dimensions(Orientation::Rotate270));
     }
 
     #[test]
@@ -250,7 +278,8 @@ mod tests {
         ];
 
         for (orient, swaps) in orientations {
-            let info = make_info(160, 96, orient, 72);
+            assert_eq!(orientation_swaps_dimensions(orient), swaps);
+            let info = make_info(160, 96, orient, POINTS_PER_INCH as u32);
             let layout = calculate_layout(&info, PageSize::Fit);
 
             if swaps {

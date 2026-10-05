@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use image::Rgb;
 use pdfconv_core::probe::probe_reader;
-use pdfconv_core::{PageSize, PdfWriter, ProbeError, calculate_layout};
+use pdfconv_core::{POINTS_PER_INCH, PageSize, PdfWriter, ProbeError, calculate_layout};
 use pdfium_render::prelude::*;
 
 /// Tolerance for pixel value differences when comparing rendered image with original (design §11.2).
@@ -121,7 +121,7 @@ fn pdf_quality_and_conformance_suite() {
             .unwrap_or_else(|e| panic!("failed to get page 0 for {name}: {e:?}"));
 
         // Render at native image DPI
-        let scale = info.dpi as f32 / 72.0;
+        let scale = info.dpi as f32 / POINTS_PER_INCH;
         let render_config = PdfRenderConfig::new().scale_page_by_factor(scale);
         let rendered_image = render_page_to_rgb(&page, &render_config);
 
@@ -187,7 +187,7 @@ fn pdf_quality_and_conformance_suite() {
     ];
 
     println!("\n--- [A4] Placement Test Results ---");
-    let scale_a4 = RENDER_DPI_A4 / 72.0;
+    let scale_a4 = RENDER_DPI_A4 / POINTS_PER_INCH;
 
     for name in a4_fixtures {
         let path = fix_dir.join(name);
