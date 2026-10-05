@@ -1,0 +1,6 @@
+# Pinned so that the local hook and CI run the same clippy: a newer stable
+# adds lints that would fail CI on code the hook accepted. Gemini cannot run
+# rustup, so a bump installs the new version locally before it is pushed.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]

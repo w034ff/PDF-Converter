@@ -34,10 +34,9 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
+      # Installs the version and components pinned in rust-toolchain.toml.
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        run: rustup toolchain install
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2

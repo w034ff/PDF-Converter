@@ -44,8 +44,9 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
+      # Installs the version pinned in rust-toolchain.toml.
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup toolchain install
 
       - name: Setup Node.js
         uses: actions/setup-node@v7

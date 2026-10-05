@@ -20,7 +20,7 @@ Rules for the implementer of this repository. Read this file and the documents b
 Stop, do not open a PR, and report with status 中断 when any condition in `docs/work-plan.md` §2.2 applies. In short:
 
 - a change would go against a decision in `docs/design.md`;
-- you need a new or updated dependency, a tool, network access, or a command your permissions deny;
+- you need a new or updated dependency, a different Rust version, a tool, network access, or a command your permissions deny;
 - the documents disagree with the actual code or a library's API;
 - the same failure (build, test, clippy, hook) survives three attempts to fix it;
 - a change touches a security boundary (a command taking a path, capabilities, CSP, opening a PDF outside the worker).
@@ -79,6 +79,7 @@ Do not push through by guessing.
 
 - You cannot add or update dependencies (your permissions deny `cargo add`, `npm install` and network access). If a task needs one, stop and ask (see "When to stop and ask").
 - Allowed licenses are listed in `deny.toml` (MIT, Apache-2.0, BSD, ISC, Zlib and similar). GPL, LGPL and AGPL are not allowed.
+- The Rust version is pinned in `rust-toolchain.toml`. Do not change it.
 - The pdfium version and its hash live only in `scripts/pdfium-version.json` (`docs/design.md` §8). Do not change them.
 
 ## Comments
