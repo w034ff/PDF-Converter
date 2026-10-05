@@ -6,3 +6,4 @@ target/
 dist/
 package-lock.json
 Cargo.lock
+src/licenses/third-party-licenses.json

@@ -2,6 +2,7 @@
 
 pub mod commands;
 pub mod pdfium;
+pub mod worker_pool;
 
 /// Starts the Tauri application.
 ///

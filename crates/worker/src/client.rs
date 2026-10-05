@@ -30,6 +30,9 @@ pub enum WorkerError {
 /// How long to wait for a worker to open a PDF or load pdfium (design §5.2).
 pub const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long to wait for a worker to render a page or thumbnail (design §5.2).
+pub const RENDER_TIMEOUT: Duration = Duration::from_secs(60);
+
 type Message = io::Result<Option<(Response, Vec<u8>)>>;
 
 /// One running worker process. Dropping it kills the process.
@@ -143,6 +146,11 @@ impl WorkerProcess {
     /// The operating system's id of the worker process.
     pub fn id(&self) -> u32 {
         self.child.id()
+    }
+
+    /// Whether this worker process has crashed, timed out, or stopped.
+    pub fn is_dead(&self) -> bool {
+        self.dead
     }
 
     fn fail(&mut self, error: WorkerError) -> WorkerError {

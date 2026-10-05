@@ -1,0 +1,59 @@
+# Monthly dependency update pull requests. Minor and patch updates are grouped
+# per ecosystem to keep the number of PRs small; major updates come one by one
+# because they may need code changes.
+#
+# A PR that changes Rust or npm dependencies fails the "license list is current"
+# CI step until `npm run licenses:generate` is run on the branch and the result
+# committed (src/licenses/third-party-licenses.json).
+#
+# The Rust version is pinned in rust-toolchain.toml and is not a dependency
+# Dependabot manages; it is bumped by hand.
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      # The tauri crate and @tauri-apps/* must be on the same minor version, so
+      # every Tauri crate moves in one PR whatever the update type. Dependabot
+      # cannot group across ecosystems: the npm PR below has to be merged
+      # together with this one. Listed first because a dependency joins the
+      # first group it matches.
+      tauri-cargo:
+        patterns: ["tauri", "tauri-*"]
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # The `pdfium_NNNN` feature is chosen by hand to match the bundled pdfium
+      # and moves together with it (design §2, §8.4).
+      - dependency-name: "pdfium-render"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      # See tauri-cargo above.
+      tauri-npm:
+        patterns: ["@tauri-apps/*"]
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # Must stay inside typescript-eslint's peer range, which a new TypeScript
+      # minor usually breaks; bump it by hand once typescript-eslint allows it.
+      - dependency-name: "typescript"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      # Follows the Node major in .nvmrc, so that types never offer APIs the
+      # runtime lacks; bump it by hand together with .nvmrc.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      actions:
+        patterns: ["*"]
