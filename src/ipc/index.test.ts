@@ -3,16 +3,30 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import {
   addImages,
   addPdfs,
+  cancelJob,
+  checkPageRange,
   getThumbnail,
   isErrorCode,
   isIpcError,
   ITEMS_DROPPED_EVENT,
+  JOB_FINISHED_EVENT,
+  JOB_ITEM_EVENT,
+  JOB_PROGRESS_EVENT,
   normalizeIpcError,
   onItemsDropped,
+  onJobFinished,
+  onJobItem,
+  onJobProgress,
   removeItems,
+  saveMergedPdf,
+  startImagesToPdfs,
+  startPdfsToImages,
   type AddResult,
   type ImageItem,
   type ItemsDropped,
+  type JobFinishedPayload,
+  type JobItemPayload,
+  type JobProgressPayload,
   type PdfItem,
 } from ".";
 
@@ -107,6 +121,74 @@ describe("ipc", () => {
         detail: "invalid args `source` for command `add_images`",
       });
     });
+
+    it("calls checkPageRange and returns result", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return { totalPages: 5 };
+      });
+
+      const res = await checkPageRange("1-3, 5", [1, 2]);
+      expect(res).toEqual({ totalPages: 5 });
+      expect(calls).toEqual([
+        ["check_page_range", { text: "1-3, 5", ids: [1, 2] }],
+      ]);
+    });
+
+    it("calls cancelJob", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await cancelJob();
+      expect(calls).toEqual([["cancel_job", {}]]);
+    });
+
+    it("calls saveMergedPdf", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return { savedName: "out.pdf" };
+      });
+
+      const res = await saveMergedPdf([1, 2], "fit");
+      expect(res).toEqual({ savedName: "out.pdf" });
+      expect(calls).toEqual([
+        ["save_merged_pdf", { ids: [1, 2], pageSize: "fit" }],
+      ]);
+    });
+
+    it("calls startImagesToPdfs", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await startImagesToPdfs([1, 2], "a4");
+      expect(calls).toEqual([
+        ["start_images_to_pdfs", { ids: [1, 2], pageSize: "a4" }],
+      ]);
+    });
+
+    it("calls startPdfsToImages", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await startPdfsToImages([1, 2], "1-3", "png", 150);
+      expect(calls).toEqual([
+        [
+          "start_pdfs_to_images",
+          { ids: [1, 2], range: "1-3", format: "png", dpi: 150 },
+        ],
+      ]);
+    });
   });
 
   describe("errors", () => {
@@ -157,11 +239,70 @@ describe("ipc", () => {
         images: [],
         pdfs: [],
         skipped: { unsupported: 1, folders: 0, duplicates: 0 },
+        error: null,
       };
 
       await emit(ITEMS_DROPPED_EVENT, payload);
       unlisten();
       await emit(ITEMS_DROPPED_EVENT, payload);
+
+      expect(received).toEqual([payload]);
+    });
+
+    it("handles job-progress events", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: JobProgressPayload[] = [];
+      const unlisten = await onJobProgress((payload) => {
+        received.push(payload);
+      });
+      const payload: JobProgressPayload = {
+        done: 1,
+        total: 5,
+        current: "a.pdf",
+      };
+
+      await emit(JOB_PROGRESS_EVENT, payload);
+      unlisten();
+
+      expect(received).toEqual([payload]);
+    });
+
+    it("handles job-item events", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: JobItemPayload[] = [];
+      const unlisten = await onJobItem((payload) => {
+        received.push(payload);
+      });
+      const payload: JobItemPayload = {
+        id: 1,
+        status: "ok",
+        outputs: ["a_p1.png"],
+        error: null,
+        failedPages: null,
+      };
+
+      await emit(JOB_ITEM_EVENT, payload);
+      unlisten();
+
+      expect(received).toEqual([payload]);
+    });
+
+    it("handles job-finished events", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: JobFinishedPayload[] = [];
+      const unlisten = await onJobFinished((payload) => {
+        received.push(payload);
+      });
+      const payload: JobFinishedPayload = {
+        succeeded: 2,
+        failed: 1,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      };
+
+      await emit(JOB_FINISHED_EVENT, payload);
+      unlisten();
 
       expect(received).toEqual([payload]);
     });

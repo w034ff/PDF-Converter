@@ -230,6 +230,7 @@ pub struct ItemsDropped {
     pub images: Vec<ImageItem>,
     pub pdfs: Vec<PdfItem>,
     pub skipped: Skipped,
+    pub error: Option<IpcError>,
 }
 
 /// What a folder holds, sorted into the lists (design §6.1).
@@ -559,6 +560,14 @@ pub fn sort_dropped(paths: &[PathBuf]) -> DropSorting {
 
 /// Adds what was dropped to both lists (design §6.1, §7.2).
 pub fn add_dropped(state: &AppState, paths: &[PathBuf]) -> ItemsDropped {
+    if state.is_running.load(Ordering::SeqCst) {
+        return ItemsDropped {
+            images: Vec::new(),
+            pdfs: Vec::new(),
+            skipped: Skipped::default(),
+            error: Some(IpcError::from_code(ErrorCode::ConversionRunning)),
+        };
+    }
     let sorting = sort_dropped(paths);
     let images = add_images(state, &sorting.images);
     let pdfs = add_pdfs(state, &sorting.pdfs);
@@ -571,7 +580,17 @@ pub fn add_dropped(state: &AppState, paths: &[PathBuf]) -> ItemsDropped {
         images: images.added,
         pdfs: pdfs.added,
         skipped: images.skipped.merged(pdfs.skipped).merged(left_out),
+        error: None,
     }
+}
+
+/// Removes items from the table, rejecting with `ConversionRunning` during active conversion (design §6.1, §7.1).
+pub fn remove_items(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
+    if state.is_running.load(Ordering::SeqCst) {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
+    state.items.remove(ids);
+    Ok(())
 }
 
 /// Makes the PNG thumbnail of an item (design §6.1).

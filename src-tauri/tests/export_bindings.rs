@@ -8,6 +8,10 @@ use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{
     AddResult, ImageFormatName, ImageItem, ItemsDropped, PageSizePt, PdfItem, Skipped,
 };
+use pdf_converter_lib::jobs::{
+    CheckPageRangeResult, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
+    PageSizeChoice, RenderFormatChoice, SaveMergedPdfResult,
+};
 use ts_rs::{Config, TS};
 
 #[test]
@@ -27,4 +31,12 @@ fn export_typescript_bindings() {
     Skipped::export_all(&cfg).expect("exporting Skipped");
     AddResult::<ImageItem>::export_all(&cfg).expect("exporting AddResult");
     ItemsDropped::export_all(&cfg).expect("exporting ItemsDropped");
+    PageSizeChoice::export_all(&cfg).expect("exporting PageSizeChoice");
+    RenderFormatChoice::export_all(&cfg).expect("exporting RenderFormatChoice");
+    JobItemStatus::export_all(&cfg).expect("exporting JobItemStatus");
+    JobProgressPayload::export_all(&cfg).expect("exporting JobProgressPayload");
+    JobItemPayload::export_all(&cfg).expect("exporting JobItemPayload");
+    JobFinishedPayload::export_all(&cfg).expect("exporting JobFinishedPayload");
+    CheckPageRangeResult::export_all(&cfg).expect("exporting CheckPageRangeResult");
+    SaveMergedPdfResult::export_all(&cfg).expect("exporting SaveMergedPdfResult");
 }
