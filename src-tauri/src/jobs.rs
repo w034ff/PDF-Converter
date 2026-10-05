@@ -136,6 +136,11 @@ pub struct JobFinishedPayload {
 pub struct CheckPageRangeResult {
     #[ts(type = "number")]
     pub total_pages: u32,
+    /// The range as sorted, non-overlapping `[start, end]` page intervals, so
+    /// the screen can mark pages without parsing the text itself (design
+    /// §4.5, §6.3). Its length follows the text, not the pages it covers.
+    #[ts(type = "Array<[number, number]>")]
+    pub intervals: Vec<(u32, u32)>,
 }
 
 /// Result returned when a merged PDF is saved (design §7.1).
@@ -298,7 +303,10 @@ pub fn check_page_range_internal(
             total_pages = total_pages.saturating_add(page_set.count_within(entry.page_count));
         }
     }
-    Ok(CheckPageRangeResult { total_pages })
+    Ok(CheckPageRangeResult {
+        total_pages,
+        intervals: page_set.intervals().to_vec(),
+    })
 }
 
 /// Executes merging multiple images into a single PDF document (design §6.2, §6.5).

@@ -490,6 +490,11 @@ fn check_page_range_sums_valid_items_and_rejects_invalid_syntax() {
     )
     .unwrap();
     assert_eq!(res.total_pages, 2);
+    // The intervals are normalized and not clipped to any PDF's pages.
+    assert_eq!(res.intervals, vec![(1, 2), (5, 5)]);
+
+    let res = check_page_range_internal(&app_state, "5, 1-3, 2", &[shapes_id]).unwrap();
+    assert_eq!(res.intervals, vec![(1, 3), (5, 5)]);
 
     // Invalid syntax returns InvalidPageRange
     let err = check_page_range_internal(&app_state, "abc", &[shapes_id]).unwrap_err();

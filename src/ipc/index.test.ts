@@ -131,11 +131,23 @@ describe("ipc", () => {
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
         calls.push([cmd, args]);
-        return { totalPages: 5 };
+        return {
+          totalPages: 5,
+          intervals: [
+            [1, 3],
+            [5, 5],
+          ],
+        };
       });
 
       const res = await checkPageRange("1-3, 5", [1, 2]);
-      expect(res).toEqual({ totalPages: 5 });
+      expect(res).toEqual({
+        totalPages: 5,
+        intervals: [
+          [1, 3],
+          [5, 5],
+        ],
+      });
       expect(calls).toEqual([
         ["check_page_range", { text: "1-3, 5", ids: [1, 2] }],
       ]);

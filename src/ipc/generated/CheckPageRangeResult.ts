@@ -3,4 +3,10 @@
 /**
  * Result of checking a page range across candidate PDFs (design §7.1).
  */
-export type CheckPageRangeResult = { totalPages: number, };
+export type CheckPageRangeResult = { totalPages: number, 
+/**
+ * The range as sorted, non-overlapping `[start, end]` page intervals, so
+ * the screen can mark pages without parsing the text itself (design
+ * §4.5, §6.3). Its length follows the text, not the pages it covers.
+ */
+intervals: Array<[number, number]>, };

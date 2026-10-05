@@ -216,6 +216,7 @@
 - 一覧に PDF が 1 つのときは、ページのサムネイルを並べ、範囲の指定で変換するページを示す。複数のときは、一覧の表とする（モックアップ `PdfSingle` と `PdfBatch`）。
 - 範囲を入力するたびに `check_page_range` を呼び、変換するページの合計を表示する。書式の誤りは入力欄の下に表示し、「変換を開始」を無効にする。
 - 「すべて」のときは、範囲として `1-{対象の PDF の最大のページ数}` を渡す。`parse_page_range` は空の文字列を受け付けず、ページ数を超える番号は PDF ごとに飛ばされる（§4.5）ので、これで全 PDF の全ページになる。
+- PDF が 1 つのときのサムネイルの格子では、変換するページを強調する。どのページかは、`check_page_range` が返す `intervals`（正規化した区間）にページ番号が入るかで決める。フロントエンドは範囲の文字列を解釈しない（§4.5）。
 - 「変換を開始」で、保存先のフォルダと、形式、解像度、範囲を渡す。PDF ごとにワーカーを 1 つ借り、`Open` → 対象のページごとに `Render` → 保存、を行う。PDF の単位で並列にする。
 - 出力名: `元の名前_p{番号}.{png|jpg}`。番号は、その PDF のページ数の桁数で 0 を詰める（8 ページなら `p1`〜`p8`、120 ページなら `p001`〜`p120`）。ファイルの一覧で名前の順に並べたとき、ページの順になるようにするため。
 - 1 つの PDF の途中のページで失敗したときは、その PDF の残りのページを続け、その PDF を「一部失敗」として失敗のページ番号を表示する。
@@ -291,7 +292,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages"` | `{ dirLabel } \| null` |
 | `save_merged_pdf` | `ids, pageSize` | `{ savedName } \| null`（保存ダイアログを開く） |
 | `start_images_to_pdfs` | `ids, pageSize` | –（§6.2 の「1 枚ずつ」） |
-| `check_page_range` | `text, ids` | `{ totalPages }` または `InvalidPageRange` |
+| `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][] }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, dpi` | – |
 | `cancel_job` | – | – |
 | `get_about` | – | `{ version, pdfiumVersion, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか） |
