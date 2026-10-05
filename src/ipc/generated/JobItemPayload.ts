@@ -5,4 +5,4 @@ import type { JobItemStatus } from "./JobItemStatus";
 /**
  * Item completion notification emitted via `job-item` event (design §7.2).
  */
-export type JobItemPayload = { id: number, status: JobItemStatus, outputs: Array<string>, error: IpcError | null, failedPages: Array<number> | null, };
+export type JobItemPayload = { id: number, status: JobItemStatus, outputs: Array<string>, error?: IpcError, failedPages?: Array<number>, };

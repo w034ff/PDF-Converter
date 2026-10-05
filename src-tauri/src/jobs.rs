@@ -108,8 +108,10 @@ pub struct JobItemPayload {
     pub status: JobItemStatus,
     pub outputs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub error: Option<IpcError>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub failed_pages: Option<Vec<u32>>,
 }
 
@@ -335,6 +337,23 @@ where
             current: Some(file_name),
         });
 
+        if let Some(err) = entry.error {
+            failed += 1;
+            on_item(JobItemPayload {
+                id,
+                status: JobItemStatus::Failed,
+                outputs: Vec::new(),
+                error: Some(err),
+                failed_pages: None,
+            });
+            on_progress(JobProgressPayload {
+                done: succeeded + failed,
+                total,
+                current: None,
+            });
+            continue;
+        }
+
         let read_result = std::fs::read(&entry.path)
             .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))
             .and_then(|bytes| {
@@ -373,7 +392,7 @@ where
         });
     }
 
-    if was_cancelled {
+    if was_cancelled || state.cancel_flag.load(Ordering::SeqCst) {
         // Drop temp file without writing or persisting per design §6.5
         drop(temp);
         on_finished(JobFinishedPayload {
@@ -450,7 +469,8 @@ where
         id: u64,
         filename: String,
         path: PathBuf,
-        initial_output_name: String,
+        initial_error: Option<IpcError>,
+        initial_output_name: Option<String>,
     }
 
     let mut target_names = Vec::new();
@@ -469,8 +489,10 @@ where
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        target_names.push(filename.clone());
-        initial_tasks.push((id, filename, entry.path));
+        if entry.error.is_none() {
+            target_names.push(filename.clone());
+        }
+        initial_tasks.push((id, filename, entry.path, entry.error));
     }
 
     let resolved_names = resolve_image_to_pdf_names(&target_names, &existing);
@@ -481,14 +503,22 @@ where
     }
     let used_names_lower = Arc::new(Mutex::new(initial_used));
 
+    let mut resolved_iter = resolved_names.into_iter();
     let tasks: VecDeque<ImageTask> = initial_tasks
         .into_iter()
-        .zip(resolved_names)
-        .map(|((id, filename, path), initial_output_name)| ImageTask {
-            id,
-            filename,
-            path,
-            initial_output_name,
+        .map(|(id, filename, path, initial_error)| {
+            let initial_output_name = if initial_error.is_none() {
+                resolved_iter.next()
+            } else {
+                None
+            };
+            ImageTask {
+                id,
+                filename,
+                path,
+                initial_error,
+                initial_output_name,
+            }
         })
         .collect();
 
@@ -538,20 +568,46 @@ where
         handles.push(std::thread::spawn(move || {
             loop {
                 if cancel_flag.load(Ordering::SeqCst) {
-                    let mut q = queue.lock().expect("queue mutex poisoned");
+                    let mut q = match queue.lock() {
+                        Ok(g) => g,
+                        Err(p) => p.into_inner(),
+                    };
                     unprocessed.fetch_add(q.len() as u32, Ordering::SeqCst);
                     q.clear();
                     break;
                 }
 
                 let task = {
-                    let mut q = queue.lock().expect("queue mutex poisoned");
+                    let mut q = match queue.lock() {
+                        Ok(g) => g,
+                        Err(p) => p.into_inner(),
+                    };
                     q.pop_front()
                 };
 
                 let Some(task) = task else {
                     break;
                 };
+
+                if let Some(err) = task.initial_error {
+                    failed.fetch_add(1, Ordering::SeqCst);
+                    let current_done = done.fetch_add(1, Ordering::SeqCst) + 1;
+                    on_item(JobItemPayload {
+                        id: task.id,
+                        status: JobItemStatus::Failed,
+                        outputs: Vec::new(),
+                        error: Some(err),
+                        failed_pages: None,
+                    });
+                    on_progress(JobProgressPayload {
+                        done: current_done,
+                        total,
+                        current: None,
+                    });
+                    continue;
+                }
+
+                let output_name = task.initial_output_name.as_deref().unwrap_or_default();
 
                 on_progress(JobProgressPayload {
                     done: done.load(Ordering::SeqCst),
@@ -569,12 +625,7 @@ where
                     let pdf_bytes = writer
                         .finish()
                         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
-                    save_atomic(
-                        &output_dir,
-                        &task.initial_output_name,
-                        &pdf_bytes,
-                        &used_names,
-                    )
+                    save_atomic(&output_dir, output_name, &pdf_bytes, &used_names)
                 })();
 
                 match process_result {
@@ -617,6 +668,14 @@ where
 
     for handle in handles {
         let _ = handle.join();
+    }
+
+    let cur_succeeded = succeeded.load(Ordering::SeqCst);
+    let cur_failed = failed.load(Ordering::SeqCst);
+    let cur_unprocessed = unprocessed.load(Ordering::SeqCst);
+    let accounted = cur_succeeded + cur_failed + cur_unprocessed;
+    if accounted < total {
+        failed.fetch_add(total - accounted, Ordering::SeqCst);
     }
 
     on_finished(JobFinishedPayload {
@@ -743,6 +802,7 @@ where
         return Ok(());
     }
 
+    let total_items = tasks.len() as u32;
     let queue = Arc::new(Mutex::new(tasks));
     let done_pages = Arc::new(AtomicU32::new(0));
     let succeeded_count = Arc::new(AtomicU32::new(0));
@@ -750,9 +810,7 @@ where
     let no_pages_count = Arc::new(AtomicU32::new(0));
     let unprocessed_count = Arc::new(AtomicU32::new(0));
 
-    let num_threads = default_worker_limit()
-        .min(queue.lock().unwrap().len())
-        .max(1);
+    let num_threads = default_worker_limit().min(total_items as usize).max(1);
     let mut handles = Vec::with_capacity(num_threads);
     let output_dir_buf = output_dir.to_path_buf();
 
@@ -773,14 +831,20 @@ where
         handles.push(std::thread::spawn(move || {
             loop {
                 if cancel_flag.load(Ordering::SeqCst) {
-                    let mut q = queue.lock().expect("queue mutex poisoned");
+                    let mut q = match queue.lock() {
+                        Ok(g) => g,
+                        Err(p) => p.into_inner(),
+                    };
                     unprocessed_count.fetch_add(q.len() as u32, Ordering::SeqCst);
                     q.clear();
                     break;
                 }
 
                 let task = {
-                    let mut q = queue.lock().expect("queue mutex poisoned");
+                    let mut q = match queue.lock() {
+                        Ok(g) => g,
+                        Err(p) => p.into_inner(),
+                    };
                     q.pop_front()
                 };
 
@@ -975,6 +1039,14 @@ where
         let _ = handle.join();
     }
 
+    let accounted = succeeded_count.load(Ordering::SeqCst)
+        + failed_count.load(Ordering::SeqCst)
+        + no_pages_count.load(Ordering::SeqCst)
+        + unprocessed_count.load(Ordering::SeqCst);
+    if accounted < total_items {
+        failed_count.fetch_add(total_items - accounted, Ordering::SeqCst);
+    }
+
     on_finished(JobFinishedPayload {
         succeeded: succeeded_count.load(Ordering::SeqCst),
         failed: failed_count.load(Ordering::SeqCst),
@@ -998,12 +1070,7 @@ where
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
     FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
 {
-    let output_dir = {
-        let lock = state.images_output_dir.lock().expect("output_dir lock");
-        lock.clone()
-            .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?
-    };
-
+    // Check conversion running first per design §6.5, §7.1
     if state
         .is_running
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -1013,6 +1080,17 @@ where
     }
     state.cancel_flag.store(false, Ordering::SeqCst);
 
+    let output_dir = {
+        let lock = state.images_output_dir.lock().expect("output_dir lock");
+        match lock.clone() {
+            Some(dir) => dir,
+            None => {
+                state.is_running.store(false, Ordering::SeqCst);
+                return Err(IpcError::from_code(ErrorCode::InvalidParams));
+            }
+        }
+    };
+
     for &id in ids {
         if state.items.get(id).is_none() {
             state.is_running.store(false, Ordering::SeqCst);
@@ -1020,12 +1098,53 @@ where
         }
     }
 
+    if let Err(err) = list_existing_files(&output_dir) {
+        state.is_running.store(false, Ordering::SeqCst);
+        return Err(err);
+    }
+
     let state_clone = state.clone();
     let ids_owned = ids.to_vec();
 
     std::thread::spawn(move || {
         let _running_guard = RunningGuard(Arc::clone(&state_clone.is_running));
-        let _ = run_images_to_pdfs(&state_clone, &ids_owned, page_size, &output_dir, callbacks);
+        let on_finished_cell = Arc::new(Mutex::new(Some(callbacks.on_finished)));
+        let on_finished_for_run = {
+            let cell = Arc::clone(&on_finished_cell);
+            move |finished: JobFinishedPayload| {
+                if let Ok(mut lock) = cell.lock()
+                    && let Some(cb) = lock.take()
+                {
+                    cb(finished);
+                }
+            }
+        };
+        let wrapped_callbacks = JobCallbacks {
+            on_progress: callbacks.on_progress,
+            on_item: callbacks.on_item,
+            on_finished: on_finished_for_run,
+        };
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_images_to_pdfs(
+                &state_clone,
+                &ids_owned,
+                page_size,
+                &output_dir,
+                wrapped_callbacks,
+            )
+        }));
+        if (res.is_err() || matches!(res, Ok(Err(_))))
+            && let Ok(mut lock) = on_finished_cell.lock()
+            && let Some(cb) = lock.take()
+        {
+            cb(JobFinishedPayload {
+                succeeded: 0,
+                failed: ids_owned.len() as u32,
+                no_pages: 0,
+                unprocessed: 0,
+                cancelled: state_clone.cancel_flag.load(Ordering::SeqCst),
+            });
+        }
     });
 
     Ok(())
@@ -1045,19 +1164,7 @@ where
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
     FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
 {
-    if !DPI_CHOICES.contains(&dpi) {
-        return Err(IpcError::from_code(ErrorCode::InvalidParams));
-    }
-
-    let page_set = parse_page_range(range)
-        .map_err(|e| IpcError::new(ErrorCode::InvalidPageRange, e.detail))?;
-
-    let output_dir = {
-        let lock = state.pdfs_output_dir.lock().expect("output_dir lock");
-        lock.clone()
-            .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?
-    };
-
+    // Check conversion running first per design §6.5, §7.1
     if state
         .is_running
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -1067,6 +1174,30 @@ where
     }
     state.cancel_flag.store(false, Ordering::SeqCst);
 
+    if !DPI_CHOICES.contains(&dpi) {
+        state.is_running.store(false, Ordering::SeqCst);
+        return Err(IpcError::from_code(ErrorCode::InvalidParams));
+    }
+
+    let page_set = match parse_page_range(range) {
+        Ok(ps) => ps,
+        Err(e) => {
+            state.is_running.store(false, Ordering::SeqCst);
+            return Err(IpcError::new(ErrorCode::InvalidPageRange, e.detail));
+        }
+    };
+
+    let output_dir = {
+        let lock = state.pdfs_output_dir.lock().expect("output_dir lock");
+        match lock.clone() {
+            Some(dir) => dir,
+            None => {
+                state.is_running.store(false, Ordering::SeqCst);
+                return Err(IpcError::from_code(ErrorCode::InvalidParams));
+            }
+        }
+    };
+
     for &id in ids {
         if state.items.get(id).is_none() {
             state.is_running.store(false, Ordering::SeqCst);
@@ -1074,20 +1205,55 @@ where
         }
     }
 
+    if let Err(err) = list_existing_files(&output_dir) {
+        state.is_running.store(false, Ordering::SeqCst);
+        return Err(err);
+    }
+
     let state_clone = state.clone();
     let ids_owned = ids.to_vec();
 
     std::thread::spawn(move || {
         let _running_guard = RunningGuard(Arc::clone(&state_clone.is_running));
-        let _ = run_pdfs_to_images(
-            &state_clone,
-            &ids_owned,
-            &page_set,
-            format,
-            dpi,
-            &output_dir,
-            callbacks,
-        );
+        let on_finished_cell = Arc::new(Mutex::new(Some(callbacks.on_finished)));
+        let on_finished_for_run = {
+            let cell = Arc::clone(&on_finished_cell);
+            move |finished: JobFinishedPayload| {
+                if let Ok(mut lock) = cell.lock()
+                    && let Some(cb) = lock.take()
+                {
+                    cb(finished);
+                }
+            }
+        };
+        let wrapped_callbacks = JobCallbacks {
+            on_progress: callbacks.on_progress,
+            on_item: callbacks.on_item,
+            on_finished: on_finished_for_run,
+        };
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_pdfs_to_images(
+                &state_clone,
+                &ids_owned,
+                &page_set,
+                format,
+                dpi,
+                &output_dir,
+                wrapped_callbacks,
+            )
+        }));
+        if (res.is_err() || matches!(res, Ok(Err(_))))
+            && let Ok(mut lock) = on_finished_cell.lock()
+            && let Some(cb) = lock.take()
+        {
+            cb(JobFinishedPayload {
+                succeeded: 0,
+                failed: ids_owned.len() as u32,
+                no_pages: 0,
+                unprocessed: 0,
+                cancelled: state_clone.cancel_flag.load(Ordering::SeqCst),
+            });
+        }
     });
 
     Ok(())

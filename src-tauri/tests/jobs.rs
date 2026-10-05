@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -103,6 +103,19 @@ impl TestRecorder {
             .unwrap()
             .clone()
             .expect("finished event received")
+    }
+
+    fn wait_finished(&self, timeout: Duration) -> JobFinishedPayload {
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(f) = self.finished.lock().unwrap().clone() {
+                return f;
+            }
+            if start.elapsed() > timeout {
+                panic!("timed out waiting for finished payload");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 
@@ -551,6 +564,28 @@ fn conversion_running_rejects_operations() {
         dropped.error.as_ref().map(|e| e.code),
         Some(ErrorCode::ConversionRunning)
     );
+
+    // ConversionRunning takes precedence even if output directories are unset (Item 7)
+    *app_state.images_output_dir.lock().unwrap() = None;
+    *app_state.pdfs_output_dir.lock().unwrap() = None;
+
+    let recorder = TestRecorder::new();
+    let err_img_unset =
+        start_images_to_pdfs_internal(&app_state, &[id], PageSizeChoice::Fit, recorder.callbacks())
+            .unwrap_err();
+    assert_eq!(err_img_unset.code, ErrorCode::ConversionRunning);
+
+    let recorder = TestRecorder::new();
+    let err_pdf_unset = start_pdfs_to_images_internal(
+        &app_state,
+        &[id],
+        "1",
+        RenderFormatChoice::Png,
+        150,
+        recorder.callbacks(),
+    )
+    .unwrap_err();
+    assert_eq!(err_pdf_unset.code, ErrorCode::ConversionRunning);
 }
 
 #[test]
@@ -653,4 +688,261 @@ fn unknown_handle_rejects() {
     )
     .unwrap_err();
     assert_eq!(err.code, ErrorCode::UnknownHandle);
+}
+
+#[cfg(unix)]
+#[test]
+fn unreadable_output_dir_rejects_and_resets_is_running() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let add_res = add_images(&app_state, &[path]);
+    let id = add_res.added[0].id;
+
+    let unreadable_dir = temp_out.path().join("unreadable");
+    fs::create_dir(&unreadable_dir).unwrap();
+    fs::set_permissions(&unreadable_dir, fs::Permissions::from_mode(0o000)).unwrap();
+
+    *app_state.images_output_dir.lock().unwrap() = Some(unreadable_dir.clone());
+    *app_state.pdfs_output_dir.lock().unwrap() = Some(unreadable_dir.clone());
+
+    let recorder = TestRecorder::new();
+    let err_img =
+        start_images_to_pdfs_internal(&app_state, &[id], PageSizeChoice::Fit, recorder.callbacks())
+            .unwrap_err();
+    assert_eq!(err_img.code, ErrorCode::WriteFailed);
+    assert!(!app_state.is_running.load(Ordering::SeqCst));
+
+    let recorder = TestRecorder::new();
+    let err_pdf = start_pdfs_to_images_internal(
+        &app_state,
+        &[id],
+        "1",
+        RenderFormatChoice::Png,
+        150,
+        recorder.callbacks(),
+    )
+    .unwrap_err();
+    assert_eq!(err_pdf.code, ErrorCode::WriteFailed);
+    assert!(!app_state.is_running.load(Ordering::SeqCst));
+
+    fs::set_permissions(&unreadable_dir, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[test]
+fn start_internal_ok_delivers_job_finished() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let img_path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let pdf_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let add_img = add_images(&app_state, &[img_path]);
+    let add_pdf = add_pdfs(&app_state, &[pdf_path]);
+    let img_id = add_img.added[0].id;
+    let pdf_id = add_pdf.added[0].id;
+
+    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    *app_state.pdfs_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+
+    let recorder = TestRecorder::new();
+    start_images_to_pdfs_internal(
+        &app_state,
+        &[img_id],
+        PageSizeChoice::Fit,
+        recorder.callbacks(),
+    )
+    .expect("start_images_to_pdfs_internal should succeed");
+
+    let finished = recorder.wait_finished(Duration::from_secs(5));
+    assert_eq!(finished.succeeded, 1);
+    assert_eq!(finished.failed, 0);
+    assert!(!finished.cancelled);
+    assert!(!app_state.is_running.load(Ordering::SeqCst));
+
+    let recorder = TestRecorder::new();
+    start_pdfs_to_images_internal(
+        &app_state,
+        &[pdf_id],
+        "1",
+        RenderFormatChoice::Png,
+        150,
+        recorder.callbacks(),
+    )
+    .expect("start_pdfs_to_images_internal should succeed");
+
+    let finished = recorder.wait_finished(Duration::from_secs(5));
+    assert_eq!(finished.succeeded, 1);
+    assert_eq!(finished.failed, 0);
+    assert!(!finished.cancelled);
+    assert!(!app_state.is_running.load(Ordering::SeqCst));
+}
+
+#[test]
+fn cancellation_during_pdf_to_images_saves_early_pages_and_cleans_temp() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let pdf_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let add_pdf = add_pdfs(&app_state, &[pdf_path]);
+    let pdf_id = add_pdf.added[0].id;
+
+    let page_set = parse_page_range("1-3").unwrap();
+
+    let cancel_flag = Arc::clone(&app_state.cancel_flag);
+    let recorder = TestRecorder::new();
+    let default_cb = recorder.callbacks();
+    let callbacks = JobCallbacks {
+        on_progress: {
+            let on_prog = default_cb.on_progress;
+            move |prog: JobProgressPayload| {
+                if prog.done == 1 {
+                    cancel_flag.store(true, Ordering::SeqCst);
+                }
+                on_prog(prog);
+            }
+        },
+        on_item: default_cb.on_item,
+        on_finished: default_cb.on_finished,
+    };
+
+    run_pdfs_to_images(
+        &app_state,
+        &[pdf_id],
+        &page_set,
+        RenderFormatChoice::Png,
+        150,
+        temp_out.path(),
+        callbacks,
+    )
+    .expect("run_pdfs_to_images should complete");
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    let item = &items[0];
+    assert_eq!(item.status, JobItemStatus::Cancelled);
+    assert!(!item.outputs.is_empty(), "at least one output was saved");
+    assert!(
+        item.outputs.len() < 3,
+        "fewer outputs than 3 pages in range"
+    );
+
+    for output in &item.outputs {
+        assert!(temp_out.path().join(output).exists());
+    }
+
+    let finished = recorder.finished();
+    assert!(finished.cancelled);
+
+    assert_no_temp_files(temp_out.path());
+}
+
+#[test]
+fn cancellation_during_images_to_pdfs_leaves_unprocessed() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let mut paths = Vec::new();
+    for i in 1..=6 {
+        paths.push(copy_fixture(
+            temp_in.path(),
+            "photo.jpg",
+            &format!("photo_{i}.jpg"),
+        ));
+    }
+    let add_res = add_images(&app_state, &paths);
+    assert_eq!(add_res.added.len(), 6);
+    let ids: Vec<u64> = add_res.added.iter().map(|item| item.id).collect();
+
+    let cancel_flag = Arc::clone(&app_state.cancel_flag);
+    let recorder = TestRecorder::new();
+    let default_cb = recorder.callbacks();
+    let item_counter = Arc::new(AtomicU32::new(0));
+    let callbacks = JobCallbacks {
+        on_progress: default_cb.on_progress,
+        on_item: {
+            let on_item = default_cb.on_item;
+            let counter = Arc::clone(&item_counter);
+            move |item: JobItemPayload| {
+                if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                    cancel_flag.store(true, Ordering::SeqCst);
+                }
+                on_item(item);
+            }
+        },
+        on_finished: default_cb.on_finished,
+    };
+
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        temp_out.path(),
+        callbacks,
+    )
+    .expect("run_images_to_pdfs should complete");
+
+    let finished = recorder.finished();
+    assert!(finished.cancelled);
+    assert!(
+        finished.unprocessed >= 1,
+        "expected at least 1 unprocessed, got {}",
+        finished.unprocessed
+    );
+    assert_eq!(
+        finished.succeeded + finished.failed + finished.unprocessed,
+        6
+    );
+
+    assert_no_temp_files(temp_out.path());
+}
+
+#[test]
+fn cancellation_during_merged_pdf_on_item_writes_no_file() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let path1 = copy_fixture(temp_in.path(), "photo.jpg", "img1.jpg");
+    let path2 = copy_fixture(temp_in.path(), "logo_alpha.png", "img2.png");
+
+    let add_res = add_images(&app_state, &[path1, path2]);
+    let ids: Vec<u64> = add_res.added.iter().map(|item| item.id).collect();
+
+    let cancel_flag = Arc::clone(&app_state.cancel_flag);
+    let recorder = TestRecorder::new();
+    let default_cb = recorder.callbacks();
+    let item_count = Arc::new(AtomicU32::new(0));
+    let callbacks = JobCallbacks {
+        on_progress: default_cb.on_progress,
+        on_item: {
+            let on_item = default_cb.on_item;
+            let count = Arc::clone(&item_count);
+            move |item: JobItemPayload| {
+                on_item(item);
+                if count.fetch_add(1, Ordering::SeqCst) + 1 == 2 {
+                    cancel_flag.store(true, Ordering::SeqCst);
+                }
+            }
+        },
+        on_finished: default_cb.on_finished,
+    };
+
+    let dest_path = temp_out.path().join("merged.pdf");
+    let res =
+        run_save_merged_pdf(&app_state, &ids, PageSizeChoice::Fit, &dest_path, callbacks).unwrap();
+
+    assert!(res.is_none());
+    assert!(!dest_path.exists());
+    assert_no_temp_files(temp_out.path());
+
+    let finished = recorder.finished();
+    assert!(finished.cancelled);
+    assert_eq!(finished.succeeded, 0);
 }

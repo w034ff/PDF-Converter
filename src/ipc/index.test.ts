@@ -267,7 +267,7 @@ describe("ipc", () => {
       expect(received).toEqual([payload]);
     });
 
-    it("handles job-item events", async () => {
+    it("handles job-item events without optional error and failedPages", async () => {
       mockIPC(() => undefined, { shouldMockEvents: true });
       const received: JobItemPayload[] = [];
       const unlisten = await onJobItem((payload) => {
@@ -277,14 +277,39 @@ describe("ipc", () => {
         id: 1,
         status: "ok",
         outputs: ["a_p1.png"],
-        error: null,
-        failedPages: null,
       };
 
       await emit(JOB_ITEM_EVENT, payload);
       unlisten();
 
       expect(received).toEqual([payload]);
+      expect(received[0].error).toBeUndefined();
+      expect(received[0].failedPages).toBeUndefined();
+    });
+
+    it("handles job-item events with error and failedPages", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: JobItemPayload[] = [];
+      const unlisten = await onJobItem((payload) => {
+        received.push(payload);
+      });
+      const payload: JobItemPayload = {
+        id: 2,
+        status: "partial",
+        outputs: ["a_p1.png"],
+        error: { code: "RenderTooLarge", detail: "too large" },
+        failedPages: [2],
+      };
+
+      await emit(JOB_ITEM_EVENT, payload);
+      unlisten();
+
+      expect(received).toEqual([payload]);
+      expect(received[0].error).toEqual({
+        code: "RenderTooLarge",
+        detail: "too large",
+      });
+      expect(received[0].failedPages).toEqual([2]);
     });
 
     it("handles job-finished events", async () => {

@@ -90,18 +90,6 @@ pub fn run() {
                 // Probing and opening PDFs take long enough to freeze the
                 // window if they ran in the event handler.
                 tauri::async_runtime::spawn_blocking(move || {
-                    if state.is_running.load(std::sync::atomic::Ordering::SeqCst) {
-                        let dropped = items::ItemsDropped {
-                            images: Vec::new(),
-                            pdfs: Vec::new(),
-                            skipped: items::Skipped::default(),
-                            error: Some(crate::error::IpcError::from_code(
-                                crate::error::ErrorCode::ConversionRunning,
-                            )),
-                        };
-                        let _ = window.emit(ITEMS_DROPPED_EVENT, &dropped);
-                        return;
-                    }
                     let dropped = items::add_dropped(&state, &paths);
                     #[cfg(debug_assertions)]
                     eprintln!("[debug] DragDrop: {}", describe_drop(&dropped));
