@@ -60,6 +60,11 @@ jobs:
       - name: Fetch pdfium
         run: npm run pdfium:fetch
 
+      # `tauri build` runs cargo without --locked; fail here instead of letting it
+      # resolve versions that differ from the reviewed Cargo.lock.
+      - name: Verify Cargo.lock is current
+        run: cargo fetch --locked
+
       - name: Build installers
         run: npm run tauri build
 

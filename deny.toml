@@ -1,7 +1,8 @@
-# Dependency policy checked by `cargo deny check licenses bans` (requirements NFR-05,
-# design §9) and, for known vulnerabilities, `cargo deny check advisories`
-# (.github/workflows/audit.yml). The frontend's npm dependencies are checked
-# separately by the `licenses:check` script and `npm audit`.
+# Dependency policy checked by `cargo deny check licenses bans sources`
+# (requirements NFR-05, design §9) and, for known vulnerabilities,
+# `cargo deny check advisories` (.github/workflows/audit.yml). The frontend's npm
+# dependencies are checked separately by the `licenses:check` script and
+# `npm audit`.
 
 [graph]
 # Release targets only. Tauri pulls an HTTP client (reqwest) for Android and iOS,
@@ -69,3 +70,9 @@ multiple-versions = "allow"
 # directly: the transitive ones come from Tauri's GTK bindings, which this
 # project cannot replace.
 unmaintained = "workspace"
+
+[sources]
+# Crates come only from crates.io, the index the advisory check covers. A git or
+# other-registry dependency fails the check until it is reviewed (design §9).
+unknown-registry = "deny"
+unknown-git = "deny"
