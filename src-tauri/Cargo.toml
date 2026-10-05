@@ -23,6 +23,8 @@ pdfconv-core = { path = "../crates/core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 pdfconv-worker = { path = "../crates/worker" }
+ts-rs = "12"
+tauri-plugin-dialog = "2"
 
 [features]
 test-hooks = ["pdfconv-worker/test-hooks"]
