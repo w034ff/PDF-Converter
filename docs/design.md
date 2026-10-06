@@ -94,7 +94,7 @@
 ├── docs/
 ├── about.toml / deny.toml
 ├── GEMINI.md
-└── .github/workflows/        ci.yml / release.yml / audit.yml / pdfium-update.yml
+└── .github/workflows/        ci.yml / release.yml / audit.yml / dependency-review.yml / pdfium-update.yml
 ```
 
 ## 4. 変換の処理（crates/core）
