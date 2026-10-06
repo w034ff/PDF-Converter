@@ -23,5 +23,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local drafts written by the implementer
+# Hand-off files between the implementer and the reviewer (docs/work-plan.md §2)
 pr-description.md
+agent-status.json
+agent-review.md
