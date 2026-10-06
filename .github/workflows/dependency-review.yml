@@ -1,0 +1,30 @@
+name: Dependency review
+
+# Fails a pull request that adds or updates a dependency with a known
+# vulnerability. It looks only at what the pull request changes, so an advisory
+# published later against a dependency already on main (reported by the Audit
+# workflow) does not fail unrelated pull requests.
+#
+# pdfium is not an npm or Cargo dependency and is not seen here; its updates
+# come from the pdfium update workflow.
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v5
+        with:
+          # Development dependencies stay out, as in the Audit workflow's
+          # `npm audit --omit=dev`: only what ships in the app is checked.
+          fail-on-scopes: runtime
+          # Licenses are already enforced by `npm run licenses:check`
+          # (cargo-deny and an allowlist for npm) in the CI workflow.
+          license-check: false
