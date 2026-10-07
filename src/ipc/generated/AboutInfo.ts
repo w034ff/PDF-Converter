@@ -5,8 +5,8 @@
  */
 export type AboutInfo = { version: string, pdfiumVersion: string, 
 /**
- * Whether a worker started and could use pdfium. Until the about
- * screen (T13) exists this is how an installed build shows that the
- * bundled pdfium works.
+ * Whether a worker started and could use pdfium. The about screen
+ * shows `pdfium_error` when it could not, so an installed build tells
+ * whether its bundled pdfium works.
  */
 pdfiumReady: boolean, pdfiumError: string | null, };

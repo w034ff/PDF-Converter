@@ -1,4 +1,7 @@
 :root {
+  /* Native parts (scrollbars, form controls) follow the same theme. */
+  color-scheme: light dark;
+
   /* Light theme colors (design §10.3, mockup Main.dc.html) */
   --color-bg-app: #f4f3f0;
   --color-bg-surface: #ffffff;
@@ -22,6 +25,8 @@
   --color-error: #c93b2b;
 
   --color-progress-track: #e4e1db;
+
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.45);
 
   /* Typography */
   --font-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
@@ -59,5 +64,7 @@
     --color-error: #ef5350;
 
     --color-progress-track: #363430;
+
+    --color-overlay-backdrop: rgba(0, 0, 0, 0.65);
   }
 }

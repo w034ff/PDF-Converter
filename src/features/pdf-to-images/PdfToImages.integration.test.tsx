@@ -122,7 +122,7 @@ describe("PdfToImages integration workflow", () => {
       return undefined;
     });
 
-    render(<App initialNavLang="ja" />);
+    render(<App initialNavLang="ja" initialSettings={null} />);
 
     // Switch tab to PDF → 画像
     const pdfsTab = screen.getByRole("tab", { name: "PDF → 画像" });
@@ -307,7 +307,7 @@ describe("PdfToImages integration workflow", () => {
       return undefined;
     });
 
-    render(<App initialNavLang="ja" />);
+    render(<App initialNavLang="ja" initialSettings={null} />);
     fireEvent.click(screen.getByRole("tab", { name: "PDF → 画像" }));
 
     // Add 2 PDFs

@@ -137,9 +137,45 @@ async function invokeWrapped<T>(
   }
 }
 
-/** Fetches the settings. Output folders come as names, never as paths (design §6.7). */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOutputDirLabel(value: unknown): value is OutputDirLabel | null {
+  return (
+    value === null || (isRecord(value) && typeof value.dirLabel === "string")
+  );
+}
+
+/** Whether a value has the shape of the `get_settings` answer (design §6.7). */
+export function isSettings(value: unknown): value is Settings {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const { language, imagesToPdf, pdfToImages } = value;
+  return (
+    (language === "ja" || language === "en" || language === null) &&
+    isRecord(imagesToPdf) &&
+    (imagesToPdf.output === "merge" || imagesToPdf.output === "each") &&
+    (imagesToPdf.pageSize === "fit" || imagesToPdf.pageSize === "a4") &&
+    isOutputDirLabel(imagesToPdf.outputDir) &&
+    isRecord(pdfToImages) &&
+    (pdfToImages.format === "png" || pdfToImages.format === "jpeg") &&
+    typeof pdfToImages.dpi === "number" &&
+    isOutputDirLabel(pdfToImages.outputDir)
+  );
+}
+
+/**
+ * Fetches the settings. Output folders come as names, never as paths (design
+ * §6.7). Rejects with `InvalidParams` when the answer does not have that shape.
+ */
 export async function getSettings(): Promise<Settings> {
-  return invokeWrapped<Settings>("get_settings");
+  const value = await invokeWrapped<unknown>("get_settings");
+  if (!isSettings(value)) {
+    throw normalizeIpcError("get_settings returned an unexpected value");
+  }
+  return value;
 }
 
 /**

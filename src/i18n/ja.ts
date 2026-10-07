@@ -153,6 +153,19 @@ export const ja = {
     remove: "外す",
     noOutputYet: "—",
   },
+  about: {
+    title: "このアプリについて",
+    version: "バージョン {version}",
+    pdfium: "PDF の描画エンジン: pdfium {version}",
+    pdfiumUnavailable: "pdfium を読み込めません: {error}",
+    loadFailed: "バージョンを取得できませんでした",
+    appLicense: "このアプリのライセンス（MIT）",
+    showThirdPartyLicenses: "第三者ライセンスを表示",
+    hideThirdPartyLicenses: "第三者ライセンスを隠す",
+    loadingLicenses: "ライセンス一覧を読み込み中…",
+    viewLicenseText: "ライセンス本文を表示",
+    close: "閉じる",
+  },
 };
 
 export type Translations = typeof ja;

@@ -2,13 +2,39 @@ import { createInitialLanguageState, languageReducer } from "./language";
 import { imagesToPdfReducer, initialImagesToPdfState } from "./imagesToPdf";
 import { initialJobState, jobReducer } from "./job";
 import { pdfToImagesReducer, initialPdfToImagesState } from "./pdfToImages";
+import type { Settings } from "../ipc";
 import type { AppAction, AppState } from "./types";
 
-export function createInitialAppState(initialNavLang?: string): AppState {
+/**
+ * The state the app starts in: the saved `settings` (design §6.7), or the
+ * defaults when there are none. Lists and page ranges always start empty.
+ */
+export function createInitialAppState(
+  initialNavLang?: string,
+  settings: Settings | null = null,
+): AppState {
+  if (settings === null) {
+    return {
+      language: createInitialLanguageState(initialNavLang),
+      imagesToPdf: initialImagesToPdfState,
+      pdfToImages: initialPdfToImagesState,
+      job: initialJobState,
+    };
+  }
   return {
-    language: createInitialLanguageState(initialNavLang),
-    imagesToPdf: initialImagesToPdfState,
-    pdfToImages: initialPdfToImagesState,
+    language: createInitialLanguageState(initialNavLang, settings.language),
+    imagesToPdf: {
+      ...initialImagesToPdfState,
+      output: settings.imagesToPdf.output,
+      pageSize: settings.imagesToPdf.pageSize,
+      outputDir: settings.imagesToPdf.outputDir,
+    },
+    pdfToImages: {
+      ...initialPdfToImagesState,
+      format: settings.pdfToImages.format,
+      dpi: settings.pdfToImages.dpi,
+      outputDir: settings.pdfToImages.outputDir,
+    },
     job: initialJobState,
   };
 }

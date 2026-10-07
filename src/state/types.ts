@@ -14,7 +14,13 @@ import type { JobAction, JobState } from "./job";
 export type ActiveTab = "imagesToPdf" | "pdfToImages";
 
 export interface LanguageState {
+  /** The language the screen is shown in. */
   language: Language;
+  /**
+   * The language the user picked, saved as is: `null` until they pick one,
+   * so the screen keeps following the OS language (design §6.7, FR-07).
+   */
+  preference: Language | null;
   activeTab: ActiveTab;
 }
 
