@@ -169,7 +169,9 @@ describe("PdfToImages integration workflow", () => {
     fireEvent.change(rangeInput, { target: { value: "1-2" } });
 
     // check_page_range is called, and page count appears
-    expect(await screen.findByText("2 ページを変換します")).toBeInTheDocument();
+    expect(
+      await screen.findByText("2 ページを PNG で保存します"),
+    ).toBeInTheDocument();
     expect(thumb1.querySelector(".pdf-page-container")).toHaveClass(
       "is-highlighted",
     );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { SegmentedControl, type SegmentedOption } from "../../components";
 import {
   formatErrorMessage,
@@ -22,6 +22,9 @@ import { OutputDirField } from "../output/OutputDirField";
 import { calculateRenderDimensions, formatPaperSize } from "./pdfUtils";
 import "./pdfToImages.css";
 
+/** How long typing must pause before a range error is shown. */
+export const RANGE_ERROR_REVEAL_DELAY_MS = 600;
+
 const DPI_LABEL_KEYS: Record<
   number,
   keyof Translations["pdfToImages"]["settings"]["dpiChoices"]
@@ -41,6 +44,30 @@ export function PdfToImagesSettings() {
   const busy = isJobActive(job);
 
   const seqRef = useRef(0);
+
+  // A range error is shown once typing pauses or the field loses focus, so
+  // a half-typed "1-" is not flagged; the start button is disabled at once.
+  const [revealedFor, setRevealedFor] = useState<string | null>(null);
+  const isRangeErrorShown =
+    pdfToImages.rangeError !== null &&
+    !pdfToImages.rangeChecking &&
+    revealedFor === pdfToImages.rangeText;
+
+  useEffect(() => {
+    if (pdfToImages.rangeError === null || pdfToImages.rangeChecking) {
+      return;
+    }
+    const text = pdfToImages.rangeText;
+    const timer = setTimeout(
+      () => setRevealedFor(text),
+      RANGE_ERROR_REVEAL_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [
+    pdfToImages.rangeError,
+    pdfToImages.rangeChecking,
+    pdfToImages.rangeText,
+  ]);
 
   useEffect(() => {
     if (pdfToImages.pageSelection !== "range") {
@@ -172,23 +199,19 @@ export function PdfToImagesSettings() {
                   rangeText: e.target.value,
                 })
               }
+              onBlur={() => setRevealedFor(pdfToImages.rangeText)}
               disabled={busy}
             />
-            {pdfToImages.rangeError !== null ? (
-              <span className="hint" role="alert">
+            {/* How many pages this converts is in the footer (design §10.1). */}
+            {isRangeErrorShown && pdfToImages.rangeError !== null && (
+              <span className="hint pdf-hint-warning" role="alert">
                 {formatErrorMessage(
                   pdfToImages.rangeError.code,
                   pdfToImages.rangeError.detail,
                   language.language,
                 )}
               </span>
-            ) : pdfToImages.rangeResult !== null ? (
-              <span className="hint">
-                {formatMessage(t.pdfToImages.settings.rangeHintSingle, {
-                  count: pdfToImages.rangeResult.totalPages,
-                })}
-              </span>
-            ) : null}
+            )}
             {pdfToImages.items.length > 1 && (
               <span className="hint">
                 {t.pdfToImages.settings.rangeHintBatch}

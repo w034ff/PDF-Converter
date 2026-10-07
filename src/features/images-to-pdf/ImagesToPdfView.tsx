@@ -149,13 +149,18 @@ function getRowDropClass(
 function ImageThumbnail({ id, name }: { id: number; name: string }) {
   const { language } = useAppState();
   const t = getTranslations(language.language);
-  const { ref: attachRef, src: imageSrc } = useThumbnail(id);
+  const { ref: attachRef, src: imageSrc, failed } = useThumbnail(id);
   const altText = formatMessage(t.listRow.thumbnailAlt, { name });
 
+  // While loading the tile stays blank: an icon there would flash before
+  // the image replaces it, every time the list or the table is shown again.
+  // The icon marks only a thumbnail that could not be made.
   return (
     <div ref={attachRef} className="image-thumb-container">
       {imageSrc ? (
         <img src={imageSrc} alt={altText} />
+      ) : !failed ? (
+        <div role="img" aria-label={altText} />
       ) : (
         <div role="img" aria-label={altText}>
           <svg
@@ -654,7 +659,7 @@ export function ImagesToPdfView() {
                     >
                       {cellStatusText}
                     </td>
-                    <td>
+                    <td className="images-table-actions-col">
                       <button
                         type="button"
                         className="btn btn-ghost"

@@ -110,6 +110,42 @@ describe("ImagesToPdf (T11)", () => {
     clearMocks();
   });
 
+  it("leaves a loading thumbnail blank and marks only one that failed", async () => {
+    mockAppIpc((cmd, args) => {
+      if (cmd === "add_images") {
+        const result: AddResult<ImageItem> = {
+          added: [sampleImage1, sampleImage3],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+        return result;
+      }
+      if (cmd === "get_thumbnail") {
+        const isLoading =
+          typeof args === "object" &&
+          args !== null &&
+          "id" in args &&
+          args.id === sampleImage1.id;
+        // photo.jpg never arrives; corrupt.png cannot be made.
+        return isLoading
+          ? new Promise(() => {})
+          : Promise.reject({ code: "DecodeFailed", detail: null });
+      }
+      return undefined;
+    });
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+
+    const failed = await screen.findByRole("img", {
+      name: "corrupt.png のサムネイル",
+    });
+    await waitFor(() => {
+      expect(failed.querySelector("svg")).not.toBeNull();
+    });
+    const loading = screen.getByRole("img", { name: "photo.jpg のサムネイル" });
+    expect(loading.querySelector("svg")).toBeNull();
+  });
+
   it("shows DropZone in empty state, and adds images via dialog", async () => {
     const calls = mockAppIpc((cmd) => {
       if (cmd === "add_images") {

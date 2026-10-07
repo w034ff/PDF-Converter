@@ -7,14 +7,18 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CheckPageRangeResult, PdfItem } from "../../ipc";
 import {
   AppStateProvider,
   createInitialAppState,
   type AppState,
 } from "../../state";
-import { PdfToImagesSettings } from "./PdfToImagesSettings";
+import {
+  PdfToImagesSettings,
+  RANGE_ERROR_REVEAL_DELAY_MS,
+} from "./PdfToImagesSettings";
+import { PdfToImagesStatus } from "./PdfToImagesStatus";
 
 const samplePdf1: PdfItem = {
   id: 1,
@@ -58,6 +62,8 @@ function renderSettings(stateModifier?: (state: AppState) => void) {
   return render(
     <AppStateProvider initialState={state}>
       <PdfToImagesSettings />
+      {/* The footer line, where the number of pages to convert is shown. */}
+      <PdfToImagesStatus />
     </AppStateProvider>,
   );
 }
@@ -66,6 +72,7 @@ describe("PdfToImagesSettings", () => {
   afterEach(() => {
     cleanup();
     clearMocks();
+    vi.useRealTimers();
   });
 
   it("renders page selection segmented control and toggles range input", () => {
@@ -222,7 +229,9 @@ describe("PdfToImagesSettings", () => {
     fireEvent.change(input, { target: { value: "1-3, 5" } });
 
     await waitFor(() => {
-      expect(screen.getByText("4 ページを変換します")).toBeInTheDocument();
+      expect(
+        screen.getByText("4 ページを PNG で保存します"),
+      ).toBeInTheDocument();
     });
 
     const checkCall = calls.find((c) => c.cmd === "check_page_range");
@@ -231,6 +240,100 @@ describe("PdfToImagesSettings", () => {
       text: "1-3, 5",
       ids: [1],
     });
+  });
+
+  describe("showing a range error", () => {
+    function mockInvalidRange() {
+      mockCommands((cmd) => {
+        if (cmd === "check_page_range") {
+          return Promise.reject({ code: "InvalidPageRange", detail: "1-" });
+        }
+        return undefined;
+      });
+    }
+
+    function renderRange() {
+      renderSettings((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.pdfToImages.pageSelection = "range";
+      });
+      return screen.getByLabelText(/変換するページ/);
+    }
+
+    it("waits until typing pauses", async () => {
+      vi.useFakeTimers();
+      mockInvalidRange();
+      const input = renderRange();
+
+      fireEvent.change(input, { target: { value: "1-" } });
+      await act(async () => {});
+      act(() => {
+        vi.advanceTimersByTime(RANGE_ERROR_REVEAL_DELAY_MS - 1);
+      });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(
+        "ページの範囲の書き方が正しくありません（1-）",
+      );
+      expect(alert).toHaveClass("pdf-hint-warning");
+    });
+
+    it("shows at once when the field loses focus", async () => {
+      vi.useFakeTimers();
+      mockInvalidRange();
+      const input = renderRange();
+
+      fireEvent.change(input, { target: { value: "1-" } });
+      await act(async () => {});
+      fireEvent.blur(input);
+
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+
+    it("hides again while the next text is typed", async () => {
+      vi.useFakeTimers();
+      mockInvalidRange();
+      const input = renderRange();
+
+      fireEvent.change(input, { target: { value: "1-" } });
+      await act(async () => {});
+      act(() => {
+        vi.advanceTimersByTime(RANGE_ERROR_REVEAL_DELAY_MS);
+      });
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+
+      fireEvent.change(input, { target: { value: "1-," } });
+      await act(async () => {});
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
+
+  it("leaves the number of pages to the footer, not under the field", async () => {
+    mockCommands((cmd) =>
+      cmd === "check_page_range"
+        ? { totalPages: 4, intervals: [[1, 4]] }
+        : undefined,
+    );
+    const { container } = renderSettings((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.pageSelection = "range";
+    });
+
+    fireEvent.change(screen.getByLabelText(/変換するページ/), {
+      target: { value: "1-4" },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("4 ページを PNG で保存します"),
+      ).toBeInTheDocument();
+    });
+    const panel = container.querySelector(".pdf-settings");
+    expect(panel).not.toBeNull();
+    expect(panel).not.toHaveTextContent("4 ページ");
   });
 
   it("shows error when range format is invalid", async () => {
@@ -315,7 +418,7 @@ describe("PdfToImagesSettings", () => {
       });
     });
 
-    expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
+    expect(screen.getByText("2 ページを PNG で保存します")).toBeInTheDocument();
 
     // Slow one resolves later with 10 pages
     await act(async () => {
@@ -326,8 +429,10 @@ describe("PdfToImagesSettings", () => {
     });
 
     // It should STILL be 2 pages, not 10!
-    expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
-    expect(screen.queryByText("10 ページを変換します")).not.toBeInTheDocument();
+    expect(screen.getByText("2 ページを PNG で保存します")).toBeInTheDocument();
+    expect(
+      screen.queryByText("10 ページを PNG で保存します"),
+    ).not.toBeInTheDocument();
   });
 
   it("displays rendered pixel dimension hint when 1 PDF is in the list", () => {
