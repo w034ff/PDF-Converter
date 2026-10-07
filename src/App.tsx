@@ -94,11 +94,8 @@ function AppShell({ initialAbout = null }: AppShellProps) {
         </nav>
 
         <div className="app-header-actions">
-          <label className="hint" htmlFor="lang">
-            {t.app.languageLabel}
-          </label>
           <select
-            id="lang"
+            aria-label={t.app.languageLabel}
             className="lang-select"
             value={language.language}
             onChange={handleLanguageChange}
@@ -108,10 +105,23 @@ function AppShell({ initialAbout = null }: AppShellProps) {
           </select>
           <button
             type="button"
-            className="btn btn-ghost app-about-btn"
+            className="icon-btn"
             aria-label={t.app.aboutButtonAria}
           >
-            i
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 11v5" />
+              <path d="M12 8h.01" />
+            </svg>
           </button>
         </div>
       </header>
