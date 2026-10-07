@@ -157,3 +157,29 @@
   height: 100%;
   object-fit: cover;
 }
+
+/* Only the rows scroll: the count, the add and remove buttons and the
+   result line above them stay in view however long the list grows. */
+.images-list,
+.images-table-container {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* A scroll container clips what is drawn outside its rows (the focus ring,
+   marks between rows), so the list keeps room for them inside its own box
+   and gives the same room back outside to keep its place in the layout. */
+.images-list {
+  padding: 6px;
+  margin: -6px;
+}
+
+/* In a collapsed table the header's bottom border belongs to the table and
+   scrolls away, so the stuck header draws its own line. */
+.images-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--color-border);
+}

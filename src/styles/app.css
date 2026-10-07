@@ -223,10 +223,12 @@ a:hover {
   cursor: pointer;
 }
 
+/* No wrapping: a wrapped flex line takes the height of its content, which
+   would stretch the panel and the list past the window instead of letting
+   them scroll. The window's minimum width leaves room for both side by side. */
 .app-body {
   flex: 1;
   display: flex;
-  flex-wrap: wrap;
   min-height: 0;
 }
 
