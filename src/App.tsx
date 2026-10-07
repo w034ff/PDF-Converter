@@ -3,12 +3,14 @@ import { ErrorDisplay } from "./components";
 import { AboutDialog } from "./features/about/AboutDialog";
 import { ImagesToPdfAction } from "./features/images-to-pdf/ImagesToPdfAction";
 import { ImagesToPdfSettings } from "./features/images-to-pdf/ImagesToPdfSettings";
+import { ImagesToPdfStatus } from "./features/images-to-pdf/ImagesToPdfStatus";
 import { ImagesToPdfView } from "./features/images-to-pdf/ImagesToPdfView";
 import { useItemsDropped } from "./features/items/useItemsDropped";
 import { JobFooter } from "./features/job/JobFooter";
 import { useJobEvents } from "./features/job/useJobEvents";
 import { PdfToImagesAction } from "./features/pdf-to-images/PdfToImagesAction";
 import { PdfToImagesSettings } from "./features/pdf-to-images/PdfToImagesSettings";
+import { PdfToImagesStatus } from "./features/pdf-to-images/PdfToImagesStatus";
 import { PdfToImagesView } from "./features/pdf-to-images/PdfToImagesView";
 import { useSettingsAutoSave } from "./features/settings/useSettingsAutoSave";
 import { formatErrorMessage, getTranslations, type Language } from "./i18n";
@@ -23,7 +25,7 @@ import {
 import "./styles/app.css";
 
 function AppShell() {
-  const { language, imagesToPdf, pdfToImages } = useAppState();
+  const { language } = useAppState();
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language);
   useJobEvents();
@@ -52,9 +54,6 @@ function AppShell() {
   }
 
   const isImages = language.activeTab === "imagesToPdf";
-  const isListEmpty = isImages
-    ? imagesToPdf.items.length === 0
-    : pdfToImages.items.length === 0;
 
   return (
     <>
@@ -159,13 +158,7 @@ function AppShell() {
           <JobFooter
             tab={language.activeTab}
             idleStatus={
-              isListEmpty ? (
-                <span className="hint">
-                  {isImages
-                    ? t.footer.noImagesSelected
-                    : t.footer.noPdfsSelected}
-                </span>
-              ) : null
+              isImages ? <ImagesToPdfStatus /> : <PdfToImagesStatus />
             }
             action={isImages ? <ImagesToPdfAction /> : <PdfToImagesAction />}
           />

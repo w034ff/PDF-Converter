@@ -23,6 +23,7 @@ import { JobFooter } from "../job/JobFooter";
 import { useJobEvents } from "../job/useJobEvents";
 import { ImagesToPdfAction } from "./ImagesToPdfAction";
 import { ImagesToPdfSettings } from "./ImagesToPdfSettings";
+import { ImagesToPdfStatus } from "./ImagesToPdfStatus";
 import { ImagesToPdfView } from "./ImagesToPdfView";
 
 const sampleImage1: ImageItem = {
@@ -87,7 +88,7 @@ function Harness() {
       <footer>
         <JobFooter
           tab="imagesToPdf"
-          idleStatus={<span>画像が選ばれていません</span>}
+          idleStatus={<ImagesToPdfStatus />}
           action={<ImagesToPdfAction />}
         />
       </footer>
@@ -156,8 +157,12 @@ describe("ImagesToPdf (T11)", () => {
       screen.getByText("（対象外 2 件：サブフォルダ、非対応の形式）"),
     ).toBeInTheDocument();
 
-    // Single PDF bottom text shows page count
+    // Footer shows page count, and summary is no longer below the list
     expect(screen.getByText("2 ページの PDF になります")).toBeInTheDocument();
+    expect(
+      screen.getByText("2 ページの PDF になります").closest("footer"),
+    ).not.toBeNull();
+    expect(document.querySelector(".images-merge-summary")).toBeNull();
   });
 
   it("removes individual items and clears all items with remove_items IPC", async () => {
@@ -320,8 +325,12 @@ describe("ImagesToPdf (T11)", () => {
       ),
     ).toBeInTheDocument();
 
-    // Single PDF bottom text shows 2 pages (excluding error row)
+    // Footer shows 2 pages (excluding error row)
     expect(screen.getByText("2 ページの PDF になります")).toBeInTheDocument();
+    expect(
+      screen.getByText("2 ページの PDF になります").closest("footer"),
+    ).not.toBeNull();
+    expect(document.querySelector(".images-merge-summary")).toBeNull();
 
     // Click save
     fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));

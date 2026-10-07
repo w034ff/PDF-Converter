@@ -1,3 +1,4 @@
+import { emit } from "@tauri-apps/api/event";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import {
   act,
@@ -10,7 +11,15 @@ import {
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { SETTINGS_SAVE_DEBOUNCE_MS } from "./features/settings/useSettingsAutoSave";
-import type { Settings } from "./ipc";
+import {
+  JOB_FINISHED_EVENT,
+  JOB_PROGRESS_EVENT,
+  type AddResult,
+  type ImageItem,
+  type JobFinishedPayload,
+  type JobProgressPayload,
+  type Settings,
+} from "./ipc";
 
 // The app listens for job events on mount, so events are mocked too.
 function mockAppIpc(handler: Parameters<typeof mockIPC>[0]) {
@@ -415,6 +424,113 @@ describe("App", () => {
       fireEvent.click(closeButtons[closeButtons.length - 1]);
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("footer status", () => {
+    it("shows idle status according to active tab and language", () => {
+      mockAppIpc(() => new Promise(() => {}));
+      render(<App initialNavLang="ja" initialSettings={null} />);
+
+      // On Images tab initially
+      expect(screen.getByText("画像が選ばれていません")).toBeInTheDocument();
+
+      // Switch to PDF to Images tab
+      fireEvent.click(screen.getByRole("tab", { name: "PDF → 画像" }));
+      expect(screen.getByText("PDF が選ばれていません")).toBeInTheDocument();
+      expect(
+        screen.queryByText("画像が選ばれていません"),
+      ).not.toBeInTheDocument();
+
+      // Switch language to English
+      const select = screen.getByRole("combobox", { name: "言語" });
+      fireEvent.change(select, { target: { value: "en" } });
+      expect(screen.getByText("No PDFs selected")).toBeInTheDocument();
+
+      // Switch back to Images tab in English
+      fireEvent.click(screen.getByRole("tab", { name: "Images → PDF" }));
+      expect(screen.getByText("No images selected")).toBeInTheDocument();
+    });
+
+    it("prioritizes job progress and finished state over idle status", async () => {
+      const sampleItem1: ImageItem = {
+        id: 1,
+        name: "test1.png",
+        width: 100,
+        height: 100,
+        format: "png",
+        bytes: 1000,
+        error: null,
+      };
+      const sampleItem2: ImageItem = {
+        id: 2,
+        name: "test2.png",
+        width: 100,
+        height: 100,
+        format: "png",
+        bytes: 1000,
+        error: null,
+      };
+
+      mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const result: AddResult<ImageItem> = {
+            added: [sampleItem1, sampleItem2],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return result;
+        }
+        if (cmd === "save_merged_pdf") {
+          return { savedName: "merged.pdf" };
+        }
+        return undefined;
+      });
+
+      render(<App initialNavLang="ja" initialSettings={null} />);
+
+      // Add images via dialog
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await screen.findByText("test1.png");
+
+      // Footer now shows the idle status for 2 images
+      expect(screen.getByText("2 ページの PDF になります")).toBeInTheDocument();
+
+      // Click "PDF を保存" to start conversion
+      fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+
+      // While job runs (e.g. progress event received), JobFooter shows progress instead of idle status
+      const progressPayload: JobProgressPayload = {
+        done: 1,
+        total: 2,
+        current: "test1.png",
+      };
+      await act(async () => {
+        await emit(JOB_PROGRESS_EVENT, progressPayload);
+      });
+
+      expect(
+        screen.queryByText("2 ページの PDF になります"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("progressbar", { name: "進捗" }),
+      ).toBeInTheDocument();
+
+      // When job finishes, JobFooter shows "完了" and idle status is still not shown
+      const finishedPayload: JobFinishedPayload = {
+        succeeded: 2,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      };
+      await act(async () => {
+        await emit(JOB_FINISHED_EVENT, finishedPayload);
+      });
+
+      expect(screen.getByText("完了")).toBeInTheDocument();
+      expect(
+        screen.queryByText("2 ページの PDF になります"),
+      ).not.toBeInTheDocument();
     });
   });
 });

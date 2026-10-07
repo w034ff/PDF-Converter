@@ -123,6 +123,16 @@ export const en: Translations = {
     remove: "Remove",
     clearAll: "Clear all",
     summaryFailuresHint: "Reasons for failed PDFs are shown in the list below",
+    footer: {
+      specifyPages: "Enter the pages to convert",
+      noMatchingPages: "No pages match the range",
+      savePagesSingle: "Will save 1 page as {format}",
+      savePagesMultiple: "Will save {pages} pages as {format}",
+      savePagesFromPdfsSingle:
+        "From {count} PDFs, will save 1 page as {format}",
+      savePagesFromPdfsMultiple:
+        "From {count} PDFs, will save {pages} pages as {format}",
+    },
   },
   imagesToPdf: {
     outputLabel: "Output",
@@ -151,6 +161,8 @@ export const en: Translations = {
     addFolder: "Add folder",
     clearAll: "Remove all",
     mergePageCount: "Will create a {count}-page PDF",
+    saveEachCountSingle: "Will save 1 PDF",
+    saveEachCountMultiple: "Will save {count} PDFs",
     tableFileName: "File name",
     tableSavedName: "Saved file name",
     tableStatus: "Status",

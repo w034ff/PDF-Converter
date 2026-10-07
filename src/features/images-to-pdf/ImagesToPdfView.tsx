@@ -432,9 +432,6 @@ export function ImagesToPdfView() {
   }
 
   const isMerge = imagesToPdf.output === "merge";
-  const validPageCount = imagesToPdf.items.filter(
-    (item) => item.error === null,
-  ).length;
   const skippedText = formatSkippedMessage(skipped, t);
 
   const summaryText =
@@ -591,11 +588,6 @@ export function ImagesToPdfView() {
               );
             })}
           </ol>
-          <div className="images-merge-summary hint">
-            {formatMessage(t.imagesToPdf.mergePageCount, {
-              count: validPageCount,
-            })}
-          </div>
         </>
       ) : (
         <div className="images-table-container">
