@@ -93,7 +93,7 @@ describe("App", () => {
     mockAppIpc(() => new Promise(() => {}));
     render(<App initialNavLang="ja" />);
 
-    const select = screen.getByRole("combobox");
+    const select = screen.getByRole("combobox", { name: "言語" });
     expect(select).toHaveValue("ja");
     expect(screen.getByRole("tab", { name: "画像 → PDF" })).toBeInTheDocument();
 
@@ -101,6 +101,7 @@ describe("App", () => {
     fireEvent.change(select, { target: { value: "en" } });
 
     expect(select).toHaveValue("en");
+    expect(select).toHaveAccessibleName("Language");
     expect(
       screen.getByRole("tab", { name: "Images → PDF" }),
     ).toBeInTheDocument();
