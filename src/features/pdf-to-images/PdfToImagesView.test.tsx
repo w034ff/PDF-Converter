@@ -48,6 +48,15 @@ const samplePdf2: PdfItem = {
   error: null,
 };
 
+const samplePdfB10Pages: PdfItem = {
+  id: 4,
+  name: "catalog.pdf",
+  pageCount: 10,
+  firstPageSizePt: { widthPt: 595.28, heightPt: 841.89 },
+  bytes: 2500000,
+  error: null,
+};
+
 const errorPdf: PdfItem = {
   id: 3,
   name: "locked.pdf",
@@ -837,6 +846,97 @@ describe("PdfToImagesView", () => {
       fireEvent.click(thumb3, { shiftKey: true });
       await waitFor(() => {
         expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 3-7");
+      });
+    });
+
+    it("treats Shift-click without an anchor (first operation) as a single page click", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf10Pages]; // 10 pages
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "";
+        state.pdfToImages.rangeResult = null;
+      });
+
+      // Shift-click page 5 as first operation: only page 5 is selected (not 1..5)
+      const thumb5 = screen.getByRole("button", { name: "5 ページ" });
+      fireEvent.click(thumb5, { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("5");
+        expect(thumb5).toHaveAttribute("aria-pressed", "true");
+      });
+    });
+
+    it("resets anchor when PDF is replaced so first Shift-click on new PDF selects only that page", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        if (cmd === "remove_items") {
+          return undefined;
+        }
+        if (cmd === "add_pdfs") {
+          const res: AddResult<PdfItem> = {
+            added: [samplePdfB10Pages],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return res;
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1]; // PDF A (4 pages)
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "";
+        state.pdfToImages.rangeResult = null;
+      });
+
+      // 1. Click page 2 on PDF A (anchor becomes 2, rangeText becomes "2")
+      const thumb2OnPdfA = screen.getByRole("button", { name: "2 ページ" });
+      fireEvent.click(thumb2OnPdfA);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("2");
+      });
+
+      // Deselect page 2 so rangeText becomes empty, while anchor remains 2
+      fireEvent.click(thumb2OnPdfA);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("");
+      });
+
+      // 2. Remove PDF A by clicking "外す"
+      const removeBtn = screen.getByRole("button", { name: "外す" });
+      fireEvent.click(removeBtn);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+      });
+
+      // 3. Add PDF B (10 pages) via DropZone
+      const addBtn = screen.getByRole("button", { name: "PDF を追加" });
+      fireEvent.click(addBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText("catalog.pdf")).toBeInTheDocument();
+      });
+
+      // 4. Shift-click page 6 on PDF B: anchor should be reset, so only page 6 is selected
+      const thumb6OnPdfB = screen.getByRole("button", { name: "6 ページ" });
+      fireEvent.click(thumb6OnPdfB, { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("6");
+        expect(thumb6OnPdfB).toHaveAttribute("aria-pressed", "true");
       });
     });
 
