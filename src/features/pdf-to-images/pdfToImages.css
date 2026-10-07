@@ -93,6 +93,42 @@
   opacity: 0.45;
 }
 
+.pdf-page-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  display: block;
+  text-align: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.pdf-page-button:disabled {
+  cursor: default;
+}
+
+.pdf-page-button:focus {
+  outline: none;
+}
+
+.pdf-page-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.pdf-page-button:not(:disabled):hover
+  .pdf-page-container:not(.is-highlighted):not(.is-failed) {
+  border-color: var(--color-border-dashed);
+}
+
+.pdf-page-button:not(:disabled):hover .pdf-page-container.is-highlighted {
+  border-color: var(--color-accent-hover);
+}
+
 .pdf-page-container {
   width: 100%;
   background: var(--color-bg-surface);

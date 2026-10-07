@@ -77,6 +77,8 @@ export const en: Translations = {
       pagesTitle: "Pages",
       pagesAll: "All",
       pagesRange: "Select range",
+      thumbnailPickHint:
+        "You can also pick pages by clicking the thumbnails (Shift for a range).",
       rangeLabel: "Pages to convert (e.g. 1-3, 5)",
       rangePlaceholder: "1-3, 5",
       rangeHintSingle: "Will convert {count} pages",
@@ -98,6 +100,7 @@ export const en: Translations = {
       convertPage: "{page}  ✓ Convert",
       failedPage: "{page}  ✕ Failed",
       thumbnailAlt: "Thumbnail of {name} page {page}",
+      pageAriaLabel: "Page {page}",
     },
     batch: {
       pdfCount: "{count} PDFs",

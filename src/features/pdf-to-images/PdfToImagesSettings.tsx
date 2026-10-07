@@ -132,6 +132,11 @@ export function PdfToImagesSettings() {
           }
           disabled={busy}
         />
+        {singlePdf !== null && (
+          <span className="hint">
+            {t.pdfToImages.settings.thumbnailPickHint}
+          </span>
+        )}
         {pdfToImages.pageSelection === "range" && (
           <>
             <label className="hint" htmlFor="range">
@@ -141,6 +146,7 @@ export function PdfToImagesSettings() {
               id="range"
               className="pdf-settings-field"
               type="text"
+              autoComplete="off"
               value={pdfToImages.rangeText}
               placeholder={t.pdfToImages.settings.rangePlaceholder}
               onChange={(e) =>
