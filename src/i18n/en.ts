@@ -151,6 +151,8 @@ export const en: Translations = {
     tableFileName: "File name",
     tableSavedName: "Saved file name",
     tableStatus: "Status",
+    tableActions: "Actions",
+    remove: "Remove",
     noOutputYet: "—",
   },
 };

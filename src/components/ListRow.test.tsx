@@ -91,4 +91,27 @@ describe("ListRow", () => {
     expect(screen.getByRole("button", { name: "Up" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Down" })).toBeDisabled();
   });
+
+  it("appends className and forwards attributes and ref to li element", () => {
+    let liElement: HTMLLIElement | null = null;
+    render(
+      <ListRow
+        title="test.png"
+        className="custom-class is-dragging"
+        tabIndex={0}
+        data-row-index={2}
+        ref={(el) => {
+          liElement = el;
+        }}
+      />,
+    );
+
+    const li = screen.getByRole("listitem");
+    expect(li).toHaveClass("list-row");
+    expect(li).toHaveClass("custom-class");
+    expect(li).toHaveClass("is-dragging");
+    expect(li).toHaveAttribute("tabindex", "0");
+    expect(li).toHaveAttribute("data-row-index", "2");
+    expect(liElement).toBe(li);
+  });
 });

@@ -335,7 +335,7 @@ describe("ImagesToPdf (T11)", () => {
     });
   });
 
-  it("disables conversion button in 'each' mode when output directory is not chosen", async () => {
+  it("opens folder dialog when starting without output directory in 'each' mode, updates settings panel, and starts conversion", async () => {
     const calls = mockAppIpc((cmd) => {
       if (cmd === "add_images") {
         const result: AddResult<ImageItem> = {
@@ -368,16 +368,62 @@ describe("ImagesToPdf (T11)", () => {
     const eachModeBtn = screen.getByRole("button", { name: "1 枚ずつ" });
     fireEvent.click(eachModeBtn);
 
-    // Button label is now "変換を開始"
+    // Button label is now "変換を開始", and is ENABLED even without output dir
     const startBtn = screen.getByRole("button", { name: "変換を開始" });
-    // Disabled because output dir is not chosen
-    expect(startBtn).toBeDisabled();
+    expect(startBtn).toBeEnabled();
 
-    // Pick an output folder
-    const chooseFolderBtn = screen.getByRole("button", {
-      name: "フォルダを選ぶ",
+    // Click start conversion without previously selecting folder
+    fireEvent.click(startBtn);
+
+    // pick_output_dir is called with kind: "imagesToPdf"
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "pick_output_dir",
+        args: { kind: "imagesToPdf" },
+      });
     });
-    fireEvent.click(chooseFolderBtn);
+
+    // Settings panel output dir name is updated
+    await waitFor(() => {
+      expect(screen.getByText("export-folder")).toBeInTheDocument();
+    });
+
+    // start_images_to_pdfs is called with valid target ids and page size
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "start_images_to_pdfs",
+        args: { ids: [1], pageSize: "fit" },
+      });
+    });
+  });
+
+  it("does not start conversion when pick_output_dir is cancelled in 'each' mode", async () => {
+    const calls = mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "pick_output_dir") {
+        return null;
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    fireEvent.click(startBtn);
 
     await waitFor(() => {
       expect(calls).toContainEqual({
@@ -386,14 +432,123 @@ describe("ImagesToPdf (T11)", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("export-folder")).toBeInTheDocument();
+    expect(calls.some((c) => c.cmd === "start_images_to_pdfs")).toBe(false);
+  });
+
+  it("shows error in bottom bar when pick_output_dir fails in 'each' mode", async () => {
+    const calls = mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "pick_output_dir") {
+        throw { code: "ReadFailed", detail: "read failed" };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
     });
 
-    // Now start conversion is enabled
-    expect(startBtn).not.toBeDisabled();
+    renderHarness();
 
-    // Click start conversion
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "pick_output_dir",
+        args: { kind: "imagesToPdf" },
+      });
+    });
+
+    expect(calls.some((c) => c.cmd === "start_images_to_pdfs")).toBe(false);
+
+    // Error is displayed in bottom bar
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "ファイルの読み込みに失敗しました",
+      );
+    });
+  });
+
+  it("disables conversion button while waiting for pick_output_dir dialog in 'each' mode", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "pick_output_dir") {
+        return new Promise(() => {}); // never resolves
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    expect(startBtn).toBeEnabled();
+
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(startBtn).toBeDisabled();
+    });
+  });
+
+  it("starts conversion directly without pick_output_dir when directory is already chosen in 'each' mode", async () => {
+    const calls = mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "pick_output_dir") {
+        return { dirLabel: "already-chosen" };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+    // Manually pick folder first
+    fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+    await waitFor(() => {
+      expect(screen.getByText("already-chosen")).toBeInTheDocument();
+    });
+
+    calls.length = 0; // reset call log
+
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
     fireEvent.click(startBtn);
 
     await waitFor(() => {
@@ -401,6 +556,297 @@ describe("ImagesToPdf (T11)", () => {
         cmd: "start_images_to_pdfs",
         args: { ids: [1], pageSize: "fit" },
       });
+    });
+
+    expect(calls.some((c) => c.cmd === "pick_output_dir")).toBe(false);
+  });
+
+  it("applies is-dragging, is-drop-after, and is-drop-before during drag, and cleans up after drop", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1, sampleImage2, sampleImage3],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    const rows = screen.getAllByRole("listitem");
+    // Row 0: photo.jpg, Row 1: diagram.png, Row 2: corrupt.png
+
+    // Drag row 0 down over row 1
+    fireEvent.pointerDown(rows[0], { button: 0 });
+    expect(rows[0]).toHaveClass("is-dragging");
+
+    fireEvent.pointerMove(rows[1]);
+    expect(rows[0]).toHaveClass("is-dragging");
+    expect(rows[1]).toHaveClass("is-drop-after");
+    expect(rows[1]).not.toHaveClass("is-drop-before");
+
+    // Drag row 0 down over row 2
+    fireEvent.pointerMove(rows[2]);
+    expect(rows[1]).not.toHaveClass("is-drop-after");
+    expect(rows[2]).toHaveClass("is-drop-after");
+
+    // Drag back over row 0 (original position: no drop indicator)
+    fireEvent.pointerMove(rows[0]);
+    expect(rows[0]).toHaveClass("is-dragging");
+    expect(rows[0]).not.toHaveClass("is-drop-before");
+    expect(rows[0]).not.toHaveClass("is-drop-after");
+
+    // Release
+    fireEvent.pointerUp(rows[0]);
+    expect(rows[0]).not.toHaveClass("is-dragging");
+    expect(rows[1]).not.toHaveClass("is-drop-after");
+    expect(rows[2]).not.toHaveClass("is-drop-after");
+
+    // Now drag row 2 up over row 1
+    fireEvent.pointerDown(rows[2], { button: 0 });
+    expect(rows[2]).toHaveClass("is-dragging");
+
+    fireEvent.pointerMove(rows[1]);
+    expect(rows[1]).toHaveClass("is-drop-before");
+    expect(rows[1]).not.toHaveClass("is-drop-after");
+
+    fireEvent.pointerUp(rows[1]);
+    expect(rows[1]).not.toHaveClass("is-drop-before");
+    expect(rows[2]).not.toHaveClass("is-dragging");
+  });
+
+  it("cancels drag on pointercancel without reordering items and clears drop indicators", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1, sampleImage2],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    let rows = screen.getAllByRole("listitem");
+    // Row 0: photo.jpg, Row 1: diagram.png
+
+    // Drag row 0 over row 1
+    fireEvent.pointerDown(rows[0], { button: 0 });
+    expect(rows[0]).toHaveClass("is-dragging");
+
+    fireEvent.pointerMove(rows[1]);
+    expect(rows[1]).toHaveClass("is-drop-after");
+
+    // Send pointercancel
+    const list = screen.getByRole("list");
+    fireEvent.pointerCancel(list);
+
+    // Order remains unchanged: photo.jpg is still first, diagram.png is second
+    rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("photo.jpg");
+    expect(rows[1]).toHaveTextContent("diagram.png");
+
+    // Indicators are completely cleared
+    expect(rows[0]).not.toHaveClass("is-dragging");
+    expect(rows[1]).not.toHaveClass("is-drop-after");
+    expect(rows[1]).not.toHaveClass("is-drop-before");
+  });
+
+  it("keeps focus on moved row after Alt + Up and Alt + Down keyboard reordering", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1, sampleImage2],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    let rows = screen.getAllByRole("listitem");
+    // Row 0 is photo.jpg, Row 1 is diagram.png
+    rows[0].focus();
+    expect(rows[0]).toHaveFocus();
+
+    // Blur first so that only the focus restoration logic moves focus
+    rows[0].blur();
+    expect(rows[0]).not.toHaveFocus();
+
+    // Alt + Down moves photo.jpg to row 1
+    fireEvent.keyDown(rows[0], { key: "ArrowDown", altKey: true });
+
+    rows = screen.getAllByRole("listitem");
+    expect(rows[1]).toHaveTextContent("photo.jpg");
+    expect(rows[1]).toHaveFocus();
+
+    // Blur first so that only the focus restoration logic moves focus
+    rows[1].blur();
+    expect(rows[1]).not.toHaveFocus();
+
+    // Alt + Up moves photo.jpg back to row 0
+    fireEvent.keyDown(rows[1], { key: "ArrowUp", altKey: true });
+
+    rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("photo.jpg");
+    expect(rows[0]).toHaveFocus();
+  });
+
+  it("renders thumbnails and remove buttons in 'each' mode table, and handles removal and conversion disable", async () => {
+    let resolveConversion: () => void = () => {};
+    const calls = mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1, sampleImage3], // photo.jpg (ok) and corrupt.png (error)
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      if (cmd === "remove_items") {
+        return undefined;
+      }
+      if (cmd === "start_images_to_pdfs") {
+        return new Promise<void>((resolve) => {
+          resolveConversion = resolve;
+        });
+      }
+      if (cmd === "pick_output_dir") {
+        return { dirLabel: "out" };
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    // Switch to each mode
+    fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+
+    // Check table headers: "ファイル名", "保存するファイル名", "状態", "操作"
+    expect(screen.getByText("操作")).toBeInTheDocument();
+
+    // Both rows have thumbnails (img or placeholder svg)
+    const photoThumb = screen.getByRole("img", {
+      name: "photo.jpg のサムネイル",
+    });
+    expect(photoThumb).toBeInTheDocument();
+    const corruptThumb = screen.getByRole("img", {
+      name: "corrupt.png のサムネイル",
+    });
+    expect(corruptThumb).toBeInTheDocument();
+
+    // Both rows have "外す" button enabled before conversion
+    const removeButtons = screen.getAllByRole("button", { name: "外す" });
+    expect(removeButtons).toHaveLength(2);
+    expect(removeButtons[0]).toBeEnabled();
+    expect(removeButtons[1]).toBeEnabled();
+
+    // Click "外す" on corrupt.png (second row)
+    fireEvent.click(removeButtons[1]);
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "remove_items",
+        args: { ids: [3] },
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("corrupt.png")).not.toBeInTheDocument();
+    });
+
+    // Start conversion
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    fireEvent.click(startBtn);
+
+    // During conversion: "外す" is disabled
+    await waitFor(() => {
+      const remainingRemoveBtn = screen.getByRole("button", { name: "外す" });
+      expect(remainingRemoveBtn).toBeDisabled();
+    });
+
+    // Complete job
+    await act(async () => {
+      resolveConversion();
+      await emit(JOB_FINISHED_EVENT, {
+        succeeded: 1,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      } satisfies JobFinishedPayload);
+    });
+
+    // After conversion: "外す" is enabled again
+    const postJobRemoveBtn = screen.getByRole("button", { name: "外す" });
+    expect(postJobRemoveBtn).toBeEnabled();
+  });
+
+  it("retains row and displays error when remove in table fails", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      if (cmd === "remove_items") {
+        throw { code: "Failed", detail: "failed to remove item" };
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    // Switch to each mode
+    fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+
+    const removeBtn = screen.getByRole("button", { name: "外す" });
+    fireEvent.click(removeBtn);
+
+    // Item remains in table and error alert is displayed
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
     });
   });
 
@@ -473,6 +919,65 @@ describe("ImagesToPdf (T11)", () => {
     // Complete job
     await act(async () => {
       resolveConversion();
+    });
+  });
+
+  it("sets tabIndex 0 before conversion and removes tabIndex during conversion", async () => {
+    let resolveConversion: () => void = () => {};
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      if (cmd === "save_merged_pdf") {
+        return new Promise<{ savedName: string }>((resolve) => {
+          resolveConversion = () => resolve({ savedName: "merged.pdf" });
+        });
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    // Before conversion: rows have tabindex="0"
+    const rowBefore = screen.getByRole("listitem");
+    expect(rowBefore).toHaveAttribute("tabindex", "0");
+
+    // Start conversion
+    fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+
+    // During conversion: rows do not have tabindex attribute
+    await waitFor(() => {
+      const rowDuring = screen.getByRole("listitem");
+      expect(rowDuring).not.toHaveAttribute("tabindex");
+    });
+
+    // Complete job
+    await act(async () => {
+      resolveConversion();
+      await emit(JOB_FINISHED_EVENT, {
+        succeeded: 1,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      } satisfies JobFinishedPayload);
+    });
+
+    // After conversion: rows have tabindex="0" again
+    await waitFor(() => {
+      const rowAfter = screen.getByRole("listitem");
+      expect(rowAfter).toHaveAttribute("tabindex", "0");
     });
   });
 
