@@ -14,7 +14,7 @@ Rules for the implementer of this repository. Read this file and the documents b
 - Do not edit `docs/requirements.md` or `docs/design.md`.
 - Every commit runs the pre-commit hook (`.githooks/pre-commit`, `docs/work-plan.md` §2.3). Never bypass it (`--no-verify` or any other way) and never change git settings or hooks.
 - Before writing the report, run every command in `docs/work-plan.md` §5 and make sure all of them pass.
-- Never push and never open a PR. The reviewer reviews your branch locally and opens the PR once the review passes (`docs/work-plan.md` §2).
+- Never push and never open a PR. The reviewer reviews your branch locally, and the PR is opened from it once the review passes (`docs/work-plan.md` §2).
 
 ## When to stop and ask
 
