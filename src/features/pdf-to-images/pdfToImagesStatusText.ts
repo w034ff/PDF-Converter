@@ -21,19 +21,28 @@ function formatSavePages(
   return formatMessage(template, { pages, format });
 }
 
+/** The footer's line, and whether it warns rather than describes. */
+export interface PdfToImagesStatusLine {
+  text: string;
+  isWarning: boolean;
+}
+
 /**
- * Returns the status text for PDF to Images when idle (design §10.1).
- * Counts only items without errors (error === null).
- * Returns null when nothing should be displayed (e.g. range error, or checking without previous result).
+ * Describes what starting would do, for the footer while idle (design
+ * §10.1). Counts only items without errors. `null` when nothing should be
+ * shown: the range has an error, which the settings panel shows, or has not
+ * been checked yet. A range that matches no page is a warning, since it
+ * converts nothing and should be noticed before pressing the button.
  */
-export function getPdfToImagesStatusText(
+export function describePdfToImagesStatus(
   state: PdfToImagesState,
   t: Translations,
-): string | null {
+): PdfToImagesStatusLine | null {
+  const plain = (text: string) => ({ text, isWarning: false });
   const validPdfs = state.items.filter((item) => item.error === null);
   const count = validPdfs.length;
   if (count === 0) {
-    return t.footer.noPdfsSelected;
+    return plain(t.footer.noPdfsSelected);
   }
 
   const format =
@@ -43,12 +52,12 @@ export function getPdfToImagesStatusText(
 
   if (state.pageSelection === "all") {
     const pages = validPdfs.reduce((sum, item) => sum + item.pageCount, 0);
-    return formatSavePages(pages, count, format, t);
+    return plain(formatSavePages(pages, count, format, t));
   }
 
   // "range" selection
   if (state.rangeText.trim().length === 0) {
-    return t.pdfToImages.footer.specifyPages;
+    return plain(t.pdfToImages.footer.specifyPages);
   }
 
   if (state.rangeError !== null) {
@@ -61,8 +70,16 @@ export function getPdfToImagesStatusText(
   }
 
   if (state.rangeResult.totalPages === 0) {
-    return t.pdfToImages.footer.noMatchingPages;
+    return { text: t.pdfToImages.footer.noMatchingPages, isWarning: true };
   }
 
-  return formatSavePages(state.rangeResult.totalPages, count, format, t);
+  return plain(formatSavePages(state.rangeResult.totalPages, count, format, t));
+}
+
+/** The text of {@link describePdfToImagesStatus} alone. */
+export function getPdfToImagesStatusText(
+  state: PdfToImagesState,
+  t: Translations,
+): string | null {
+  return describePdfToImagesStatus(state, t)?.text ?? null;
 }

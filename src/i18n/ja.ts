@@ -78,7 +78,6 @@ export const ja = {
       thumbnailPickHint: "サムネイルを押してもページを選べます（Shift で範囲）",
       rangeLabel: "変換するページ（例：1-3, 5）",
       rangePlaceholder: "1-3, 5",
-      rangeHintSingle: "{count} ページを変換します",
       rangeHintBatch:
         "すべての PDF に同じ範囲を当てはめます。ページが足りない PDF は、あるページだけを変換します",
       formatTitle: "形式",

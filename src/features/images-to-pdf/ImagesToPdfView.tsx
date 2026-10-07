@@ -654,7 +654,7 @@ export function ImagesToPdfView() {
                     >
                       {cellStatusText}
                     </td>
-                    <td>
+                    <td className="images-table-actions-col">
                       <button
                         type="button"
                         className="btn btn-ghost"

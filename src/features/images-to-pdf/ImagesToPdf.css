@@ -138,6 +138,10 @@
   background: var(--color-bg-subtle);
 }
 
+.images-table .images-table-actions-col {
+  text-align: center;
+}
+
 .images-table td {
   font-size: 13px;
   padding: 8px 12px;

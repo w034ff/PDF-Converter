@@ -231,8 +231,11 @@
   background: var(--color-bg-subtle);
 }
 
+/* Right-aligned so the page counts line up digit by digit; the header
+   follows its column. */
 .pdf-table .pdf-col-pages {
   width: 120px;
+  text-align: right;
 }
 
 .pdf-table .pdf-col-status {
@@ -241,13 +244,14 @@
 
 .pdf-table .pdf-col-actions {
   width: 80px;
+  text-align: center;
 }
 
 .pdf-table td {
   font-size: 13px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--color-border);
-  vertical-align: top;
+  vertical-align: middle;
   color: var(--color-text-primary);
 }
 
@@ -299,4 +303,11 @@
   top: 0;
   z-index: 1;
   box-shadow: inset 0 -1px 0 var(--color-border);
+}
+
+/* A range that cannot be read or matches no page: the start button stays
+   disabled or converts nothing, so it is shown in the error colour. Two
+   classes to win over .hint. */
+.hint.pdf-hint-warning {
+  color: var(--color-error);
 }

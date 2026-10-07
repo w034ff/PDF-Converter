@@ -37,6 +37,7 @@ import {
   isPageInIntervals,
   togglePageRangeInIntervals,
 } from "./pdfUtils";
+import { useDisplayedRange } from "./useDisplayedRange";
 import "./pdfToImages.css";
 
 interface PdfPageThumbnailProps {
@@ -275,7 +276,7 @@ function PdfTableRow({
   return (
     <tr>
       <td>{item.name}</td>
-      <td className="mono">{pagesText}</td>
+      <td className="mono pdf-col-pages">{pagesText}</td>
       <td className="mono">{savedFilesText}</td>
       <td className={statusClass}>
         {statusText}
@@ -283,7 +284,7 @@ function PdfTableRow({
           <div className="pdf-status-reason">{reasonText}</div>
         )}
       </td>
-      <td>
+      <td className="pdf-col-actions">
         <button
           type="button"
           className="btn btn-ghost"
@@ -307,6 +308,7 @@ export function PdfToImagesView() {
   const busy = isJobActive(job);
   const [lastSkipped, setLastSkipped] = useState<Skipped | null>(null);
   const [error, setError] = useState<IpcError | null>(null);
+  const displayed = useDisplayedRange(pdfToImages);
 
   const isSingle = pdfToImages.items.length === 1;
   const singleItem = isSingle ? pdfToImages.items[0] : null;
@@ -598,9 +600,9 @@ export function PdfToImagesView() {
             {Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).map(
               (page) => {
                 const isHighlighted =
-                  pdfToImages.pageSelection === "all" ||
-                  (pdfToImages.rangeResult !== null &&
-                    isPageInIntervals(pdfToImages.rangeResult.intervals, page));
+                  displayed.pageSelection === "all" ||
+                  (displayed.rangeResult !== null &&
+                    isPageInIntervals(displayed.rangeResult.intervals, page));
                 return (
                   <PdfPageThumbnail
                     key={page}
@@ -643,8 +645,8 @@ export function PdfToImagesView() {
                   key={item.id}
                   item={item}
                   job={job}
-                  pageSelection={pdfToImages.pageSelection}
-                  rangeResult={pdfToImages.rangeResult}
+                  pageSelection={displayed.pageSelection}
+                  rangeResult={displayed.rangeResult}
                   onRemove={() => void handleRemove(item.id)}
                   disabled={busy}
                   translations={t}

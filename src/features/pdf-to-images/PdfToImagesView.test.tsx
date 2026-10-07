@@ -19,6 +19,7 @@ import {
   type AppState,
 } from "../../state";
 import { PdfToImagesSettings } from "./PdfToImagesSettings";
+import { PdfToImagesStatus } from "./PdfToImagesStatus";
 import { PdfToImagesView } from "./PdfToImagesView";
 
 const samplePdf1: PdfItem = {
@@ -114,6 +115,8 @@ function renderFeature(stateModifier?: (state: AppState) => void) {
   return render(
     <AppStateProvider initialState={state}>
       <PdfToImagesSettings />
+      {/* The footer line, where the number of pages to convert is shown. */}
+      <PdfToImagesStatus />
       <PdfToImagesView />
     </AppStateProvider>,
   );
@@ -693,6 +696,66 @@ describe("PdfToImagesView", () => {
     });
   });
 
+  describe("while a new range waits for its first check", () => {
+    // The check never answers, so what is shown is what stays from before.
+    function mockPendingCheck() {
+      mockCommands((cmd) =>
+        cmd === "check_page_range" ? new Promise(() => {}) : undefined,
+      );
+    }
+
+    it("keeps the pages of 'All' marked after switching to a range", () => {
+      mockPendingCheck();
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf10Pages];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "範囲を指定" }));
+
+      expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1-10");
+      for (let page = 1; page <= 10; page++) {
+        expect(
+          screen.getByRole("button", { name: `${page} ページ` }),
+        ).toHaveAttribute("aria-pressed", "true");
+      }
+      expect(
+        screen.getByText("10 ページを PNG で保存します"),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the page counts of the table after switching to a range", () => {
+      mockPendingCheck();
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1, samplePdf2];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "範囲を指定" }));
+
+      expect(screen.getByText("4 / 4")).toBeInTheDocument();
+      expect(screen.getByText("3 / 3")).toBeInTheDocument();
+    });
+  });
+
+  it("shows a range that matches no page as a warning in the footer", async () => {
+    mockCommands((cmd) =>
+      cmd === "check_page_range"
+        ? { totalPages: 0, intervals: [[20, 30]] }
+        : undefined,
+    );
+    renderFeature((state) => {
+      state.pdfToImages.items = [samplePdf10Pages];
+      state.pdfToImages.pageSelection = "range";
+    });
+
+    fireEvent.change(screen.getByLabelText(/変換するページ/), {
+      target: { value: "20-30" },
+    });
+
+    expect(
+      await screen.findByText("範囲に当てはまるページがありません"),
+    ).toHaveClass("pdf-hint-warning");
+  });
+
   describe("thumbnail click page selection", () => {
     it("toggles page selection in range mode: rebuilds rangeText, calls check_page_range, and updates aria-pressed", async () => {
       const calls = mockCommands((cmd, args) => {
@@ -711,7 +774,9 @@ describe("PdfToImagesView", () => {
 
       // Wait for initial check triggered on mount to finish so rangeChecking is false
       await waitFor(() => {
-        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("1 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       const thumb1Btn = screen.getByRole("button", { name: "1 ページ" });
@@ -814,7 +879,9 @@ describe("PdfToImagesView", () => {
 
       // Wait for initial check triggered on mount to finish so rangeChecking is false
       await waitFor(() => {
-        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("1 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       // Click page 3 without Shift (anchor becomes 3, adds 3 -> "1, 3")
@@ -823,7 +890,9 @@ describe("PdfToImagesView", () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 3");
-        expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("2 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       // Shift-click page 7 (target 7 is not selected -> selects 3..7 -> "1, 3-7")
@@ -832,7 +901,9 @@ describe("PdfToImagesView", () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 3-7");
-        expect(screen.getByText("6 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("6 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       // Shift-click page 3 (target 3 is selected -> unselects 7..3 -> 3..7 excluded -> "1")
@@ -840,14 +911,18 @@ describe("PdfToImagesView", () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1");
-        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("1 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       // Test anchor after target: Click page 7 (anchor becomes 7 -> "1, 7")
       fireEvent.click(thumb7);
       await waitFor(() => {
         expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 7");
-        expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("2 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       // Shift-click page 3 (anchor 7 is after target 3; 3 is unselected -> selects 3..7 -> "1, 3-7")
@@ -1023,7 +1098,9 @@ describe("PdfToImagesView", () => {
 
       // Wait for initial check to complete so rangeChecking becomes false
       await waitFor(() => {
-        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("1 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       // Currently intervals says only page 2 is selected (despite rangeText being "something-arbitrary")
@@ -1057,7 +1134,9 @@ describe("PdfToImagesView", () => {
 
       // Wait for initial check to finish so rangeChecking is false
       await waitFor(() => {
-        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+        expect(
+          screen.getByText("1 ページを PNG で保存します"),
+        ).toBeInTheDocument();
       });
 
       const thumb2Btn = screen.getByRole("button", { name: "2 ページ" });

@@ -81,7 +81,6 @@ export const en: Translations = {
         "You can also pick pages by clicking the thumbnails (Shift for a range).",
       rangeLabel: "Pages to convert (e.g. 1-3, 5)",
       rangePlaceholder: "1-3, 5",
-      rangeHintSingle: "Will convert {count} pages",
       rangeHintBatch:
         "Applies the same range to all PDFs. PDFs with fewer pages convert only existing pages.",
       formatTitle: "Format",
