@@ -55,6 +55,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "JOB_FINISHED":
     case "JOB_SAVED":
     case "JOB_FAILED":
+    case "JOB_NOT_STARTED":
     case "JOB_RESET":
       return {
         ...state,

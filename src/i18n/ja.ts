@@ -149,6 +149,8 @@ export const ja = {
     tableFileName: "ファイル名",
     tableSavedName: "保存するファイル名",
     tableStatus: "状態",
+    tableActions: "操作",
+    remove: "外す",
     noOutputYet: "—",
   },
 };

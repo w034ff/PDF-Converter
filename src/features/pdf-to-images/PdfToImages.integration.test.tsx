@@ -185,8 +185,8 @@ describe("PdfToImages integration workflow", () => {
     fireEvent.change(dpiSelect, { target: { value: "300" } });
     expect(dpiSelect).toHaveValue("300");
 
-    // "変換を開始" is still disabled because output directory is not selected
-    expect(startButton).toBeDisabled();
+    // "変換を開始" is enabled even when output directory is not yet selected
+    expect(startButton).toBeEnabled();
 
     // Pick output directory
     const pickDirButton = screen.getByRole("button", {

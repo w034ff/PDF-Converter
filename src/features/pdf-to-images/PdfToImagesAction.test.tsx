@@ -13,8 +13,10 @@ import {
   createInitialAppState,
   initialJobState,
   initialPdfToImagesState,
+  useAppState,
   type AppState,
 } from "../../state";
+import { JobFooter } from "../job/JobFooter";
 import { PdfToImagesAction } from "./PdfToImagesAction";
 
 const samplePdf1: PdfItem = {
@@ -61,6 +63,32 @@ function mockCommands(answer: (cmd: string, args: unknown) => unknown): Call[] {
   return calls;
 }
 
+function ActionHarness() {
+  const { pdfToImages } = useAppState();
+  return (
+    <div>
+      <span data-testid="output-dir-label">
+        {pdfToImages.outputDir?.dirLabel ?? "not-chosen"}
+      </span>
+      <PdfToImagesAction />
+      <footer data-testid="footer-pdf">
+        <JobFooter
+          tab="pdfToImages"
+          idleStatus={<span>idle-pdf</span>}
+          action={<span />}
+        />
+      </footer>
+      <footer data-testid="footer-images">
+        <JobFooter
+          tab="imagesToPdf"
+          idleStatus={<span>idle-images</span>}
+          action={<span />}
+        />
+      </footer>
+    </div>
+  );
+}
+
 function renderAction(stateModifier?: (state: AppState) => void) {
   const base = createInitialAppState("ja-JP");
   const state: AppState = {
@@ -80,7 +108,7 @@ function renderAction(stateModifier?: (state: AppState) => void) {
   stateModifier?.(state);
   return render(
     <AppStateProvider initialState={state}>
-      <PdfToImagesAction />
+      <ActionHarness />
     </AppStateProvider>,
   );
 }
@@ -117,14 +145,160 @@ describe("PdfToImagesAction", () => {
     expect(screen.getByRole("button", { name: "変換を開始" })).toBeDisabled();
   });
 
-  it("is disabled when output directory is not chosen", () => {
-    mockCommands(() => undefined);
+  it("is enabled when output directory is not chosen, and starts conversion after picking output folder", async () => {
+    const calls = mockCommands((cmd) => {
+      if (cmd === "pick_output_dir") {
+        return { dirLabel: "picked-folder" };
+      }
+      return undefined;
+    });
+
     renderAction((state) => {
       state.pdfToImages.items = [samplePdf1];
       state.pdfToImages.outputDir = null;
     });
 
-    expect(screen.getByRole("button", { name: "変換を開始" })).toBeDisabled();
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    expect(startBtn).toBeEnabled();
+
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "pick_output_dir",
+        args: { kind: "pdfToImages" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "start_pdfs_to_images",
+        args: {
+          ids: [1],
+          range: "1-4",
+          format: "png",
+          dpi: 150,
+        },
+      });
+    });
+
+    expect(screen.getByTestId("output-dir-label")).toHaveTextContent(
+      "picked-folder",
+    );
+  });
+
+  it("does not start conversion when pick_output_dir is cancelled", async () => {
+    const calls = mockCommands((cmd) => {
+      if (cmd === "pick_output_dir") {
+        return null;
+      }
+      return undefined;
+    });
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = null;
+    });
+
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "pick_output_dir",
+        args: { kind: "pdfToImages" },
+      });
+    });
+
+    expect(calls.some((c) => c.cmd === "start_pdfs_to_images")).toBe(false);
+    expect(screen.getByTestId("output-dir-label")).toHaveTextContent(
+      "not-chosen",
+    );
+  });
+
+  it("shows error in bottom bar when pick_output_dir fails and does not show on other tab", async () => {
+    const calls = mockCommands((cmd) => {
+      if (cmd === "pick_output_dir") {
+        throw { code: "ReadFailed", detail: "folder read error" };
+      }
+      return undefined;
+    });
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = null;
+    });
+
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "pick_output_dir",
+        args: { kind: "pdfToImages" },
+      });
+    });
+
+    expect(calls.some((c) => c.cmd === "start_pdfs_to_images")).toBe(false);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("footer-pdf")).toHaveTextContent(
+        "ファイルの読み込みに失敗しました",
+      );
+    });
+
+    expect(screen.getByTestId("footer-images")).toHaveTextContent(
+      "idle-images",
+    );
+  });
+
+  it("disables button while waiting for pick_output_dir response", async () => {
+    mockCommands((cmd) => {
+      if (cmd === "pick_output_dir") {
+        return new Promise(() => {}); // never resolves
+      }
+      return undefined;
+    });
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = null;
+    });
+
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    expect(startBtn).toBeEnabled();
+
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(startBtn).toBeDisabled();
+    });
+  });
+
+  it("starts conversion directly without pick_output_dir when directory is already chosen", async () => {
+    const calls = mockCommands(() => undefined);
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = { dirLabel: "existing-dir" };
+    });
+
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "start_pdfs_to_images",
+        args: {
+          ids: [1],
+          range: "1-4",
+          format: "png",
+          dpi: 150,
+        },
+      });
+    });
+
+    expect(calls.some((c) => c.cmd === "pick_output_dir")).toBe(false);
   });
 
   it("is disabled when job is already running", () => {

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { LiHTMLAttributes, ReactNode, Ref } from "react";
 import "./ListRow.css";
 
 export interface ListRowStatus {
@@ -6,7 +6,7 @@ export interface ListRowStatus {
   kind: "ok" | "failed" | "running" | "waiting";
 }
 
-export interface ListRowProps {
+export interface ListRowProps extends LiHTMLAttributes<HTMLLIElement> {
   index?: number;
   title: string;
   meta?: string;
@@ -26,6 +26,7 @@ export interface ListRowProps {
     remove?: string;
   };
   showDragHandle?: boolean;
+  ref?: Ref<HTMLLIElement>;
 }
 
 /**
@@ -48,14 +49,21 @@ export function ListRow({
   canMoveDown = true,
   labels,
   showDragHandle = true,
+  className,
+  ref,
+  ...rest
 }: ListRowProps) {
   const moveUpLabel = labels?.moveUp ?? "上へ";
   const moveDownLabel = labels?.moveDown ?? "下へ";
   const removeLabel = labels?.remove ?? "一覧から外す";
   const altText = thumbnailAlt ?? `${title} のサムネイル`;
 
+  const classes = ["list-row", error ? "has-error" : "", className]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <li className={`list-row ${error ? "has-error" : ""}`}>
+    <li ref={ref} className={classes} {...rest}>
       {index !== undefined && (
         <span className="mono list-row-index">{index}</span>
       )}
