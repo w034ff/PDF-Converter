@@ -81,11 +81,6 @@
   cursor: grab;
 }
 
-/* Buttons inside rows retain standard pointer cursor */
-.images-list .list-row button {
-  cursor: pointer;
-}
-
 /* While dragging, show grabbing cursor even if cursor leaves row bounds */
 .images-list.is-dragging-active,
 .images-list.is-dragging-active .list-row,

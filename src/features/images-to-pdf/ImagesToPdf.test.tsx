@@ -624,6 +624,52 @@ describe("ImagesToPdf (T11)", () => {
     expect(rows[2]).not.toHaveClass("is-dragging");
   });
 
+  it("cancels drag on pointercancel without reordering items and clears drop indicators", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1, sampleImage2],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    let rows = screen.getAllByRole("listitem");
+    // Row 0: photo.jpg, Row 1: diagram.png
+
+    // Drag row 0 over row 1
+    fireEvent.pointerDown(rows[0], { button: 0 });
+    expect(rows[0]).toHaveClass("is-dragging");
+
+    fireEvent.pointerMove(rows[1]);
+    expect(rows[1]).toHaveClass("is-drop-after");
+
+    // Send pointercancel
+    const list = screen.getByRole("list");
+    fireEvent.pointerCancel(list);
+
+    // Order remains unchanged: photo.jpg is still first, diagram.png is second
+    rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("photo.jpg");
+    expect(rows[1]).toHaveTextContent("diagram.png");
+
+    // Indicators are completely cleared
+    expect(rows[0]).not.toHaveClass("is-dragging");
+    expect(rows[1]).not.toHaveClass("is-drop-after");
+    expect(rows[1]).not.toHaveClass("is-drop-before");
+  });
+
   it("keeps focus on moved row after Alt + Up and Alt + Down keyboard reordering", async () => {
     mockAppIpc((cmd) => {
       if (cmd === "add_images") {
@@ -650,12 +696,20 @@ describe("ImagesToPdf (T11)", () => {
     rows[0].focus();
     expect(rows[0]).toHaveFocus();
 
+    // Blur first so that only the focus restoration logic moves focus
+    rows[0].blur();
+    expect(rows[0]).not.toHaveFocus();
+
     // Alt + Down moves photo.jpg to row 1
     fireEvent.keyDown(rows[0], { key: "ArrowDown", altKey: true });
 
     rows = screen.getAllByRole("listitem");
     expect(rows[1]).toHaveTextContent("photo.jpg");
     expect(rows[1]).toHaveFocus();
+
+    // Blur first so that only the focus restoration logic moves focus
+    rows[1].blur();
+    expect(rows[1]).not.toHaveFocus();
 
     // Alt + Up moves photo.jpg back to row 0
     fireEvent.keyDown(rows[1], { key: "ArrowUp", altKey: true });
@@ -865,6 +919,65 @@ describe("ImagesToPdf (T11)", () => {
     // Complete job
     await act(async () => {
       resolveConversion();
+    });
+  });
+
+  it("sets tabIndex 0 before conversion and removes tabIndex during conversion", async () => {
+    let resolveConversion: () => void = () => {};
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      if (cmd === "save_merged_pdf") {
+        return new Promise<{ savedName: string }>((resolve) => {
+          resolveConversion = () => resolve({ savedName: "merged.pdf" });
+        });
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    // Before conversion: rows have tabindex="0"
+    const rowBefore = screen.getByRole("listitem");
+    expect(rowBefore).toHaveAttribute("tabindex", "0");
+
+    // Start conversion
+    fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+
+    // During conversion: rows do not have tabindex attribute
+    await waitFor(() => {
+      const rowDuring = screen.getByRole("listitem");
+      expect(rowDuring).not.toHaveAttribute("tabindex");
+    });
+
+    // Complete job
+    await act(async () => {
+      resolveConversion();
+      await emit(JOB_FINISHED_EVENT, {
+        succeeded: 1,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      } satisfies JobFinishedPayload);
+    });
+
+    // After conversion: rows have tabindex="0" again
+    await waitFor(() => {
+      const rowAfter = screen.getByRole("listitem");
+      expect(rowAfter).toHaveAttribute("tabindex", "0");
     });
   });
 

@@ -336,6 +336,20 @@ export function ImagesToPdfView() {
     setOverIndex(null);
   };
 
+  const handlePointerCancel = (e: React.PointerEvent<HTMLOListElement>) => {
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignored
+    }
+    dragIndexRef.current = null;
+    overIndexRef.current = null;
+    setDragIndex(null);
+    setOverIndex(null);
+  };
+
   // Window pointer handlers to track drag even if cursor leaves row bounds
   useEffect(() => {
     if (dragIndex === null) {
@@ -503,7 +517,7 @@ export function ImagesToPdfView() {
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
             onKeyDown={handleKeyDown}
           >
             {imagesToPdf.items.map((item, index) => {
