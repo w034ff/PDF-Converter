@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { ja } from "../../i18n/ja";
 import {
   calculateRenderDimensions,
+  clampIntervals,
   countPagesInIntervals,
   formatFileSize,
   formatPaperSize,
   formatSkippedSummary,
+  intervalsToRangeText,
   isPageInIntervals,
+  togglePageRangeInIntervals,
 } from "./pdfUtils";
 
 describe("pdfUtils", () => {
@@ -124,6 +127,124 @@ describe("pdfUtils", () => {
       expect(
         formatSkippedSummary(ja, { unsupported: 1, folders: 2, duplicates: 3 }),
       ).toBe("（スキップ: 非対応 1 件、フォルダ 2 件、重複 3 件）");
+    });
+  });
+
+  describe("clampIntervals", () => {
+    it("returns empty array for non-positive page count or empty intervals", () => {
+      expect(clampIntervals([[1, 5]], 0)).toEqual([]);
+      expect(clampIntervals([[1, 5]], -1)).toEqual([]);
+      expect(clampIntervals([], 10)).toEqual([]);
+    });
+
+    it("clamps intervals exceeding pageCount without expanding pages", () => {
+      // 1-4000000000 clamped to 10 pages without per-page iteration explosion
+      expect(clampIntervals([[1, 4000000000]], 10)).toEqual([[1, 10]]);
+      expect(
+        clampIntervals(
+          [
+            [1, 5],
+            [8, 20],
+          ],
+          10,
+        ),
+      ).toEqual([
+        [1, 5],
+        [8, 10],
+      ]);
+    });
+
+    it("drops intervals completely outside 1..pageCount", () => {
+      expect(clampIntervals([[15, 20]], 10)).toEqual([]);
+      expect(clampIntervals([[-5, 0]], 10)).toEqual([]);
+    });
+  });
+
+  describe("intervalsToRangeText", () => {
+    it("formats empty intervals as empty string", () => {
+      expect(intervalsToRangeText([])).toBe("");
+    });
+
+    it("formats single-page intervals and multi-page ranges correctly", () => {
+      expect(intervalsToRangeText([[5, 5]])).toBe("5");
+      expect(intervalsToRangeText([[1, 2]])).toBe("1-2");
+      expect(
+        intervalsToRangeText([
+          [1, 3],
+          [5, 5],
+          [8, 10],
+        ]),
+      ).toBe("1-3, 5, 8-10");
+    });
+  });
+
+  describe("togglePageRangeInIntervals", () => {
+    it("adds a page to an empty selection", () => {
+      const next = togglePageRangeInIntervals([], 10, 5, 5, true);
+      expect(next).toEqual([[5, 5]]);
+      expect(intervalsToRangeText(next)).toBe("5");
+    });
+
+    it("removes a page and results in empty intervals when all are removed", () => {
+      const next = togglePageRangeInIntervals([[5, 5]], 10, 5, 5, false);
+      expect(next).toEqual([]);
+      expect(intervalsToRangeText(next)).toBe("");
+    });
+
+    it("merges adjacent intervals (1-3, 5 with 4 added becomes 1-5)", () => {
+      const initial: Array<[number, number]> = [
+        [1, 3],
+        [5, 5],
+      ];
+      const next = togglePageRangeInIntervals(initial, 10, 4, 4, true);
+      expect(next).toEqual([[1, 5]]);
+      expect(intervalsToRangeText(next)).toBe("1-5");
+    });
+
+    it("splits an interval (1-5 with 3 removed becomes 1-2, 4-5)", () => {
+      const initial: Array<[number, number]> = [[1, 5]];
+      const next = togglePageRangeInIntervals(initial, 10, 3, 3, false);
+      expect(next).toEqual([
+        [1, 2],
+        [4, 5],
+      ]);
+      expect(intervalsToRangeText(next)).toBe("1-2, 4-5");
+    });
+
+    it("clamps intervals exceeding pageCount (1-4000000000) and toggles within page count", () => {
+      // PDF has 10 pages, range is 1-4000000000, remove page 4
+      const initial: Array<[number, number]> = [[1, 4000000000]];
+      const next = togglePageRangeInIntervals(initial, 10, 4, 4, false);
+      expect(next).toEqual([
+        [1, 3],
+        [5, 10],
+      ]);
+      expect(intervalsToRangeText(next)).toBe("1-3, 5-10");
+    });
+
+    it("handles range selection when anchor is before target", () => {
+      // Initially page 1 is selected, select 3 to 7
+      const next = togglePageRangeInIntervals([[1, 1]], 10, 3, 7, true);
+      expect(next).toEqual([
+        [1, 1],
+        [3, 7],
+      ]);
+      expect(intervalsToRangeText(next)).toBe("1, 3-7");
+    });
+
+    it("handles range selection when anchor is after target (e.g. anchor 7, target 3)", () => {
+      // Remove 3..7 from 1-10 when anchor is 7 and target is 3
+      const next = togglePageRangeInIntervals([[1, 10]], 10, 7, 3, false);
+      expect(next).toEqual([
+        [1, 2],
+        [8, 10],
+      ]);
+      expect(intervalsToRangeText(next)).toBe("1-2, 8-10");
+
+      // Add 3..7 to empty when anchor is 7 and target is 3
+      const added = togglePageRangeInIntervals([], 10, 7, 3, true);
+      expect(added).toEqual([[3, 7]]);
+      expect(intervalsToRangeText(added)).toBe("3-7");
     });
   });
 });

@@ -7,12 +7,18 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AddResult, JobFinishedPayload, PdfItem } from "../../ipc";
+import type {
+  AddResult,
+  CheckPageRangeResult,
+  JobFinishedPayload,
+  PdfItem,
+} from "../../ipc";
 import {
   AppStateProvider,
   createInitialAppState,
   type AppState,
 } from "../../state";
+import { PdfToImagesSettings } from "./PdfToImagesSettings";
 import { PdfToImagesView } from "./PdfToImagesView";
 
 const samplePdf1: PdfItem = {
@@ -24,12 +30,30 @@ const samplePdf1: PdfItem = {
   error: null,
 };
 
+const samplePdf10Pages: PdfItem = {
+  id: 1,
+  name: "annual-report.pdf",
+  pageCount: 10,
+  firstPageSizePt: { widthPt: 595.28, heightPt: 841.89 },
+  bytes: 2000000,
+  error: null,
+};
+
 const samplePdf2: PdfItem = {
   id: 2,
   name: "invoice.pdf",
   pageCount: 3,
   firstPageSizePt: { widthPt: 612, heightPt: 792 },
   bytes: 500000,
+  error: null,
+};
+
+const samplePdfB10Pages: PdfItem = {
+  id: 4,
+  name: "catalog.pdf",
+  pageCount: 10,
+  firstPageSizePt: { widthPt: 595.28, heightPt: 841.89 },
+  bytes: 2500000,
   error: null,
 };
 
@@ -75,6 +99,57 @@ function renderView(stateModifier?: (state: AppState) => void) {
     <AppStateProvider initialState={state}>
       <PdfToImagesView />
     </AppStateProvider>,
+  );
+}
+
+function renderFeature(stateModifier?: (state: AppState) => void) {
+  const base = createInitialAppState("ja-JP");
+  const state: AppState = {
+    ...base,
+    job: { ...base.job, results: { ...base.job.results } },
+    pdfToImages: { ...base.pdfToImages, items: [...base.pdfToImages.items] },
+  };
+  state.language.activeTab = "pdfToImages";
+  stateModifier?.(state);
+  return render(
+    <AppStateProvider initialState={state}>
+      <PdfToImagesSettings />
+      <PdfToImagesView />
+    </AppStateProvider>,
+  );
+}
+
+function parseRangeToIntervals(text: string): CheckPageRangeResult {
+  const intervals: Array<[number, number]> = [];
+  if (text.trim().length > 0) {
+    const parts = text.split(",").map((s) => s.trim());
+    for (const part of parts) {
+      if (part.includes("-")) {
+        const [s, e] = part.split("-").map((n) => parseInt(n, 10));
+        if (!isNaN(s) && !isNaN(e)) {
+          intervals.push([s, e]);
+        }
+      } else {
+        const n = parseInt(part, 10);
+        if (!isNaN(n)) {
+          intervals.push([n, n]);
+        }
+      }
+    }
+  }
+  let totalPages = 0;
+  for (const [s, e] of intervals) {
+    totalPages += e - s + 1;
+  }
+  return { totalPages, intervals };
+}
+
+function isTextArgs(args: unknown): args is { text: string } {
+  return (
+    typeof args === "object" &&
+    args !== null &&
+    "text" in args &&
+    typeof Reflect.get(args, "text") === "string"
   );
 }
 
@@ -261,25 +336,26 @@ describe("PdfToImagesView", () => {
       });
     });
 
-    it("calls remove_items and clears item on 'すべて外す'", async () => {
-      const calls = mockCommands((cmd) =>
-        cmd === "remove_items" ? undefined : undefined,
-      );
-      renderView((state) => {
+    it("does not render 'すべて外す' when exactly one PDF is in the list, but renders it when two or more PDFs are in the list", () => {
+      mockCommands(() => undefined);
+
+      // 1 PDF: only '外す' is rendered, 'すべて外す' is not
+      const { unmount } = renderView((state) => {
         state.pdfToImages.items = [samplePdf1];
       });
+      expect(
+        screen.queryByRole("button", { name: "すべて外す" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "外す" })).toBeInTheDocument();
+      unmount();
 
-      const clearAllBtn = screen.getByRole("button", { name: "すべて外す" });
-      fireEvent.click(clearAllBtn);
-
-      await waitFor(() => {
-        expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+      // 2 PDFs: 'すべて外す' is rendered in header
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, samplePdf2];
       });
-
-      expect(calls).toContainEqual({
-        cmd: "remove_items",
-        args: { ids: [1] },
-      });
+      expect(
+        screen.getByRole("button", { name: "すべて外す" }),
+      ).toBeInTheDocument();
     });
 
     it("keeps item in list and displays error when remove_items fails on '外す'", async () => {
@@ -304,7 +380,7 @@ describe("PdfToImagesView", () => {
       expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
     });
 
-    it("keeps items in list and displays error when remove_items fails on 'すべて外す'", async () => {
+    it("keeps items in list and displays error when remove_items fails on 'すべて外す' in batch view", async () => {
       mockCommands((cmd) => {
         if (cmd === "remove_items") {
           throw { code: "InvalidParams", detail: "cannot clear" };
@@ -313,7 +389,7 @@ describe("PdfToImagesView", () => {
       });
 
       renderView((state) => {
-        state.pdfToImages.items = [samplePdf1];
+        state.pdfToImages.items = [samplePdf1, samplePdf2];
       });
 
       const clearAllBtn = screen.getByRole("button", { name: "すべて外す" });
@@ -322,6 +398,7 @@ describe("PdfToImagesView", () => {
       expect(await screen.findByRole("alert")).toBeInTheDocument();
       expect(screen.getByText("無効な設定です")).toBeInTheDocument();
       expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
+      expect(screen.getByText("invoice.pdf")).toBeInTheDocument();
     });
 
     it("displays error reason when single PDF has an error", () => {
@@ -425,7 +502,7 @@ describe("PdfToImagesView", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows the result of a single PDF under its name and marks the failed pages", () => {
+    it("does not show single-result when status is partial, but marks the failed page thumbnail with is-failed", () => {
       mockCommands(() => undefined);
       const finished: JobFinishedPayload = {
         succeeded: 0,
@@ -454,25 +531,116 @@ describe("PdfToImagesView", () => {
         state.job.finished = finished;
       });
 
-      const result = screen.getByTestId("single-result");
-      expect(result).toHaveTextContent("✕ 一部失敗");
-      expect(result).toHaveTextContent("失敗したページ：2");
+      // Partial failure does not show single-result banner under header
+      expect(screen.queryByTestId("single-result")).not.toBeInTheDocument();
 
-      expect(screen.getByTestId("page-thumbnail-2")).toHaveTextContent(
-        "2 ✕ 失敗",
+      const thumb2 = screen.getByTestId("page-thumbnail-2");
+      expect(thumb2.querySelector(".pdf-page-container")).toHaveClass(
+        "is-failed",
       );
+      expect(thumb2).toHaveTextContent("2 ✕ 失敗");
       expect(screen.getByTestId("page-thumbnail-1")).not.toHaveTextContent(
         "失敗",
       );
+      // The mark tells a failed page from a selected one, whose border is a
+      // similar colour; only the failed page has it.
+      expect(thumb2.querySelector(".pdf-page-failed-badge")).not.toBeNull();
+      expect(
+        screen
+          .getByTestId("page-thumbnail-1")
+          .querySelector(".pdf-page-failed-badge"),
+      ).toBeNull();
 
-      // The partly failed PDF is not counted as a failure, and there is no
-      // table below to point to.
+      // Top banner shows partial failure count
       expect(screen.getByRole("status")).toHaveTextContent(
         "変換が終わりました：成功 0 件 · 一部失敗 1 件",
       );
       expect(
         screen.queryByText("失敗した PDF の理由は、下の一覧に表示しています"),
       ).not.toBeInTheDocument();
+    });
+
+    it("shows single-result when status is ok, failed, or cancelled", () => {
+      mockCommands(() => undefined);
+
+      // OK status
+      const okView = renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [{ id: 1, name: "annual-report.pdf" }];
+        state.job.results = {
+          1: {
+            id: 1,
+            status: "ok",
+            outputs: ["annual-report_p1.png"],
+          },
+        };
+        state.job.finished = {
+          succeeded: 1,
+          failed: 0,
+          noPages: 0,
+          unprocessed: 0,
+          cancelled: false,
+        };
+      });
+      expect(screen.getByTestId("single-result")).toHaveTextContent("✓ 完了");
+      okView.unmount();
+
+      // Failed status
+      const failedView = renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [{ id: 1, name: "annual-report.pdf" }];
+        state.job.results = {
+          1: {
+            id: 1,
+            status: "failed",
+            outputs: [],
+            error: { code: "RenderTooLarge", detail: null },
+          },
+        };
+        state.job.finished = {
+          succeeded: 0,
+          failed: 1,
+          noPages: 0,
+          unprocessed: 0,
+          cancelled: false,
+        };
+      });
+      const failedRes = screen.getByTestId("single-result");
+      expect(failedRes).toHaveTextContent("✕ 失敗");
+      expect(failedRes).toHaveTextContent(
+        "この解像度では大きすぎて画像にできません",
+      );
+      failedView.unmount();
+
+      // Cancelled status
+      const cancelledView = renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [{ id: 1, name: "annual-report.pdf" }];
+        state.job.results = {
+          1: {
+            id: 1,
+            status: "cancelled",
+            outputs: ["annual-report_p1.png"],
+          },
+        };
+        state.job.finished = {
+          succeeded: 0,
+          failed: 0,
+          noPages: 0,
+          unprocessed: 0,
+          cancelled: true,
+        };
+      });
+      const cancelledRes = screen.getByTestId("single-result");
+      expect(cancelledRes).toHaveTextContent("キャンセル");
+      expect(cancelledRes).toHaveTextContent("1 ページを保存済み");
+      cancelledView.unmount();
     });
 
     it("shows nothing under a single PDF before any conversion", () => {
@@ -522,6 +690,386 @@ describe("PdfToImagesView", () => {
       expect(screen.getByText("無効な設定です")).toBeInTheDocument();
       expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
       expect(screen.getByText("invoice.pdf")).toBeInTheDocument();
+    });
+  });
+
+  describe("thumbnail click page selection", () => {
+    it("toggles page selection in range mode: rebuilds rangeText, calls check_page_range, and updates aria-pressed", async () => {
+      const calls = mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1]; // 4 pages
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "1";
+        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+      });
+
+      // Wait for initial check triggered on mount to finish so rangeChecking is false
+      await waitFor(() => {
+        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+      });
+
+      const thumb1Btn = screen.getByRole("button", { name: "1 ページ" });
+      const thumb2Btn = screen.getByRole("button", { name: "2 ページ" });
+
+      expect(thumb1Btn).toHaveAttribute("aria-pressed", "true");
+      expect(thumb2Btn).toHaveAttribute("aria-pressed", "false");
+
+      // Click unselected thumbnail (page 2) -> adds 2, text becomes "1-2"
+      fireEvent.click(thumb2Btn);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1-2");
+        expect(thumb2Btn).toHaveAttribute("aria-pressed", "true");
+      });
+
+      expect(calls).toContainEqual({
+        cmd: "check_page_range",
+        args: { text: "1-2", ids: [1] },
+      });
+
+      // Click selected thumbnail (page 1) -> removes 1, text becomes "2"
+      fireEvent.click(thumb1Btn);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("2");
+        expect(thumb1Btn).toHaveAttribute("aria-pressed", "false");
+      });
+    });
+
+    it("creates single page text when clicking thumbnail while range text is empty", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "";
+        state.pdfToImages.rangeResult = null;
+      });
+
+      const thumb3Btn = screen.getByRole("button", { name: "3 ページ" });
+      fireEvent.click(thumb3Btn);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("3");
+        expect(thumb3Btn).toHaveAttribute("aria-pressed", "true");
+      });
+    });
+
+    it("switches from 'all' to 'range' and excludes only the clicked page", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf10Pages]; // 10 pages
+        state.pdfToImages.pageSelection = "all";
+      });
+
+      // In 'all' mode, all pages have aria-pressed="true"
+      const thumb4Btn = screen.getByRole("button", { name: "4 ページ" });
+      expect(thumb4Btn).toHaveAttribute("aria-pressed", "true");
+
+      // Clicking page 4 switches to 'range' mode with text "1-3, 5-10"
+      fireEvent.click(thumb4Btn);
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "範囲を指定" }),
+        ).toHaveAttribute("aria-pressed", "true");
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue(
+          "1-3, 5-10",
+        );
+        expect(thumb4Btn).toHaveAttribute("aria-pressed", "false");
+      });
+    });
+
+    it("selects and deselects contiguous ranges when clicking with Shift", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf10Pages];
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "1";
+        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+      });
+
+      // Wait for initial check triggered on mount to finish so rangeChecking is false
+      await waitFor(() => {
+        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+      });
+
+      // Click page 3 without Shift (anchor becomes 3, adds 3 -> "1, 3")
+      const thumb3 = screen.getByRole("button", { name: "3 ページ" });
+      fireEvent.click(thumb3);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 3");
+        expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
+      });
+
+      // Shift-click page 7 (target 7 is not selected -> selects 3..7 -> "1, 3-7")
+      const thumb7 = screen.getByRole("button", { name: "7 ページ" });
+      fireEvent.click(thumb7, { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 3-7");
+        expect(screen.getByText("6 ページを変換します")).toBeInTheDocument();
+      });
+
+      // Shift-click page 3 (target 3 is selected -> unselects 7..3 -> 3..7 excluded -> "1")
+      fireEvent.click(thumb3, { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1");
+        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+      });
+
+      // Test anchor after target: Click page 7 (anchor becomes 7 -> "1, 7")
+      fireEvent.click(thumb7);
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 7");
+        expect(screen.getByText("2 ページを変換します")).toBeInTheDocument();
+      });
+
+      // Shift-click page 3 (anchor 7 is after target 3; 3 is unselected -> selects 3..7 -> "1, 3-7")
+      fireEvent.click(thumb3, { shiftKey: true });
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 3-7");
+      });
+    });
+
+    it("treats Shift-click without an anchor (first operation) as a single page click", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf10Pages]; // 10 pages
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "";
+        state.pdfToImages.rangeResult = null;
+      });
+
+      // Shift-click page 5 as first operation: only page 5 is selected (not 1..5)
+      const thumb5 = screen.getByRole("button", { name: "5 ページ" });
+      fireEvent.click(thumb5, { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("5");
+        expect(thumb5).toHaveAttribute("aria-pressed", "true");
+      });
+    });
+
+    it("resets anchor when PDF is replaced so first Shift-click on new PDF selects only that page", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        if (cmd === "remove_items") {
+          return undefined;
+        }
+        if (cmd === "add_pdfs") {
+          const res: AddResult<PdfItem> = {
+            added: [samplePdfB10Pages],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return res;
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1]; // PDF A (4 pages)
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "";
+        state.pdfToImages.rangeResult = null;
+      });
+
+      // 1. Click page 2 on PDF A (anchor becomes 2, rangeText becomes "2")
+      const thumb2OnPdfA = screen.getByRole("button", { name: "2 ページ" });
+      fireEvent.click(thumb2OnPdfA);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("2");
+      });
+
+      // Deselect page 2 so rangeText becomes empty, while anchor remains 2
+      fireEvent.click(thumb2OnPdfA);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("");
+      });
+
+      // 2. Remove PDF A by clicking "外す"
+      const removeBtn = screen.getByRole("button", { name: "外す" });
+      fireEvent.click(removeBtn);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+      });
+
+      // 3. Add PDF B (10 pages) via DropZone
+      const addBtn = screen.getByRole("button", { name: "PDF を追加" });
+      fireEvent.click(addBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText("catalog.pdf")).toBeInTheDocument();
+      });
+
+      // 4. Shift-click page 6 on PDF B: anchor should be reset, so only page 6 is selected
+      const thumb6OnPdfB = screen.getByRole("button", { name: "6 ページ" });
+      fireEvent.click(thumb6OnPdfB, { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("6");
+        expect(thumb6OnPdfB).toHaveAttribute("aria-pressed", "true");
+      });
+    });
+
+    it("disables thumbnail buttons and ignores clicks during job conversion and range errors", () => {
+      mockCommands(() => undefined);
+
+      // During active conversion: buttons disabled
+      const runningFeature = renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.job.phase = "running";
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "1";
+        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+      });
+      const btnRunning = screen.getByRole("button", { name: "2 ページ" });
+      expect(btnRunning).toBeDisabled();
+      fireEvent.click(btnRunning);
+      expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1");
+      runningFeature.unmount();
+
+      // When range error is present: buttons disabled
+      const errorFeature = renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "abc";
+        state.pdfToImages.rangeError = {
+          code: "InvalidPageRange",
+          detail: "abc",
+        };
+      });
+      const btnError = screen.getByRole("button", { name: "2 ページ" });
+      expect(btnError).toBeDisabled();
+      fireEvent.click(btnError);
+      expect(screen.getByLabelText(/変換するページ/)).toHaveValue("abc");
+      errorFeature.unmount();
+    });
+
+    it("does not change range text when clicked while range check is in progress", () => {
+      mockCommands(() => undefined);
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "1";
+        state.pdfToImages.rangeChecking = true;
+        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+      });
+
+      const btn = screen.getByRole("button", { name: "2 ページ" });
+      // Not disabled to prevent UI flicker
+      expect(btn).not.toBeDisabled();
+
+      // Click should be ignored
+      fireEvent.click(btn);
+      expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1");
+    });
+
+    it("rebuilds range text strictly from intervals returned by IPC without parsing range text on the client", async () => {
+      // Mock returns intervals [2, 2] regardless of text "something-arbitrary"
+      mockCommands((cmd) => {
+        if (cmd === "check_page_range") {
+          return { totalPages: 1, intervals: [[2, 2]] };
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "something-arbitrary";
+        state.pdfToImages.rangeResult = {
+          totalPages: 1,
+          intervals: [[2, 2]],
+        };
+      });
+
+      // Wait for initial check to complete so rangeChecking becomes false
+      await waitFor(() => {
+        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+      });
+
+      // Currently intervals says only page 2 is selected (despite rangeText being "something-arbitrary")
+      const btn2 = screen.getByRole("button", { name: "2 ページ" });
+      const btn3 = screen.getByRole("button", { name: "3 ページ" });
+      expect(btn2).toHaveAttribute("aria-pressed", "true");
+      expect(btn3).toHaveAttribute("aria-pressed", "false");
+
+      // Click unselected page 3 -> toggles [2, 2] + 3 -> "2-3"
+      fireEvent.click(btn3);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("2-3");
+      });
+    });
+
+    it("has accessible aria-label on thumbnail buttons and can be activated via Enter key", async () => {
+      mockCommands((cmd, args) => {
+        if (cmd === "check_page_range" && isTextArgs(args)) {
+          return parseRangeToIntervals(args.text);
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "1";
+        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+      });
+
+      // Wait for initial check to finish so rangeChecking is false
+      await waitFor(() => {
+        expect(screen.getByText("1 ページを変換します")).toBeInTheDocument();
+      });
+
+      const thumb2Btn = screen.getByRole("button", { name: "2 ページ" });
+      expect(thumb2Btn).toHaveAttribute("aria-label", "2 ページ");
+
+      // Press Enter key on button
+      fireEvent.keyDown(thumb2Btn, { key: "Enter", code: "Enter" });
+      fireEvent.click(thumb2Btn);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1-2");
+      });
     });
   });
 });

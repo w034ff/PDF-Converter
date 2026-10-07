@@ -91,6 +91,25 @@ export function PdfToImagesSettings() {
     { value: "jpeg", label: t.pdfToImages.settings.formatJpeg },
   ];
 
+  // An empty range selects no page, so switching from "all" to it would
+  // start by deselecting everything. Starting from every page lets the user
+  // drop the pages they do not want instead (design §6.3).
+  function handlePageSelectionChange(selection: PageSelection) {
+    dispatch({ type: "SET_PAGE_SELECTION", selection });
+    if (selection !== "range" || pdfToImages.rangeText.trim().length > 0) {
+      return;
+    }
+    const maxPages = Math.max(
+      0,
+      ...pdfToImages.items
+        .filter((item) => item.error === null)
+        .map((item) => item.pageCount),
+    );
+    if (maxPages > 0) {
+      dispatch({ type: "SET_RANGE_TEXT", rangeText: `1-${maxPages}` });
+    }
+  }
+
   function handleDpiChange(e: ChangeEvent<HTMLSelectElement>) {
     const dpi = Number(e.target.value);
     dispatch({ type: "SET_RENDER_DPI", dpi });
@@ -127,11 +146,14 @@ export function PdfToImagesSettings() {
           label={t.pdfToImages.settings.pagesTitle}
           options={pageOptions}
           value={pdfToImages.pageSelection}
-          onChange={(selection) =>
-            dispatch({ type: "SET_PAGE_SELECTION", selection })
-          }
+          onChange={handlePageSelectionChange}
           disabled={busy}
         />
+        {singlePdf !== null && (
+          <span className="hint">
+            {t.pdfToImages.settings.thumbnailPickHint}
+          </span>
+        )}
         {pdfToImages.pageSelection === "range" && (
           <>
             <label className="hint" htmlFor="range">
@@ -141,6 +163,7 @@ export function PdfToImagesSettings() {
               id="range"
               className="pdf-settings-field"
               type="text"
+              autoComplete="off"
               value={pdfToImages.rangeText}
               placeholder={t.pdfToImages.settings.rangePlaceholder}
               onChange={(e) =>

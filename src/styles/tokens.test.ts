@@ -127,6 +127,7 @@ describe("design tokens and CSS rules", () => {
       // Pairs as app.css draws them: .btn-primary and .seg put
       // text-on-accent over accent (accent-hover on hover), and links use
       // accent (accent-hover on hover) as text over the app and surface.
+      // A failed page's mark puts text-on-error over error.
       const pairs: [string, string][] = [
         ["--color-text-on-accent", "--color-accent"],
         ["--color-text-on-accent", "--color-accent-hover"],
@@ -134,6 +135,7 @@ describe("design tokens and CSS rules", () => {
         ["--color-accent", "--color-bg-surface"],
         ["--color-accent-hover", "--color-bg-app"],
         ["--color-accent-hover", "--color-bg-surface"],
+        ["--color-text-on-error", "--color-error"],
       ];
 
       for (const [fg, bg] of pairs) {

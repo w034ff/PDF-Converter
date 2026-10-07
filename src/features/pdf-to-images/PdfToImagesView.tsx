@@ -33,7 +33,9 @@ import {
   formatFileSize,
   formatPaperSize,
   formatSkippedSummary,
+  intervalsToRangeText,
   isPageInIntervals,
+  togglePageRangeInIntervals,
 } from "./pdfUtils";
 import "./pdfToImages.css";
 
@@ -45,6 +47,8 @@ interface PdfPageThumbnailProps {
   isHighlighted: boolean;
   /** The last conversion failed on this page (`failedPages`). */
   isFailed: boolean;
+  disabled: boolean;
+  onClick: (page: number, shiftKey: boolean) => void;
   translations: Translations;
 }
 
@@ -55,6 +59,8 @@ function PdfPageThumbnail({
   firstPageSizePt,
   isHighlighted,
   isFailed,
+  disabled,
+  onClick,
   translations: t,
 }: PdfPageThumbnailProps) {
   const { ref, src, failed } = useThumbnail(id, page);
@@ -68,26 +74,41 @@ function PdfPageThumbnail({
       className={`pdf-page-figure ${!isHighlighted ? "is-dimmed" : ""}`}
       data-testid={`page-thumbnail-${page}`}
     >
-      <div
-        ref={ref}
-        className={`pdf-page-container ${isHighlighted ? "is-highlighted" : ""} ${isFailed ? "is-failed" : ""}`}
-        style={{ aspectRatio }}
+      <button
+        type="button"
+        className="pdf-page-button"
+        disabled={disabled}
+        aria-pressed={isHighlighted}
+        aria-label={formatMessage(t.pdfToImages.single.pageAriaLabel, { page })}
+        onClick={(e) => onClick(page, e.shiftKey)}
       >
-        {src !== null ? (
-          <img
-            src={src}
-            alt={formatMessage(t.pdfToImages.single.thumbnailAlt, {
-              name,
-              page,
-            })}
-            className="pdf-page-image"
-          />
-        ) : (
-          <div className="pdf-page-placeholder">
-            {failed ? <span className="hint">✕</span> : null}
-          </div>
-        )}
-      </div>
+        <span
+          ref={ref}
+          className={`pdf-page-container ${isHighlighted ? "is-highlighted" : ""} ${isFailed ? "is-failed" : ""}`}
+          style={{ aspectRatio }}
+        >
+          {src !== null ? (
+            <img
+              src={src}
+              alt={formatMessage(t.pdfToImages.single.thumbnailAlt, {
+                name,
+                page,
+              })}
+              className="pdf-page-image"
+            />
+          ) : (
+            <span className="pdf-page-placeholder">
+              {failed ? <span className="hint">✕</span> : null}
+            </span>
+          )}
+          {isFailed && (
+            // The caption under the page already says it failed in words.
+            <span className="pdf-page-failed-badge" aria-hidden="true">
+              ✕
+            </span>
+          )}
+        </span>
+      </button>
       <figcaption className={`mono ${isFailed ? "pdf-status-failed" : ""}`}>
         {isFailed
           ? formatMessage(t.pdfToImages.single.failedPage, { page })
@@ -287,6 +308,18 @@ export function PdfToImagesView() {
   const [lastSkipped, setLastSkipped] = useState<Skipped | null>(null);
   const [error, setError] = useState<IpcError | null>(null);
 
+  const isSingle = pdfToImages.items.length === 1;
+  const singleItem = isSingle ? pdfToImages.items[0] : null;
+
+  const singleItemId = singleItem?.id ?? null;
+  const [lastItemId, setLastItemId] = useState<number | null>(singleItemId);
+  const [anchorPage, setAnchorPage] = useState<number | null>(null);
+
+  if (singleItemId !== lastItemId) {
+    setLastItemId(singleItemId);
+    setAnchorPage(null);
+  }
+
   async function handleAdd(source: AddSource) {
     setError(null);
     try {
@@ -350,8 +383,61 @@ export function PdfToImagesView() {
     );
   }
 
-  const isSingle = pdfToImages.items.length === 1;
-  const singleItem = isSingle ? pdfToImages.items[0] : null;
+  const isThumbnailDisabled =
+    isJobActive(job) ||
+    (pdfToImages.pageSelection === "range" && pdfToImages.rangeError !== null);
+
+  function handleThumbnailClick(page: number, shiftKey: boolean) {
+    if (
+      isThumbnailDisabled ||
+      pdfToImages.rangeChecking ||
+      singleItem === null
+    ) {
+      return;
+    }
+    const pageCount = singleItem.pageCount;
+    const anchor = anchorPage;
+    setAnchorPage(page);
+
+    const fromPage = shiftKey && anchor !== null ? anchor : page;
+    const toPage = page;
+
+    if (pdfToImages.pageSelection === "all") {
+      dispatch({ type: "SET_PAGE_SELECTION", selection: "range" });
+      const nextIntervals = togglePageRangeInIntervals(
+        [[1, pageCount]],
+        pageCount,
+        fromPage,
+        toPage,
+        false,
+      );
+      dispatch({
+        type: "SET_RANGE_TEXT",
+        rangeText: intervalsToRangeText(nextIntervals),
+      });
+      return;
+    }
+
+    const currentIntervals =
+      pdfToImages.rangeResult !== null ? pdfToImages.rangeResult.intervals : [];
+    const isCurrentlySelected =
+      pdfToImages.rangeResult !== null &&
+      isPageInIntervals(pdfToImages.rangeResult.intervals, page);
+    const include = !isCurrentlySelected;
+
+    const nextIntervals = togglePageRangeInIntervals(
+      currentIntervals,
+      pageCount,
+      fromPage,
+      toPage,
+      include,
+    );
+    dispatch({
+      type: "SET_RANGE_TEXT",
+      rangeText: intervalsToRangeText(nextIntervals),
+    });
+  }
+
   const skippedText = formatSkippedSummary(t, lastSkipped);
   const results = job.kind === "pdfToImages" ? job.results : {};
   const partialCount = Object.values(results).filter(
@@ -362,6 +448,12 @@ export function PdfToImagesView() {
     singleItem !== null && singleItem.error === null
       ? describeItemStatus(singleItem, job, t, language.language)
       : null;
+  const singleItemJobStatus =
+    singleItem !== null && job.kind === "pdfToImages"
+      ? jobRowStatus(job, singleItem.id)
+      : null;
+  const showSingleResult =
+    singleStatus !== null && singleItemJobStatus !== "partial";
   const singleFailedPages =
     singleItem !== null ? (results[singleItem.id]?.failedPages ?? []) : [];
 
@@ -412,7 +504,7 @@ export function PdfToImagesView() {
                 })}
               </span>
             )}
-            {singleStatus !== null && (
+            {showSingleResult && (
               <span className="pdf-single-result" data-testid="single-result">
                 <span className={singleStatus.className}>
                   {singleStatus.text}
@@ -446,14 +538,6 @@ export function PdfToImagesView() {
                 onClick={() => void handleRemove(singleItem.id)}
               >
                 {t.pdfToImages.remove}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => void handleClearAll()}
-              >
-                {t.pdfToImages.clearAll}
               </button>
             </div>
           </>
@@ -526,6 +610,8 @@ export function PdfToImagesView() {
                     firstPageSizePt={singleItem.firstPageSizePt}
                     isHighlighted={isHighlighted}
                     isFailed={singleFailedPages.includes(page)}
+                    disabled={isThumbnailDisabled}
+                    onClick={handleThumbnailClick}
                     translations={t}
                   />
                 );

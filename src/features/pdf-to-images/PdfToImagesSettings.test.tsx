@@ -92,6 +92,112 @@ describe("PdfToImagesSettings", () => {
     expect(screen.getByLabelText(/変換するページ/)).toBeInTheDocument();
   });
 
+  describe("switching to a range", () => {
+    function pickRange() {
+      fireEvent.click(screen.getByRole("button", { name: "範囲を指定" }));
+      return screen.getByLabelText(/変換するページ/);
+    }
+
+    it("starts from every page of the longest PDF when the range is empty", () => {
+      mockCommands(() => new Promise(() => {}));
+      renderSettings((state) => {
+        state.pdfToImages.items = [
+          { ...samplePdf1, pageCount: 4 },
+          { ...samplePdf2, pageCount: 12 },
+        ];
+      });
+
+      expect(pickRange()).toHaveValue("1-12");
+    });
+
+    it("keeps a range typed before", () => {
+      mockCommands(() => new Promise(() => {}));
+      renderSettings((state) => {
+        state.pdfToImages.items = [{ ...samplePdf1, pageCount: 4 }];
+        state.pdfToImages.rangeText = "2, 4";
+      });
+
+      expect(pickRange()).toHaveValue("2, 4");
+    });
+
+    it("stays empty with no readable PDF", () => {
+      mockCommands(() => new Promise(() => {}));
+      renderSettings((state) => {
+        state.pdfToImages.items = [
+          {
+            ...samplePdf1,
+            pageCount: 0,
+            error: { code: "PasswordProtected", detail: null },
+          },
+        ];
+      });
+
+      expect(pickRange()).toHaveValue("");
+    });
+  });
+
+  it("renders range input with autocomplete='off'", () => {
+    mockCommands(() => undefined);
+    renderSettings((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.pageSelection = "range";
+    });
+
+    const input = screen.getByLabelText(/変換するページ/);
+    expect(input).toHaveAttribute("autocomplete", "off");
+  });
+
+  it("shows thumbnail pick hint only when exactly one error-free PDF is in the list", () => {
+    mockCommands(() => undefined);
+    const hintText = "サムネイルを押してもページを選べます（Shift で範囲）";
+
+    // 0 PDFs: no hint
+    const { unmount } = renderSettings((state) => {
+      state.pdfToImages.items = [];
+    });
+    expect(screen.queryByText(hintText)).not.toBeInTheDocument();
+    unmount();
+
+    // 1 error-free PDF with "all": hint shown
+    const renderedSingleAll = renderSettings((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.pageSelection = "all";
+    });
+    expect(screen.getByText(hintText)).toBeInTheDocument();
+    renderedSingleAll.unmount();
+
+    // 1 error-free PDF with "range": hint shown
+    const renderedSingleRange = renderSettings((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.pageSelection = "range";
+    });
+    expect(screen.getByText(hintText)).toBeInTheDocument();
+    renderedSingleRange.unmount();
+
+    // 1 PDF with error: no hint
+    const renderedErrorPdf = renderSettings((state) => {
+      state.pdfToImages.items = [
+        {
+          id: 3,
+          name: "corrupt.pdf",
+          pageCount: 0,
+          firstPageSizePt: null,
+          bytes: 1000,
+          error: { code: "PdfOpenFailed", detail: null },
+        },
+      ];
+    });
+    expect(screen.queryByText(hintText)).not.toBeInTheDocument();
+    renderedErrorPdf.unmount();
+
+    // 2 PDFs: no hint
+    const renderedTwo = renderSettings((state) => {
+      state.pdfToImages.items = [samplePdf1, samplePdf2];
+    });
+    expect(screen.queryByText(hintText)).not.toBeInTheDocument();
+    renderedTwo.unmount();
+  });
+
   it("calls check_page_range on range input and displays total pages", async () => {
     const rangeResult: CheckPageRangeResult = {
       totalPages: 4,

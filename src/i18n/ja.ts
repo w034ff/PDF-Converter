@@ -75,6 +75,7 @@ export const ja = {
       pagesTitle: "ページ",
       pagesAll: "すべて",
       pagesRange: "範囲を指定",
+      thumbnailPickHint: "サムネイルを押してもページを選べます（Shift で範囲）",
       rangeLabel: "変換するページ（例：1-3, 5）",
       rangePlaceholder: "1-3, 5",
       rangeHintSingle: "{count} ページを変換します",
@@ -96,6 +97,7 @@ export const ja = {
       convertPage: "{page}  ✓ 変換する",
       failedPage: "{page}  ✕ 失敗",
       thumbnailAlt: "{name} の {page} ページのサムネイル",
+      pageAriaLabel: "{page} ページ",
     },
     batch: {
       pdfCount: "PDF {count} 件",

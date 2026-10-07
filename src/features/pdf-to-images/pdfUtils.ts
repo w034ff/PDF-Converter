@@ -134,3 +134,89 @@ export function formatSkippedSummary(
     details: parts.join(t.pdfToImages.batch.skippedSeparator),
   });
 }
+
+/**
+ * Clamps sorted intervals to the 1..pageCount range without expanding individual pages (design §4.5).
+ */
+export function clampIntervals(
+  intervals: ReadonlyArray<readonly [number, number]>,
+  pageCount: number,
+): Array<[number, number]> {
+  if (pageCount <= 0) {
+    return [];
+  }
+  const result: Array<[number, number]> = [];
+  for (const [start, end] of intervals) {
+    if (start > pageCount || end < 1 || start > end) {
+      continue;
+    }
+    const clampedStart = Math.max(1, start);
+    const clampedEnd = Math.min(pageCount, end);
+    if (clampedStart <= clampedEnd) {
+      result.push([clampedStart, clampedEnd]);
+    }
+  }
+  return result;
+}
+
+/**
+ * Converts sorted non-overlapping intervals to range text (e.g. "1-3, 5, 8-10", design §4.5, §6.3).
+ */
+export function intervalsToRangeText(
+  intervals: ReadonlyArray<readonly [number, number]>,
+): string {
+  return intervals
+    .map(([start, end]) => (start === end ? `${start}` : `${start}-${end}`))
+    .join(", ");
+}
+
+/**
+ * Toggles a range of pages ([fromPage..toPage] inclusive) in intervals to included or excluded,
+ * returning the new sorted, non-overlapping intervals within 1..pageCount (design §6.3).
+ */
+export function togglePageRangeInIntervals(
+  intervals: ReadonlyArray<readonly [number, number]>,
+  pageCount: number,
+  fromPage: number,
+  toPage: number,
+  include: boolean,
+): Array<[number, number]> {
+  if (pageCount <= 0) {
+    return [];
+  }
+  const clamped = clampIntervals(intervals, pageCount);
+  const selected = new Uint8Array(pageCount + 1);
+  for (const [s, e] of clamped) {
+    for (let p = s; p <= e; p++) {
+      selected[p] = 1;
+    }
+  }
+
+  const minP = Math.max(1, Math.min(fromPage, toPage));
+  const maxP = Math.min(pageCount, Math.max(fromPage, toPage));
+  const targetVal = include ? 1 : 0;
+  for (let p = minP; p <= maxP; p++) {
+    selected[p] = targetVal;
+  }
+
+  const result: Array<[number, number]> = [];
+  let inInterval = false;
+  let start = 0;
+
+  for (let p = 1; p <= pageCount; p++) {
+    if (selected[p] === 1) {
+      if (!inInterval) {
+        inInterval = true;
+        start = p;
+      }
+    } else if (inInterval) {
+      result.push([start, p - 1]);
+      inInterval = false;
+    }
+  }
+  if (inInterval) {
+    result.push([start, pageCount]);
+  }
+
+  return result;
+}
