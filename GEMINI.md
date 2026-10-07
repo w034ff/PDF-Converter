@@ -14,7 +14,7 @@ Rules for the implementer of this repository. Read this file and the documents b
 - Do not edit `docs/requirements.md` or `docs/design.md`.
 - Every commit runs the pre-commit hook (`.githooks/pre-commit`, `docs/work-plan.md` §2.3). Never bypass it (`--no-verify` or any other way) and never change git settings or hooks.
 - Before writing the report, run every command in `docs/work-plan.md` §5 and make sure all of them pass.
-- Never push and never open a PR. The reviewer reviews your branch locally and opens the PR once the review passes (`docs/work-plan.md` §2).
+- Never push and never open a PR. The reviewer reviews your branch locally, and the PR is opened from it once the review passes (`docs/work-plan.md` §2).
 
 ## When to stop and ask
 
@@ -105,3 +105,28 @@ Do not push through by guessing.
 
 - Subject: imperative mood, at most about 72 characters (e.g. `Add page range parsing`).
 - Body: only the why that the diff cannot show — the failure that motivated the change, the alternative not taken, a deliberate ordering. Do not list changed files or narrate the implementation. A self-evident change needs no body.
+- Write the body right when you commit: the reviewer sends back a body that breaks this rule, like any other finding. If it is the last commit, reword it with `git commit --amend` (the branch is not pushed yet, so this is safe). An earlier commit is reworded by the reviewer before opening the PR, since you cannot rebase.
+
+Not this — it says what the diff already shows:
+
+```
+Improve queue list and conversion start actions
+
+Allow starting conversions without a preselected output directory by
+prompting for the folder on start. Display drag reordering drop targets
+as line dividers rather than row outlines, and provide row removal and
+thumbnails in the each-mode table for consistency.
+```
+
+This — it says why, which the diff cannot:
+
+```
+Ask for the output folder when a conversion starts without one
+
+The start button stayed disabled until a folder was picked in the
+settings panel, which sent the owner away from the button for a step
+the button can take itself.
+
+Outlining the row under the pointer did not say whether the dragged row
+would land above or below it; a line between rows does.
+```
