@@ -101,6 +101,12 @@ function PdfPageThumbnail({
               {failed ? <span className="hint">✕</span> : null}
             </span>
           )}
+          {isFailed && (
+            // The caption under the page already says it failed in words.
+            <span className="pdf-page-failed-badge" aria-hidden="true">
+              ✕
+            </span>
+          )}
         </span>
       </button>
       <figcaption className={`mono ${isFailed ? "pdf-status-failed" : ""}`}>

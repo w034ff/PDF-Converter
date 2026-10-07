@@ -23,6 +23,8 @@
 
   --color-success: #1f6b3a;
   --color-error: #c93b2b;
+  --color-error-tint: rgba(201, 59, 43, 0.18);
+  --color-text-on-error: #ffffff;
 
   --color-progress-track: #e4e1db;
 
@@ -62,6 +64,8 @@
 
     --color-success: #43a047;
     --color-error: #ef5350;
+    --color-error-tint: rgba(239, 83, 80, 0.22);
+    --color-text-on-error: #1c1b18;
 
     --color-progress-track: #363430;
 

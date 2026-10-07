@@ -542,6 +542,14 @@ describe("PdfToImagesView", () => {
       expect(screen.getByTestId("page-thumbnail-1")).not.toHaveTextContent(
         "失敗",
       );
+      // The mark tells a failed page from a selected one, whose border is a
+      // similar colour; only the failed page has it.
+      expect(thumb2.querySelector(".pdf-page-failed-badge")).not.toBeNull();
+      expect(
+        screen
+          .getByTestId("page-thumbnail-1")
+          .querySelector(".pdf-page-failed-badge"),
+      ).toBeNull();
 
       // Top banner shows partial failure count
       expect(screen.getByRole("status")).toHaveTextContent(

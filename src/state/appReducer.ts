@@ -13,12 +13,14 @@ export function createInitialAppState(
   initialNavLang?: string,
   settings: Settings | null = null,
 ): AppState {
+  // Copies, so a caller that edits the state it gets (as tests do) cannot
+  // change the shared initial states.
   if (settings === null) {
     return {
       language: createInitialLanguageState(initialNavLang),
-      imagesToPdf: initialImagesToPdfState,
-      pdfToImages: initialPdfToImagesState,
-      job: initialJobState,
+      imagesToPdf: { ...initialImagesToPdfState },
+      pdfToImages: { ...initialPdfToImagesState },
+      job: { ...initialJobState },
     };
   }
   return {
@@ -35,7 +37,7 @@ export function createInitialAppState(
       dpi: settings.pdfToImages.dpi,
       outputDir: settings.pdfToImages.outputDir,
     },
-    job: initialJobState,
+    job: { ...initialJobState },
   };
 }
 

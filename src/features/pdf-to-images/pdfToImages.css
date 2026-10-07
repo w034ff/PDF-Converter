@@ -73,10 +73,14 @@
 }
 
 /* Single PDF thumbnail grid */
+/* The padding, taken back by the margin, keeps the focus ring of the edge
+   pages inside the scroll area, which would otherwise clip it. */
 .pdf-single-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+  padding: 6px;
+  margin: -6px;
   overflow-y: auto;
 }
 
@@ -130,6 +134,7 @@
 }
 
 .pdf-page-container {
+  position: relative;
   width: 100%;
   background: var(--color-bg-surface);
   border-radius: var(--radius-sm);
@@ -150,6 +155,34 @@
 
 .pdf-page-container.is-failed {
   border: 2px solid var(--color-error);
+}
+
+/* The selection border is the accent, close to the error red, so a failed
+   page needs more than a border colour to stand out: a tint and a mark. */
+.pdf-page-container.is-failed::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-error-tint);
+  pointer-events: none;
+}
+
+.pdf-page-failed-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text-on-error);
+  background: var(--color-error);
 }
 
 .pdf-single-result {
