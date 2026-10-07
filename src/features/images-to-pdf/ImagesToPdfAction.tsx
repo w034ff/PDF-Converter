@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { getTranslations } from "../../i18n";
-import { useAppState, type JobTarget } from "../../state";
+import { isJobActive, useAppState, type JobTarget } from "../../state";
+import { useEnsureOutputDir } from "../output";
 import { useJobRunner } from "../job/useJobRunner";
 
 /**
@@ -8,11 +9,13 @@ import { useJobRunner } from "../job/useJobRunner";
  * Dispatches conversion requests through `useJobRunner` (design §6.2, §6.5).
  */
 export function ImagesToPdfAction() {
-  const { imagesToPdf, language } = useAppState();
+  const { imagesToPdf, language, job } = useAppState();
   const runner = useJobRunner();
+  const { runWithOutputDir, isPicking } = useEnsureOutputDir("imagesToPdf");
   const t = getTranslations(language.language);
 
   const isMerge = imagesToPdf.output === "merge";
+  const isBusy = isJobActive(job);
 
   const validTargets: JobTarget[] = useMemo(
     () =>
@@ -23,13 +26,15 @@ export function ImagesToPdfAction() {
   );
 
   const isDisabled =
-    validTargets.length === 0 || (!isMerge && imagesToPdf.outputDir === null);
+    validTargets.length === 0 || isBusy || (!isMerge && isPicking);
 
   const handleClick = () => {
     if (isMerge) {
       void runner.saveMergedPdf(validTargets, imagesToPdf.pageSize);
     } else {
-      void runner.startImagesToPdfs(validTargets, imagesToPdf.pageSize);
+      void runWithOutputDir(imagesToPdf.outputDir, () =>
+        runner.startImagesToPdfs(validTargets, imagesToPdf.pageSize),
+      );
     }
   };
 

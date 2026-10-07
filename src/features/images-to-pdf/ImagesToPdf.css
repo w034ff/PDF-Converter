@@ -75,13 +75,45 @@
   gap: 8px;
 }
 
+/* While reordering is enabled (not during conversion), prevent text selection and show grab cursor */
+.images-list:not(.is-disabled) .list-row {
+  user-select: none;
+  cursor: grab;
+}
+
+/* While dragging, show grabbing cursor even if cursor leaves row bounds */
+.images-list.is-dragging-active,
+.images-list.is-dragging-active .list-row,
+.images-list.is-dragging-active button {
+  cursor: grabbing;
+}
+
+.images-list .list-row {
+  position: relative;
+}
+
 .images-list .list-row.is-dragging {
   opacity: 0.5;
 }
 
-.images-list .list-row.is-drop-target {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent);
+/* Drop position indicator lines between rows */
+.images-list .list-row.is-drop-before::before,
+.images-list .list-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-accent);
+  pointer-events: none;
+}
+
+.images-list .list-row.is-drop-before::before {
+  top: -5px;
+}
+
+.images-list .list-row.is-drop-after::after {
+  bottom: -5px;
 }
 
 .images-merge-summary {
@@ -121,8 +153,37 @@
   border-bottom: none;
 }
 
+.images-table-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.images-table-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.images-table-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .images-table-status-col {
   width: 120px;
+}
+
+.images-table-actions-col {
+  width: 80px;
 }
 
 .images-table-status.status-ok {

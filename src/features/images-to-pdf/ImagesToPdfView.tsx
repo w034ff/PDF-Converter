@@ -124,6 +124,28 @@ function findRowFromPoint(x: number, y: number): HTMLElement | null {
   return findRowElement(el);
 }
 
+function getRowDropClass(
+  index: number,
+  dragIdx: number | null,
+  overIdx: number | null,
+): string | undefined {
+  if (dragIdx === null) {
+    return undefined;
+  }
+  if (index === dragIdx) {
+    return "is-dragging";
+  }
+  if (overIdx !== null && index === overIdx) {
+    if (dragIdx < overIdx) {
+      return "is-drop-after";
+    }
+    if (dragIdx > overIdx) {
+      return "is-drop-before";
+    }
+  }
+  return undefined;
+}
+
 function ImageThumbnail({ id, name }: { id: number; name: string }) {
   const { language } = useAppState();
   const t = getTranslations(language.language);
@@ -179,6 +201,7 @@ export function ImagesToPdfView() {
   const overIndexRef = useRef<number | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
   const focusedItemIdRef = useRef<number | null>(null);
+  const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map());
 
   async function handleAdd(source: AddSource) {
     try {
@@ -258,6 +281,12 @@ export function ImagesToPdfView() {
       return;
     }
 
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignored if pointer capture is unsupported in test environments
+    }
+
     dragIndexRef.current = i;
     overIndexRef.current = i;
     setDragIndex(i);
@@ -279,6 +308,13 @@ export function ImagesToPdfView() {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLOListElement>) => {
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignored
+    }
     const fromIdx = dragIndexRef.current;
     if (fromIdx === null || !listRef.current) {
       return;
@@ -293,6 +329,20 @@ export function ImagesToPdfView() {
         fromIndex: fromIdx,
         toIndex: toIdx,
       });
+    }
+    dragIndexRef.current = null;
+    overIndexRef.current = null;
+    setDragIndex(null);
+    setOverIndex(null);
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLOListElement>) => {
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignored
     }
     dragIndexRef.current = null;
     overIndexRef.current = null;
@@ -357,37 +407,12 @@ export function ImagesToPdfView() {
     };
   }, [dragIndex, dispatch]);
 
-  // Keep DOM row attributes (tabindex, data-row-index, drag indicators, focus) in sync
+  // Restore focus to moved row using refs after keyboard reordering
   useEffect(() => {
-    if (!listRef.current) {
-      return;
-    }
-    const rows = listRef.current.querySelectorAll<HTMLLIElement>(".list-row");
-    rows.forEach((row, i) => {
-      row.setAttribute("data-row-index", String(i));
-      if (!disabled) {
-        row.tabIndex = 0;
-      } else {
-        row.removeAttribute("tabindex");
-      }
-      if (i === dragIndex) {
-        row.classList.add("is-dragging");
-      } else {
-        row.classList.remove("is-dragging");
-      }
-      if (dragIndex !== null && i === overIndex && i !== dragIndex) {
-        row.classList.add("is-drop-target");
-      } else {
-        row.classList.remove("is-drop-target");
-      }
-    });
-
     if (focusedItemIdRef.current !== null) {
-      const focusIdx = imagesToPdf.items.findIndex(
-        (item) => item.id === focusedItemIdRef.current,
-      );
-      if (focusIdx >= 0 && rows[focusIdx]) {
-        rows[focusIdx].focus();
+      const targetElement = rowRefs.current.get(focusedItemIdRef.current);
+      if (targetElement) {
+        targetElement.focus();
       }
       focusedItemIdRef.current = null;
     }
@@ -487,11 +512,12 @@ export function ImagesToPdfView() {
         <>
           <ol
             ref={listRef}
-            className="images-list"
+            className={`images-list ${disabled ? "is-disabled" : ""} ${dragIndex !== null ? "is-dragging-active" : ""}`}
             aria-labelledby={headingId}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
             onKeyDown={handleKeyDown}
           >
             {imagesToPdf.items.map((item, index) => {
@@ -502,6 +528,13 @@ export function ImagesToPdfView() {
               return (
                 <ListRow
                   key={item.id}
+                  ref={(el) => {
+                    if (el) {
+                      rowRefs.current.set(item.id, el);
+                    } else {
+                      rowRefs.current.delete(item.id);
+                    }
+                  }}
                   index={index + 1}
                   title={item.name}
                   meta={formatMeta(item)}
@@ -518,6 +551,9 @@ export function ImagesToPdfView() {
                       : null
                   }
                   status={status}
+                  className={getRowDropClass(index, dragIndex, overIndex)}
+                  data-row-index={index}
+                  tabIndex={disabled ? undefined : 0}
                   onMoveUp={
                     disabled
                       ? undefined
@@ -571,6 +607,9 @@ export function ImagesToPdfView() {
                 <th className="images-table-status-col">
                   {t.imagesToPdf.tableStatus}
                 </th>
+                <th className="images-table-actions-col">
+                  {t.imagesToPdf.tableActions}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -588,9 +627,9 @@ export function ImagesToPdfView() {
                     : null;
                 const listStatus = toListRowStatus(rowStatus, t);
 
-                let cellStatusText = "—";
-                let statusKind: "ok" | "failed" | "running" | "waiting" =
-                  "waiting";
+                let cellStatusText = "";
+                let statusKind: "ok" | "failed" | "running" | "waiting" | "" =
+                  "";
                 if (listStatus) {
                   cellStatusText = listStatus.text;
                   statusKind = listStatus.kind;
@@ -605,10 +644,33 @@ export function ImagesToPdfView() {
 
                 return (
                   <tr key={item.id}>
-                    <td>{item.name}</td>
+                    <td>
+                      <div className="images-table-name-cell">
+                        <div className="images-table-thumb">
+                          <ImageThumbnail id={item.id} name={item.name} />
+                        </div>
+                        <span>{item.name}</span>
+                      </div>
+                    </td>
                     <td className="mono">{outputName}</td>
-                    <td className={`images-table-status status-${statusKind}`}>
+                    <td
+                      className={
+                        statusKind
+                          ? `images-table-status status-${statusKind}`
+                          : "images-table-status"
+                      }
+                    >
                       {cellStatusText}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={disabled}
+                        onClick={() => void handleRemove(item.id)}
+                      >
+                        {t.imagesToPdf.remove}
+                      </button>
                     </td>
                   </tr>
                 );

@@ -223,6 +223,22 @@ describe("jobReducer", () => {
     expect(state.error).toEqual(error);
   });
 
+  it("records an error when a job could not start without running", () => {
+    const error = { code: "InvalidParams" as const, detail: null };
+    const previous = reduce([started, { type: "JOB_FINISHED", finished }]);
+    const state = jobReducer(previous, {
+      type: "JOB_NOT_STARTED",
+      kind: "pdfToImages",
+      error,
+    });
+
+    expect(state).toEqual({
+      ...initialJobState,
+      kind: "pdfToImages",
+      error,
+    });
+  });
+
   it("resets to idle", () => {
     const state = reduce([
       started,

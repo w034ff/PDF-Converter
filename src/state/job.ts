@@ -44,6 +44,7 @@ export type JobAction =
   | { type: "JOB_FINISHED"; finished: JobFinishedPayload }
   | { type: "JOB_SAVED"; savedName: string }
   | { type: "JOB_FAILED"; error: IpcError }
+  | { type: "JOB_NOT_STARTED"; kind: ActiveTab; error: IpcError }
   | { type: "JOB_RESET" };
 
 /** How a row of the list reads while or after a conversion runs. */
@@ -139,6 +140,8 @@ export function jobReducer(state: JobState, action: JobAction): JobState {
         return { ...state, error: action.error };
       }
       return { ...initialJobState, kind: state.kind, error: action.error };
+    case "JOB_NOT_STARTED":
+      return { ...initialJobState, kind: action.kind, error: action.error };
     case "JOB_RESET":
       return initialJobState;
   }
