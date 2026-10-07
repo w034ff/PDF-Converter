@@ -120,6 +120,16 @@ export const ja = {
     remove: "外す",
     clearAll: "すべて外す",
     summaryFailuresHint: "失敗した PDF の理由は、下の一覧に表示しています",
+    footer: {
+      specifyPages: "変換するページを指定してください",
+      noMatchingPages: "範囲に当てはまるページがありません",
+      savePagesSingle: "{pages} ページを {format} で保存します",
+      savePagesMultiple: "{pages} ページを {format} で保存します",
+      savePagesFromPdfsSingle:
+        "PDF {count} 件から {pages} ページを {format} で保存します",
+      savePagesFromPdfsMultiple:
+        "PDF {count} 件から {pages} ページを {format} で保存します",
+    },
   },
   imagesToPdf: {
     outputLabel: "出力",
@@ -148,6 +158,8 @@ export const ja = {
     addFolder: "フォルダを追加",
     clearAll: "すべて外す",
     mergePageCount: "{count} ページの PDF になります",
+    saveEachCountSingle: "{count} 個の PDF を保存します",
+    saveEachCountMultiple: "{count} 個の PDF を保存します",
     tableFileName: "ファイル名",
     tableSavedName: "保存するファイル名",
     tableStatus: "状態",
