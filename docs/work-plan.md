@@ -22,7 +22,7 @@
 2. Gemini は `main` から `task/T03-<短い名前>` ブランチを作り、実装とテストを行う。コミットのたびに pre-commit フック（§2.3）が検査を走らせる。
 3. §5 の共通の完了条件をすべて満たしたら、§2.1 の書式で報告を `pr-description.md`（リポジトリの直下、git の管理外）に書き、最後に §2.4 の合図 `agent-status.json` を書く。PR は作らない。§2.2 の条件に当たったら、状態を「中断」にして止める。
 4. Opus がブランチの差分（`git diff main...<ブランチ>`）を §6 の観点でレビューする。指摘は作業ツリーの直下の `agent-review.md`（git の管理外）に書く。Gemini は同じブランチで直してコミットし、`pr-description.md` を今の状態に合わせて書き直し、`agent-status.json` を `fixed` にする。
-5. 合格したら、Opus が `pr-description.md` の末尾に §2.1 の「手元のレビュー」の節を足したものを作業ツリーの外（`~/pdf-converter/pr-bodies/`）に作り、`agent-review.md` を消して、push と PR の作成のコマンドをオーナーに渡す。push と PR の作成はオーナーが行う（公開リポジトリに出る前に人が見る関門として、Claude Code の設定で `git push` を禁止している）。Gemini の作業ツリーの `pr-description.md` は書き換えない。CI（Ubuntu と Windows）が通ったら、オーナーがマージする（Squash and merge）。CI の失敗を Gemini に直させるときも、`agent-review.md` で渡す。
+5. 合格したら、Opus が `pr-description.md` の末尾に §2.1 の「手元のレビュー」の節を足したものを作業ツリーの外（`~/pdf-converter/pr-bodies/`）に作り、`agent-review.md` を消して、push と PR の作成のコマンドをオーナーに渡す。push と PR の作成はオーナーが行う（公開リポジトリに出る前に人が見る関門として、Claude Code の設定で `git push` を禁止している）。Gemini の作業ツリーの `pr-description.md` は書き換えない。CI（Ubuntu と Windows）が通ったら、オーナーがマージする（Create a merge commit。Gemini のコミットは本文ごと main の履歴に残る）。CI の失敗を Gemini に直させるときも、`agent-review.md` で渡す。
 
 差し戻しは PR の前に手元で済ませ、PR は CI とルールセット（両 OS のテスト、依存の検査）を通す最後の関門にする。
 
