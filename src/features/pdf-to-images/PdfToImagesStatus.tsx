@@ -1,6 +1,6 @@
 import { getTranslations } from "../../i18n";
 import { useAppState } from "../../state";
-import { getPdfToImagesStatusText } from "./pdfToImagesStatus";
+import { getPdfToImagesStatusText } from "./pdfToImagesStatusText";
 
 /**
  * Bottom bar status text for PDF to Images (design §10.1, mockup `PdfSingle`).

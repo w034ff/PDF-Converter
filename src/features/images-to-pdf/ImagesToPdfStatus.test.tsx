@@ -7,7 +7,7 @@ import {
   createInitialAppState,
   type ImagesToPdfState,
 } from "../../state";
-import { getImagesToPdfStatusText } from "./imagesToPdfStatus";
+import { getImagesToPdfStatusText } from "./imagesToPdfStatusText";
 import { ImagesToPdfStatus } from "./ImagesToPdfStatus";
 
 const validItem1: ImageItem = {

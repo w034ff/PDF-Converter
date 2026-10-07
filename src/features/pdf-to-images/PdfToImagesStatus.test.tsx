@@ -7,7 +7,7 @@ import {
   createInitialAppState,
   type PdfToImagesState,
 } from "../../state";
-import { getPdfToImagesStatusText } from "./pdfToImagesStatus";
+import { getPdfToImagesStatusText } from "./pdfToImagesStatusText";
 import { PdfToImagesStatus } from "./PdfToImagesStatus";
 
 const validPdf1: PdfItem = {
