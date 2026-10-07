@@ -56,6 +56,7 @@ describe("state reducers", () => {
     it("updates language with SET_LANGUAGE", () => {
       const initial: LanguageState = {
         language: "ja",
+        preference: "ja",
         activeTab: "imagesToPdf",
       };
       const updated = languageReducer(initial, {
@@ -63,12 +64,27 @@ describe("state reducers", () => {
         language: "en",
       });
       expect(updated.language).toBe("en");
+      expect(updated.preference).toBe("en");
       expect(updated.activeTab).toBe("imagesToPdf");
+    });
+
+    it("records picking the language already shown from the OS", () => {
+      const initial: LanguageState = {
+        language: "ja",
+        preference: null,
+        activeTab: "imagesToPdf",
+      };
+      const updated = languageReducer(initial, {
+        type: "SET_LANGUAGE",
+        language: "ja",
+      });
+      expect(updated.preference).toBe("ja");
     });
 
     it("returns same state when language does not change", () => {
       const initial: LanguageState = {
         language: "ja",
+        preference: "ja",
         activeTab: "imagesToPdf",
       };
       const updated = languageReducer(initial, {
@@ -81,6 +97,7 @@ describe("state reducers", () => {
     it("updates active tab with SET_ACTIVE_TAB", () => {
       const initial: LanguageState = {
         language: "ja",
+        preference: "ja",
         activeTab: "imagesToPdf",
       };
       const updated = languageReducer(initial, {
@@ -94,6 +111,7 @@ describe("state reducers", () => {
     it("returns same state when active tab does not change", () => {
       const initial: LanguageState = {
         language: "ja",
+        preference: "ja",
         activeTab: "imagesToPdf",
       };
       const updated = languageReducer(initial, {

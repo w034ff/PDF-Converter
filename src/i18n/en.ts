@@ -158,4 +158,17 @@ export const en: Translations = {
     remove: "Remove",
     noOutputYet: "—",
   },
+  about: {
+    title: "About this app",
+    version: "Version {version}",
+    pdfium: "PDF rendering engine: pdfium {version}",
+    pdfiumUnavailable: "Cannot load pdfium: {error}",
+    loadFailed: "Could not get the version",
+    appLicense: "License of this app (MIT)",
+    showThirdPartyLicenses: "Show third-party licenses",
+    hideThirdPartyLicenses: "Hide third-party licenses",
+    loadingLicenses: "Loading licenses…",
+    viewLicenseText: "Show license text",
+    close: "Close",
+  },
 };
