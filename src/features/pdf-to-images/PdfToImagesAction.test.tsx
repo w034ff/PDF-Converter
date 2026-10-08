@@ -350,6 +350,49 @@ describe("PdfToImagesAction", () => {
     expect(screen.getByRole("button", { name: "変換を開始" })).toBeDisabled();
   });
 
+  it("is disabled when no page of any PDF is in the range, and enabled from one page", () => {
+    mockCommands(() => undefined);
+
+    function renderWithTotal(totalPages: number, checking = false) {
+      renderAction((state) => {
+        state.pdfToImages.items = [samplePdf1, samplePdf2];
+        state.pdfToImages.outputDir = { dirLabel: "output" };
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "999";
+        state.pdfToImages.rangeChecking = checking;
+        state.pdfToImages.rangeResult = {
+          totalPages,
+          intervals: [[999, 999]],
+        };
+      });
+    }
+    const startButton = () =>
+      screen.getByRole("button", { name: "変換を開始" });
+
+    renderWithTotal(0);
+    expect(startButton()).toBeDisabled();
+    cleanup();
+
+    // Only some PDFs have pages in the range: it still starts.
+    renderWithTotal(1);
+    expect(startButton()).toBeEnabled();
+    cleanup();
+
+    // While a new text is checked, the old answer does not enable it.
+    renderWithTotal(5, true);
+    expect(startButton()).toBeDisabled();
+    cleanup();
+
+    // "All" has no range to check.
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = { dirLabel: "output" };
+      state.pdfToImages.pageSelection = "all";
+      state.pdfToImages.rangeResult = { totalPages: 0, intervals: [] };
+    });
+    expect(startButton()).toBeEnabled();
+  });
+
   it("calls start_pdfs_to_images with 1-{maxPages} when pageSelection is 'all'", async () => {
     const calls = mockCommands((cmd) =>
       cmd === "start_pdfs_to_images" ? undefined : undefined,
