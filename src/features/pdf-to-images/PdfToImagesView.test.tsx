@@ -11,6 +11,7 @@ import type {
   AddResult,
   CheckPageRangeResult,
   JobFinishedPayload,
+  JobItemPayload,
   PdfItem,
 } from "../../ipc";
 import {
@@ -639,6 +640,180 @@ describe("PdfToImagesView", () => {
       expect(cancelledRes).toHaveTextContent("キャンセル");
       expect(cancelledRes).toHaveTextContent("1 ページを保存済み");
       cancelledView.unmount();
+    });
+
+    describe("captions under the pages of a single PDF", () => {
+      const NO_FAILURES: JobFinishedPayload = {
+        succeeded: 0,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      };
+
+      /** Shows `pdf` with one result for it and the given page selection. */
+      function renderWithResult(
+        pdf: PdfItem,
+        result: Omit<JobItemPayload, "id">,
+        intervals: [number, number][] | null,
+        lang = "ja-JP",
+      ) {
+        const base = createInitialAppState(lang);
+        const state: AppState = {
+          ...base,
+          pdfToImages: {
+            ...base.pdfToImages,
+            items: [pdf],
+            pageSelection: intervals === null ? "all" : "range",
+            rangeText: intervals === null ? "" : "range",
+            rangeResult:
+              intervals === null
+                ? null
+                : { totalPages: pdf.pageCount, intervals },
+          },
+          job: {
+            ...base.job,
+            phase: "finished",
+            kind: "pdfToImages",
+            targets: [{ id: pdf.id, name: pdf.name }],
+            results: { [pdf.id]: { id: pdf.id, ...result } },
+            finished: NO_FAILURES,
+          },
+        };
+        state.language.activeTab = "pdfToImages";
+        return render(
+          <AppStateProvider initialState={state}>
+            <PdfToImagesSettings />
+            <PdfToImagesView />
+          </AppStateProvider>,
+        );
+      }
+
+      const caption = (page: number) =>
+        screen
+          .getByTestId(`page-thumbnail-${page}`)
+          .querySelector("figcaption");
+
+      it("says '変換する' for each selected page before any result", () => {
+        mockCommands(() => undefined);
+        renderView((state) => {
+          state.pdfToImages.items = [samplePdf1];
+          state.pdfToImages.pageSelection = "range";
+          state.pdfToImages.rangeText = "2-3";
+          state.pdfToImages.rangeResult = {
+            totalPages: 2,
+            intervals: [[2, 3]],
+          };
+        });
+
+        expect(caption(1)).toHaveTextContent(/^1$/);
+        expect(caption(2)).toHaveTextContent("2 ✓ 変換する");
+        expect(caption(3)).toHaveTextContent("3 ✓ 変換する");
+        expect(caption(4)).toHaveTextContent(/^4$/);
+      });
+
+      it("says '✓ 完了' in green for every saved page", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "ok", outputs: ["p1", "p2", "p3", "p4"] },
+          null,
+        );
+
+        for (const page of [1, 2, 3, 4]) {
+          expect(caption(page)).toHaveTextContent(`${page} ✓ 完了`);
+          expect(caption(page)).toHaveClass("pdf-status-ok");
+        }
+      });
+
+      it("says '未処理' in grey for the pages a cancel did not reach", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "cancelled", outputs: ["p1", "p2"] },
+          null,
+        );
+
+        expect(caption(1)).toHaveTextContent("1 ✓ 完了");
+        expect(caption(2)).toHaveTextContent("2 ✓ 完了");
+        expect(caption(3)).toHaveTextContent("3 未処理");
+        expect(caption(3)).toHaveClass("pdf-status-muted");
+        expect(caption(4)).toHaveTextContent("4 未処理");
+      });
+
+      it("counts only the selected pages, from the first, when the range has gaps", () => {
+        mockCommands(() => undefined);
+        // Selected 2, 3 and 5; one saved and one failed, so page 5 was not reached.
+        renderWithResult(
+          samplePdf10Pages,
+          {
+            status: "partial",
+            outputs: ["p2"],
+            failedPages: [3],
+          },
+          [
+            [2, 3],
+            [5, 5],
+          ],
+        );
+
+        expect(caption(1)).toHaveTextContent(/^1$/);
+        expect(caption(2)).toHaveTextContent("2 ✓ 完了");
+        expect(caption(3)).toHaveTextContent("3 ✕ 失敗");
+        expect(caption(3)).toHaveClass("pdf-status-failed");
+        expect(caption(4)).toHaveTextContent(/^4$/);
+        expect(caption(5)).toHaveTextContent("5 未処理");
+        expect(caption(6)).toHaveTextContent(/^6$/);
+      });
+
+      it("marks only the page that could not be written when the conversion stopped there", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          {
+            status: "failed",
+            outputs: [],
+            failedPages: [1],
+            error: { code: "WriteFailed", detail: null },
+          },
+          null,
+        );
+
+        expect(caption(1)).toHaveTextContent("1 ✕ 失敗");
+        expect(caption(2)).toHaveTextContent("2 未処理");
+        expect(caption(3)).toHaveTextContent("3 未処理");
+        expect(caption(4)).toHaveTextContent("4 未処理");
+      });
+
+      it("uses the English words", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "cancelled", outputs: ["p1"] },
+          null,
+          "en-US",
+        );
+
+        expect(caption(1)).toHaveTextContent("1 ✓ Done");
+        expect(caption(2)).toHaveTextContent("2 Not processed");
+      });
+
+      it("goes back to '変換する' when a setting change drops the result", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "cancelled", outputs: ["p1"] },
+          null,
+        );
+        expect(caption(1)).toHaveTextContent("1 ✓ 完了");
+
+        fireEvent.change(screen.getByLabelText("解像度"), {
+          target: { value: "300" },
+        });
+
+        expect(caption(1)).toHaveTextContent("1 ✓ 変換する");
+        expect(caption(2)).toHaveTextContent("2 ✓ 変換する");
+      });
     });
 
     it("shows nothing under a single PDF before any conversion", () => {

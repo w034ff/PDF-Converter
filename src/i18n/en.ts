@@ -100,6 +100,8 @@ export const en: Translations = {
     single: {
       meta: "{pages} pages · {size} · {fileSize}",
       convertPage: "{page}  ✓ Convert",
+      donePage: "{page}  ✓ Done",
+      pageWithStatus: "{page}  {status}",
       failedPage: "{page}  ✕ Failed",
       thumbnailAlt: "Thumbnail of {name} page {page}",
       pageAriaLabel: "Page {page}",

@@ -85,6 +85,36 @@ export function countPagesInIntervals(
   return total;
 }
 
+/** What a conversion did to a page of the single PDF the screen shows. */
+export type PageOutcome = "done" | "failed" | "unprocessed";
+
+/**
+ * Tells, for each selected page, what the conversion did to it (design §6.3).
+ *
+ * Pages are converted from the first selected one on, so the conversion
+ * reached the first `savedCount + failedPages.length` of them. Those are
+ * `failed` if listed in `failedPages` and `done` otherwise; the rest were
+ * never reached, by a cancel or by a stop after a write failure.
+ *
+ * @param selectedPages the pages that were selected, in ascending order.
+ */
+export function pageOutcomes(
+  selectedPages: readonly number[],
+  savedCount: number,
+  failedPages: readonly number[],
+): Map<number, PageOutcome> {
+  const reached = savedCount + failedPages.length;
+  const outcomes = new Map<number, PageOutcome>();
+  selectedPages.forEach((page, index) => {
+    if (index >= reached) {
+      outcomes.set(page, "unprocessed");
+    } else {
+      outcomes.set(page, failedPages.includes(page) ? "failed" : "done");
+    }
+  });
+  return outcomes;
+}
+
 /**
  * Checks whether 1-based page number falls into any of the sorted disjoint intervals (design §4.5, §6.3).
  */

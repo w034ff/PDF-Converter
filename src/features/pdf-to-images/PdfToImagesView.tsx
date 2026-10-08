@@ -36,10 +36,54 @@ import {
   formatSkippedSummary,
   intervalsToRangeText,
   isPageInIntervals,
+  pageOutcomes,
   togglePageRangeInIntervals,
+  type PageOutcome,
 } from "./pdfUtils";
 import { useDisplayedRange } from "./useDisplayedRange";
 import "./pdfToImages.css";
+
+/** The colour class of a page's caption: only a result colours it. */
+function captionClass(outcome: PageOutcome | null): string {
+  switch (outcome) {
+    case "done":
+      return "pdf-status-ok";
+    case "failed":
+      return "pdf-status-failed";
+    case "unprocessed":
+      return "pdf-status-muted";
+    case null:
+      return "";
+  }
+}
+
+/**
+ * The words under a page: its result if the last conversion has one, else
+ * what the next one will do. A page that is not selected has its number only.
+ */
+function captionText(
+  t: Translations,
+  page: number,
+  isHighlighted: boolean,
+  outcome: PageOutcome | null,
+): string {
+  if (!isHighlighted) {
+    return String(page);
+  }
+  switch (outcome) {
+    case "done":
+      return formatMessage(t.pdfToImages.single.donePage, { page });
+    case "failed":
+      return formatMessage(t.pdfToImages.single.failedPage, { page });
+    case "unprocessed":
+      return formatMessage(t.pdfToImages.single.pageWithStatus, {
+        page,
+        status: t.job.rowStatus.unprocessed,
+      });
+    case null:
+      return formatMessage(t.pdfToImages.single.convertPage, { page });
+  }
+}
 
 interface PdfPageThumbnailProps {
   id: number;
@@ -47,8 +91,8 @@ interface PdfPageThumbnailProps {
   name: string;
   firstPageSizePt: PageSizePt | null;
   isHighlighted: boolean;
-  /** The last conversion failed on this page (`failedPages`). */
-  isFailed: boolean;
+  /** What the last conversion did to this page; `null` if it has no result. */
+  outcome: PageOutcome | null;
   disabled: boolean;
   onClick: (page: number, shiftKey: boolean) => void;
   translations: Translations;
@@ -60,12 +104,13 @@ function PdfPageThumbnail({
   name,
   firstPageSizePt,
   isHighlighted,
-  isFailed,
+  outcome,
   disabled,
   onClick,
   translations: t,
 }: PdfPageThumbnailProps) {
   const { ref, src, failed } = useThumbnail(id, page);
+  const isFailed = outcome === "failed";
 
   const aspectRatio = firstPageSizePt
     ? `${firstPageSizePt.widthPt} / ${firstPageSizePt.heightPt}`
@@ -111,12 +156,8 @@ function PdfPageThumbnail({
           )}
         </span>
       </button>
-      <figcaption className={`mono ${isFailed ? "pdf-status-failed" : ""}`}>
-        {isFailed
-          ? formatMessage(t.pdfToImages.single.failedPage, { page })
-          : isHighlighted
-            ? formatMessage(t.pdfToImages.single.convertPage, { page })
-            : String(page)}
+      <figcaption className={`mono ${captionClass(outcome)}`}>
+        {captionText(t, page, isHighlighted, outcome)}
       </figcaption>
     </figure>
   );
@@ -457,8 +498,21 @@ export function PdfToImagesView() {
       : null;
   const showSingleResult =
     singleStatus !== null && singleItemJobStatus !== "partial";
-  const singleFailedPages =
-    singleItem !== null ? (results[singleItem.id]?.failedPages ?? []) : [];
+  const singleResult = singleItem !== null ? results[singleItem.id] : undefined;
+  const isPageSelected = (page: number) =>
+    displayed.pageSelection === "all" ||
+    (displayed.rangeResult !== null &&
+      isPageInIntervals(displayed.rangeResult.intervals, page));
+  const singleOutcomes =
+    singleItem !== null && singleResult !== undefined
+      ? pageOutcomes(
+          Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).filter(
+            isPageSelected,
+          ),
+          singleResult.outputs.length,
+          singleResult.failedPages ?? [],
+        )
+      : null;
 
   return (
     <div className="pdf-view">
@@ -584,10 +638,7 @@ export function PdfToImagesView() {
           <div className="pdf-single-grid">
             {Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).map(
               (page) => {
-                const isHighlighted =
-                  displayed.pageSelection === "all" ||
-                  (displayed.rangeResult !== null &&
-                    isPageInIntervals(displayed.rangeResult.intervals, page));
+                const isHighlighted = isPageSelected(page);
                 return (
                   <PdfPageThumbnail
                     key={page}
@@ -596,7 +647,7 @@ export function PdfToImagesView() {
                     name={singleItem.name}
                     firstPageSizePt={singleItem.firstPageSizePt}
                     isHighlighted={isHighlighted}
-                    isFailed={singleFailedPages.includes(page)}
+                    outcome={singleOutcomes?.get(page) ?? null}
                     disabled={isThumbnailDisabled}
                     onClick={handleThumbnailClick}
                     translations={t}

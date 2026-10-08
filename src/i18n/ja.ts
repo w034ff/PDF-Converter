@@ -97,6 +97,8 @@ export const ja = {
     single: {
       meta: "{pages} ページ · {size} · {fileSize}",
       convertPage: "{page}  ✓ 変換する",
+      donePage: "{page}  ✓ 完了",
+      pageWithStatus: "{page}  {status}",
       failedPage: "{page}  ✕ 失敗",
       thumbnailAlt: "{name} の {page} ページのサムネイル",
       pageAriaLabel: "{page} ページ",

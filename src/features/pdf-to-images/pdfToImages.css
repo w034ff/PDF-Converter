@@ -289,7 +289,15 @@
 }
 
 /* The caption is also .mono, whose grey comes later in the cascade; the
-   failed page's words must still be red. */
+   words of a result must still carry the colour of that result. */
+.pdf-page-figure figcaption.pdf-status-ok {
+  color: var(--color-success);
+}
+
 .pdf-page-figure figcaption.pdf-status-failed {
   color: var(--color-error);
+}
+
+.pdf-page-figure figcaption.pdf-status-muted {
+  color: var(--color-text-secondary);
 }
