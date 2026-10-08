@@ -9,8 +9,8 @@ use pdfconv_worker::WORKER_FLAG;
 use pdfconv_worker::client::{OPEN_TIMEOUT, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::Request;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
-use tauri_plugin_dialog::DialogExt;
+use tauri::{AppHandle, Emitter, Wry};
+use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use ts_rs::TS;
 
 use crate::AppState;
@@ -238,10 +238,12 @@ pub async fn save_merged_pdf(
     let picked_path = tauri::async_runtime::spawn_blocking(move || {
         let patterns = filter_extensions(&[PDF_EXTENSION]);
         let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
-        app.dialog()
+        let dialog = app
+            .dialog()
             .file()
             .add_filter(PDF_FILTER_NAME, &patterns)
-            .set_file_name(&default_name)
+            .set_file_name(&default_name);
+        save_dialog_start_dir(&app, dialog)
             .blocking_save_file()
             .map(dialog_path)
             .transpose()
@@ -373,6 +375,32 @@ fn filter_extensions(extensions: &[&str]) -> Vec<String> {
         .iter()
         .flat_map(|extension| [extension.to_lowercase(), extension.to_uppercase()])
         .collect()
+}
+
+/// Makes the save dialog start in the home folder.
+///
+/// Without a folder, GTK opens the dialog in the working directory. In an
+/// AppImage that is the read-only mount of the image, where nothing can be
+/// saved. Windows is left alone: its dialog remembers the last folder.
+#[cfg(target_os = "linux")]
+fn save_dialog_start_dir(
+    app: &AppHandle,
+    dialog: FileDialogBuilder<Wry>,
+) -> FileDialogBuilder<Wry> {
+    use tauri::Manager;
+
+    match app.path().home_dir() {
+        Ok(home) => dialog.set_directory(home),
+        Err(_) => dialog,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn save_dialog_start_dir(
+    _app: &AppHandle,
+    dialog: FileDialogBuilder<Wry>,
+) -> FileDialogBuilder<Wry> {
+    dialog
 }
 
 /// Opens a dialog to pick a folder. Blocks until it is closed, so it must not
