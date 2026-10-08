@@ -166,15 +166,17 @@ jobs:
           merge-multiple: true
 
       # One of each format, so a build that silently skipped a bundle does
-      # not make a release without it.
+      # not make a release without it. upload-artifact keeps the folders
+      # below target/release/bundle, so each installer is one level down
+      # (installers/msi/, installers/nsis/, ...).
       - name: Verify all four installers are present
         run: |
           shopt -s nullglob
           for pattern in "*.msi" "*-setup.exe" "*.AppImage" "*.deb"; do
-            matches=(installers/$pattern)
+            matches=(installers/*/$pattern)
             if [ ${#matches[@]} -ne 1 ]; then
               echo "Expected one $pattern, found ${#matches[@]}."
-              ls -l installers
+              ls -lR installers
               exit 1
             fi
           done
@@ -187,7 +189,7 @@ jobs:
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
             extra_args+=(--prerelease)
           fi
-          gh release create "$GITHUB_REF_NAME" installers/* \
+          gh release create "$GITHUB_REF_NAME" installers/*/* \
             --repo "$GITHUB_REPOSITORY" \
             --draft \
             --title "PDF Converter $GITHUB_REF_NAME" \
