@@ -24,11 +24,13 @@ pub enum ErrorCode {
     ConversionRunning,
     UnknownHandle,
     InvalidParams,
+    OutputDirMissing,
+    OutputDirNotWritable,
 }
 
 impl ErrorCode {
     /// Every code, so that [`ErrorCode::from_name`] cannot miss one.
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 17] = [
         Self::UnsupportedFormat,
         Self::DecodeFailed,
         Self::PdfOpenFailed,
@@ -44,6 +46,8 @@ impl ErrorCode {
         Self::ConversionRunning,
         Self::UnknownHandle,
         Self::InvalidParams,
+        Self::OutputDirMissing,
+        Self::OutputDirNotWritable,
     ];
 
     /// The name of the code as it appears in design §6.6.
@@ -64,6 +68,8 @@ impl ErrorCode {
             Self::ConversionRunning => "ConversionRunning",
             Self::UnknownHandle => "UnknownHandle",
             Self::InvalidParams => "InvalidParams",
+            Self::OutputDirMissing => "OutputDirMissing",
+            Self::OutputDirNotWritable => "OutputDirNotWritable",
         }
     }
 

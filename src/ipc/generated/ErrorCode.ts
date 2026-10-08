@@ -3,4 +3,4 @@
 /**
  * The error codes of design §6.6.
  */
-export type ErrorCode = "UnsupportedFormat" | "DecodeFailed" | "PdfOpenFailed" | "PasswordProtected" | "TooLarge" | "TooManyPages" | "RenderTooLarge" | "WorkerCrashed" | "WorkerTimeout" | "ReadFailed" | "WriteFailed" | "InvalidPageRange" | "ConversionRunning" | "UnknownHandle" | "InvalidParams";
+export type ErrorCode = "UnsupportedFormat" | "DecodeFailed" | "PdfOpenFailed" | "PasswordProtected" | "TooLarge" | "TooManyPages" | "RenderTooLarge" | "WorkerCrashed" | "WorkerTimeout" | "ReadFailed" | "WriteFailed" | "InvalidPageRange" | "ConversionRunning" | "UnknownHandle" | "InvalidParams" | "OutputDirMissing" | "OutputDirNotWritable";

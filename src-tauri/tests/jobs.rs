@@ -16,7 +16,10 @@ use pdf_converter_lib::jobs::{
     list_existing_files, run_images_to_pdfs, run_pdfs_to_images, run_save_merged_pdf, save_atomic,
     start_images_to_pdfs_internal, start_pdfs_to_images_internal,
 };
-use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
+use pdf_converter_lib::settings::{
+    OutputKind, apply_picked_dir, get_settings_internal, load_settings, restore_settings,
+};
+use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig, default_worker_limit};
 use pdfconv_core::parse_page_range;
 use pdfconv_worker::WORKER_FLAG;
 #[cfg(feature = "test-hooks")]
@@ -725,7 +728,7 @@ fn unknown_handle_rejects() {
 
 #[cfg(unix)]
 #[test]
-fn unreadable_output_dir_rejects_and_resets_is_running() {
+fn output_dir_that_cannot_be_listed_rejects_and_resets_is_running() {
     use std::os::unix::fs::PermissionsExt;
 
     let app_state = state();
@@ -736,9 +739,11 @@ fn unreadable_output_dir_rejects_and_resets_is_running() {
     let add_res = add_images(&app_state, &[path]);
     let id = add_res.added[0].id;
 
+    // A file can be created in the folder, so the pre-start check passes, but
+    // the names in it cannot be listed (design §6.4).
     let unreadable_dir = temp_out.path().join("unreadable");
     fs::create_dir(&unreadable_dir).unwrap();
-    fs::set_permissions(&unreadable_dir, fs::Permissions::from_mode(0o000)).unwrap();
+    fs::set_permissions(&unreadable_dir, fs::Permissions::from_mode(0o300)).unwrap();
 
     *app_state.images_output_dir.lock().unwrap() = Some(unreadable_dir.clone());
     *app_state.pdfs_output_dir.lock().unwrap() = Some(unreadable_dir.clone());
@@ -1277,4 +1282,415 @@ fn page_images_get_the_permissions_of_a_new_file() {
         mode_of(&temp_out.path().join(&items[0].outputs[0])),
         expected
     );
+}
+
+/// A state whose settings are kept in `config_dir`, with `dir` chosen as the
+/// output folder of both conversions, as `pick_output_dir` would leave it.
+fn state_with_chosen_output_dir(config_dir: &Path, dir: &Path) -> AppState {
+    let app_state = state();
+    restore_settings(&app_state, config_dir);
+    for kind in [OutputKind::ImagesToPdf, OutputKind::PdfToImages] {
+        let (_, persisted) = apply_picked_dir(&app_state, kind, dir.to_path_buf());
+        persisted.expect("writing the settings");
+    }
+    app_state
+}
+
+/// Asserts that both output folders are "not chosen" in memory, in what
+/// `get_settings` returns, and in the settings file.
+fn assert_output_dirs_not_chosen(app_state: &AppState, config_dir: &Path) {
+    assert!(app_state.images_output_dir.lock().unwrap().is_none());
+    assert!(app_state.pdfs_output_dir.lock().unwrap().is_none());
+    let settings = get_settings_internal(app_state);
+    assert!(settings.images_to_pdf.output_dir.is_none());
+    assert!(settings.pdf_to_images.output_dir.is_none());
+    let file = load_settings(config_dir);
+    assert!(file.images_to_pdf.output_dir.is_none());
+    assert!(file.pdf_to_images.output_dir.is_none());
+}
+
+/// Starts both conversions and returns their errors.
+fn start_both(app_state: &AppState, image_id: u64, pdf_id: u64) -> (ErrorCode, ErrorCode) {
+    let recorder = TestRecorder::new();
+    let images = start_images_to_pdfs_internal(
+        app_state,
+        &[image_id],
+        PageSizeChoice::Fit,
+        recorder.callbacks(),
+    )
+    .unwrap_err();
+    let recorder = TestRecorder::new();
+    let pdfs = start_pdfs_to_images_internal(
+        app_state,
+        &[pdf_id],
+        "1",
+        RenderFormatChoice::Png,
+        150,
+        recorder.callbacks(),
+    )
+    .unwrap_err();
+    (images.code, pdfs.code)
+}
+
+fn add_one_image_and_one_pdf(app_state: &AppState, dir: &Path) -> (u64, u64) {
+    let image = copy_fixture(dir, "photo.jpg", "photo.jpg");
+    let pdf = copy_fixture(dir, "shapes.pdf", "shapes.pdf");
+    (
+        add_images(app_state, &[image]).added[0].id,
+        add_pdfs(app_state, &[pdf]).added[0].id,
+    )
+}
+
+#[test]
+fn a_missing_output_dir_is_refused_and_forgotten() {
+    let temp_in = TempDir::new().unwrap();
+    let temp_config = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let out_dir = temp_out.path().join("gone");
+    fs::create_dir(&out_dir).unwrap();
+
+    let app_state = state_with_chosen_output_dir(temp_config.path(), &out_dir);
+    let (image_id, pdf_id) = add_one_image_and_one_pdf(&app_state, temp_in.path());
+    fs::remove_dir(&out_dir).unwrap();
+
+    let (images, pdfs) = start_both(&app_state, image_id, pdf_id);
+
+    assert_eq!(images, ErrorCode::OutputDirMissing);
+    assert_eq!(pdfs, ErrorCode::OutputDirMissing);
+    assert!(!app_state.is_running.load(Ordering::SeqCst));
+    assert_output_dirs_not_chosen(&app_state, temp_config.path());
+}
+
+#[test]
+fn an_output_dir_that_is_now_a_file_is_refused_and_forgotten() {
+    let temp_in = TempDir::new().unwrap();
+    let temp_config = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let out_dir = temp_out.path().join("was-a-folder");
+    fs::create_dir(&out_dir).unwrap();
+
+    let app_state = state_with_chosen_output_dir(temp_config.path(), &out_dir);
+    let (image_id, pdf_id) = add_one_image_and_one_pdf(&app_state, temp_in.path());
+    fs::remove_dir(&out_dir).unwrap();
+    fs::write(&out_dir, b"not a folder").unwrap();
+
+    let (images, pdfs) = start_both(&app_state, image_id, pdf_id);
+
+    assert_eq!(images, ErrorCode::OutputDirMissing);
+    assert_eq!(pdfs, ErrorCode::OutputDirMissing);
+    assert_output_dirs_not_chosen(&app_state, temp_config.path());
+}
+
+#[test]
+fn only_the_missing_output_dir_is_forgotten() {
+    let temp_in = TempDir::new().unwrap();
+    let temp_config = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let gone = temp_out.path().join("gone");
+    let kept = temp_out.path().join("kept");
+    fs::create_dir(&gone).unwrap();
+    fs::create_dir(&kept).unwrap();
+
+    let app_state = state_with_chosen_output_dir(temp_config.path(), &kept);
+    apply_picked_dir(&app_state, OutputKind::ImagesToPdf, gone.clone())
+        .1
+        .unwrap();
+    let (image_id, _) = add_one_image_and_one_pdf(&app_state, temp_in.path());
+    fs::remove_dir(&gone).unwrap();
+
+    let recorder = TestRecorder::new();
+    let err = start_images_to_pdfs_internal(
+        &app_state,
+        &[image_id],
+        PageSizeChoice::Fit,
+        recorder.callbacks(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::OutputDirMissing);
+    assert!(app_state.images_output_dir.lock().unwrap().is_none());
+    assert_eq!(
+        app_state.pdfs_output_dir.lock().unwrap().as_deref(),
+        Some(kept.as_path())
+    );
+    let file = load_settings(temp_config.path());
+    assert!(file.images_to_pdf.output_dir.is_none());
+    assert_eq!(
+        file.pdf_to_images.output_dir.as_deref(),
+        Some(kept.as_path())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_output_dir_that_cannot_be_written_is_refused_and_kept() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_in = TempDir::new().unwrap();
+    let temp_config = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let out_dir = temp_out.path().join("read-only");
+    fs::create_dir(&out_dir).unwrap();
+
+    let app_state = state_with_chosen_output_dir(temp_config.path(), &out_dir);
+    let (image_id, pdf_id) = add_one_image_and_one_pdf(&app_state, temp_in.path());
+    fs::set_permissions(&out_dir, fs::Permissions::from_mode(0o555)).unwrap();
+
+    // A process that may write anyway (root) cannot show the refusal.
+    if fs::File::create(out_dir.join("probe")).is_ok() {
+        fs::set_permissions(&out_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipped: this process can write to a 0555 folder");
+        return;
+    }
+
+    let (images, pdfs) = start_both(&app_state, image_id, pdf_id);
+    fs::set_permissions(&out_dir, fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(images, ErrorCode::OutputDirNotWritable);
+    assert_eq!(pdfs, ErrorCode::OutputDirNotWritable);
+    assert!(!app_state.is_running.load(Ordering::SeqCst));
+    assert!(list_existing_files(&out_dir).unwrap().is_empty());
+    assert_eq!(
+        app_state.images_output_dir.lock().unwrap().as_deref(),
+        Some(out_dir.as_path())
+    );
+    assert_eq!(
+        app_state.pdfs_output_dir.lock().unwrap().as_deref(),
+        Some(out_dir.as_path())
+    );
+    let file = load_settings(temp_config.path());
+    assert_eq!(
+        file.images_to_pdf.output_dir.as_deref(),
+        Some(out_dir.as_path())
+    );
+    assert_eq!(
+        file.pdf_to_images.output_dir.as_deref(),
+        Some(out_dir.as_path())
+    );
+}
+
+/// A folder that is not there: creating the first output in it fails with
+/// `WriteFailed`, which is what a conversion meets when its folder goes away
+/// or fills up after it has started. `run_*` do not check the folder first.
+fn missing_dir(parent: &Path) -> PathBuf {
+    parent.join("never-created")
+}
+
+#[test]
+fn a_write_failure_stops_images_to_pdfs_and_leaves_the_rest_unprocessed() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let total = 12;
+    let paths: Vec<PathBuf> = (0..total)
+        .map(|n| copy_fixture(temp_in.path(), "photo.jpg", &format!("photo{n}.jpg")))
+        .collect();
+    let ids: Vec<u64> = add_images(&app_state, &paths)
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let recorder = TestRecorder::new();
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        &missing_dir(temp_out.path()),
+        recorder.callbacks(),
+    )
+    .unwrap();
+
+    let finished = recorder.finished();
+    let items = recorder.items();
+    // Each thread fails once and then sees the flag, so no more items than
+    // threads are tried.
+    assert!(!items.is_empty());
+    assert!(items.len() <= default_worker_limit());
+    for item in &items {
+        assert_eq!(item.status, JobItemStatus::Failed);
+        assert_eq!(
+            item.error.as_ref().map(|e| e.code),
+            Some(ErrorCode::WriteFailed)
+        );
+    }
+    assert_eq!(finished.succeeded, 0);
+    assert_eq!(finished.failed as usize, items.len());
+    assert_eq!(finished.unprocessed as usize, total - items.len());
+    assert!(!finished.cancelled);
+}
+
+#[test]
+fn a_write_failure_stops_pdfs_to_images_and_leaves_the_rest_unprocessed() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let total = 8;
+    let paths: Vec<PathBuf> = (0..total)
+        .map(|n| copy_fixture(temp_in.path(), "shapes.pdf", &format!("shapes{n}.pdf")))
+        .collect();
+    let ids: Vec<u64> = add_pdfs(&app_state, &paths)
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let recorder = TestRecorder::new();
+    run_pdfs_to_images(
+        &app_state,
+        &ids,
+        &parse_page_range("1-3").unwrap(),
+        RenderFormatChoice::Png,
+        72,
+        &missing_dir(temp_out.path()),
+        recorder.callbacks(),
+    )
+    .unwrap();
+
+    let finished = recorder.finished();
+    let items = recorder.items();
+    assert!(!items.is_empty());
+    assert!(items.len() <= default_worker_limit());
+    for item in &items {
+        // Page 1 failed to save; pages 2 and 3 were not tried.
+        assert_eq!(item.status, JobItemStatus::Failed);
+        assert!(item.outputs.is_empty());
+        assert_eq!(item.failed_pages, Some(vec![1]));
+        assert_eq!(
+            item.error.as_ref().map(|e| e.code),
+            Some(ErrorCode::WriteFailed)
+        );
+    }
+    assert_eq!(finished.succeeded, 0);
+    assert_eq!(finished.failed as usize, items.len());
+    assert_eq!(finished.unprocessed as usize, total - items.len());
+    assert!(!finished.cancelled);
+}
+
+#[test]
+fn a_write_failure_after_some_pages_makes_the_pdf_partial() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let out_dir = temp_out.path().join("vanishing");
+    fs::create_dir(&out_dir).unwrap();
+
+    let path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let ids: Vec<u64> = add_pdfs(&app_state, &[path])
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    // Remove the folder once page 1 is saved, so page 2 cannot be written.
+    let recorder = TestRecorder::new();
+    let items = Arc::clone(&recorder.items);
+    let finished = Arc::clone(&recorder.finished);
+    let vanishing = out_dir.clone();
+    let callbacks = JobCallbacks {
+        on_progress: move |progress: JobProgressPayload| {
+            if progress.done == 1 {
+                let _ = fs::remove_dir_all(&vanishing);
+            }
+        },
+        on_item: move |item| items.lock().unwrap().push(item),
+        on_finished: move |fin| *finished.lock().unwrap() = Some(fin),
+    };
+    run_pdfs_to_images(
+        &app_state,
+        &ids,
+        &parse_page_range("1-3").unwrap(),
+        RenderFormatChoice::Png,
+        72,
+        &out_dir,
+        callbacks,
+    )
+    .unwrap();
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Partial);
+    assert_eq!(items[0].outputs.len(), 1);
+    assert_eq!(items[0].failed_pages, Some(vec![2]));
+    assert_eq!(
+        items[0].error.as_ref().map(|e| e.code),
+        Some(ErrorCode::WriteFailed)
+    );
+}
+
+#[test]
+fn images_that_cannot_be_decoded_do_not_stop_the_rest() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    // More images than threads, the broken ones first, so that a conversion
+    // that stopped at the first failure would leave valid images unprocessed.
+    let broken = 6;
+    let valid = 6;
+    let mut paths: Vec<PathBuf> = (0..broken)
+        .map(|n| copy_fixture(temp_in.path(), "corrupt.png", &format!("broken{n}.png")))
+        .collect();
+    paths.extend(
+        (0..valid).map(|n| copy_fixture(temp_in.path(), "photo.jpg", &format!("photo{n}.jpg"))),
+    );
+    let added = add_images(&app_state, &paths).added;
+    assert!(added.iter().all(|item| item.error.is_none()));
+    let ids: Vec<u64> = added.iter().map(|item| item.id).collect();
+
+    let recorder = TestRecorder::new();
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .unwrap();
+
+    let finished = recorder.finished();
+    assert_eq!(finished.succeeded as usize, valid);
+    assert_eq!(finished.failed as usize, broken);
+    assert_eq!(finished.unprocessed, 0);
+}
+
+#[test]
+fn pages_that_cannot_be_rendered_do_not_stop_the_other_pdfs() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let total = 8;
+    let paths: Vec<PathBuf> = (0..total)
+        .map(|n| copy_fixture(temp_in.path(), "mixed_sizes.pdf", &format!("mixed{n}.pdf")))
+        .collect();
+    let ids: Vec<u64> = add_pdfs(&app_state, &paths)
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    // Page 2 of each is too large at 300 dpi; pages 1 and 3 are saved.
+    let recorder = TestRecorder::new();
+    run_pdfs_to_images(
+        &app_state,
+        &ids,
+        &parse_page_range("1-3").unwrap(),
+        RenderFormatChoice::Png,
+        300,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .unwrap();
+
+    let items = recorder.items();
+    assert_eq!(items.len(), total);
+    for item in &items {
+        assert_eq!(item.status, JobItemStatus::Partial);
+        assert_eq!(item.outputs.len(), 2);
+        assert_eq!(item.failed_pages, Some(vec![2]));
+    }
+    assert_eq!(recorder.finished().unprocessed, 0);
 }

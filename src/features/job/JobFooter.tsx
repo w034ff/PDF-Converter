@@ -10,6 +10,7 @@ import {
 } from "../../state";
 import type { Translations } from "../../i18n";
 import type { JobFinishedPayload } from "../../ipc";
+import { isOutputDirError } from "../output";
 import { jobOutcome } from "./jobSummary";
 import { useJobRunner } from "./useJobRunner";
 
@@ -96,7 +97,11 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
   // An error comes first: one raised after `job-finished` (the merged PDF
   // could not be written) matters more than the counts before it.
   let status = idleStatus;
-  if (job.error !== null && (job.kind === null || job.kind === tab)) {
+  if (
+    job.error !== null &&
+    !isOutputDirError(job.error) &&
+    (job.kind === null || job.kind === tab)
+  ) {
     status = (
       <span className="error-text" role="alert">
         {formatErrorMessage(

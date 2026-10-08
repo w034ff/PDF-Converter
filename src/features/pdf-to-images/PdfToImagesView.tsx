@@ -28,6 +28,7 @@ import {
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
 import { JobSummaryBanner } from "../job/JobSummaryBanner";
+import { OutputDirError } from "../output";
 import {
   countPagesInIntervals,
   formatFileSize,
@@ -472,6 +473,7 @@ export function PdfToImagesView() {
           dismissLabel={t.errors.dismiss}
         />
       )}
+      <OutputDirError tab="pdfToImages" />
       <JobSummaryBanner tab="pdfToImages" partialCount={partialCount} />
 
       {/* Header above content */}

@@ -742,6 +742,171 @@ describe("ImagesToPdf (T11)", () => {
     expect(calls.some((c) => c.cmd === "pick_output_dir")).toBe(false);
   });
 
+  describe("a start refused because of the output folder", () => {
+    const MISSING_MESSAGE =
+      "保存先のフォルダが見つかりません。フォルダを選び直してください";
+    const NOT_WRITABLE_MESSAGE = "保存先のフォルダに書き込めません";
+
+    /**
+     * Answers the commands of an "each" conversion. `startAnswers` are the
+     * answers of `start_images_to_pdfs` in turn, `pickAnswers` those of
+     * `pick_output_dir`; the last one repeats.
+     */
+    function mockEach(
+      startAnswers: (() => unknown)[],
+      pickAnswers: (() => unknown)[],
+    ): IpcCall[] {
+      let starts = 0;
+      let picks = 0;
+      return mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const result: AddResult<ImageItem> = {
+            added: [sampleImage1],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return result;
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        if (cmd === "start_images_to_pdfs") {
+          const answer =
+            startAnswers[Math.min(starts, startAnswers.length - 1)];
+          starts += 1;
+          return answer();
+        }
+        if (cmd === "pick_output_dir") {
+          const answer = pickAnswers[Math.min(picks, pickAnswers.length - 1)];
+          picks += 1;
+          return answer();
+        }
+        return undefined;
+      });
+    }
+
+    async function chooseFolderAndStart() {
+      renderHarness();
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await screen.findByText("photo.jpg");
+      fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+      fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+      await screen.findByText("old-folder");
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+    }
+
+    const countOf = (calls: IpcCall[], cmd: string) =>
+      calls.filter((call) => call.cmd === cmd).length;
+
+    it("asks for a folder again when it is gone, then starts with the new one", async () => {
+      let answerPick: (label: unknown) => void = () => {};
+      const calls = mockEach(
+        [
+          () => Promise.reject({ code: "OutputDirMissing", detail: null }),
+          () => undefined,
+        ],
+        [
+          () => ({ dirLabel: "old-folder" }),
+          () => new Promise((resolve) => (answerPick = resolve)),
+        ],
+      );
+
+      await chooseFolderAndStart();
+
+      // The dialog is open: the field is empty and the reason is on screen.
+      await waitFor(() => {
+        expect(countOf(calls, "pick_output_dir")).toBe(2);
+      });
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
+      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
+      expect(screen.getByTestId("error-display")).toHaveTextContent(
+        MISSING_MESSAGE,
+      );
+      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
+
+      await act(async () => {
+        answerPick({ dirLabel: "new-folder" });
+      });
+
+      await waitFor(() => {
+        expect(countOf(calls, "start_images_to_pdfs")).toBe(2);
+      });
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+        "new-folder",
+      );
+      expect(screen.queryByText(MISSING_MESSAGE)).toBeNull();
+    });
+
+    it("starts nothing when the folder dialog is cancelled", async () => {
+      const calls = mockEach(
+        [() => Promise.reject({ code: "OutputDirMissing", detail: null })],
+        [() => ({ dirLabel: "old-folder" }), () => null],
+      );
+
+      await chooseFolderAndStart();
+
+      await waitFor(() => {
+        expect(countOf(calls, "pick_output_dir")).toBe(2);
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "変換を開始" }),
+        ).toBeEnabled();
+      });
+      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
+      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
+    });
+
+    it("does not ask again for a folder it has just been given", async () => {
+      const calls = mockEach(
+        [() => Promise.reject({ code: "OutputDirMissing", detail: null })],
+        [
+          () => ({ dirLabel: "old-folder" }),
+          () => ({ dirLabel: "new-folder" }),
+        ],
+      );
+
+      await chooseFolderAndStart();
+
+      await waitFor(() => {
+        expect(countOf(calls, "start_images_to_pdfs")).toBe(2);
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "変換を開始" }),
+        ).toBeEnabled();
+      });
+      expect(countOf(calls, "pick_output_dir")).toBe(2);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
+      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
+    });
+
+    it("shows that the folder cannot be written to and starts nothing else", async () => {
+      const calls = mockEach(
+        [() => Promise.reject({ code: "OutputDirNotWritable", detail: null })],
+        [() => ({ dirLabel: "old-folder" })],
+      );
+
+      await chooseFolderAndStart();
+
+      expect(await screen.findByText(NOT_WRITABLE_MESSAGE)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "変換を開始" }),
+        ).toBeEnabled();
+      });
+      expect(screen.getAllByText(NOT_WRITABLE_MESSAGE)).toHaveLength(1);
+      expect(screen.getByTestId("error-display")).toHaveTextContent(
+        NOT_WRITABLE_MESSAGE,
+      );
+      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
+      expect(countOf(calls, "pick_output_dir")).toBe(1);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+        "old-folder",
+      );
+    });
+  });
+
   it("applies is-dragging, is-drop-after, and is-drop-before during drag, and cleans up after drop", async () => {
     mockAppIpc((cmd) => {
       if (cmd === "add_images") {

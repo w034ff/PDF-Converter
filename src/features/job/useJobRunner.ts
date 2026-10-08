@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   cancelJob,
   normalizeIpcError,
+  type IpcError,
   saveMergedPdf,
   startImagesToPdfs,
   startPdfsToImages,
@@ -13,18 +14,24 @@ import { useAppDispatch, type ActiveTab, type JobTarget } from "../../state";
 export interface JobRunner {
   /** Starts "1 つの PDF": opens the save dialog, then merges `targets` in order. */
   saveMergedPdf(targets: JobTarget[], pageSize: PageSizeChoice): Promise<void>;
-  /** Starts "1 枚ずつ" for `targets` (design §6.2). */
+  /**
+   * Starts "1 枚ずつ" for `targets` (design §6.2). Resolves with the error
+   * that refused the start, or `null` if it started.
+   */
   startImagesToPdfs(
     targets: JobTarget[],
     pageSize: PageSizeChoice,
-  ): Promise<void>;
-  /** Starts PDF → images for `targets` (design §6.3). */
+  ): Promise<IpcError | null>;
+  /**
+   * Starts PDF → images for `targets` (design §6.3). Resolves with the error
+   * that refused the start, or `null` if it started.
+   */
   startPdfsToImages(
     targets: JobTarget[],
     range: string,
     format: RenderFormatChoice,
     dpi: number,
-  ): Promise<void>;
+  ): Promise<IpcError | null>;
   /** Shows "キャンセル中…" at once and asks the backend to stop (design §6.5). */
   cancel(): Promise<void>;
 }
@@ -45,37 +52,52 @@ export function useJobRunner(): JobRunner {
       kind: ActiveTab,
       targets: JobTarget[],
       command: (ids: number[]) => Promise<T>,
-    ): Promise<T | undefined> {
+    ): Promise<{ result: T } | { error: IpcError }> {
       dispatch({ type: "JOB_STARTED", kind, targets });
       try {
-        return await command(targets.map((target) => target.id));
+        return { result: await command(targets.map((target) => target.id)) };
       } catch (error: unknown) {
-        dispatch({ type: "JOB_FAILED", error: normalizeIpcError(error) });
-        return undefined;
+        const ipcError = normalizeIpcError(error);
+        if (ipcError.code === "OutputDirMissing") {
+          // Rust has forgotten the folder. This comes before JOB_FAILED
+          // because changing a setting drops a result that is already there.
+          dispatch(
+            kind === "imagesToPdf"
+              ? { type: "SET_IMAGES_OUTPUT_DIR", outputDir: null }
+              : { type: "SET_PDFS_OUTPUT_DIR", outputDir: null },
+          );
+        }
+        dispatch({ type: "JOB_FAILED", error: ipcError });
+        return { error: ipcError };
       }
     }
 
     return {
       async saveMergedPdf(targets, pageSize) {
-        const result = await run("imagesToPdf", targets, (ids) =>
+        const outcome = await run("imagesToPdf", targets, (ids) =>
           saveMergedPdf(ids, pageSize),
         );
-        if (result === null) {
+        if ("error" in outcome) {
+          return;
+        }
+        if (outcome.result === null) {
           // The save dialog was cancelled; nothing ran.
           dispatch({ type: "JOB_RESET" });
-        } else if (result !== undefined) {
-          dispatch({ type: "JOB_SAVED", savedName: result.savedName });
+        } else {
+          dispatch({ type: "JOB_SAVED", savedName: outcome.result.savedName });
         }
       },
       async startImagesToPdfs(targets, pageSize) {
-        await run("imagesToPdf", targets, (ids) =>
+        const outcome = await run("imagesToPdf", targets, (ids) =>
           startImagesToPdfs(ids, pageSize),
         );
+        return "error" in outcome ? outcome.error : null;
       },
       async startPdfsToImages(targets, range, format, dpi) {
-        await run("pdfToImages", targets, (ids) =>
+        const outcome = await run("pdfToImages", targets, (ids) =>
           startPdfsToImages(ids, range, format, dpi),
         );
+        return "error" in outcome ? outcome.error : null;
       },
       async cancel() {
         dispatch({ type: "JOB_CANCEL_REQUESTED" });

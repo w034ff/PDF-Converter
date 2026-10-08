@@ -78,6 +78,8 @@ const ERROR_CODES = {
   ConversionRunning: true,
   UnknownHandle: true,
   InvalidParams: true,
+  OutputDirMissing: true,
+  OutputDirNotWritable: true,
 } satisfies Record<ErrorCode, true>;
 
 /** Whether a value is one of the error codes of design §6.6. */

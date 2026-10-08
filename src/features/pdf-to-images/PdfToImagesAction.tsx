@@ -44,7 +44,7 @@ export function PdfToImagesAction() {
         range = pdfToImages.rangeText;
       }
 
-      await runner.startPdfsToImages(
+      return runner.startPdfsToImages(
         targets,
         range,
         pdfToImages.format,

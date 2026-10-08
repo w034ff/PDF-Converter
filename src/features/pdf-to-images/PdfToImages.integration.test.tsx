@@ -292,6 +292,89 @@ describe("PdfToImages integration workflow", () => {
     expect(await screen.findByText("PDF を追加")).toBeInTheDocument();
   });
 
+  it("asks for a folder again when the output folder has gone, and starts with the new one", async () => {
+    let starts = 0;
+    let picks = 0;
+    const calls = setupIpc((cmd) => {
+      if (cmd === "add_pdfs") {
+        return { added: [SAMPLE_PDF_1], skipped: NO_SKIPPED };
+      }
+      if (cmd === "pick_output_dir") {
+        picks += 1;
+        return { dirLabel: picks === 1 ? "old-folder" : "new-folder" };
+      }
+      if (cmd === "start_pdfs_to_images") {
+        starts += 1;
+        if (starts === 1) {
+          return Promise.reject({ code: "OutputDirMissing", detail: null });
+        }
+        return undefined;
+      }
+      return undefined;
+    });
+
+    render(<App initialNavLang="ja" initialSettings={null} />);
+    fireEvent.click(screen.getByRole("tab", { name: "PDF → 画像" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "PDF を追加" })[0]);
+    await screen.findByText("sample1.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+        "old-folder",
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+
+    await waitFor(() => {
+      expect(
+        calls.filter((c) => c.cmd === "start_pdfs_to_images"),
+      ).toHaveLength(2);
+    });
+    expect(picks).toBe(2);
+    expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+      "new-folder",
+    );
+  });
+
+  it("shows the output folder error as a band, and starts nothing, when it cannot be written to", async () => {
+    const calls = setupIpc((cmd) => {
+      if (cmd === "add_pdfs") {
+        return { added: [SAMPLE_PDF_1], skipped: NO_SKIPPED };
+      }
+      if (cmd === "pick_output_dir") {
+        return { dirLabel: "read-only" };
+      }
+      if (cmd === "start_pdfs_to_images") {
+        return Promise.reject({ code: "OutputDirNotWritable", detail: null });
+      }
+      return undefined;
+    });
+
+    render(<App initialNavLang="ja" initialSettings={null} />);
+    fireEvent.click(screen.getByRole("tab", { name: "PDF → 画像" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "PDF を追加" })[0]);
+    await screen.findByText("sample1.pdf");
+    fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+    await screen.findByText("read-only");
+
+    fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+
+    expect(await screen.findByTestId("error-display")).toHaveTextContent(
+      "保存先のフォルダに書き込めません",
+    );
+    expect(
+      screen.getAllByText("保存先のフォルダに書き込めません"),
+    ).toHaveLength(1);
+    expect(calls.filter((c) => c.cmd === "pick_output_dir")).toHaveLength(1);
+    expect(calls.filter((c) => c.cmd === "start_pdfs_to_images")).toHaveLength(
+      1,
+    );
+    expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+      "read-only",
+    );
+  });
+
   it("batch view displays partial failure details for failed pages", async () => {
     setupIpc((cmd) => {
       if (cmd === "add_pdfs") {
