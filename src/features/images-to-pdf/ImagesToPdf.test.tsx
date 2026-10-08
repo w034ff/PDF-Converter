@@ -1237,10 +1237,10 @@ describe("ImagesToPdf (T11)", () => {
     fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
 
     // Now conversion is active!
-    // 1. Settings panel disabled note is displayed
+    // 1. The controls say they are locked by being disabled, not in words
     expect(
-      screen.getByText("変換中は設定を変えられません"),
-    ).toBeInTheDocument();
+      screen.queryByText("変換中は設定を変えられません"),
+    ).not.toBeInTheDocument();
 
     // 2. Settings controls are disabled
     expect(screen.getByRole("button", { name: "1 つの PDF" })).toBeDisabled();
@@ -1555,6 +1555,64 @@ describe("ImagesToPdf (T11)", () => {
       screen.getByText("（対象外 1 件：非対応の形式）"),
     ).toBeInTheDocument();
     expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  describe("notes that were dropped", () => {
+    const DROPPED_JA = [
+      "並べた順に 1 ページずつ入れて、1 つの PDF にします",
+      "画像ごとに PDF を作ります",
+      "ドラッグか ↑↓ ボタンで並べ替えられます",
+      "変換中は設定を変えられません",
+      /画質は変わりません/,
+    ];
+    const DROPPED_EN = [
+      "Combines all images in order into a single PDF",
+      "Creates a PDF for each image",
+      "Drag or use ↑↓ buttons to reorder",
+      "Settings cannot be changed during conversion",
+      /Quality is unchanged/,
+    ];
+
+    function mockTwoImages() {
+      mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const result: AddResult<ImageItem> = {
+            added: [sampleImage1, sampleImage2],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return result;
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        return undefined;
+      });
+    }
+
+    it.each([
+      ["ja-JP", "画像を追加", "1 枚ずつ", DROPPED_JA],
+      ["en-US", "Add images", "Each image", DROPPED_EN],
+    ])("says none of them in %s", async (lang, add, each, dropped) => {
+      mockTwoImages();
+      renderHarness(lang);
+      fireEvent.click(screen.getByRole("button", { name: add }));
+      await screen.findByText("photo.jpg");
+
+      for (const text of dropped) {
+        expect(screen.queryByText(text)).not.toBeInTheDocument();
+      }
+      fireEvent.click(screen.getByRole("button", { name: each }));
+      for (const text of dropped) {
+        expect(screen.queryByText(text)).not.toBeInTheDocument();
+      }
+    });
+
+    it("keeps the first half of the note under 'Fit to image'", () => {
+      mockTwoImages();
+      renderHarness("ja-JP");
+
+      expect(screen.getByText("画像の大きさのページにします")).toBeVisible();
+    });
   });
 
   describe("summary of 'Single PDF'", () => {

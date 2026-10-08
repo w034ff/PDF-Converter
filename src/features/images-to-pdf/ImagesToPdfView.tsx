@@ -512,11 +512,7 @@ export function ImagesToPdfView() {
               count: imagesToPdf.items.length,
             })}
           </span>
-          {skippedText ? (
-            <span className="hint">{skippedText}</span>
-          ) : isMerge ? (
-            <span className="hint">{t.imagesToPdf.reorderHint}</span>
-          ) : null}
+          {skippedText ? <span className="hint">{skippedText}</span> : null}
         </div>
         <div className="images-view-actions">
           <button

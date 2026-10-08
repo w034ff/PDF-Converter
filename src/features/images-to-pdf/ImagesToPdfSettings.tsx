@@ -38,11 +38,6 @@ export function ImagesToPdfSettings() {
           }
           disabled={disabled}
         />
-        <span className="hint">
-          {imagesToPdf.output === "merge"
-            ? t.imagesToPdf.outputMergeHint
-            : t.imagesToPdf.outputEachHint}
-        </span>
       </div>
 
       <div className="images-settings-field">
@@ -73,12 +68,6 @@ export function ImagesToPdfSettings() {
           disabled={disabled}
           hint={t.imagesToPdf.outputDirHint}
         />
-      )}
-
-      {disabled && (
-        <p className="hint images-settings-disabled-note" role="status">
-          {t.imagesToPdf.conversionLockedNote}
-        </p>
       )}
     </div>
   );
