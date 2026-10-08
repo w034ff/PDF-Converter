@@ -1,7 +1,7 @@
 // Generates files used for manual acceptance testing (docs/work-plan.md T15b, T16):
 // 1. too-many-pixels.png exceeding MAX_IMAGE_PIXELS (crates/core/src/probe.rs)
 // 2. too-many-pages.pdf exceeding MAX_PDF_PAGES (crates/worker/src/lib.rs)
-// 3. many-pages.pdf with 200 pages of vector curves taking ~35s to render at 300 dpi
+// 3. many-pages.pdf with 200 pages of vector curves that take long enough to cancel mid-flight at 300 dpi
 //
 // Usage: npm run manual-test:files -- <output_dir>
 
@@ -146,7 +146,7 @@ function createManyPagesPdf(pageCount: number): Buffer {
 
   // Generate vector drawing operators (A4: 595.28 x 841.89 pt)
   // Generates complex Bézier curves with stroking and filling to ensure
-  // 300 dpi rendering takes ~35 seconds on release builds.
+  // rendering at 300 dpi takes long enough to cancel mid-flight.
   let streamContent = "0.5 w\n";
   for (let s = 0; s < SHAPES_PER_PAGE; s++) {
     const r = (((s * 37) % 255) / 255).toFixed(2);
