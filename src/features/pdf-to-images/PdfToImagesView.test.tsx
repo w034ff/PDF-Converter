@@ -483,6 +483,63 @@ describe("PdfToImagesView", () => {
       ).toBeInTheDocument();
     });
 
+    it("gives 'cancelled' and 'no pages' the colour of the text, apart from the grey of a row not reached", () => {
+      mockCommands(() => undefined);
+      const pdf3: PdfItem = { ...samplePdf2, id: 5, name: "third.pdf" };
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, samplePdf2, pdf3];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [
+          { id: 1, name: samplePdf1.name },
+          { id: 2, name: samplePdf2.name },
+          { id: 5, name: pdf3.name },
+        ];
+        state.job.results = {
+          1: { id: 1, status: "cancelled", outputs: ["a"] },
+          2: { id: 2, status: "noPages", outputs: [] },
+        };
+        state.job.finished = {
+          succeeded: 0,
+          failed: 0,
+          noPages: 1,
+          unprocessed: 1,
+          cancelled: true,
+        };
+      });
+
+      const cell = (text: string) => screen.getByText(text).closest("td");
+      expect(cell("キャンセル")).toHaveClass("pdf-status-neutral");
+      expect(cell("キャンセル")).not.toHaveClass("pdf-status-muted");
+      expect(cell("対象のページなし")).toHaveClass("pdf-status-neutral");
+      expect(cell("対象のページなし")).not.toHaveClass("pdf-status-muted");
+      expect(cell("未処理")).toHaveClass("pdf-status-muted");
+    });
+
+    it("gives the same colour to 'cancelled' under a single PDF's name", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [{ id: 1, name: samplePdf1.name }];
+        state.job.results = {
+          1: { id: 1, status: "cancelled", outputs: ["a"] },
+        };
+        state.job.finished = {
+          succeeded: 0,
+          failed: 0,
+          noPages: 0,
+          unprocessed: 0,
+          cancelled: true,
+        };
+      });
+
+      const status = screen.getByTestId("single-result").firstElementChild;
+      expect(status).toHaveTextContent("キャンセル");
+      expect(status).toHaveClass("pdf-status-neutral");
+    });
+
     it("renders job summary banner above table on finish", () => {
       mockCommands(() => undefined);
       const finished: JobFinishedPayload = {

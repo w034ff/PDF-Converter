@@ -227,13 +227,13 @@ function describeItemStatus(
           break;
         }
         case "cancelled":
-          statusClass = "pdf-status-muted";
+          statusClass = "pdf-status-neutral";
           reasonText = formatMessage(t.pdfToImages.batch.cancelledSavedReason, {
             count: job.results[item.id]?.outputs.length ?? 0,
           });
           break;
         case "noPages":
-          statusClass = "pdf-status-muted";
+          statusClass = "pdf-status-neutral";
           reasonText = t.pdfToImages.batch.noPagesReason;
           break;
         case "running":
