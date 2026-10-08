@@ -16,7 +16,7 @@ All processing runs entirely on your computer without uploading any files to ext
 - **Bilingual Interface**: Full interface support for Japanese and English. Your preferred language setting is remembered across restarts.
 - **Settings Persistence**: Remembers your last-used conversion settings (page size, output format, resolution, output folder, etc.) and restores them automatically on next launch.
 - **Password-Protected PDFs**: Password-protected PDF files cannot be opened.
-- **No Network Communication**: The application itself makes no network requests (contains no telemetry and no update checks). On Windows, the Microsoft Edge WebView2 runtime used to display the UI connects to a Microsoft service (`substrate.office.com`) on startup on its own; the application cannot disable this.
+- **No Network Communication**: The application itself makes no network requests (contains no telemetry and no update checks). On Windows, the Microsoft Edge WebView2 runtime used to display the UI may connect to Microsoft services on its own; the application cannot disable this.
 
 ## Installation
 

@@ -289,11 +289,18 @@ npm run manual-test:files -- <出力先フォルダ>
     mkdir -p /tmp/pdfconv-readonly && chmod 555 /tmp/pdfconv-readonly
     ```
   - **Windows**:
-    コマンドプロンプト（または PowerShell）で空のテスト用フォルダを作成し、自身の書き込み権限を明示的に拒否する:
-    ```cmd
-    mkdir C:\test-readonly
-    icacls C:\test-readonly /deny "%USERNAME%:(W)"
-    ```
+    空のテスト用フォルダを作成し、自身の書き込み権限を明示的に拒否する。ユーザー名の書き方がコマンドプロンプトと PowerShell で違う（PowerShell では `%USERNAME%` が展開されず、「アカウント名とセキュリティ ID の間のマッピングは実行されませんでした」で失敗する）:
+    - コマンドプロンプト:
+      ```cmd
+      mkdir C:\test-readonly
+      icacls C:\test-readonly /deny "%USERNAME%:(W)"
+      ```
+    - PowerShell:
+      ```powershell
+      mkdir C:\test-readonly
+      icacls C:\test-readonly /deny "${env:USERNAME}:(W)"
+      ```
+    - `icacls C:\test-readonly` の結果に、自分のユーザー名で `(DENY)(W)` の行があれば、拒否が効いている。
 - 「PDF → 画像」画面で `shapes.pdf` を追加し（単一 PDF モード）、上記の書き込み権限のないフォルダを保存先に指定して「変換を開始」をクリックする。
 - **期待結果**:
   - 開始時点で即座に拒否されるのではなく、変換処理が開始され進捗バーが表示された後、各ページの描画結果の書き込み（`save_atomic`）でエラー（`WriteFailed`）が発生する。
@@ -308,10 +315,15 @@ npm run manual-test:files -- <出力先フォルダ>
     ```bash
     chmod 755 /tmp/pdfconv-readonly && rm -rf /tmp/pdfconv-readonly
     ```
-  - **Windows**:
+  - **Windows**（コマンドプロンプト）:
     ```cmd
     icacls C:\test-readonly /remove:d "%USERNAME%"
     rmdir C:\test-readonly
+    ```
+  - **Windows**（PowerShell）:
+    ```powershell
+    icacls C:\test-readonly /remove:d "${env:USERNAME}"
+    Remove-Item C:\test-readonly
     ```
 
 #### 5. PDF の処理が異常終了・時間切れになった場合（自動テストでの確認）
@@ -392,9 +404,12 @@ npm run manual-test:files -- <出力先フォルダ>
     ```bash
     ls -A <保存先フォルダ>
     ```
-  - **Windows**:
+  - **Windows**（コマンドプロンプトは `dir /a`、PowerShell は `-Force` で隠しファイルも出す）:
     ```cmd
     dir /a <保存先フォルダ>
+    ```
+    ```powershell
+    Get-ChildItem -Force <保存先フォルダ>
     ```
   - 保存されたファイル（例: `many-pages_p001.png`、`many-pages_p002.png` など）は画像ビューアーで正常に開くことができ、破損していない。
   - 書き込み途中の不完全なファイルや、ドットで始まる一時ファイル（`.` で始まる隠しファイルなど）は一切残っていない。
@@ -436,13 +451,36 @@ npm run manual-test:files -- <出力先フォルダ>
 ### 操作
 
 #### Windows
-1. スタートメニューで「リソース モニター」（`resmon.exe`）を起動する。
-2. 「ネットワーク」タブを開き、「TCP 接続」を展開する。
-3. アプリを起動し、画像の追加、PDF の変換などの一連の操作を行う。
-4. 「イメージ」列を確認し、`pdf-converter.exe` のプロセス（本体、および変換中に起動されるワーカープロセス。design §5.4 のとおりワーカーも本体実行ファイルから `--pdf-worker` 付きで起動されるため同一のイメージ名で複数並びます）が TCP 接続一覧に一切現れないことを確認する。
-5. WebView2 ランタイムのプロセス（`msedgewebview2.exe`）について確認する:
-   - 起動時に Microsoft のサービス（`substrate.office.com`）への接続のみ例外として記録する（README に記載の WebView2 ランタイム独自の通信）。
-   - それ以外の未知の外部アドレスへの接続がないことを確認する。これ以外の通信があれば不具合として記録する。
+
+`msedgewebview2.exe` は Teams や Outlook など、ほかのアプリも使うので、名前だけで見るとほかのアプリの通信が混ざる。PDF Converter の WebView2 は、データの場所（`%LOCALAPPDATA%\com.w034ff.pdfconverter\EBWebView`。`com.w034ff.pdfconverter` は `src-tauri/tauri.conf.json` の `identifier`）をコマンド行の `--user-data-dir` に持つので、それで選び出す。起動直後の通信はすぐ終わることがあるので、1 秒ごとに記録し続ける。
+
+1. PDF Converter を閉じた状態で、PowerShell で次を実行する（2 分間記録する）。
+2. 実行が始まったらすぐに PDF Converter を起動し、画像の追加、PDF の変換などの一連の操作を行う。
+3. 2 分たつと、外への TCP 接続の一覧（`<プロセス名> <IP アドレス>:<ポート>`）が出る。
+
+```powershell
+$seen = @{}
+$end = (Get-Date).AddSeconds(120)
+while ((Get-Date) -lt $end) {
+  $ids = @(Get-CimInstance Win32_Process -Filter "Name='pdf-converter.exe' OR Name='msedgewebview2.exe'" |
+    Where-Object { $_.Name -eq 'pdf-converter.exe' -or $_.CommandLine -match 'com\.w034ff\.pdfconverter' } |
+    ForEach-Object { $_.ProcessId })
+  Get-NetTCPConnection -ErrorAction SilentlyContinue |
+    Where-Object { $ids -contains $_.OwningProcess -and $_.RemoteAddress -notin '0.0.0.0', '::', '127.0.0.1', '::1' } |
+    ForEach-Object {
+      $name = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+      $seen["$name $($_.RemoteAddress):$($_.RemotePort)"] = $true
+    }
+  Start-Sleep -Seconds 1
+}
+$seen.Keys | Sort-Object
+```
+
+4. `msedgewebview2` の行が出たら、その IP アドレスの持ち主を調べる（WebView2 は Windows の DNS のキャッシュを通さずに名前を解決することがあるので、`Get-DnsClientCache` では名前が分からないことがある）。調べる相手は ipinfo.io で、送るのは IP アドレスだけ:
+   ```powershell
+   Invoke-RestMethod "https://ipinfo.io/<IP アドレス>/org"
+   ```
+5. この方法で見えるのは TCP の接続だけなので、リソース モニター（`resmon.exe`）の「ネットワーク」タブの「ネットワーク アクティビティのあるプロセス」で、`msedgewebview2.exe` の送受信も合わせて見る。
 
 #### Linux
 1. アプリを起動し、各種変換操作を行う。
@@ -453,7 +491,8 @@ npm run manual-test:files -- <出力先フォルダ>
 3. `pdf-converter`（本体およびワーカー）、`WebKitNetworkProcess`、`WebKitWebProcess` について、外部の IP アドレスに対する TCP / UDP 接続が一切表示されないことを確認する（ローカルの IPC 通信のみであること）。
 
 ### 期待する結果
-- アプリ本体、ワーカープロセス、および WebKit 表示プロセスが外部のサーバーへ一切接続を行っていないこと。
+- Windows: `pdf-converter` の行が 1 つも出ない（本体とワーカーは外に接続しない）。`msedgewebview2` の行は、持ち主が Microsoft（`AS8075 Microsoft Corporation`）なら、README に書いた WebView2 ランタイム自身の通信として例外に記録する。Microsoft 以外への接続があれば不具合として記録する。
+- Linux: アプリ本体、ワーカープロセス、および WebKit 表示プロセスが外部のサーバーへ一切接続を行っていないこと。
 
 ---
 
