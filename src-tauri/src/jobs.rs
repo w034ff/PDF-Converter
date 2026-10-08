@@ -219,6 +219,28 @@ pub fn list_existing_files(dir: &Path) -> Result<HashSet<String>, IpcError> {
     Ok(set)
 }
 
+/// Mode a converted file is created with before the umask is applied, so a
+/// saved file gets the permissions any other new file in the folder gets.
+#[cfg(unix)]
+const OUTPUT_FILE_MODE: u32 = 0o666;
+
+/// Creates the dot-prefixed temporary file a conversion writes into before
+/// renaming it to its final name (design §6.5).
+///
+/// `tempfile` creates it readable by its owner only, and the rename keeps that.
+/// Unix therefore asks for [`OUTPUT_FILE_MODE`] instead; Windows files have no
+/// such mode.
+fn create_output_temp(output_dir: &Path) -> std::io::Result<tempfile::NamedTempFile> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(OUTPUT_FILE_MODE));
+    }
+    builder.tempfile_in(output_dir)
+}
+
 /// Saves file bytes atomically into `output_dir` using a dot-prefixed temporary file
 /// and `persist_noclobber` (design §6.4, §6.5).
 ///
@@ -230,9 +252,7 @@ pub fn save_atomic(
     bytes: &[u8],
     used_names_lower: &Mutex<HashSet<String>>,
 ) -> Result<String, IpcError> {
-    let mut temp = tempfile::Builder::new()
-        .prefix(".")
-        .tempfile_in(output_dir)
+    let mut temp = create_output_temp(output_dir)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
 
     temp.write_all(bytes)
@@ -351,9 +371,7 @@ where
     let creator = format!("PDF Converter {}", env!("CARGO_PKG_VERSION"));
     let mut writer = PdfWriter::new(&creator);
 
-    let mut temp = tempfile::Builder::new()
-        .prefix(".")
-        .tempfile_in(output_dir)
+    let mut temp = create_output_temp(output_dir)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
 
     let mut succeeded = 0u32;

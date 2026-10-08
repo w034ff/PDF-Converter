@@ -1145,3 +1145,136 @@ fn merged_pdf_skips_initial_error_without_rereading_file() {
 
     assert_no_temp_files(temp_out.path());
 }
+
+/// The permission bits of `path`.
+#[cfg(unix)]
+fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path)
+        .expect("reading metadata")
+        .permissions()
+        .mode()
+        & 0o777
+}
+
+/// What `0666` becomes under this process's umask, found by creating an
+/// ordinary file next to the outputs rather than assuming a umask.
+#[cfg(unix)]
+fn mode_of_a_new_file_in(dir: &Path) -> u32 {
+    let probe = dir.join("umask-probe");
+    fs::File::create(&probe).expect("creating the probe file");
+    let mode = mode_of(&probe);
+    fs::remove_file(&probe).expect("removing the probe file");
+    mode
+}
+
+#[cfg(unix)]
+#[test]
+fn saved_files_get_the_permissions_of_a_new_file() {
+    let temp_out = TempDir::new().unwrap();
+    let expected = mode_of_a_new_file_in(temp_out.path());
+
+    let used = Mutex::new(HashSet::new());
+    let name = save_atomic(temp_out.path(), "out.bin", b"data", &used).unwrap();
+
+    assert_eq!(mode_of(&temp_out.path().join(name)), expected);
+}
+
+#[cfg(unix)]
+#[test]
+fn each_mode_pdfs_get_the_permissions_of_a_new_file() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let expected = mode_of_a_new_file_in(temp_out.path());
+
+    let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let ids: Vec<u64> = add_images(&app_state, &[path])
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let recorder = TestRecorder::new();
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .unwrap();
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Ok);
+    assert_eq!(
+        mode_of(&temp_out.path().join(&items[0].outputs[0])),
+        expected
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_merged_pdf_gets_the_permissions_of_a_new_file() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let expected = mode_of_a_new_file_in(temp_out.path());
+
+    let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let ids: Vec<u64> = add_images(&app_state, &[path])
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let dest_path = temp_out.path().join("merged.pdf");
+    let recorder = TestRecorder::new();
+    run_save_merged_pdf(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        &dest_path,
+        recorder.callbacks(),
+    )
+    .unwrap();
+
+    assert_eq!(mode_of(&dest_path), expected);
+}
+
+#[cfg(unix)]
+#[test]
+fn page_images_get_the_permissions_of_a_new_file() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let expected = mode_of_a_new_file_in(temp_out.path());
+
+    let path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let ids: Vec<u64> = add_pdfs(&app_state, &[path])
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let recorder = TestRecorder::new();
+    run_pdfs_to_images(
+        &app_state,
+        &ids,
+        &parse_page_range("1").unwrap(),
+        RenderFormatChoice::Png,
+        72,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .unwrap();
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Ok);
+    assert_eq!(
+        mode_of(&temp_out.path().join(&items[0].outputs[0])),
+        expected
+    );
+}
