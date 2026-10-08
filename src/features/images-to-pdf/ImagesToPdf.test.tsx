@@ -1557,7 +1557,90 @@ describe("ImagesToPdf (T11)", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
-  it("does not contain full-width parentheses in skipped notice and saved name in English locale", async () => {
+  describe("summary of 'Single PDF'", () => {
+    async function mergeAndFinish(
+      finished: JobFinishedPayload,
+      save: () => unknown,
+    ) {
+      mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const result: AddResult<ImageItem> = {
+            added: [sampleImage1, sampleImage2],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return result;
+        }
+        if (cmd === "save_merged_pdf") {
+          return save();
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        return undefined;
+      });
+      renderHarness();
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await screen.findByText("photo.jpg");
+
+      fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+      await act(async () => {
+        await emit(JOB_FINISHED_EVENT, finished);
+      });
+    }
+
+    const NOTHING: JobFinishedPayload = {
+      succeeded: 0,
+      failed: 0,
+      noPages: 0,
+      unprocessed: 0,
+      cancelled: false,
+    };
+
+    it("counts the pages of the PDF and adds the images that failed", async () => {
+      await mergeAndFinish({ ...NOTHING, succeeded: 10, failed: 1 }, () => ({
+        savedName: "merged.pdf",
+      }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "変換が終わりました：10 ページの PDF を保存しました · 失敗 1 枚",
+      );
+      expect(screen.queryByText(/merged\.pdf/)).not.toBeInTheDocument();
+    });
+
+    it("says only the pages when no image failed", async () => {
+      await mergeAndFinish({ ...NOTHING, succeeded: 2 }, () => ({
+        savedName: "merged.pdf",
+      }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        /^変換が終わりました：2 ページの PDF を保存しました$/,
+      );
+    });
+
+    it("counts items, without a zero, when no PDF was written", async () => {
+      await mergeAndFinish(
+        { ...NOTHING, failed: 2 },
+        () => new Promise(() => {}),
+      );
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        /^変換が終わりました：失敗 2 件$/,
+      );
+    });
+
+    it("counts items when the conversion was cancelled", async () => {
+      await mergeAndFinish(
+        { ...NOTHING, succeeded: 0, unprocessed: 2, cancelled: true },
+        () => new Promise(() => {}),
+      );
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        /^キャンセルしました：未処理 2 件$/,
+      );
+    });
+  });
+
+  it("does not contain full-width parentheses in the skipped notice in English locale, and does not show the saved name", async () => {
     mockAppIpc((cmd) => {
       if (cmd === "add_images") {
         const result: AddResult<ImageItem> = {
@@ -1608,9 +1691,10 @@ describe("ImagesToPdf (T11)", () => {
       } satisfies JobFinishedPayload);
     });
 
-    // Saved name has half-width parentheses and no full-width parentheses
-    const savedNameNotice = screen.getByText("(merged.pdf)");
-    expect(savedNameNotice).toBeInTheDocument();
-    expect(savedNameNotice.textContent).not.toMatch(/[（）]/);
+    // The summary counts the pages of the PDF and does not name the file
+    expect(
+      await screen.findByText("Conversion finished: Saved a 2-page PDF"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/merged\.pdf/)).not.toBeInTheDocument();
   });
 });

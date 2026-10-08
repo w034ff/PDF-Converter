@@ -255,7 +255,7 @@ describe("PdfToImages integration workflow", () => {
 
     // Summary banner appears on top of the list
     expect(
-      await screen.findByText("変換が終わりました：成功 1 件"),
+      await screen.findByText("変換が終わりました：2 ページ保存しました"),
     ).toBeInTheDocument();
 
     // Add a second PDF to switch to batch view table
@@ -432,7 +432,7 @@ describe("PdfToImages integration workflow", () => {
     expect(screen.getByText("✕ 一部失敗")).toBeInTheDocument();
     // The summary lists it as a partial failure, not a failure.
     expect(screen.getByRole("status")).toHaveTextContent(
-      "キャンセルしました：成功 0 件 · 一部失敗 1 件 · 未処理 1 件",
+      "キャンセルしました：一部失敗 1 件 · 未処理 1 件",
     );
     expect(screen.getByText("失敗したページ：2")).toBeInTheDocument();
   });

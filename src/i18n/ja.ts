@@ -58,6 +58,18 @@ export const ja = {
       noPages: "対象のページなし {count} 件",
       unprocessed: "未処理 {count} 件",
     },
+    pageCounts: {
+      savedSingle: "{count} ページ保存しました",
+      savedMultiple: "{count} ページ保存しました",
+      failedSingle: "失敗 {count} ページ",
+      failedMultiple: "失敗 {count} ページ",
+      unprocessedSingle: "未処理 {count} ページ",
+      unprocessedMultiple: "未処理 {count} ページ",
+    },
+    mergedPdf: {
+      saved: "{count} ページの PDF を保存しました",
+      failedImages: "失敗 {count} 枚",
+    },
     rowStatus: {
       waiting: "待機",
       running: "変換中…",
@@ -152,7 +164,6 @@ export const ja = {
     imageCount: "画像 {count} 枚",
     reorderHint: "ドラッグか ↑↓ ボタンで並べ替えられます",
     skipped: "（対象外 {count} 件：{reasons}）",
-    savedName: "（{name}）",
     skippedFolders: "サブフォルダ",
     skippedUnsupported: "非対応の形式",
     skippedDuplicates: "重複",

@@ -60,6 +60,18 @@ export const en: Translations = {
       noPages: "{count} with no pages in range",
       unprocessed: "{count} not processed",
     },
+    pageCounts: {
+      savedSingle: "{count} page saved",
+      savedMultiple: "{count} pages saved",
+      failedSingle: "{count} page failed",
+      failedMultiple: "{count} pages failed",
+      unprocessedSingle: "{count} page not processed",
+      unprocessedMultiple: "{count} pages not processed",
+    },
+    mergedPdf: {
+      saved: "Saved a {count}-page PDF",
+      failedImages: "{count} failed",
+    },
     rowStatus: {
       waiting: "Waiting",
       running: "Converting…",
@@ -155,7 +167,6 @@ export const en: Translations = {
     imageCount: "{count} image(s)",
     reorderHint: "Drag or use ↑↓ buttons to reorder",
     skipped: "({count} skipped: {reasons})",
-    savedName: "({name})",
     skippedFolders: "subfolders",
     skippedUnsupported: "unsupported formats",
     skippedDuplicates: "duplicates",

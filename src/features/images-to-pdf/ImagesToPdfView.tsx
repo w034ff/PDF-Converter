@@ -503,16 +503,7 @@ export function ImagesToPdfView() {
       {errorDisplay}
       <OutputDirError tab="imagesToPdf" />
 
-      <JobSummaryBanner
-        tab="imagesToPdf"
-        detail={
-          job.savedName !== null && (
-            <span className="mono">
-              {formatMessage(t.imagesToPdf.savedName, { name: job.savedName })}
-            </span>
-          )
-        }
-      />
+      <JobSummaryBanner tab="imagesToPdf" />
 
       <div className="images-view-header">
         <div className="images-view-title-group">

@@ -1,7 +1,17 @@
-import type { ReactNode } from "react";
 import { getTranslations } from "../../i18n";
-import { useAppState, type ActiveTab } from "../../state";
-import { formatJobSummary, jobOutcome } from "./jobSummary";
+import {
+  useAppState,
+  type ActiveTab,
+  type AppState,
+  type JobState,
+} from "../../state";
+import { countPagesInIntervals } from "../pdf-to-images/pdfUtils";
+import {
+  formatJobSummary,
+  jobOutcome,
+  singlePdfPageCounts,
+  type JobSummaryShape,
+} from "./jobSummary";
 import "./JobSummaryBanner.css";
 
 export interface JobSummaryBannerProps {
@@ -9,8 +19,56 @@ export interface JobSummaryBannerProps {
   tab: ActiveTab;
   /** Items the backend counted as failed that only partly failed. */
   partialCount?: number;
-  /** A line under the counts, such as the name a merged PDF was saved as. */
-  detail?: ReactNode;
+}
+
+/** How many pages the range selected in the PDF with `pageCount` pages. */
+function selectedPageCount(
+  pdfToImages: AppState["pdfToImages"],
+  pageCount: number,
+): number | null {
+  if (pdfToImages.pageSelection === "all") {
+    return pageCount;
+  }
+  return pdfToImages.rangeResult === null
+    ? null
+    : countPagesInIntervals(pdfToImages.rangeResult.intervals, pageCount);
+}
+
+/**
+ * What the summary of the screen's last conversion counts: pages when one
+ * PDF was converted, the pages of the PDF written by "Single PDF", items
+ * otherwise.
+ */
+function summaryShape(
+  tab: ActiveTab,
+  job: JobState,
+  pdfToImages: AppState["pdfToImages"],
+  partialCount: number,
+): JobSummaryShape {
+  if (tab === "pdfToImages" && job.targets.length === 1) {
+    const [target] = job.targets;
+    const item = pdfToImages.items.find((pdf) => pdf.id === target.id);
+    const selected =
+      item === undefined
+        ? null
+        : selectedPageCount(pdfToImages, item.pageCount);
+    if (selected !== null) {
+      return singlePdfPageCounts(job.results[target.id], selected);
+    }
+  }
+  if (
+    tab === "imagesToPdf" &&
+    job.savedName !== null &&
+    job.finished !== null &&
+    job.finished.succeeded > 0
+  ) {
+    return {
+      kind: "mergedPdf",
+      pages: job.finished.succeeded,
+      failedImages: job.finished.failed,
+    };
+  }
+  return { kind: "items", partial: partialCount };
 }
 
 /**
@@ -21,9 +79,8 @@ export interface JobSummaryBannerProps {
 export function JobSummaryBanner({
   tab,
   partialCount = 0,
-  detail,
 }: JobSummaryBannerProps) {
-  const { language, job } = useAppState();
+  const { language, job, pdfToImages } = useAppState();
   if (job.kind !== tab || job.finished === null) {
     return null;
   }
@@ -32,9 +89,12 @@ export function JobSummaryBanner({
   return (
     <div role="status" className={`job-summary is-${outcome}`}>
       <span className="job-summary-title">
-        {formatJobSummary(t, job.finished, partialCount)}
+        {formatJobSummary(
+          t,
+          job.finished,
+          summaryShape(tab, job, pdfToImages, partialCount),
+        )}
       </span>
-      {detail}
     </div>
   );
 }
