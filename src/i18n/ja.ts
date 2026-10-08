@@ -171,7 +171,6 @@ export const ja = {
   about: {
     title: "このアプリについて",
     version: "バージョン {version}",
-    pdfium: "PDF の描画エンジン: pdfium {version}",
     pdfiumUnavailable: "pdfium を読み込めません: {error}",
     loadFailed: "バージョンを取得できませんでした",
     appLicense: "このアプリのライセンス（MIT）",

@@ -174,7 +174,6 @@ export const en: Translations = {
   about: {
     title: "About this app",
     version: "Version {version}",
-    pdfium: "PDF rendering engine: pdfium {version}",
     pdfiumUnavailable: "Cannot load pdfium: {error}",
     loadFailed: "Could not get the version",
     appLicense: "License of this app (MIT)",

@@ -42,7 +42,6 @@ const SAVED_SETTINGS: Settings = {
 
 const ABOUT_READY = {
   version: "0.1.0",
-  pdfiumVersion: "chromium/8076",
   pdfiumReady: true,
   pdfiumError: null,
 };
@@ -323,7 +322,7 @@ describe("App", () => {
       return screen.getByRole("dialog", { name: "このアプリについて" });
     }
 
-    it("shows the version, pdfium and this app's license", async () => {
+    it("shows the version and this app's license, and no rendering engine line", async () => {
       mockAppIpc((cmd) => (cmd === "get_about" ? ABOUT_READY : null));
       render(<App initialNavLang="ja" initialSettings={null} />);
       const dialog = openAbout();
@@ -331,9 +330,13 @@ describe("App", () => {
       expect(
         await within(dialog).findByText("バージョン 0.1.0"),
       ).toBeInTheDocument();
+      // The version of pdfium is in the third-party list instead.
       expect(
-        within(dialog).getByText("PDF の描画エンジン: pdfium chromium/8076"),
-      ).toBeInTheDocument();
+        within(dialog).queryByText(/描画エンジン/),
+      ).not.toBeInTheDocument();
+      expect(
+        within(dialog).queryByText(/chromium\/8076/),
+      ).not.toBeInTheDocument();
       expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
       expect(
         within(dialog).getByText(/Permission is hereby granted/),

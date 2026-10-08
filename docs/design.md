@@ -315,7 +315,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][] }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, dpi` | – |
 | `cancel_job` | – | – |
-| `get_about` | – | `{ version, pdfiumVersion, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか） |
+| `get_about` | – | `{ version, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか。pdfium の版は返さず、「このアプリについて」の第三者ライセンスの一覧に出る） |
 
 - `ImageItem`: `{ id, name, width, height, format, bytes, error }`。`width` と `height` は EXIF の向きを反映した表示上の寸法（サムネイルと同じ向き）。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。失敗した項目では、`width`・`height`・`pageCount` は 0、`format`・`firstPageSizePt` は `null`。
 - どのコマンドもパスを引数に取らない。`dirLabel` は表示用で、送り返されない。

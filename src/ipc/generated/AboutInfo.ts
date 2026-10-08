@@ -3,7 +3,7 @@
 /**
  * Answer of [`get_about`].
  */
-export type AboutInfo = { version: string, pdfiumVersion: string, 
+export type AboutInfo = { version: string, 
 /**
  * Whether a worker started and could use pdfium. The about screen
  * shows `pdfium_error` when it could not, so an installed build tells

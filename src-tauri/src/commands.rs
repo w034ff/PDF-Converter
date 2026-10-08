@@ -32,7 +32,6 @@ const PDF_FILTER_NAME: &str = "PDF";
 #[serde(rename_all = "camelCase")]
 pub struct AboutInfo {
     pub version: String,
-    pub pdfium_version: String,
     /// Whether a worker started and could use pdfium. The about screen
     /// shows `pdfium_error` when it could not, so an installed build tells
     /// whether its bundled pdfium works.
@@ -40,8 +39,8 @@ pub struct AboutInfo {
     pub pdfium_error: Option<String>,
 }
 
-/// Returns the app and pdfium versions after checking that a worker can
-/// start and load pdfium.
+/// Returns the app version after checking that a worker can start and load
+/// pdfium.
 #[tauri::command]
 pub async fn get_about(app: AppHandle) -> AboutInfo {
     let version = app.package_info().version.to_string();
@@ -53,7 +52,6 @@ pub async fn get_about(app: AppHandle) -> AboutInfo {
     };
     AboutInfo {
         version,
-        pdfium_version: crate::pdfium::release(),
         pdfium_ready: pdfium_error.is_none(),
         pdfium_error,
     }

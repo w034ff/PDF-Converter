@@ -74,7 +74,6 @@ describe("PdfToImages integration workflow", () => {
         if (cmd === "get_about") {
           return {
             version: "0.1.0",
-            pdfiumVersion: "chromium/8076",
             pdfiumReady: true,
             pdfiumError: null,
           };
