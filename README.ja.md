@@ -97,7 +97,7 @@ PDF Converter は、画像（PNG、JPEG、WebP、BMP）から PDF への変換�
    npm run tauri build
    ```
 
-   ビルド成果物は `src-tauri/target/release/bundle/` 配下に生成されます。
+   ビルド成果物は `target/release/bundle/` 配下に生成されます。
 
 ## ライセンス
 

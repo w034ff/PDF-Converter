@@ -1,7 +1,7 @@
 // Generates files used for manual acceptance testing (docs/work-plan.md T15b, T16):
 // 1. too-many-pixels.png exceeding MAX_IMAGE_PIXELS (crates/core/src/probe.rs)
 // 2. too-many-pages.pdf exceeding MAX_PDF_PAGES (crates/worker/src/lib.rs)
-// 3. many-pages.pdf with 60 pages of vector shapes that takes over 30s to render at 300 dpi
+// 3. many-pages.pdf with 200 pages of vector curves taking ~35s to render at 300 dpi
 //
 // Usage: npm run manual-test:files -- <output_dir>
 
@@ -21,8 +21,8 @@ const PROBE_RS = join(ROOT, "crates", "core", "src", "probe.rs");
 const WORKER_LIB_RS = join(ROOT, "crates", "worker", "src", "lib.rs");
 
 const PNG_WIDTH = 10_000;
-const MANY_PAGES_COUNT = 60;
-const SHAPES_PER_PAGE = 80;
+const MANY_PAGES_COUNT = 200;
+const SHAPES_PER_PAGE = 400;
 
 function readConstant(filePath: string, constantName: string): number {
   if (!existsSync(filePath)) {
@@ -145,17 +145,21 @@ function createManyPagesPdf(pageCount: number): Buffer {
   pdf += "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
 
   // Generate vector drawing operators (A4: 595.28 x 841.89 pt)
-  let streamContent = "";
+  // Generates complex Bézier curves with stroking and filling to ensure
+  // 300 dpi rendering takes ~35 seconds on release builds.
+  let streamContent = "0.5 w\n";
   for (let s = 0; s < SHAPES_PER_PAGE; s++) {
     const r = (((s * 37) % 255) / 255).toFixed(2);
     const g = (((s * 73) % 255) / 255).toFixed(2);
     const b = (((s * 111) % 255) / 255).toFixed(2);
-    const x = (s * 17) % 500;
-    const y = (s * 23) % 700;
-    const w = 50 + ((s * 7) % 100);
-    const h = 50 + ((s * 11) % 100);
-    streamContent += `${r} ${g} ${b} rg\n`;
-    streamContent += `${x} ${y} ${w} ${h} re f\n`;
+    const x = (s * 17) % 550;
+    const y = (s * 23) % 800;
+    const x2 = (x + 30) % 550;
+    const y2 = (y + 50) % 800;
+    const x3 = (x + 80) % 550;
+    const y3 = (y - 30 + 800) % 800;
+    streamContent += `${r} ${g} ${b} rg ${r} ${g} ${b} RG\n`;
+    streamContent += `${x} ${y} m ${x2} ${y} ${x2} ${y2} ${x3} ${y3} c b\n`;
   }
 
   // Object 2: Pages root

@@ -97,7 +97,7 @@ Download the appropriate installer or package for your operating system from the
    npm run tauri build
    ```
 
-   Bundled packages will be generated under `src-tauri/target/release/bundle/`.
+   Bundled packages will be generated under `target/release/bundle/`.
 
 ## License
 
