@@ -103,7 +103,23 @@ npm run manual-test:files -- <出力先フォルダ>
 - 生成された PDF をブラウザー（Chrome / Edge / Firefox）等で開いて目視確認する:
   - `fit_merged.pdf`: 各ページの寸法が画像の寸法（画素数 ÷ dpi × 72 pt）と一致し、余白なくぴったり収まっている。
   - `a4_merged.pdf`: 各画像が A4（縦または横）の中央に余白（10 mm）を持って縦横比を保って収まっている。
-  - 透過画像（`logo_alpha.png`、`logo_alpha.webp`）は透過が維持されている。
+  - 透過画像（`logo_alpha.png`、`logo_alpha.webp`）は透過が維持されている。この 2 つは、透明な画素の色の値が黒（RGB 0, 0, 0）なので、透過が失われると透明だった所が黒く出る。次の 3 つで見分ける:
+
+    | 部分 | 透過が維持されているとき | 透過が失われたとき |
+    | --- | --- | --- |
+    | 背景 | 白（PDF の紙の色が透けて見える） | 黒 |
+    | 上端の帯 | 左の白から右の青へだんだん濃くなる | 端から端まで同じ青 |
+    | 右下の緑の四角（半透明） | 下のオレンジの円が透けて見える | 円が隠れた濃い緑 |
+
+  - 透過の情報が PDF に入っていることを、PDF の中の `/SMask`（透過のある画像に付く）の数で確かめる。`fit_merged.pdf` と `a4_merged.pdf` は、どちらも **4**（透過のある `logo_alpha.png`、`logo_alpha.webp`、`deep16.png`、`alpha32.bmp` の 4 つ）になる:
+    - **Windows**（PowerShell）:
+      ```powershell
+      (Select-String -Path .\fit_merged.pdf -Pattern '/SMask' -SimpleMatch -AllMatches).Matches.Count
+      ```
+    - **Linux**:
+      ```bash
+      grep -a -o '/SMask' fit_merged.pdf | wc -l
+      ```
   - CMYK JPEG、16 ビット PNG、BMP が乱れなく正しい色で描画されている。
   - `rotate90.jpg` が回転せず正しい向きで表示されている。
   - 並べ替えた順序どおりに各ページが並んでいる。外した画像は PDF に含まれない。
