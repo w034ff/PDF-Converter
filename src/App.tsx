@@ -13,6 +13,7 @@ import { PdfToImagesSettings } from "./features/pdf-to-images/PdfToImagesSetting
 import { PdfToImagesStatus } from "./features/pdf-to-images/PdfToImagesStatus";
 import { PdfToImagesView } from "./features/pdf-to-images/PdfToImagesView";
 import { useSettingsAutoSave } from "./features/settings/useSettingsAutoSave";
+import { useBlockBrowserShortcuts } from "./features/shortcuts/useBlockBrowserShortcuts";
 import { formatErrorMessage, getTranslations, type Language } from "./i18n";
 import { getSettings, type Settings } from "./ipc";
 import {
@@ -30,6 +31,7 @@ function AppShell() {
   const t = getTranslations(language.language);
   useJobEvents();
   useSettingsAutoSave();
+  useBlockBrowserShortcuts();
   const dropError = useItemsDropped();
 
   const [isAboutOpen, setIsAboutOpen] = useState(false);

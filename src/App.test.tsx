@@ -131,6 +131,45 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  describe("browser shortcuts", () => {
+    /** Presses `init` on `target` and returns whether the app stopped it. */
+    function isStopped(target: EventTarget, init: KeyboardEventInit) {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    }
+
+    it("stops find, print and reload, and lets copy and zoom through", () => {
+      mockAppIpc(() => new Promise(() => {}));
+      render(<App initialNavLang="ja" initialSettings={null} />);
+      const target = screen.getByRole("tab", { name: "画像 → PDF" });
+
+      expect(isStopped(target, { key: "f", ctrlKey: true })).toBe(true);
+      expect(isStopped(target, { key: "p", ctrlKey: true })).toBe(true);
+      expect(isStopped(target, { key: "r", ctrlKey: true })).toBe(true);
+      expect(isStopped(target, { key: "F5" })).toBe(true);
+      expect(isStopped(target, { key: "c", ctrlKey: true })).toBe(false);
+      expect(isStopped(target, { key: "=", ctrlKey: true })).toBe(false);
+    });
+
+    it("stops them while a field has focus", () => {
+      mockAppIpc(() => new Promise(() => {}));
+      render(<App initialNavLang="ja" initialSettings={null} />);
+      const field = document.createElement("input");
+      document.body.append(field);
+      field.focus();
+
+      expect(isStopped(field, { key: "f", ctrlKey: true })).toBe(true);
+      expect(isStopped(field, { key: "v", ctrlKey: true })).toBe(false);
+
+      field.remove();
+    });
+  });
+
   describe("restoring the settings", () => {
     it("starts in the saved language and settings", async () => {
       mockAppIpc((cmd) => (cmd === "get_settings" ? SAVED_SETTINGS : null));
