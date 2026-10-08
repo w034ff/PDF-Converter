@@ -9,6 +9,8 @@ import {
   type JobState,
 } from "../../state";
 import type { Translations } from "../../i18n";
+import type { JobFinishedPayload } from "../../ipc";
+import { jobOutcome } from "./jobSummary";
 import { useJobRunner } from "./useJobRunner";
 
 export interface JobFooterProps {
@@ -36,9 +38,25 @@ function runningText(t: Translations, job: JobState): string {
   });
 }
 
+function finishedStatus(t: Translations, finished: JobFinishedPayload) {
+  switch (jobOutcome(finished)) {
+    case "failure":
+      return <span className="error-text">{t.job.doneWithFailures}</span>;
+    case "success":
+      return <span className="success-text">{t.job.doneAllSucceeded}</span>;
+    case "neutral":
+      return (
+        <span className="hint">
+          {finished.cancelled ? t.job.cancelled : t.job.done}
+        </span>
+      );
+  }
+}
+
 /**
  * The bottom bar's status and button for a conversion (mockups `ImagesEach`
- * and `PdfBatch`): progress and Cancel while it runs, "完了" once it ends.
+ * and `PdfBatch`): progress and Cancel while it runs, then how it
+ * ended, in red when anything failed (design §10.1).
  * A running conversion shows on both tabs, since it locks both; a finished
  * or failed one shows only on the tab that started it.
  */
@@ -75,16 +93,12 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
     );
   }
 
+  // An error comes first: one raised after `job-finished` (the merged PDF
+  // could not be written) matters more than the counts before it.
   let status = idleStatus;
-  if (job.kind === tab && job.finished !== null) {
+  if (job.error !== null && (job.kind === null || job.kind === tab)) {
     status = (
-      <span className="hint">
-        {job.finished.cancelled ? t.job.cancelled : t.job.done}
-      </span>
-    );
-  } else if (job.error !== null && (job.kind === null || job.kind === tab)) {
-    status = (
-      <span className="hint" role="alert">
+      <span className="error-text" role="alert">
         {formatErrorMessage(
           job.error.code,
           job.error.detail,
@@ -92,6 +106,8 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
         )}
       </span>
     );
+  } else if (job.kind === tab && job.finished !== null) {
+    status = finishedStatus(t, job.finished);
   }
 
   return (

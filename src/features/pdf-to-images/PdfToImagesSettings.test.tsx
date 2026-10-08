@@ -279,7 +279,7 @@ describe("PdfToImagesSettings", () => {
       expect(alert).toHaveTextContent(
         "ページの範囲の書き方が正しくありません（1-）",
       );
-      expect(alert).toHaveClass("pdf-hint-warning");
+      expect(alert).toHaveClass("error-text");
     });
 
     it("shows at once when the field loses focus", async () => {

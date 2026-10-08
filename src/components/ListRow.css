@@ -72,10 +72,11 @@
   font-size: 12px;
 }
 
+/* Why the row failed. The status on the right says that it failed, in red;
+   the reason stays in secondary text, as in the tables. */
 .list-row-error {
   font-size: 12px;
-  color: var(--color-error);
-  font-weight: 500;
+  color: var(--color-text-secondary);
 }
 
 .list-row-status {

@@ -36,3 +36,24 @@ export function formatJobSummary(
     counts: parts.join(t.job.summarySeparator),
   });
 }
+
+/**
+ * How a finished conversion went, for the colour and mark of its summary:
+ * `failure` if any item failed (a partial failure included), `success` if
+ * every item converted, and `neutral` for a cancel or a run that converted
+ * nothing without failing (no pages in range, items left unprocessed).
+ */
+export type JobOutcome = "success" | "failure" | "neutral";
+
+export function jobOutcome(finished: JobFinishedPayload): JobOutcome {
+  if (finished.failed > 0) {
+    return "failure";
+  }
+  if (finished.cancelled) {
+    return "neutral";
+  }
+  if (finished.noPages > 0 || finished.unprocessed > 0) {
+    return "neutral";
+  }
+  return finished.succeeded > 0 ? "success" : "neutral";
+}

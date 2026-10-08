@@ -197,17 +197,67 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     );
   });
 
-  it("shows 完了 and the screen's action again when the job finishes", async () => {
+  it("shows that everything converted and the screen's action again when the job finishes", async () => {
     mockCommands(() => undefined);
     renderHarness();
 
     fireEvent.click(screen.getByRole("button", { name: "start each" }));
     await act(() => emit(JOB_FINISHED_EVENT, finished));
 
-    expect(screen.getByText("完了")).toBeInTheDocument();
+    expect(screen.getByText("すべて完了しました")).toHaveClass("success-text");
     expect(
       screen.getByRole("button", { name: "screen action" }),
     ).toBeInTheDocument();
+  });
+
+  it("says in red when some items failed", async () => {
+    mockCommands(() => undefined);
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "start each" }));
+    await act(() =>
+      emit(JOB_FINISHED_EVENT, { ...finished, succeeded: 2, failed: 1 }),
+    );
+
+    expect(screen.getByText("失敗があります")).toHaveClass("error-text");
+  });
+
+  it("stays neutral after a cancel", async () => {
+    mockCommands(() => undefined);
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "start each" }));
+    await act(() =>
+      emit(JOB_FINISHED_EVENT, {
+        ...finished,
+        succeeded: 1,
+        unprocessed: 2,
+        cancelled: true,
+      }),
+    );
+
+    expect(screen.getByText("キャンセルしました")).toHaveClass("hint");
+  });
+
+  it("shows an error raised after the job finished over its counts", async () => {
+    let fail: (error: unknown) => void = () => {};
+    mockCommands((cmd) =>
+      cmd === "save_merged_pdf"
+        ? new Promise((_, reject) => {
+            fail = reject;
+          })
+        : undefined,
+    );
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "save merged" }));
+    await act(() => emit(JOB_FINISHED_EVENT, finished));
+    await act(async () => {
+      fail({ code: "WriteFailed", detail: null });
+    });
+
+    expect(screen.getByRole("alert")).toHaveClass("error-text");
+    expect(screen.queryByText("すべて完了しました")).not.toBeInTheDocument();
   });
 
   it("shows a finished job only on the tab that started it", async () => {
@@ -218,7 +268,7 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     await act(() => emit(JOB_FINISHED_EVENT, finished));
 
     expect(screen.getByText("idle")).toBeInTheDocument();
-    expect(screen.queryByText("完了")).not.toBeInTheDocument();
+    expect(screen.queryByText("すべて完了しました")).not.toBeInTheDocument();
   });
 
   it("sends the PDF → image arguments", async () => {

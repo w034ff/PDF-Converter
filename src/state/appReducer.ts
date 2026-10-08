@@ -41,6 +41,28 @@ export function createInitialAppState(
   };
 }
 
+/**
+ * Drops the last conversion's result once the list or the settings of the
+ * screen it ran on change: the counts, row statuses and failed pages then
+ * describe items and settings that are no longer there, and the footer
+ * goes back to saying what the next start would do (design §10.1). A
+ * running job has neither a result nor an error yet, so it is never dropped.
+ */
+function dropStaleResult(
+  state: AppState,
+  next: AppState,
+  tab: AppState["job"]["kind"],
+): AppState {
+  if (
+    next === state ||
+    state.job.kind !== tab ||
+    (state.job.finished === null && state.job.error === null)
+  ) {
+    return next;
+  }
+  return { ...next, job: initialJobState };
+}
+
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "SET_LANGUAGE":
@@ -55,11 +77,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_IMAGES_OUTPUT_MODE":
     case "SET_IMAGES_PAGE_SIZE":
     case "SET_IMAGES_OUTPUT_DIR":
-    case "MOVE_IMAGE_ITEM":
-      return {
-        ...state,
-        imagesToPdf: imagesToPdfReducer(state.imagesToPdf, action),
-      };
+    case "MOVE_IMAGE_ITEM": {
+      const imagesToPdf = imagesToPdfReducer(state.imagesToPdf, action);
+      return imagesToPdf === state.imagesToPdf
+        ? state
+        : dropStaleResult(state, { ...state, imagesToPdf }, "imagesToPdf");
+    }
     case "ADD_PDF_ITEMS":
     case "REMOVE_PDF_ITEM":
     case "CLEAR_PDF_ITEMS":
@@ -67,7 +90,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_RANGE_TEXT":
     case "SET_RENDER_FORMAT":
     case "SET_RENDER_DPI":
-    case "SET_PDFS_OUTPUT_DIR":
+    case "SET_PDFS_OUTPUT_DIR": {
+      const pdfToImages = pdfToImagesReducer(state.pdfToImages, action);
+      return pdfToImages === state.pdfToImages
+        ? state
+        : dropStaleResult(state, { ...state, pdfToImages }, "pdfToImages");
+    }
+    // The answers to a range check follow the user's edit; the edit itself
+    // already dropped the result.
     case "CHECK_RANGE_STARTED":
     case "CHECK_RANGE_SUCCESS":
     case "CHECK_RANGE_FAILURE":

@@ -515,7 +515,7 @@ describe("App", () => {
         screen.getByRole("progressbar", { name: "進捗" }),
       ).toBeInTheDocument();
 
-      // When job finishes, JobFooter shows "完了" and idle status is still not shown
+      // When job finishes, JobFooter shows the outcome and idle status is still not shown
       const finishedPayload: JobFinishedPayload = {
         succeeded: 2,
         failed: 0,
@@ -527,7 +527,7 @@ describe("App", () => {
         await emit(JOB_FINISHED_EVENT, finishedPayload);
       });
 
-      expect(screen.getByText("完了")).toBeInTheDocument();
+      expect(screen.getByText("すべて完了しました")).toBeInTheDocument();
       expect(
         screen.queryByText("2 ページの PDF になります"),
       ).not.toBeInTheDocument();

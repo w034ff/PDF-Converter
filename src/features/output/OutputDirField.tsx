@@ -67,7 +67,7 @@ export function OutputDirField({
         {t.outputDir.choose}
       </button>
       {error !== null && (
-        <span className="hint" role="alert">
+        <span className="error-text" role="alert">
           {formatErrorMessage(error.code, error.detail, language.language)}
         </span>
       )}

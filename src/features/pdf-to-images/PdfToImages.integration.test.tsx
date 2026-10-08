@@ -344,12 +344,7 @@ describe("PdfToImages integration workflow", () => {
     };
     await act(() => emit(JOB_FINISHED_EVENT, finished));
 
-    // Summary and fail hint banner appear
-    expect(
-      await screen.findByText(
-        "失敗した PDF の理由は、下の一覧に表示しています",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveClass("is-failure");
 
     // Check row status: 一部失敗 and reason 失敗したページ：2
     expect(screen.getByText("✕ 一部失敗")).toBeInTheDocument();

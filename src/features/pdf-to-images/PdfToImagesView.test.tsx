@@ -474,8 +474,9 @@ describe("PdfToImagesView", () => {
       expect(screen.getByText("キャンセル")).toBeInTheDocument();
       expect(screen.getByText("2 ページを保存済み")).toBeInTheDocument();
 
-      // Item 3: initial error item excluded from targets
-      expect(screen.getByText("✕ 失敗")).toBeInTheDocument();
+      // Item 3: could not be read when added, which is told apart from a
+      // conversion that failed
+      expect(screen.getByText("✕ 読み込めません")).toBeInTheDocument();
       expect(
         screen.getByText("パスワードで保護されているため開けません"),
       ).toBeInTheDocument();
@@ -500,9 +501,6 @@ describe("PdfToImagesView", () => {
       expect(screen.getByRole("status")).toHaveTextContent(
         "変換が終わりました：成功 1 件 · 失敗 1 件 · 対象のページなし 1 件",
       );
-      expect(
-        screen.getByText("失敗した PDF の理由は、下の一覧に表示しています"),
-      ).toBeInTheDocument();
     });
 
     it("does not show single-result when status is partial, but marks the failed page thumbnail with is-failed", () => {
@@ -558,9 +556,6 @@ describe("PdfToImagesView", () => {
       expect(screen.getByRole("status")).toHaveTextContent(
         "変換が終わりました：成功 0 件 · 一部失敗 1 件",
       );
-      expect(
-        screen.queryByText("失敗した PDF の理由は、下の一覧に表示しています"),
-      ).not.toBeInTheDocument();
     });
 
     it("shows single-result when status is ok, failed, or cancelled", () => {
@@ -753,7 +748,7 @@ describe("PdfToImagesView", () => {
 
     expect(
       await screen.findByText("範囲に当てはまるページがありません"),
-    ).toHaveClass("pdf-hint-warning");
+    ).toHaveClass("error-text");
   });
 
   describe("thumbnail click page selection", () => {

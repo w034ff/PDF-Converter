@@ -44,6 +44,9 @@ export const ja = {
     runningItem: "変換中：{name}",
     runningItemAndOthers: "変換中：{name} ほか {count} 件",
     done: "完了",
+    doneAllSucceeded: "すべて完了しました",
+    doneWithFailures: "失敗があります",
+    loadFailed: "✕ 読み込めません",
     cancelled: "キャンセルしました",
     summaryFinished: "変換が終わりました：{counts}",
     summaryCancelled: "キャンセルしました：{counts}",
@@ -118,7 +121,6 @@ export const ja = {
     },
     remove: "外す",
     clearAll: "すべて外す",
-    summaryFailuresHint: "失敗した PDF の理由は、下の一覧に表示しています",
     footer: {
       specifyPages: "変換するページを指定してください",
       noMatchingPages: "範囲に当てはまるページがありません",
