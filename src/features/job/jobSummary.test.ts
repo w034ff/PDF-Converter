@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { en, ja } from "../../i18n";
-import { formatJobSummary } from "./jobSummary";
+import { formatJobSummary, jobOutcome } from "./jobSummary";
 
 describe("formatJobSummary", () => {
   it("lists successes and only the other counts that are not zero", () => {
@@ -53,5 +53,32 @@ describe("formatJobSummary", () => {
         cancelled: true,
       }),
     ).toBe("Cancelled: 2 succeeded · 4 not processed");
+  });
+});
+
+describe("jobOutcome", () => {
+  const base = {
+    succeeded: 0,
+    failed: 0,
+    noPages: 0,
+    unprocessed: 0,
+    cancelled: false,
+  };
+
+  it("is a success when every item converted", () => {
+    expect(jobOutcome({ ...base, succeeded: 3 })).toBe("success");
+  });
+
+  it("is a failure when any item failed, even when the run was cancelled", () => {
+    expect(jobOutcome({ ...base, succeeded: 2, failed: 1 })).toBe("failure");
+    expect(jobOutcome({ ...base, failed: 1, cancelled: true })).toBe("failure");
+  });
+
+  it("is neutral for a cancel or a run that converted nothing", () => {
+    expect(jobOutcome({ ...base, succeeded: 1, cancelled: true })).toBe(
+      "neutral",
+    );
+    expect(jobOutcome({ ...base, succeeded: 1, noPages: 1 })).toBe("neutral");
+    expect(jobOutcome({ ...base, unprocessed: 2 })).toBe("neutral");
   });
 });

@@ -15,7 +15,7 @@ export function PdfToImagesStatus() {
     return null;
   }
   return (
-    <span className={status.isWarning ? "hint pdf-hint-warning" : "hint"}>
+    <span className={status.isWarning ? "error-text" : "hint"}>
       {status.text}
     </span>
   );

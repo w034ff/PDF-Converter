@@ -336,5 +336,99 @@ describe("state reducers", () => {
       });
       expect(state.imagesToPdf.items).toHaveLength(1);
     });
+
+    describe("dropping a stale result", () => {
+      const finished = {
+        succeeded: 1,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      };
+
+      function finishedOn(tab: "imagesToPdf" | "pdfToImages") {
+        const state = createInitialAppState("ja-JP");
+        return {
+          ...state,
+          imagesToPdf: { ...state.imagesToPdf, items: [sampleImageItem1] },
+          pdfToImages: { ...state.pdfToImages, items: [samplePdfItem1] },
+          job: {
+            ...state.job,
+            phase: "finished" as const,
+            kind: tab,
+            targets: [{ id: 1, name: "x" }],
+            finished,
+          },
+        };
+      }
+
+      it("drops it when the list of its screen changes", () => {
+        const state = appReducer(finishedOn("imagesToPdf"), {
+          type: "ADD_IMAGE_ITEMS",
+          items: [sampleImageItem2],
+        });
+        expect(state.job.finished).toBeNull();
+        expect(state.job.kind).toBeNull();
+      });
+
+      it("drops it when a setting of its screen changes", () => {
+        const state = appReducer(finishedOn("pdfToImages"), {
+          type: "SET_RENDER_DPI",
+          dpi: 300,
+        });
+        expect(state.job.finished).toBeNull();
+      });
+
+      it("drops an error that kept a job from starting", () => {
+        const base = finishedOn("pdfToImages");
+        const state = appReducer(
+          {
+            ...base,
+            job: {
+              ...base.job,
+              phase: "idle",
+              finished: null,
+              error: { code: "WriteFailed", detail: null },
+            },
+          },
+          { type: "SET_RENDER_FORMAT", format: "jpeg" },
+        );
+        expect(state.job.error).toBeNull();
+      });
+
+      it("keeps it when the other screen changes", () => {
+        const state = appReducer(finishedOn("pdfToImages"), {
+          type: "SET_IMAGES_PAGE_SIZE",
+          pageSize: "a4",
+        });
+        expect(state.job.finished).toEqual(finished);
+      });
+
+      it("keeps it when nothing changes", () => {
+        const base = finishedOn("imagesToPdf");
+        const state = appReducer(base, {
+          type: "SET_IMAGES_OUTPUT_MODE",
+          output: base.imagesToPdf.output,
+        });
+        expect(state).toBe(base);
+      });
+
+      it("keeps it for the answer of a range check", () => {
+        const state = appReducer(finishedOn("pdfToImages"), {
+          type: "CHECK_RANGE_SUCCESS",
+          result: { totalPages: 1, intervals: [[1, 1]] },
+        });
+        expect(state.job.finished).toEqual(finished);
+      });
+
+      it("keeps a running job", () => {
+        const base = finishedOn("imagesToPdf");
+        const state = appReducer(
+          { ...base, job: { ...base.job, phase: "running", finished: null } },
+          { type: "ADD_IMAGE_ITEMS", items: [sampleImageItem2] },
+        );
+        expect(state.job.phase).toBe("running");
+      });
+    });
   });
 });

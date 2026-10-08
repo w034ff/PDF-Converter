@@ -5,11 +5,12 @@ import {
   ListRow,
   type ListRowStatus,
 } from "../../components";
-import { formatJobSummary } from "../job/jobSummary";
+import { JobSummaryBanner } from "../job/JobSummaryBanner";
 import {
   formatErrorMessage,
   formatMessage,
   getTranslations,
+  type Language,
   type Translations,
 } from "../../i18n";
 import {
@@ -19,6 +20,7 @@ import {
   type AddSource,
   type ImageItem,
   type IpcError,
+  type JobItemPayload,
   type Skipped,
 } from "../../ipc";
 import {
@@ -27,6 +29,7 @@ import {
   useAppDispatch,
   useAppState,
   type JobRowStatus,
+  type JobState,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
 import "./ImagesToPdf.css";
@@ -80,6 +83,47 @@ function toListRowStatus(
     default:
       return { text, kind: "waiting" };
   }
+}
+
+/**
+ * Why item `item` failed: why it could not be read when it was added, or why
+ * the last conversion failed on it. `null` when it did not fail.
+ */
+function failureReason(
+  item: ImageItem,
+  result: JobItemPayload | undefined,
+  language: Language,
+): string | null {
+  const error = item.error ?? result?.error ?? null;
+  return error === null
+    ? null
+    : formatErrorMessage(error.code, error.detail, language);
+}
+
+/**
+ * The row status of item `item`: the conversion's, or that it could not be
+ * read. A merged PDF is written only once every page is in, so after a
+ * cancel the pages already added were not saved and read as cancelled.
+ */
+function imageRowStatus(
+  item: ImageItem,
+  job: JobState,
+  isMerge: boolean,
+  t: Translations,
+): ListRowStatus | null {
+  if (job.kind === "imagesToPdf") {
+    let status = jobRowStatus(job, item.id);
+    if (isMerge && job.finished?.cancelled === true && status === "ok") {
+      status = "cancelled";
+    }
+    const listStatus = toListRowStatus(status, t);
+    if (listStatus !== null) {
+      return listStatus;
+    }
+  }
+  return item.error !== null
+    ? { text: t.job.loadFailed, kind: "failed" }
+    : null;
 }
 
 function formatSkippedMessage(
@@ -209,6 +253,7 @@ export function ImagesToPdfView() {
   const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map());
 
   async function handleAdd(source: AddSource) {
+    setError(null);
     try {
       const result = await addImages(source);
       if (result !== null) {
@@ -223,6 +268,7 @@ export function ImagesToPdfView() {
   }
 
   async function handleRemove(id: number) {
+    setError(null);
     try {
       await removeItems([id]);
       dispatch({ type: "REMOVE_IMAGE_ITEM", id });
@@ -232,6 +278,7 @@ export function ImagesToPdfView() {
   }
 
   async function handleClearAll() {
+    setError(null);
     const ids = imagesToPdf.items.map((item) => item.id);
     try {
       await removeItems(ids);
@@ -423,40 +470,47 @@ export function ImagesToPdfView() {
     }
   });
 
+  const errorDisplay = error !== null && (
+    <ErrorDisplay
+      message={formatErrorMessage(error.code, error.detail, language.language)}
+      onDismiss={() => setError(null)}
+      dismissLabel={t.errors.dismiss}
+    />
+  );
+
   if (imagesToPdf.items.length === 0) {
     return (
-      <DropZone
-        title={t.dropZone.titleImages}
-        description={t.dropZone.descriptionImages}
-        addFilesLabel={t.dropZone.addImages}
-        addFolderLabel={t.dropZone.addFolder}
-        onAddFiles={() => void handleAdd("files")}
-        onAddFolder={() => void handleAdd("folder")}
-      />
+      <div className="images-view">
+        {errorDisplay}
+        <DropZone
+          title={t.dropZone.titleImages}
+          description={t.dropZone.descriptionImages}
+          addFilesLabel={t.dropZone.addImages}
+          addFolderLabel={t.dropZone.addFolder}
+          onAddFiles={() => void handleAdd("files")}
+          onAddFolder={() => void handleAdd("folder")}
+        />
+      </div>
     );
   }
 
   const isMerge = imagesToPdf.output === "merge";
   const skippedText = formatSkippedMessage(skipped, t);
 
-  const summaryText =
-    job.kind === "imagesToPdf" && job.finished !== null
-      ? formatJobSummary(t, job.finished)
-      : null;
-
   return (
     <div className="images-view">
-      {error !== null && (
-        <ErrorDisplay
-          message={formatErrorMessage(
-            error.code,
-            error.detail,
-            language.language,
-          )}
-          onDismiss={() => setError(null)}
-          dismissLabel={t.errors.dismiss}
-        />
-      )}
+      {errorDisplay}
+
+      <JobSummaryBanner
+        tab="imagesToPdf"
+        detail={
+          job.savedName !== null && (
+            <span className="mono">
+              {formatMessage(t.imagesToPdf.savedName, { name: job.savedName })}
+            </span>
+          )
+        }
+      />
 
       <div className="images-view-header">
         <div className="images-view-title-group">
@@ -499,17 +553,6 @@ export function ImagesToPdfView() {
         </div>
       </div>
 
-      {summaryText && (
-        <div className="images-job-summary" role="status">
-          <span>{summaryText}</span>
-          {job.savedName && (
-            <span className="mono images-job-saved-name">
-              {formatMessage(t.imagesToPdf.savedName, { name: job.savedName })}
-            </span>
-          )}
-        </div>
-      )}
-
       {isMerge ? (
         <>
           <ol
@@ -523,9 +566,12 @@ export function ImagesToPdfView() {
             onKeyDown={handleKeyDown}
           >
             {imagesToPdf.items.map((item, index) => {
-              const rowStatus =
-                job.kind === "imagesToPdf" ? jobRowStatus(job, item.id) : null;
-              const status = toListRowStatus(rowStatus, t);
+              const status = imageRowStatus(item, job, isMerge, t);
+              const reason = failureReason(
+                item,
+                job.kind === "imagesToPdf" ? job.results[item.id] : undefined,
+                language.language,
+              );
 
               return (
                 <ListRow
@@ -543,15 +589,7 @@ export function ImagesToPdfView() {
                   customThumbnail={
                     <ImageThumbnail id={item.id} name={item.name} />
                   }
-                  error={
-                    item.error
-                      ? formatErrorMessage(
-                          item.error.code,
-                          item.error.detail,
-                          language.language,
-                        )
-                      : null
-                  }
+                  error={reason}
                   status={status}
                   className={getRowDropClass(index, dragIndex, overIndex)}
                   data-row-index={index}
@@ -618,26 +656,8 @@ export function ImagesToPdfView() {
                     ? result.outputs[0]
                     : t.imagesToPdf.noOutputYet;
 
-                const rowStatus =
-                  job.kind === "imagesToPdf"
-                    ? jobRowStatus(job, item.id)
-                    : null;
-                const listStatus = toListRowStatus(rowStatus, t);
-
-                let cellStatusText = "";
-                let statusKind: "ok" | "failed" | "running" | "waiting" | "" =
-                  "";
-                if (listStatus) {
-                  cellStatusText = listStatus.text;
-                  statusKind = listStatus.kind;
-                } else if (item.error !== null) {
-                  cellStatusText = formatErrorMessage(
-                    item.error.code,
-                    item.error.detail,
-                    language.language,
-                  );
-                  statusKind = "failed";
-                }
+                const listStatus = imageRowStatus(item, job, isMerge, t);
+                const reason = failureReason(item, result, language.language);
 
                 return (
                   <tr key={item.id}>
@@ -652,12 +672,15 @@ export function ImagesToPdfView() {
                     <td className="mono">{outputName}</td>
                     <td
                       className={
-                        statusKind
-                          ? `images-table-status status-${statusKind}`
+                        listStatus
+                          ? `images-table-status status-${listStatus.kind}`
                           : "images-table-status"
                       }
                     >
-                      {cellStatusText}
+                      {listStatus?.text}
+                      {reason !== null && (
+                        <div className="images-table-reason">{reason}</div>
+                      )}
                     </td>
                     <td className="images-table-actions-col">
                       <button

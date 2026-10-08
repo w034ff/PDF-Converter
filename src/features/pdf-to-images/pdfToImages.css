@@ -37,22 +37,6 @@
   flex: 1;
 }
 
-.pdf-summary-banner {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-}
-
-.pdf-summary-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
 .pdf-view-header {
   display: flex;
   align-items: center;
@@ -252,7 +236,6 @@
   padding: 8px 12px;
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
-  color: var(--color-text-primary);
 }
 
 .pdf-table tr:last-child td {
@@ -305,9 +288,8 @@
   box-shadow: inset 0 -1px 0 var(--color-border);
 }
 
-/* A range that cannot be read or matches no page: the start button stays
-   disabled or converts nothing, so it is shown in the error colour. Two
-   classes to win over .hint. */
-.hint.pdf-hint-warning {
+/* The caption is also .mono, whose grey comes later in the cascade; the
+   failed page's words must still be red. */
+.pdf-page-figure figcaption.pdf-status-failed {
   color: var(--color-error);
 }

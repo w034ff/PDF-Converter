@@ -204,7 +204,7 @@ export function PdfToImagesSettings() {
             />
             {/* How many pages this converts is in the footer (design §10.1). */}
             {isRangeErrorShown && pdfToImages.rangeError !== null && (
-              <span className="hint pdf-hint-warning" role="alert">
+              <span className="error-text" role="alert">
                 {formatErrorMessage(
                   pdfToImages.rangeError.code,
                   pdfToImages.rangeError.detail,

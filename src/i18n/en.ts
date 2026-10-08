@@ -46,6 +46,9 @@ export const en: Translations = {
     runningItem: "Converting: {name}",
     runningItemAndOthers: "Converting: {name} and {count} more",
     done: "Done",
+    doneAllSucceeded: "All done",
+    doneWithFailures: "Some items failed",
+    loadFailed: "✕ Could not read",
     cancelled: "Cancelled",
     summaryFinished: "Conversion finished: {counts}",
     summaryCancelled: "Cancelled: {counts}",
@@ -121,7 +124,6 @@ export const en: Translations = {
     },
     remove: "Remove",
     clearAll: "Clear all",
-    summaryFailuresHint: "Reasons for failed PDFs are shown in the list below",
     footer: {
       specifyPages: "Enter the pages to convert",
       noMatchingPages: "No pages match the range",

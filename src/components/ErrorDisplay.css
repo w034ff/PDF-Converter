@@ -1,6 +1,6 @@
 .error-display {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 12px 16px;
   background: var(--color-bg-subtle);
@@ -12,7 +12,6 @@
 .error-display-icon {
   stroke: var(--color-error);
   flex-shrink: 0;
-  margin-top: 2px;
 }
 
 .error-display-body {
@@ -34,5 +33,4 @@
 
 .error-display-dismiss {
   margin-left: auto;
-  align-self: flex-start;
 }

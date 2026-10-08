@@ -146,6 +146,142 @@ describe("ImagesToPdf (T11)", () => {
     expect(loading.querySelector("svg")).toBeNull();
   });
 
+  describe("errors and results", () => {
+    function mockRun(fail: Record<string, unknown> = {}) {
+      return mockAppIpc((cmd) => {
+        if (cmd in fail) {
+          return Promise.reject(fail[cmd]);
+        }
+        if (cmd === "add_images") {
+          const result: AddResult<ImageItem> = {
+            added: [sampleImage1, sampleImage2, sampleImage3],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return result;
+        }
+        if (cmd === "pick_output_dir") {
+          return { dirLabel: "out" };
+        }
+        if (cmd === "save_merged_pdf") {
+          return new Promise(() => {});
+        }
+        return undefined;
+      });
+    }
+
+    async function addImages() {
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await screen.findByText("photo.jpg");
+    }
+
+    it("shows a failed add on the empty list, and clears it once an add works", async () => {
+      mockRun({ add_images: { code: "ReadFailed", detail: null } });
+      renderHarness();
+
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      expect(await screen.findByTestId("error-display")).toBeInTheDocument();
+      expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+
+      cleanup();
+      clearMocks();
+      mockRun();
+      renderHarness();
+      await addImages();
+      expect(screen.queryByTestId("error-display")).not.toBeInTheDocument();
+    });
+
+    it("gives the reason for a failed conversion and for an unreadable image in the table", async () => {
+      mockRun();
+      renderHarness();
+      await addImages();
+      fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "キャンセル" })),
+      );
+
+      await act(async () => {
+        await emit(JOB_ITEM_EVENT, {
+          id: 1,
+          status: "ok",
+          outputs: ["photo.pdf"],
+        });
+        await emit(JOB_ITEM_EVENT, {
+          id: 2,
+          status: "failed",
+          outputs: [],
+          error: { code: "WriteFailed", detail: null },
+        });
+        await emit(JOB_FINISHED_EVENT, {
+          succeeded: 1,
+          failed: 1,
+          noPages: 0,
+          unprocessed: 0,
+          cancelled: false,
+        });
+      });
+
+      expect(screen.getByText("✕ 失敗")).toBeInTheDocument();
+      expect(screen.getByText("ファイルの書き込みに失敗しました")).toHaveClass(
+        "images-table-reason",
+      );
+      expect(screen.getByText("✕ 読み込めません")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveClass("is-failure");
+    });
+
+    it("does not mark merged pages as done when the merge was cancelled", async () => {
+      mockRun();
+      renderHarness();
+      await addImages();
+      fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "キャンセル" })),
+      );
+
+      await act(async () => {
+        await emit(JOB_ITEM_EVENT, { id: 1, status: "ok", outputs: [] });
+        await emit(JOB_ITEM_EVENT, { id: 2, status: "ok", outputs: [] });
+        await emit(JOB_FINISHED_EVENT, {
+          succeeded: 0,
+          failed: 0,
+          noPages: 0,
+          unprocessed: 2,
+          cancelled: true,
+        });
+      });
+
+      expect(screen.queryByText("✓ 完了")).not.toBeInTheDocument();
+      expect(screen.getAllByText("キャンセル")).toHaveLength(2);
+    });
+
+    it("drops the last result once the list changes", async () => {
+      mockRun();
+      renderHarness();
+      await addImages();
+      fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "キャンセル" })),
+      );
+      await act(async () => {
+        await emit(JOB_ITEM_EVENT, { id: 1, status: "ok", outputs: ["a.pdf"] });
+        await emit(JOB_FINISHED_EVENT, {
+          succeeded: 1,
+          failed: 0,
+          noPages: 0,
+          unprocessed: 1,
+          cancelled: false,
+        });
+      });
+      expect(screen.getByRole("status")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "1 つの PDF" }));
+
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.getByText("2 ページの PDF になります")).toBeInTheDocument();
+    });
+  });
+
   it("shows DropZone in empty state, and adds images via dialog", async () => {
     const calls = mockAppIpc((cmd) => {
       if (cmd === "add_images") {

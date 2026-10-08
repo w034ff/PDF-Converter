@@ -27,7 +27,7 @@ import {
   type PageSelection,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
-import { formatJobSummary } from "../job/jobSummary";
+import { JobSummaryBanner } from "../job/JobSummaryBanner";
 import {
   countPagesInIntervals,
   formatFileSize,
@@ -143,7 +143,7 @@ function describeItemStatus(
   let reasonText: string | null = null;
 
   if (item.error !== null) {
-    statusText = t.job.rowStatus.failed;
+    statusText = t.job.loadFailed;
     statusClass = "pdf-status-failed";
     reasonText = formatErrorMessage(
       item.error.code,
@@ -472,17 +472,7 @@ export function PdfToImagesView() {
           dismissLabel={t.errors.dismiss}
         />
       )}
-      {/* Top summary banner when conversion ends (design §6.3, mockup PdfBatch) */}
-      {job.kind === "pdfToImages" && job.finished !== null && (
-        <div role="status" className="pdf-summary-banner">
-          <span className="pdf-summary-title">
-            {formatJobSummary(t, job.finished, partialCount)}
-          </span>
-          {!isSingle && job.finished.failed > 0 && (
-            <span className="hint">{t.pdfToImages.summaryFailuresHint}</span>
-          )}
-        </div>
-      )}
+      <JobSummaryBanner tab="pdfToImages" partialCount={partialCount} />
 
       {/* Header above content */}
       <div className="pdf-view-header">
@@ -490,13 +480,7 @@ export function PdfToImagesView() {
           <>
             <span className="pdf-single-name">{singleItem.name}</span>
             {singleItem.error !== null ? (
-              <span className="hint" role="alert">
-                {formatErrorMessage(
-                  singleItem.error.code,
-                  singleItem.error.detail,
-                  language.language,
-                )}
-              </span>
+              <span className="pdf-status-failed">{t.job.loadFailed}</span>
             ) : (
               <span className="mono">
                 {formatMessage(t.pdfToImages.single.meta, {
@@ -586,15 +570,14 @@ export function PdfToImagesView() {
       {/* Body: Single PDF thumbnail grid OR Batch PDFs table */}
       {isSingle && singleItem !== null ? (
         singleItem.error !== null ? (
-          <div className="pdf-summary-banner" role="alert">
-            <span className="pdf-status-failed">
-              {formatErrorMessage(
-                singleItem.error.code,
-                singleItem.error.detail,
-                language.language,
-              )}
-            </span>
-          </div>
+          // The reason, once; the header says only that it could not be read.
+          <ErrorDisplay
+            message={formatErrorMessage(
+              singleItem.error.code,
+              singleItem.error.detail,
+              language.language,
+            )}
+          />
         ) : (
           <div className="pdf-single-grid">
             {Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).map(

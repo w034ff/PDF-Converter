@@ -22,8 +22,10 @@
   --color-accent-subtle: #faebe6;
 
   --color-success: #1f6b3a;
-  --color-error: #c93b2b;
-  --color-error-tint: rgba(201, 59, 43, 0.18);
+  /* Crimson rather than the accent's terracotta, so a failure never reads
+     as a selection (design §10.3). */
+  --color-error: #b3163a;
+  --color-error-tint: rgba(179, 22, 58, 0.16);
   --color-text-on-error: #ffffff;
 
   --color-progress-track: #e4e1db;
@@ -63,8 +65,8 @@
     --color-accent-subtle: #3a251e;
 
     --color-success: #43a047;
-    --color-error: #ef5350;
-    --color-error-tint: rgba(239, 83, 80, 0.22);
+    --color-error: #ff7a8a;
+    --color-error-tint: rgba(255, 122, 138, 0.2);
     --color-text-on-error: #1c1b18;
 
     --color-progress-track: #363430;

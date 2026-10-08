@@ -40,6 +40,27 @@ a:hover {
   color: var(--color-text-secondary);
 }
 
+/* An error said in a line of text (a field, the footer): red with a cross,
+   the same everywhere (design §10.3). Errors of an action the user took on
+   the list use ErrorDisplay instead. */
+.error-text {
+  font-size: 12px;
+  color: var(--color-error);
+}
+
+.error-text::before {
+  content: "✕ " / "";
+}
+
+.success-text {
+  font-size: 12px;
+  color: var(--color-success);
+}
+
+.success-text::before {
+  content: "✓ " / "";
+}
+
 /* Button styles */
 .btn {
   font: inherit;

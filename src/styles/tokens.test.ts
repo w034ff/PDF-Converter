@@ -120,14 +120,15 @@ describe("design tokens and CSS rules", () => {
   });
 
   it.each(["light", "dark"] as const)(
-    "meets WCAG AA contrast for accent pairs in the %s theme",
+    "meets WCAG AA contrast for accent and status pairs in the %s theme",
     (theme) => {
       const tokens = readThemeTokens(theme);
 
       // Pairs as app.css draws them: .btn-primary and .seg put
       // text-on-accent over accent (accent-hover on hover), and links use
       // accent (accent-hover on hover) as text over the app and surface.
-      // A failed page's mark puts text-on-error over error.
+      // A failed page's mark puts text-on-error over error. Error and
+      // success are also text, on every ground the app uses.
       const pairs: [string, string][] = [
         ["--color-text-on-accent", "--color-accent"],
         ["--color-text-on-accent", "--color-accent-hover"],
@@ -136,6 +137,12 @@ describe("design tokens and CSS rules", () => {
         ["--color-accent-hover", "--color-bg-app"],
         ["--color-accent-hover", "--color-bg-surface"],
         ["--color-text-on-error", "--color-error"],
+        ["--color-error", "--color-bg-app"],
+        ["--color-error", "--color-bg-surface"],
+        ["--color-error", "--color-bg-subtle"],
+        ["--color-success", "--color-bg-app"],
+        ["--color-success", "--color-bg-surface"],
+        ["--color-success", "--color-bg-subtle"],
       ];
 
       for (const [fg, bg] of pairs) {
