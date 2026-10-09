@@ -16,6 +16,7 @@ import {
   type AddResult,
   type ImageItem,
   type JobFinishedPayload,
+  type JobItemPayload,
   type JobProgressPayload,
 } from "../../ipc";
 import { AppStateProvider, createInitialAppState } from "../../state";
@@ -1616,33 +1617,56 @@ describe("ImagesToPdf (T11)", () => {
   });
 
   describe("summary of 'Single PDF'", () => {
+    /**
+     * Runs "PDF を保存" the way the backend does: the item results and
+     * `job-finished` arrive first, then the command resolves with `result`.
+     */
     async function mergeAndFinish(
       finished: JobFinishedPayload,
-      save: () => unknown,
+      result: unknown,
+      items: JobItemPayload[] = [],
+      lang = "ja-JP",
     ) {
+      let resolveSave: (value: unknown) => void = () => {};
       mockAppIpc((cmd) => {
         if (cmd === "add_images") {
-          const result: AddResult<ImageItem> = {
+          const added: AddResult<ImageItem> = {
             added: [sampleImage1, sampleImage2],
             skipped: { unsupported: 0, folders: 0, duplicates: 0 },
           };
-          return result;
+          return added;
         }
         if (cmd === "save_merged_pdf") {
-          return save();
+          return new Promise((resolve) => {
+            resolveSave = resolve;
+          });
         }
         if (cmd === "get_thumbnail") {
           return [137, 80, 78, 71];
         }
         return undefined;
       });
-      renderHarness();
-      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      renderHarness(lang);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: lang === "ja-JP" ? "画像を追加" : "Add images",
+        }),
+      );
       await screen.findByText("photo.jpg");
 
-      fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: lang === "ja-JP" ? "PDF を保存" : "Save PDF",
+        }),
+      );
       await act(async () => {
+        for (const item of items) {
+          await emit(JOB_ITEM_EVENT, item);
+        }
         await emit(JOB_FINISHED_EVENT, finished);
+      });
+      await act(async () => {
+        resolveSave(result);
       });
     }
 
@@ -1655,9 +1679,10 @@ describe("ImagesToPdf (T11)", () => {
     };
 
     it("counts the pages of the PDF and adds the images that failed", async () => {
-      await mergeAndFinish({ ...NOTHING, succeeded: 10, failed: 1 }, () => ({
-        savedName: "merged.pdf",
-      }));
+      await mergeAndFinish(
+        { ...NOTHING, succeeded: 10, failed: 1 },
+        { savedName: "merged.pdf" },
+      );
 
       expect(await screen.findByRole("status")).toHaveTextContent(
         "変換が終わりました：10 ページの PDF を保存しました · 失敗 1 枚",
@@ -1666,35 +1691,88 @@ describe("ImagesToPdf (T11)", () => {
     });
 
     it("says only the pages when no image failed", async () => {
-      await mergeAndFinish({ ...NOTHING, succeeded: 2 }, () => ({
-        savedName: "merged.pdf",
-      }));
+      await mergeAndFinish(
+        { ...NOTHING, succeeded: 2 },
+        { savedName: "merged.pdf" },
+      );
 
       expect(await screen.findByRole("status")).toHaveTextContent(
         /^変換が終わりました：2 ページの PDF を保存しました$/,
       );
     });
 
-    it("counts items, without a zero, when no PDF was written", async () => {
+    it("keeps the count of failures and the failed rows when every image failed", async () => {
+      await mergeAndFinish({ ...NOTHING, failed: 2 }, { savedName: null }, [
+        { id: 1, status: "failed", outputs: [] },
+        { id: 2, status: "failed", outputs: [] },
+      ]);
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /^変換が終わりました：失敗 2 件$/,
+      );
+      expect(screen.getAllByText("✕ 失敗")).toHaveLength(2);
+    });
+
+    it("keeps the cancelled summary and the cancelled rows when the merge was cancelled", async () => {
       await mergeAndFinish(
-        { ...NOTHING, failed: 2 },
-        () => new Promise(() => {}),
+        { ...NOTHING, unprocessed: 2, cancelled: true },
+        { savedName: null },
+        [
+          { id: 1, status: "ok", outputs: [] },
+          { id: 2, status: "ok", outputs: [] },
+        ],
       );
 
-      expect(await screen.findByRole("status")).toHaveTextContent(
-        /^変換が終わりました：失敗 2 件$/,
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /^キャンセルしました：PDF は保存していません$/,
+      );
+      expect(screen.getAllByText("キャンセル")).toHaveLength(2);
+      expect(screen.queryByText("✓ 完了")).not.toBeInTheDocument();
+    });
+
+    it("says in English that the PDF was not saved", async () => {
+      await mergeAndFinish(
+        { ...NOTHING, unprocessed: 2, cancelled: true },
+        { savedName: null },
+        [],
+        "en-US",
+      );
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /^Cancelled: the PDF was not saved$/,
       );
     });
 
-    it("counts items when the conversion was cancelled", async () => {
-      await mergeAndFinish(
-        { ...NOTHING, succeeded: 0, unprocessed: 2, cancelled: true },
-        () => new Promise(() => {}),
-      );
+    it("shows no result when the save dialog was cancelled", async () => {
+      mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const added: AddResult<ImageItem> = {
+            added: [sampleImage1, sampleImage2],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return added;
+        }
+        if (cmd === "save_merged_pdf") {
+          return null;
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        return undefined;
+      });
+      renderHarness();
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await screen.findByText("photo.jpg");
 
-      expect(await screen.findByRole("status")).toHaveTextContent(
-        /^キャンセルしました：未処理 2 件$/,
+      fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "PDF を保存" }),
+        ).toBeEnabled(),
       );
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.getByText("2 ページの PDF になります")).toBeInTheDocument();
     });
   });
 

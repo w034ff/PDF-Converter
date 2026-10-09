@@ -71,6 +71,7 @@ export const en: Translations = {
     mergedPdf: {
       saved: "Saved a {count}-page PDF",
       failedImages: "{count} failed",
+      notSaved: "the PDF was not saved",
     },
     rowStatus: {
       waiting: "Waiting",

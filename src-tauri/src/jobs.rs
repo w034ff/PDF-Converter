@@ -144,11 +144,13 @@ pub struct CheckPageRangeResult {
     pub intervals: Vec<(u32, u32)>,
 }
 
-/// Result returned when a merged PDF is saved (design §7.1).
+/// Result returned once a merge has run (design §7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveMergedPdfResult {
-    pub saved_name: String,
+    /// The saved file's name, or `None` when no PDF was written (the job was
+    /// cancelled, or no image could be added).
+    pub saved_name: Option<String>,
 }
 
 /// Callbacks for receiving job progress, item results, and completion events.
@@ -373,7 +375,7 @@ pub fn run_save_merged_pdf<FProg, FItem, FFin>(
     page_size: PageSizeChoice,
     dest_path: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
-) -> Result<Option<SaveMergedPdfResult>, IpcError>
+) -> Result<SaveMergedPdfResult, IpcError>
 where
     FProg: Fn(JobProgressPayload) + Send + Sync + 'static,
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
@@ -500,7 +502,7 @@ where
             unprocessed,
             cancelled: true,
         });
-        return Ok(None);
+        return Ok(SaveMergedPdfResult { saved_name: None });
     }
 
     if succeeded == 0 {
@@ -512,7 +514,7 @@ where
             unprocessed: 0,
             cancelled: false,
         });
-        return Ok(None);
+        return Ok(SaveMergedPdfResult { saved_name: None });
     }
 
     let pdf_bytes = writer
@@ -541,7 +543,9 @@ where
         cancelled: false,
     });
 
-    Ok(Some(SaveMergedPdfResult { saved_name }))
+    Ok(SaveMergedPdfResult {
+        saved_name: Some(saved_name),
+    })
 }
 
 /// Executes individual conversion of multiple images into separate PDF documents (design §6.2).

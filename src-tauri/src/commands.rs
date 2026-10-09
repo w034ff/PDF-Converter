@@ -196,6 +196,9 @@ pub fn cancel_job(state: tauri::State<'_, AppState>) {
 }
 
 /// Opens a save dialog to save selected images into a single merged PDF (design §6.2, §7.1).
+///
+/// Returns `None` only when the dialog was cancelled, so nothing ran. Once the
+/// conversion has run, the result says whether a PDF was written.
 #[tauri::command]
 pub async fn save_merged_pdf(
     window: tauri::Window,
@@ -275,6 +278,7 @@ pub async fn save_merged_pdf(
     })
     .await
     .map_err(task_failed)?
+    .map(Some)
 }
 
 /// Starts batch conversion of images to individual PDF files in the background (design §6.2, §7.1).

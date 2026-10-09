@@ -36,12 +36,13 @@ function selectedPageCount(
 
 /**
  * What the summary of the screen's last conversion counts: pages when one
- * PDF was converted, the pages of the PDF written by "Single PDF", items
- * otherwise.
+ * PDF was converted, the pages of the PDF written by "Single PDF" (nothing,
+ * if that was cancelled, since no PDF exists), items otherwise.
  */
 function summaryShape(
   tab: ActiveTab,
   job: JobState,
+  imagesToPdf: AppState["imagesToPdf"],
   pdfToImages: AppState["pdfToImages"],
   partialCount: number,
 ): JobSummaryShape {
@@ -55,6 +56,13 @@ function summaryShape(
     if (selected !== null) {
       return singlePdfPageCounts(job.results[target.id], selected);
     }
+  }
+  if (
+    tab === "imagesToPdf" &&
+    imagesToPdf.output === "merge" &&
+    job.finished?.cancelled === true
+  ) {
+    return { kind: "mergedPdfNotSaved" };
   }
   if (
     tab === "imagesToPdf" &&
@@ -80,7 +88,7 @@ export function JobSummaryBanner({
   tab,
   partialCount = 0,
 }: JobSummaryBannerProps) {
-  const { language, job, pdfToImages } = useAppState();
+  const { language, job, imagesToPdf, pdfToImages } = useAppState();
   if (job.kind !== tab || job.finished === null) {
     return null;
   }
@@ -92,7 +100,7 @@ export function JobSummaryBanner({
         {formatJobSummary(
           t,
           job.finished,
-          summaryShape(tab, job, pdfToImages, partialCount),
+          summaryShape(tab, job, imagesToPdf, pdfToImages, partialCount),
         )}
       </span>
     </div>

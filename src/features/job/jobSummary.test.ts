@@ -153,6 +153,22 @@ describe("formatJobSummary", () => {
       ).toBe("Conversion finished: Saved a 10-page PDF");
     });
   });
+
+  describe("a merged PDF that was not saved", () => {
+    const CANCELLED = { ...NOTHING, unprocessed: 2, cancelled: true };
+
+    it("says no PDF was saved, with no counts", () => {
+      expect(
+        formatJobSummary(ja, CANCELLED, { kind: "mergedPdfNotSaved" }),
+      ).toBe("キャンセルしました：PDF は保存していません");
+    });
+
+    it("reads in English", () => {
+      expect(
+        formatJobSummary(en, CANCELLED, { kind: "mergedPdfNotSaved" }),
+      ).toBe("Cancelled: the PDF was not saved");
+    });
+  });
 });
 
 describe("singlePdfPageCounts", () => {

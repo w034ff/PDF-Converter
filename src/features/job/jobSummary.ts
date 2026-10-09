@@ -5,7 +5,8 @@ import { failedAsAWhole } from "../pdf-to-images/pdfUtils";
 /**
  * What the summary counts. Most conversions count items. A conversion of one
  * PDF counts its pages, since "1 item" says little of 200 pages, and
- * "Single PDF" counts the pages of the PDF it wrote.
+ * "Single PDF" counts the pages of the PDF it wrote. A cancelled "Single PDF"
+ * wrote none, so it counts nothing and says so.
  */
 export type JobSummaryShape =
   | {
@@ -18,7 +19,8 @@ export type JobSummaryShape =
       partial: number;
     }
   | { kind: "pages"; saved: number; failed: number; unprocessed: number }
-  | { kind: "mergedPdf"; pages: number; failedImages: number };
+  | { kind: "mergedPdf"; pages: number; failedImages: number }
+  | { kind: "mergedPdfNotSaved" };
 
 const ITEMS_SHAPE: JobSummaryShape = { kind: "items", partial: 0 };
 
@@ -74,6 +76,8 @@ function summaryParts(
       }
       return parts;
     }
+    case "mergedPdfNotSaved":
+      return [t.job.mergedPdf.notSaved];
   }
 }
 

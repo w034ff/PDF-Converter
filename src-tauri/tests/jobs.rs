@@ -462,7 +462,7 @@ fn cancellation_merged_pdf_writes_no_file() {
     )
     .unwrap();
 
-    assert!(res.is_none());
+    assert_eq!(res.saved_name, None);
     assert!(!dest_path.exists());
     assert_no_temp_files(temp_out.path());
 
@@ -978,7 +978,7 @@ fn cancellation_during_merged_pdf_on_item_writes_no_file() {
     let res =
         run_save_merged_pdf(&app_state, &ids, PageSizeChoice::Fit, &dest_path, callbacks).unwrap();
 
-    assert!(res.is_none());
+    assert_eq!(res.saved_name, None);
     assert!(!dest_path.exists());
     assert_no_temp_files(temp_out.path());
 
@@ -1135,7 +1135,7 @@ fn merged_pdf_skips_initial_error_without_rereading_file() {
     )
     .expect("run_save_merged_pdf should succeed");
 
-    assert!(res.is_none());
+    assert_eq!(res.saved_name, None);
     assert!(!dest_path.exists());
 
     let finished = recorder.finished();
@@ -1149,6 +1149,39 @@ fn merged_pdf_skips_initial_error_without_rereading_file() {
     assert_eq!(items[0].error.as_ref().map(|e| e.code), Some(bmp_err.code));
 
     assert_no_temp_files(temp_out.path());
+}
+
+#[test]
+fn a_merged_pdf_that_was_written_reports_its_name() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let path1 = copy_fixture(temp_in.path(), "photo.jpg", "img1.jpg");
+    let path2 = copy_fixture(temp_in.path(), "logo_alpha.png", "img2.png");
+    let ids: Vec<u64> = add_images(&app_state, &[path1, path2])
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let dest_path = temp_out.path().join("merged.pdf");
+    let recorder = TestRecorder::new();
+    let res = run_save_merged_pdf(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        &dest_path,
+        recorder.callbacks(),
+    )
+    .expect("run_save_merged_pdf should succeed");
+
+    assert_eq!(res.saved_name, Some("merged.pdf".to_string()));
+    assert!(dest_path.exists());
+
+    let finished = recorder.finished();
+    assert_eq!(finished.succeeded, 2);
+    assert!(!finished.cancelled);
 }
 
 /// The permission bits of `path`.

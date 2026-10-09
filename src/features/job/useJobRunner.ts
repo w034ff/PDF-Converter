@@ -83,9 +83,12 @@ export function useJobRunner(): JobRunner {
         if (outcome.result === null) {
           // The save dialog was cancelled; nothing ran.
           dispatch({ type: "JOB_RESET" });
-        } else {
+        } else if (outcome.result.savedName !== null) {
           dispatch({ type: "JOB_SAVED", savedName: outcome.result.savedName });
         }
+        // Otherwise the job ran but wrote no PDF (it was cancelled, or no
+        // image could be added). `job-finished` has already set the result,
+        // and the banner and rows keep showing it.
       },
       async startImagesToPdfs(targets, pageSize) {
         const outcome = await run("imagesToPdf", targets, (ids) =>

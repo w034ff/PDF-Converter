@@ -69,6 +69,7 @@ export const ja = {
     mergedPdf: {
       saved: "{count} ページの PDF を保存しました",
       failedImages: "失敗 {count} 枚",
+      notSaved: "PDF は保存していません",
     },
     rowStatus: {
       waiting: "待機",
