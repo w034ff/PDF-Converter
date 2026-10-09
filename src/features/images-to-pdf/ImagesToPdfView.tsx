@@ -6,6 +6,7 @@ import {
   type ListRowStatus,
 } from "../../components";
 import { JobSummaryBanner } from "../job/JobSummaryBanner";
+import { OutputDirError } from "../output";
 import {
   formatErrorMessage,
   formatMessage,
@@ -500,17 +501,9 @@ export function ImagesToPdfView() {
   return (
     <div className="images-view">
       {errorDisplay}
+      <OutputDirError tab="imagesToPdf" />
 
-      <JobSummaryBanner
-        tab="imagesToPdf"
-        detail={
-          job.savedName !== null && (
-            <span className="mono">
-              {formatMessage(t.imagesToPdf.savedName, { name: job.savedName })}
-            </span>
-          )
-        }
-      />
+      <JobSummaryBanner tab="imagesToPdf" />
 
       <div className="images-view-header">
         <div className="images-view-title-group">
@@ -519,11 +512,7 @@ export function ImagesToPdfView() {
               count: imagesToPdf.items.length,
             })}
           </span>
-          {skippedText ? (
-            <span className="hint">{skippedText}</span>
-          ) : isMerge ? (
-            <span className="hint">{t.imagesToPdf.reorderHint}</span>
-          ) : null}
+          {skippedText ? <span className="hint">{skippedText}</span> : null}
         </div>
         <div className="images-view-actions">
           <button

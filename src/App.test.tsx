@@ -42,7 +42,6 @@ const SAVED_SETTINGS: Settings = {
 
 const ABOUT_READY = {
   version: "0.1.0",
-  pdfiumVersion: "chromium/8076",
   pdfiumReady: true,
   pdfiumError: null,
 };
@@ -130,6 +129,45 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: "Save PDF" }),
     ).toBeInTheDocument();
+  });
+
+  describe("browser shortcuts", () => {
+    /** Presses `init` on `target` and returns whether the app stopped it. */
+    function isStopped(target: EventTarget, init: KeyboardEventInit) {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    }
+
+    it("stops find, print and reload, and lets copy and zoom through", () => {
+      mockAppIpc(() => new Promise(() => {}));
+      render(<App initialNavLang="ja" initialSettings={null} />);
+      const target = screen.getByRole("tab", { name: "画像 → PDF" });
+
+      expect(isStopped(target, { key: "f", ctrlKey: true })).toBe(true);
+      expect(isStopped(target, { key: "p", ctrlKey: true })).toBe(true);
+      expect(isStopped(target, { key: "r", ctrlKey: true })).toBe(true);
+      expect(isStopped(target, { key: "F5" })).toBe(true);
+      expect(isStopped(target, { key: "c", ctrlKey: true })).toBe(false);
+      expect(isStopped(target, { key: "=", ctrlKey: true })).toBe(false);
+    });
+
+    it("stops them while a field has focus", () => {
+      mockAppIpc(() => new Promise(() => {}));
+      render(<App initialNavLang="ja" initialSettings={null} />);
+      const field = document.createElement("input");
+      document.body.append(field);
+      field.focus();
+
+      expect(isStopped(field, { key: "f", ctrlKey: true })).toBe(true);
+      expect(isStopped(field, { key: "v", ctrlKey: true })).toBe(false);
+
+      field.remove();
+    });
   });
 
   describe("restoring the settings", () => {
@@ -323,7 +361,7 @@ describe("App", () => {
       return screen.getByRole("dialog", { name: "このアプリについて" });
     }
 
-    it("shows the version, pdfium and this app's license", async () => {
+    it("shows the version and this app's license, and no rendering engine line", async () => {
       mockAppIpc((cmd) => (cmd === "get_about" ? ABOUT_READY : null));
       render(<App initialNavLang="ja" initialSettings={null} />);
       const dialog = openAbout();
@@ -331,9 +369,13 @@ describe("App", () => {
       expect(
         await within(dialog).findByText("バージョン 0.1.0"),
       ).toBeInTheDocument();
+      // The version of pdfium is in the third-party list instead.
       expect(
-        within(dialog).getByText("PDF の描画エンジン: pdfium chromium/8076"),
-      ).toBeInTheDocument();
+        within(dialog).queryByText(/描画エンジン/),
+      ).not.toBeInTheDocument();
+      expect(
+        within(dialog).queryByText(/chromium\/8076/),
+      ).not.toBeInTheDocument();
       expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
       expect(
         within(dialog).getByText(/Permission is hereby granted/),

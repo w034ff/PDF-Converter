@@ -24,6 +24,8 @@ const ALL_ERROR_CODES: ErrorCode[] = [
   "ConversionRunning",
   "UnknownHandle",
   "InvalidParams",
+  "OutputDirMissing",
+  "OutputDirNotWritable",
 ];
 
 describe("i18n", () => {
@@ -47,7 +49,7 @@ describe("i18n", () => {
   });
 
   describe("formatErrorMessage", () => {
-    it("formats all 15 error codes in Japanese", () => {
+    it("formats all 17 error codes in Japanese", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "ja")).toBe(
         "対応していない形式です",
       );
@@ -93,9 +95,15 @@ describe("i18n", () => {
       expect(formatErrorMessage("InvalidParams", null, "ja")).toBe(
         "無効な設定です",
       );
+      expect(formatErrorMessage("OutputDirMissing", null, "ja")).toBe(
+        "保存先のフォルダが見つかりません。フォルダを選び直してください",
+      );
+      expect(formatErrorMessage("OutputDirNotWritable", null, "ja")).toBe(
+        "保存先のフォルダに書き込めません",
+      );
     });
 
-    it("formats all 15 error codes in English", () => {
+    it("formats all 17 error codes in English", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "en")).toBe(
         "Unsupported file format",
       );
@@ -140,6 +148,12 @@ describe("i18n", () => {
       );
       expect(formatErrorMessage("InvalidParams", null, "en")).toBe(
         "Invalid settings",
+      );
+      expect(formatErrorMessage("OutputDirMissing", null, "en")).toBe(
+        "The output folder can't be found. Choose a folder again.",
+      );
+      expect(formatErrorMessage("OutputDirNotWritable", null, "en")).toBe(
+        "Can't write to the output folder",
       );
     });
 

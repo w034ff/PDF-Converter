@@ -19,6 +19,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::ItemKind;
+use crate::settings::{self, OutputKind};
 use crate::worker_pool::{WorkerPoolError, default_worker_limit};
 
 /// Name of the event emitted for job progress updates (design §7.2).
@@ -143,11 +144,13 @@ pub struct CheckPageRangeResult {
     pub intervals: Vec<(u32, u32)>,
 }
 
-/// Result returned when a merged PDF is saved (design §7.1).
+/// Result returned once a merge has run (design §7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveMergedPdfResult {
-    pub saved_name: String,
+    /// The saved file's name, or `None` when no PDF was written (the job was
+    /// cancelled, or no image could be added).
+    pub saved_name: Option<String>,
 }
 
 /// Callbacks for receiving job progress, item results, and completion events.
@@ -219,6 +222,64 @@ pub fn list_existing_files(dir: &Path) -> Result<HashSet<String>, IpcError> {
     Ok(set)
 }
 
+/// Mode a converted file is created with before the umask is applied, so a
+/// saved file gets the permissions any other new file in the folder gets.
+#[cfg(unix)]
+const OUTPUT_FILE_MODE: u32 = 0o666;
+
+/// Creates the dot-prefixed temporary file a conversion writes into before
+/// renaming it to its final name (design §6.5).
+///
+/// `tempfile` creates it readable by its owner only, and the rename keeps that.
+/// Unix therefore asks for [`OUTPUT_FILE_MODE`] instead; Windows files have no
+/// such mode.
+fn create_output_temp(output_dir: &Path) -> std::io::Result<tempfile::NamedTempFile> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(OUTPUT_FILE_MODE));
+    }
+    builder.tempfile_in(output_dir)
+}
+
+/// Checks, before a conversion starts, that the output folder of `kind` is
+/// still there and that a file can be created in it (design §6.5).
+///
+/// A folder that is gone or is not a folder is put back to "not chosen", in
+/// the state and in the settings file, since the screen has to ask for another.
+/// A folder that cannot be written to stays chosen: the owner may fix its
+/// permissions.
+///
+/// # Errors
+///
+/// `OutputDirMissing` if `dir` does not exist or is not a folder,
+/// `OutputDirNotWritable` if a temporary file cannot be created in it.
+pub fn check_output_dir(state: &AppState, kind: OutputKind, dir: &Path) -> Result<(), IpcError> {
+    if !dir.is_dir() {
+        // A settings file that cannot be written must not hide the real problem.
+        let _ = settings::clear_output_dir(state, kind);
+        return Err(IpcError::from_code(ErrorCode::OutputDirMissing));
+    }
+    // The error is not kept: its text names the folder, and the frontend
+    // never sees paths (design §1).
+    create_output_temp(dir)
+        .map(drop)
+        .map_err(|_| IpcError::from_code(ErrorCode::OutputDirNotWritable))
+}
+
+/// Raises `write_failed`, which stops a conversion from taking up its next
+/// item or page, if `err` is a failure to write the output (design §6.5).
+/// Returns whether it was one.
+fn stop_after_write_failure(err: &IpcError, write_failed: &AtomicBool) -> bool {
+    let is_write_failure = err.code == ErrorCode::WriteFailed;
+    if is_write_failure {
+        write_failed.store(true, Ordering::SeqCst);
+    }
+    is_write_failure
+}
+
 /// Saves file bytes atomically into `output_dir` using a dot-prefixed temporary file
 /// and `persist_noclobber` (design §6.4, §6.5).
 ///
@@ -230,9 +291,7 @@ pub fn save_atomic(
     bytes: &[u8],
     used_names_lower: &Mutex<HashSet<String>>,
 ) -> Result<String, IpcError> {
-    let mut temp = tempfile::Builder::new()
-        .prefix(".")
-        .tempfile_in(output_dir)
+    let mut temp = create_output_temp(output_dir)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
 
     temp.write_all(bytes)
@@ -316,7 +375,7 @@ pub fn run_save_merged_pdf<FProg, FItem, FFin>(
     page_size: PageSizeChoice,
     dest_path: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
-) -> Result<Option<SaveMergedPdfResult>, IpcError>
+) -> Result<SaveMergedPdfResult, IpcError>
 where
     FProg: Fn(JobProgressPayload) + Send + Sync + 'static,
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
@@ -351,9 +410,7 @@ where
     let creator = format!("PDF Converter {}", env!("CARGO_PKG_VERSION"));
     let mut writer = PdfWriter::new(&creator);
 
-    let mut temp = tempfile::Builder::new()
-        .prefix(".")
-        .tempfile_in(output_dir)
+    let mut temp = create_output_temp(output_dir)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
 
     let mut succeeded = 0u32;
@@ -445,7 +502,7 @@ where
             unprocessed,
             cancelled: true,
         });
-        return Ok(None);
+        return Ok(SaveMergedPdfResult { saved_name: None });
     }
 
     if succeeded == 0 {
@@ -457,7 +514,7 @@ where
             unprocessed: 0,
             cancelled: false,
         });
-        return Ok(None);
+        return Ok(SaveMergedPdfResult { saved_name: None });
     }
 
     let pdf_bytes = writer
@@ -486,7 +543,9 @@ where
         cancelled: false,
     });
 
-    Ok(Some(SaveMergedPdfResult { saved_name }))
+    Ok(SaveMergedPdfResult {
+        saved_name: Some(saved_name),
+    })
 }
 
 /// Executes individual conversion of multiple images into separate PDF documents (design §6.2).
@@ -588,6 +647,7 @@ where
     let succeeded = Arc::new(AtomicU32::new(0));
     let failed = Arc::new(AtomicU32::new(0));
     let unprocessed = Arc::new(AtomicU32::new(0));
+    let write_failed = Arc::new(AtomicBool::new(false));
 
     let num_threads = default_worker_limit().min(total as usize).max(1);
     let mut handles = Vec::with_capacity(num_threads);
@@ -602,6 +662,7 @@ where
         let failed = Arc::clone(&failed);
         let unprocessed = Arc::clone(&unprocessed);
         let cancel_flag = Arc::clone(&state.cancel_flag);
+        let write_failed = Arc::clone(&write_failed);
         let used_names = Arc::clone(&used_names_lower);
         let output_dir = output_dir_buf.clone();
         let creator = creator.clone();
@@ -610,7 +671,7 @@ where
 
         handles.push(std::thread::spawn(move || {
             loop {
-                if cancel_flag.load(Ordering::SeqCst) {
+                if cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst) {
                     let mut q = match queue.lock() {
                         Ok(g) => g,
                         Err(p) => p.into_inner(),
@@ -658,18 +719,24 @@ where
                     current: Some(task.filename.clone()),
                 });
 
-                let process_result = (|| -> Result<String, IpcError> {
+                let pdf_bytes = (|| -> Result<Vec<u8>, IpcError> {
                     let bytes = std::fs::read(&task.path)
                         .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))?;
                     let mut writer = PdfWriter::new(&creator);
                     writer
                         .add_page(&bytes, page_size.into())
                         .map_err(IpcError::from)?;
-                    let pdf_bytes = writer
+                    writer
                         .finish()
-                        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
-                    save_atomic(&output_dir, output_name, &pdf_bytes, &used_names)
+                        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))
                 })();
+                let process_result = pdf_bytes.and_then(|pdf_bytes| {
+                    save_atomic(&output_dir, output_name, &pdf_bytes, &used_names).inspect_err(
+                        |err| {
+                            stop_after_write_failure(err, &write_failed);
+                        },
+                    )
+                });
 
                 match process_result {
                     Ok(saved_name) => {
@@ -852,6 +919,7 @@ where
     let failed_count = Arc::new(AtomicU32::new(0));
     let no_pages_count = Arc::new(AtomicU32::new(0));
     let unprocessed_count = Arc::new(AtomicU32::new(0));
+    let write_failed = Arc::new(AtomicBool::new(false));
 
     let num_threads = default_worker_limit().min(total_items as usize).max(1);
     let mut handles = Vec::with_capacity(num_threads);
@@ -865,6 +933,7 @@ where
         let no_pages_count = Arc::clone(&no_pages_count);
         let unprocessed_count = Arc::clone(&unprocessed_count);
         let cancel_flag = Arc::clone(&state.cancel_flag);
+        let write_failed = Arc::clone(&write_failed);
         let used_names = Arc::clone(&used_names_lower);
         let pool = state.pool.clone();
         let output_dir = output_dir_buf.clone();
@@ -873,7 +942,7 @@ where
 
         handles.push(std::thread::spawn(move || {
             loop {
-                if cancel_flag.load(Ordering::SeqCst) {
+                if cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst) {
                     let mut q = match queue.lock() {
                         Ok(g) => g,
                         Err(p) => p.into_inner(),
@@ -978,12 +1047,14 @@ where
 
                     match render_result {
                         Ok((Response::Render, image_bytes)) => {
+                            let mut stop = false;
                             match save_atomic(&output_dir, planned_name, &image_bytes, &used_names)
                             {
                                 Ok(saved_name) => {
                                     outputs.push(saved_name);
                                 }
                                 Err(err) => {
+                                    stop = stop_after_write_failure(&err, &write_failed);
                                     failed_pages.push(page);
                                     last_error = Some(err);
                                 }
@@ -994,6 +1065,11 @@ where
                                 total: total_pages_all,
                                 current: None,
                             });
+                            if stop {
+                                // The folder is the same for every page, so
+                                // the next ones would fail the same way.
+                                break;
+                            }
                         }
                         Err(WorkerPoolError::Remote { code, detail }) => {
                             failed_pages.push(page);
@@ -1043,7 +1119,9 @@ where
                         status: JobItemStatus::Cancelled,
                         outputs,
                         error: None,
-                        failed_pages: None,
+                        // Pages that failed before the cancel still count as
+                        // reached, so the screen must be told of them.
+                        failed_pages: (!failed_pages.is_empty()).then_some(failed_pages),
                     });
                 } else if failed_pages.is_empty() && outputs.len() == task.pages.len() {
                     succeeded_count.fetch_add(1, Ordering::SeqCst);
@@ -1133,6 +1211,11 @@ where
             }
         }
     };
+
+    if let Err(err) = check_output_dir(state, OutputKind::ImagesToPdf, &output_dir) {
+        state.is_running.store(false, Ordering::SeqCst);
+        return Err(err);
+    }
 
     for &id in ids {
         if state.items.get(id).is_none() {
@@ -1242,6 +1325,11 @@ where
             }
         }
     };
+
+    if let Err(err) = check_output_dir(state, OutputKind::PdfToImages, &output_dir) {
+        state.is_running.store(false, Ordering::SeqCst);
+        return Err(err);
+    }
 
     for &id in ids {
         if state.items.get(id).is_none() {

@@ -20,11 +20,15 @@ export function PdfToImagesAction() {
   const hasTargets = targets.length > 0;
   const isBusy = isJobActive(job);
 
+  // A range that no page of any PDF falls in would convert nothing. A range
+  // that only some PDFs lack pages for still starts; those rows read "対象の
+  // ページなし" (FR-04).
   const isRangeValid =
     pdfToImages.pageSelection === "all" ||
     (!pdfToImages.rangeChecking &&
       pdfToImages.rangeError === null &&
-      pdfToImages.rangeResult !== null);
+      pdfToImages.rangeResult !== null &&
+      pdfToImages.rangeResult.totalPages > 0);
 
   const disabled = !hasTargets || isBusy || !isRangeValid || isPicking;
 

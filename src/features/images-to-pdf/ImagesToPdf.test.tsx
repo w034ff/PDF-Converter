@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -16,6 +17,7 @@ import {
   type AddResult,
   type ImageItem,
   type JobFinishedPayload,
+  type JobItemPayload,
   type JobProgressPayload,
 } from "../../ipc";
 import { AppStateProvider, createInitialAppState } from "../../state";
@@ -742,6 +744,148 @@ describe("ImagesToPdf (T11)", () => {
     expect(calls.some((c) => c.cmd === "pick_output_dir")).toBe(false);
   });
 
+  describe("a start refused because of the output folder", () => {
+    const MISSING_MESSAGE =
+      "保存先のフォルダが見つかりません。フォルダを選び直してください";
+    const NOT_WRITABLE_MESSAGE = "保存先のフォルダに書き込めません";
+
+    /**
+     * Answers the commands of an "each" conversion. `startAnswers` are the
+     * answers of `start_images_to_pdfs` in turn, `pickAnswers` those of
+     * `pick_output_dir`; the last one repeats.
+     */
+    function mockEach(
+      startAnswers: (() => unknown)[],
+      pickAnswers: (() => unknown)[],
+    ): IpcCall[] {
+      let starts = 0;
+      let picks = 0;
+      return mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const result: AddResult<ImageItem> = {
+            added: [sampleImage1],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return result;
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        if (cmd === "start_images_to_pdfs") {
+          const answer =
+            startAnswers[Math.min(starts, startAnswers.length - 1)];
+          starts += 1;
+          return answer();
+        }
+        if (cmd === "pick_output_dir") {
+          const answer = pickAnswers[Math.min(picks, pickAnswers.length - 1)];
+          picks += 1;
+          return answer();
+        }
+        return undefined;
+      });
+    }
+
+    async function chooseFolderAndStart() {
+      renderHarness();
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await screen.findByText("photo.jpg");
+      fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+      fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+      await screen.findByText("old-folder");
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+    }
+
+    const countOf = (calls: IpcCall[], cmd: string) =>
+      calls.filter((call) => call.cmd === cmd).length;
+
+    it("forgets a folder that is gone without opening the folder dialog", async () => {
+      const calls = mockEach(
+        [() => Promise.reject({ code: "OutputDirMissing", detail: null })],
+        [() => ({ dirLabel: "old-folder" })],
+      );
+
+      await chooseFolderAndStart();
+
+      expect(await screen.findByTestId("error-display")).toHaveTextContent(
+        MISSING_MESSAGE,
+      );
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "変換を開始" }),
+        ).toBeEnabled();
+      });
+      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
+      // Only the pick that chose the folder in the first place.
+      expect(countOf(calls, "pick_output_dir")).toBe(1);
+      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
+      expect(
+        within(screen.getByTestId("error-display")).queryByRole("button"),
+      ).toBeNull();
+    });
+
+    it("asks for a folder on the next start after a folder was gone", async () => {
+      const calls = mockEach(
+        [
+          () => Promise.reject({ code: "OutputDirMissing", detail: null }),
+          () => undefined,
+        ],
+        [
+          () => ({ dirLabel: "old-folder" }),
+          () => ({ dirLabel: "new-folder" }),
+        ],
+      );
+
+      await chooseFolderAndStart();
+      await screen.findByText(MISSING_MESSAGE);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "変換を開始" }),
+        ).toBeEnabled();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+
+      await waitFor(() => {
+        expect(countOf(calls, "start_images_to_pdfs")).toBe(2);
+      });
+      expect(countOf(calls, "pick_output_dir")).toBe(2);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+        "new-folder",
+      );
+      expect(screen.queryByText(MISSING_MESSAGE)).toBeNull();
+    });
+
+    it("shows that the folder cannot be written to and starts nothing else", async () => {
+      const calls = mockEach(
+        [() => Promise.reject({ code: "OutputDirNotWritable", detail: null })],
+        [() => ({ dirLabel: "old-folder" })],
+      );
+
+      await chooseFolderAndStart();
+
+      expect(await screen.findByText(NOT_WRITABLE_MESSAGE)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "変換を開始" }),
+        ).toBeEnabled();
+      });
+      expect(screen.getAllByText(NOT_WRITABLE_MESSAGE)).toHaveLength(1);
+      expect(screen.getByTestId("error-display")).toHaveTextContent(
+        NOT_WRITABLE_MESSAGE,
+      );
+      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
+      expect(countOf(calls, "pick_output_dir")).toBe(1);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+        "old-folder",
+      );
+      expect(
+        within(screen.getByTestId("error-display")).queryByRole("button"),
+      ).toBeNull();
+    });
+  });
+
   it("applies is-dragging, is-drop-after, and is-drop-before during drag, and cleans up after drop", async () => {
     mockAppIpc((cmd) => {
       if (cmd === "add_images") {
@@ -1072,10 +1216,10 @@ describe("ImagesToPdf (T11)", () => {
     fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
 
     // Now conversion is active!
-    // 1. Settings panel disabled note is displayed
+    // 1. The controls say they are locked by being disabled, not in words
     expect(
-      screen.getByText("変換中は設定を変えられません"),
-    ).toBeInTheDocument();
+      screen.queryByText("変換中は設定を変えられません"),
+    ).not.toBeInTheDocument();
 
     // 2. Settings controls are disabled
     expect(screen.getByRole("button", { name: "1 つの PDF" })).toBeDisabled();
@@ -1392,7 +1536,225 @@ describe("ImagesToPdf (T11)", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
-  it("does not contain full-width parentheses in skipped notice and saved name in English locale", async () => {
+  describe("notes that were dropped", () => {
+    const DROPPED_JA = [
+      "並べた順に 1 ページずつ入れて、1 つの PDF にします",
+      "画像ごとに PDF を作ります",
+      "ドラッグか ↑↓ ボタンで並べ替えられます",
+      "変換中は設定を変えられません",
+      /画質は変わりません/,
+    ];
+    const DROPPED_EN = [
+      "Combines all images in order into a single PDF",
+      "Creates a PDF for each image",
+      "Drag or use ↑↓ buttons to reorder",
+      "Settings cannot be changed during conversion",
+      /Quality is unchanged/,
+    ];
+
+    function mockTwoImages() {
+      mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const result: AddResult<ImageItem> = {
+            added: [sampleImage1, sampleImage2],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return result;
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        return undefined;
+      });
+    }
+
+    it.each([
+      ["ja-JP", "画像を追加", "1 枚ずつ", DROPPED_JA],
+      ["en-US", "Add images", "Each image", DROPPED_EN],
+    ])("says none of them in %s", async (lang, add, each, dropped) => {
+      mockTwoImages();
+      renderHarness(lang);
+      fireEvent.click(screen.getByRole("button", { name: add }));
+      await screen.findByText("photo.jpg");
+
+      for (const text of dropped) {
+        expect(screen.queryByText(text)).not.toBeInTheDocument();
+      }
+      fireEvent.click(screen.getByRole("button", { name: each }));
+      for (const text of dropped) {
+        expect(screen.queryByText(text)).not.toBeInTheDocument();
+      }
+    });
+
+    it("keeps the first half of the note under 'Fit to image'", () => {
+      mockTwoImages();
+      renderHarness("ja-JP");
+
+      expect(screen.getByText("画像の大きさのページにします")).toBeVisible();
+    });
+  });
+
+  describe("summary of 'Single PDF'", () => {
+    /**
+     * Runs "PDF を保存" the way the backend does: the item results and
+     * `job-finished` arrive first, then the command resolves with `result`.
+     */
+    async function mergeAndFinish(
+      finished: JobFinishedPayload,
+      result: unknown,
+      items: JobItemPayload[] = [],
+      lang = "ja-JP",
+    ) {
+      let resolveSave: (value: unknown) => void = () => {};
+      mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const added: AddResult<ImageItem> = {
+            added: [sampleImage1, sampleImage2],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return added;
+        }
+        if (cmd === "save_merged_pdf") {
+          return new Promise((resolve) => {
+            resolveSave = resolve;
+          });
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        return undefined;
+      });
+      renderHarness(lang);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: lang === "ja-JP" ? "画像を追加" : "Add images",
+        }),
+      );
+      await screen.findByText("photo.jpg");
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: lang === "ja-JP" ? "PDF を保存" : "Save PDF",
+        }),
+      );
+      await act(async () => {
+        for (const item of items) {
+          await emit(JOB_ITEM_EVENT, item);
+        }
+        await emit(JOB_FINISHED_EVENT, finished);
+      });
+      await act(async () => {
+        resolveSave(result);
+      });
+    }
+
+    const NOTHING: JobFinishedPayload = {
+      succeeded: 0,
+      failed: 0,
+      noPages: 0,
+      unprocessed: 0,
+      cancelled: false,
+    };
+
+    it("counts the pages of the PDF and adds the images that failed", async () => {
+      await mergeAndFinish(
+        { ...NOTHING, succeeded: 10, failed: 1 },
+        { savedName: "merged.pdf" },
+      );
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "変換が終わりました：10 ページの PDF を保存しました · 失敗 1 枚",
+      );
+      expect(screen.queryByText(/merged\.pdf/)).not.toBeInTheDocument();
+    });
+
+    it("says only the pages when no image failed", async () => {
+      await mergeAndFinish(
+        { ...NOTHING, succeeded: 2 },
+        { savedName: "merged.pdf" },
+      );
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        /^変換が終わりました：2 ページの PDF を保存しました$/,
+      );
+    });
+
+    it("keeps the count of failures and the failed rows when every image failed", async () => {
+      await mergeAndFinish({ ...NOTHING, failed: 2 }, { savedName: null }, [
+        { id: 1, status: "failed", outputs: [] },
+        { id: 2, status: "failed", outputs: [] },
+      ]);
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /^変換が終わりました：失敗 2 件$/,
+      );
+      expect(screen.getAllByText("✕ 失敗")).toHaveLength(2);
+    });
+
+    it("keeps the cancelled summary and the cancelled rows when the merge was cancelled", async () => {
+      await mergeAndFinish(
+        { ...NOTHING, unprocessed: 2, cancelled: true },
+        { savedName: null },
+        [
+          { id: 1, status: "ok", outputs: [] },
+          { id: 2, status: "ok", outputs: [] },
+        ],
+      );
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /^キャンセルしました：PDF は保存していません$/,
+      );
+      expect(screen.getAllByText("キャンセル")).toHaveLength(2);
+      expect(screen.queryByText("✓ 完了")).not.toBeInTheDocument();
+    });
+
+    it("says in English that the PDF was not saved", async () => {
+      await mergeAndFinish(
+        { ...NOTHING, unprocessed: 2, cancelled: true },
+        { savedName: null },
+        [],
+        "en-US",
+      );
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /^Cancelled: the PDF was not saved$/,
+      );
+    });
+
+    it("shows no result when the save dialog was cancelled", async () => {
+      mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          const added: AddResult<ImageItem> = {
+            added: [sampleImage1, sampleImage2],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return added;
+        }
+        if (cmd === "save_merged_pdf") {
+          return null;
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        return undefined;
+      });
+      renderHarness();
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await screen.findByText("photo.jpg");
+
+      fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "PDF を保存" }),
+        ).toBeEnabled(),
+      );
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.getByText("2 ページの PDF になります")).toBeInTheDocument();
+    });
+  });
+
+  it("does not contain full-width parentheses in the skipped notice in English locale, and does not show the saved name", async () => {
     mockAppIpc((cmd) => {
       if (cmd === "add_images") {
         const result: AddResult<ImageItem> = {
@@ -1443,9 +1805,10 @@ describe("ImagesToPdf (T11)", () => {
       } satisfies JobFinishedPayload);
     });
 
-    // Saved name has half-width parentheses and no full-width parentheses
-    const savedNameNotice = screen.getByText("(merged.pdf)");
-    expect(savedNameNotice).toBeInTheDocument();
-    expect(savedNameNotice.textContent).not.toMatch(/[（）]/);
+    // The summary counts the pages of the PDF and does not name the file
+    expect(
+      await screen.findByText("Conversion finished: Saved a 2-page PDF"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/merged\.pdf/)).not.toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import {
   formatSkippedSummary,
   intervalsToRangeText,
   isPageInIntervals,
+  pageOutcomes,
   togglePageRangeInIntervals,
 } from "./pdfUtils";
 
@@ -246,5 +247,35 @@ describe("pdfUtils", () => {
       expect(added).toEqual([[3, 7]]);
       expect(intervalsToRangeText(added)).toBe("3-7");
     });
+  });
+});
+
+describe("pageOutcomes", () => {
+  it("marks the pages the conversion reached and the ones it did not", () => {
+    expect([...pageOutcomes([2, 3, 5, 6], 1, [3])]).toEqual([
+      [2, "done"],
+      [3, "failed"],
+      [5, "unprocessed"],
+      [6, "unprocessed"],
+    ]);
+  });
+
+  it("marks every selected page done when all were saved", () => {
+    expect([...pageOutcomes([1, 2, 3], 3, []).values()]).toEqual([
+      "done",
+      "done",
+      "done",
+    ]);
+  });
+
+  it("marks every page unprocessed when nothing was reached", () => {
+    expect([...pageOutcomes([1, 2], 0, []).values()]).toEqual([
+      "unprocessed",
+      "unprocessed",
+    ]);
+  });
+
+  it("says nothing of a page that was not selected", () => {
+    expect(pageOutcomes([2, 4], 2, []).has(3)).toBe(false);
   });
 });

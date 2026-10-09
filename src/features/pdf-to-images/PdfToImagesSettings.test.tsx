@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CheckPageRangeResult, PdfItem } from "../../ipc";
@@ -463,6 +464,32 @@ describe("PdfToImagesSettings", () => {
     });
 
     expect(screen.queryByText(/の 1 ページ →/)).not.toBeInTheDocument();
+  });
+
+  it("names the resolutions by their number only", () => {
+    mockCommands(() => undefined);
+    renderSettings();
+
+    const options = within(screen.getByLabelText("解像度"))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi"]);
+  });
+
+  it("names the resolutions by their number only in English", () => {
+    mockCommands(() => undefined);
+    const state = createInitialAppState("en-US");
+    state.language.activeTab = "pdfToImages";
+    render(
+      <AppStateProvider initialState={state}>
+        <PdfToImagesSettings />
+      </AppStateProvider>,
+    );
+
+    const options = within(screen.getByLabelText("Resolution"))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi"]);
   });
 
   it("disables all inputs when conversion is running", () => {

@@ -37,11 +37,15 @@
   flex: 1;
 }
 
+/* The size is set here because the status words under the name carry none and
+   would take the browser's 16px, larger than the name beside them. The
+   other texts of the header have a size of their own. */
 .pdf-view-header {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  font-size: 14px;
 }
 
 .pdf-single-name {
@@ -258,7 +262,10 @@
   font-weight: 500;
 }
 
-.pdf-status-running {
+/* A state with no good or bad in it: the colour of the text, so it reads
+   apart from the grey of a reason or of a row not yet reached. */
+.pdf-status-running,
+.pdf-status-neutral {
   color: var(--color-text-primary);
   font-weight: 500;
 }
@@ -289,7 +296,15 @@
 }
 
 /* The caption is also .mono, whose grey comes later in the cascade; the
-   failed page's words must still be red. */
+   words of a result must still carry the colour of that result. */
+.pdf-page-figure figcaption.pdf-status-ok {
+  color: var(--color-success);
+}
+
 .pdf-page-figure figcaption.pdf-status-failed {
   color: var(--color-error);
+}
+
+.pdf-page-figure figcaption.pdf-status-muted {
+  color: var(--color-text-secondary);
 }

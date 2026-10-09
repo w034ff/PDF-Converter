@@ -9,8 +9,8 @@ use pdfconv_worker::WORKER_FLAG;
 use pdfconv_worker::client::{OPEN_TIMEOUT, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::Request;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
-use tauri_plugin_dialog::DialogExt;
+use tauri::{AppHandle, Emitter, Wry};
+use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use ts_rs::TS;
 
 use crate::AppState;
@@ -32,7 +32,6 @@ const PDF_FILTER_NAME: &str = "PDF";
 #[serde(rename_all = "camelCase")]
 pub struct AboutInfo {
     pub version: String,
-    pub pdfium_version: String,
     /// Whether a worker started and could use pdfium. The about screen
     /// shows `pdfium_error` when it could not, so an installed build tells
     /// whether its bundled pdfium works.
@@ -40,8 +39,8 @@ pub struct AboutInfo {
     pub pdfium_error: Option<String>,
 }
 
-/// Returns the app and pdfium versions after checking that a worker can
-/// start and load pdfium.
+/// Returns the app version after checking that a worker can start and load
+/// pdfium.
 #[tauri::command]
 pub async fn get_about(app: AppHandle) -> AboutInfo {
     let version = app.package_info().version.to_string();
@@ -53,7 +52,6 @@ pub async fn get_about(app: AppHandle) -> AboutInfo {
     };
     AboutInfo {
         version,
-        pdfium_version: crate::pdfium::release(),
         pdfium_ready: pdfium_error.is_none(),
         pdfium_error,
     }
@@ -99,13 +97,13 @@ pub async fn save_settings(
 /// if the dialog was cancelled (design §6.7).
 #[tauri::command]
 pub async fn pick_output_dir(
-    app: AppHandle,
+    window: tauri::Window,
     state: tauri::State<'_, AppState>,
     kind: OutputKind,
 ) -> Result<Option<OutputDirLabel>, IpcError> {
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let Some(dir) = pick_folder(&app)? else {
+        let Some(dir) = pick_folder(&window)? else {
             return Ok(None);
         };
         let (label, persisted) = settings::apply_picked_dir(&state, kind, dir);
@@ -133,7 +131,7 @@ pub enum AddSource {
 /// of images. Returns `None` if the dialog was cancelled.
 #[tauri::command]
 pub async fn add_images(
-    app: AppHandle,
+    window: tauri::Window,
     state: tauri::State<'_, AppState>,
     source: AddSource,
 ) -> Result<Option<AddResult<ImageItem>>, IpcError> {
@@ -142,9 +140,9 @@ pub async fn add_images(
     }
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || match source {
-        AddSource::Files => Ok(pick_files(&app, IMAGE_FILTER_NAME, IMAGE_EXTENSIONS)?
+        AddSource::Files => Ok(pick_files(&window, IMAGE_FILTER_NAME, IMAGE_EXTENSIONS)?
             .map(|paths| items::add_images(&state, &paths))),
-        AddSource::Folder => pick_folder(&app)?
+        AddSource::Folder => pick_folder(&window)?
             .map(|dir| items::add_images_from_folder(&state, &dir))
             .transpose(),
     })
@@ -156,7 +154,7 @@ pub async fn add_images(
 /// PDFs. Returns `None` if the dialog was cancelled.
 #[tauri::command]
 pub async fn add_pdfs(
-    app: AppHandle,
+    window: tauri::Window,
     state: tauri::State<'_, AppState>,
     source: AddSource,
 ) -> Result<Option<AddResult<PdfItem>>, IpcError> {
@@ -165,9 +163,9 @@ pub async fn add_pdfs(
     }
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || match source {
-        AddSource::Files => Ok(pick_files(&app, PDF_FILTER_NAME, &[PDF_EXTENSION])?
+        AddSource::Files => Ok(pick_files(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
             .map(|paths| items::add_pdfs(&state, &paths))),
-        AddSource::Folder => pick_folder(&app)?
+        AddSource::Folder => pick_folder(&window)?
             .map(|dir| items::add_pdfs_from_folder(&state, &dir))
             .transpose(),
     })
@@ -198,9 +196,11 @@ pub fn cancel_job(state: tauri::State<'_, AppState>) {
 }
 
 /// Opens a save dialog to save selected images into a single merged PDF (design §6.2, §7.1).
+///
+/// Returns `None` only when the dialog was cancelled, so nothing ran. Once the
+/// conversion has run, the result says whether a PDF was written.
 #[tauri::command]
 pub async fn save_merged_pdf(
-    app: AppHandle,
     window: tauri::Window,
     state: tauri::State<'_, AppState>,
     ids: Vec<u64>,
@@ -235,13 +235,17 @@ pub async fn save_merged_pdf(
         format!("{stem}.pdf")
     };
 
+    let dialog_window = window.clone();
     let picked_path = tauri::async_runtime::spawn_blocking(move || {
         let patterns = filter_extensions(&[PDF_EXTENSION]);
         let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
-        app.dialog()
+        let dialog = dialog_window
+            .dialog()
             .file()
+            .set_parent(&dialog_window)
             .add_filter(PDF_FILTER_NAME, &patterns)
-            .set_file_name(&default_name)
+            .set_file_name(&default_name);
+        save_dialog_start_dir(&dialog_window, dialog)
             .blocking_save_file()
             .map(dialog_path)
             .transpose()
@@ -274,6 +278,7 @@ pub async fn save_merged_pdf(
     })
     .await
     .map_err(task_failed)?
+    .map(Some)
 }
 
 /// Starts batch conversion of images to individual PDF files in the background (design §6.2, §7.1).
@@ -347,17 +352,20 @@ pub async fn get_thumbnail(
     Ok(tauri::ipc::Response::new(png))
 }
 
-/// Opens a dialog to pick several files with one of `extensions`. Blocks
-/// until it is closed, so it must not run on the main thread.
+/// Opens a dialog, a child of `window`, to pick several files with one of
+/// `extensions`. Blocks until it is closed, so it must not run on the main
+/// thread.
 fn pick_files(
-    app: &AppHandle,
+    window: &tauri::Window,
     filter_name: &str,
     extensions: &[&str],
 ) -> Result<Option<Vec<PathBuf>>, IpcError> {
     let patterns = filter_extensions(extensions);
     let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
-    app.dialog()
+    window
+        .dialog()
         .file()
+        .set_parent(window)
         .add_filter(filter_name, &patterns)
         .blocking_pick_files()
         .map(|files| files.into_iter().map(dialog_path).collect())
@@ -375,11 +383,39 @@ fn filter_extensions(extensions: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// Opens a dialog to pick a folder. Blocks until it is closed, so it must not
-/// run on the main thread.
-fn pick_folder(app: &AppHandle) -> Result<Option<PathBuf>, IpcError> {
-    app.dialog()
+/// Makes the save dialog start in the home folder.
+///
+/// Without a folder, GTK opens the dialog in the working directory. In an
+/// AppImage that is the read-only mount of the image, where nothing can be
+/// saved. Windows is left alone: its dialog remembers the last folder.
+#[cfg(target_os = "linux")]
+fn save_dialog_start_dir(
+    window: &tauri::Window,
+    dialog: FileDialogBuilder<Wry>,
+) -> FileDialogBuilder<Wry> {
+    use tauri::Manager;
+
+    match window.path().home_dir() {
+        Ok(home) => dialog.set_directory(home),
+        Err(_) => dialog,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn save_dialog_start_dir(
+    _window: &tauri::Window,
+    dialog: FileDialogBuilder<Wry>,
+) -> FileDialogBuilder<Wry> {
+    dialog
+}
+
+/// Opens a dialog, a child of `window`, to pick a folder. Blocks until it is
+/// closed, so it must not run on the main thread.
+fn pick_folder(window: &tauri::Window) -> Result<Option<PathBuf>, IpcError> {
+    window
+        .dialog()
         .file()
+        .set_parent(window)
         .blocking_pick_folder()
         .map(dialog_path)
         .transpose()

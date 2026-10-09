@@ -245,6 +245,15 @@ describe("ipc", () => {
       ]);
     });
 
+    it("tells a cancelled dialog from a merge that wrote no PDF", async () => {
+      mockIPC(() => null);
+      expect(await saveMergedPdf([1], "fit")).toBeNull();
+
+      clearMocks();
+      mockIPC(() => ({ savedName: null }));
+      expect(await saveMergedPdf([1], "fit")).toEqual({ savedName: null });
+    });
+
     it("calls startImagesToPdfs", async () => {
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {

@@ -78,6 +78,8 @@ const ERROR_CODES = {
   ConversionRunning: true,
   UnknownHandle: true,
   InvalidParams: true,
+  OutputDirMissing: true,
+  OutputDirNotWritable: true,
 } satisfies Record<ErrorCode, true>;
 
 /** Whether a value is one of the error codes of design §6.6. */
@@ -258,7 +260,8 @@ export async function cancelJob(): Promise<void> {
 
 /**
  * Opens a save dialog to save selected images into a single merged PDF (design §6.2, §7.1).
- * Resolves to `null` when the dialog was cancelled.
+ * Resolves to `null` when the dialog was cancelled, so nothing ran. Once the
+ * conversion has run, `savedName` is `null` if no PDF was written.
  */
 export async function saveMergedPdf(
   ids: number[],

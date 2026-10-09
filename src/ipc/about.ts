@@ -8,7 +8,6 @@ function isAboutInfo(value: unknown): value is AboutInfo {
   const v: Record<string, unknown> = { ...value };
   return (
     typeof v.version === "string" &&
-    typeof v.pdfiumVersion === "string" &&
     typeof v.pdfiumReady === "boolean" &&
     (typeof v.pdfiumError === "string" || v.pdfiumError === null)
   );

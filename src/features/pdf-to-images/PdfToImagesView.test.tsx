@@ -11,6 +11,7 @@ import type {
   AddResult,
   CheckPageRangeResult,
   JobFinishedPayload,
+  JobItemPayload,
   PdfItem,
 } from "../../ipc";
 import {
@@ -482,6 +483,63 @@ describe("PdfToImagesView", () => {
       ).toBeInTheDocument();
     });
 
+    it("gives 'cancelled' and 'no pages' the colour of the text, apart from the grey of a row not reached", () => {
+      mockCommands(() => undefined);
+      const pdf3: PdfItem = { ...samplePdf2, id: 5, name: "third.pdf" };
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, samplePdf2, pdf3];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [
+          { id: 1, name: samplePdf1.name },
+          { id: 2, name: samplePdf2.name },
+          { id: 5, name: pdf3.name },
+        ];
+        state.job.results = {
+          1: { id: 1, status: "cancelled", outputs: ["a"] },
+          2: { id: 2, status: "noPages", outputs: [] },
+        };
+        state.job.finished = {
+          succeeded: 0,
+          failed: 0,
+          noPages: 1,
+          unprocessed: 1,
+          cancelled: true,
+        };
+      });
+
+      const cell = (text: string) => screen.getByText(text).closest("td");
+      expect(cell("キャンセル")).toHaveClass("pdf-status-neutral");
+      expect(cell("キャンセル")).not.toHaveClass("pdf-status-muted");
+      expect(cell("対象のページなし")).toHaveClass("pdf-status-neutral");
+      expect(cell("対象のページなし")).not.toHaveClass("pdf-status-muted");
+      expect(cell("未処理")).toHaveClass("pdf-status-muted");
+    });
+
+    it("gives the same colour to 'cancelled' under a single PDF's name", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+        state.job.phase = "finished";
+        state.job.kind = "pdfToImages";
+        state.job.targets = [{ id: 1, name: samplePdf1.name }];
+        state.job.results = {
+          1: { id: 1, status: "cancelled", outputs: ["a"] },
+        };
+        state.job.finished = {
+          succeeded: 0,
+          failed: 0,
+          noPages: 0,
+          unprocessed: 0,
+          cancelled: true,
+        };
+      });
+
+      const status = screen.getByTestId("single-result").firstElementChild;
+      expect(status).toHaveTextContent("キャンセル");
+      expect(status).toHaveClass("pdf-status-neutral");
+    });
+
     it("renders job summary banner above table on finish", () => {
       mockCommands(() => undefined);
       const finished: JobFinishedPayload = {
@@ -552,9 +610,9 @@ describe("PdfToImagesView", () => {
           .querySelector(".pdf-page-failed-badge"),
       ).toBeNull();
 
-      // Top banner shows partial failure count
+      // One PDF was converted, so the banner counts its pages.
       expect(screen.getByRole("status")).toHaveTextContent(
-        "変換が終わりました：成功 0 件 · 一部失敗 1 件",
+        "変換が終わりました：3 ページ保存しました · 失敗 1 ページ",
       );
     });
 
@@ -639,6 +697,379 @@ describe("PdfToImagesView", () => {
       expect(cancelledRes).toHaveTextContent("キャンセル");
       expect(cancelledRes).toHaveTextContent("1 ページを保存済み");
       cancelledView.unmount();
+    });
+
+    describe("captions under the pages of a single PDF", () => {
+      const NO_FAILURES: JobFinishedPayload = {
+        succeeded: 0,
+        failed: 0,
+        noPages: 0,
+        unprocessed: 0,
+        cancelled: false,
+      };
+
+      /** Shows `pdf` with one result for it and the given page selection. */
+      function renderWithResult(
+        pdf: PdfItem,
+        result: Omit<JobItemPayload, "id">,
+        intervals: [number, number][] | null,
+        lang = "ja-JP",
+      ) {
+        const base = createInitialAppState(lang);
+        const state: AppState = {
+          ...base,
+          pdfToImages: {
+            ...base.pdfToImages,
+            items: [pdf],
+            pageSelection: intervals === null ? "all" : "range",
+            rangeText: intervals === null ? "" : "range",
+            rangeResult:
+              intervals === null
+                ? null
+                : { totalPages: pdf.pageCount, intervals },
+          },
+          job: {
+            ...base.job,
+            phase: "finished",
+            kind: "pdfToImages",
+            targets: [{ id: pdf.id, name: pdf.name }],
+            results: { [pdf.id]: { id: pdf.id, ...result } },
+            finished: NO_FAILURES,
+          },
+        };
+        state.language.activeTab = "pdfToImages";
+        return render(
+          <AppStateProvider initialState={state}>
+            <PdfToImagesSettings />
+            <PdfToImagesView />
+          </AppStateProvider>,
+        );
+      }
+
+      const caption = (page: number) =>
+        screen
+          .getByTestId(`page-thumbnail-${page}`)
+          .querySelector("figcaption");
+
+      it("says '変換する' for each selected page before any result", () => {
+        mockCommands(() => undefined);
+        renderView((state) => {
+          state.pdfToImages.items = [samplePdf1];
+          state.pdfToImages.pageSelection = "range";
+          state.pdfToImages.rangeText = "2-3";
+          state.pdfToImages.rangeResult = {
+            totalPages: 2,
+            intervals: [[2, 3]],
+          };
+        });
+
+        expect(caption(1)).toHaveTextContent(/^1$/);
+        expect(caption(2)).toHaveTextContent("2 ✓ 変換する");
+        expect(caption(3)).toHaveTextContent("3 ✓ 変換する");
+        expect(caption(4)).toHaveTextContent(/^4$/);
+      });
+
+      it("says '✓ 完了' in green for every saved page", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "ok", outputs: ["p1", "p2", "p3", "p4"] },
+          null,
+        );
+
+        for (const page of [1, 2, 3, 4]) {
+          expect(caption(page)).toHaveTextContent(`${page} ✓ 完了`);
+          expect(caption(page)).toHaveClass("pdf-status-ok");
+        }
+      });
+
+      it("says '未処理' in grey for the pages a cancel did not reach", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "cancelled", outputs: ["p1", "p2"] },
+          null,
+        );
+
+        expect(caption(1)).toHaveTextContent("1 ✓ 完了");
+        expect(caption(2)).toHaveTextContent("2 ✓ 完了");
+        expect(caption(3)).toHaveTextContent("3 未処理");
+        expect(caption(3)).toHaveClass("pdf-status-muted");
+        expect(caption(4)).toHaveTextContent("4 未処理");
+      });
+
+      it("counts only the selected pages, from the first, when the range has gaps", () => {
+        mockCommands(() => undefined);
+        // Selected 2, 3 and 5; one saved and one failed, so page 5 was not reached.
+        renderWithResult(
+          samplePdf10Pages,
+          {
+            status: "partial",
+            outputs: ["p2"],
+            failedPages: [3],
+          },
+          [
+            [2, 3],
+            [5, 5],
+          ],
+        );
+
+        expect(caption(1)).toHaveTextContent(/^1$/);
+        expect(caption(2)).toHaveTextContent("2 ✓ 完了");
+        expect(caption(3)).toHaveTextContent("3 ✕ 失敗");
+        expect(caption(3)).toHaveClass("pdf-status-failed");
+        expect(caption(4)).toHaveTextContent(/^4$/);
+        expect(caption(5)).toHaveTextContent("5 未処理");
+        expect(caption(6)).toHaveTextContent(/^6$/);
+      });
+
+      it("marks only the page that could not be written when the conversion stopped there", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          {
+            status: "failed",
+            outputs: [],
+            failedPages: [1],
+            error: { code: "WriteFailed", detail: null },
+          },
+          null,
+        );
+
+        expect(caption(1)).toHaveTextContent("1 ✕ 失敗");
+        expect(caption(2)).toHaveTextContent("2 未処理");
+        expect(caption(3)).toHaveTextContent("3 未処理");
+        expect(caption(4)).toHaveTextContent("4 未処理");
+      });
+
+      it("keeps a failed page before a cancel as failed, and counts from there", () => {
+        mockCommands(() => undefined);
+        // Pages 1-5: 1 saved, 2 failed, 3 saved, then cancelled.
+        renderWithResult(
+          samplePdf10Pages,
+          { status: "cancelled", outputs: ["p1", "p3"], failedPages: [2] },
+          [[1, 5]],
+        );
+
+        expect(caption(1)).toHaveTextContent("1 ✓ 完了");
+        expect(caption(2)).toHaveTextContent("2 ✕ 失敗");
+        expect(caption(3)).toHaveTextContent("3 ✓ 完了");
+        expect(caption(4)).toHaveTextContent("4 未処理");
+        expect(caption(5)).toHaveTextContent("5 未処理");
+      });
+
+      it("marks every selected page failed when the PDF failed as a whole", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          {
+            status: "failed",
+            outputs: [],
+            error: { code: "PdfOpenFailed", detail: null },
+          },
+          [[2, 3]],
+        );
+
+        expect(caption(1)).toHaveTextContent(/^1$/);
+        expect(caption(2)).toHaveTextContent("2 ✕ 失敗");
+        expect(caption(3)).toHaveTextContent("3 ✕ 失敗");
+        expect(caption(4)).toHaveTextContent(/^4$/);
+        expect(
+          screen
+            .getByTestId("page-thumbnail-2")
+            .querySelector(".pdf-page-container"),
+        ).toHaveClass("is-failed");
+      });
+
+      it("uses the English words", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "cancelled", outputs: ["p1"] },
+          null,
+          "en-US",
+        );
+
+        expect(caption(1)).toHaveTextContent("1 ✓ Done");
+        expect(caption(2)).toHaveTextContent("2 Not processed");
+      });
+
+      it("goes back to '変換する' when a setting change drops the result", () => {
+        mockCommands(() => undefined);
+        renderWithResult(
+          samplePdf1,
+          { status: "cancelled", outputs: ["p1"] },
+          null,
+        );
+        expect(caption(1)).toHaveTextContent("1 ✓ 完了");
+
+        fireEvent.change(screen.getByLabelText("解像度"), {
+          target: { value: "300" },
+        });
+
+        expect(caption(1)).toHaveTextContent("1 ✓ 変換する");
+        expect(caption(2)).toHaveTextContent("2 ✓ 変換する");
+      });
+    });
+
+    describe("summary of a single PDF", () => {
+      function renderSummary(
+        pdf: PdfItem,
+        intervals: [number, number][] | null,
+        result: Omit<JobItemPayload, "id"> | null,
+        finished: Partial<JobFinishedPayload>,
+      ) {
+        renderView((state) => {
+          state.pdfToImages.items = [pdf];
+          state.pdfToImages.pageSelection =
+            intervals === null ? "all" : "range";
+          state.pdfToImages.rangeText = intervals === null ? "" : "range";
+          state.pdfToImages.rangeResult =
+            intervals === null
+              ? null
+              : { totalPages: pdf.pageCount, intervals };
+          state.job.phase = "finished";
+          state.job.kind = "pdfToImages";
+          state.job.targets = [{ id: pdf.id, name: pdf.name }];
+          state.job.results =
+            result === null ? {} : { [pdf.id]: { id: pdf.id, ...result } };
+          state.job.finished = {
+            succeeded: 0,
+            failed: 0,
+            noPages: 0,
+            unprocessed: 0,
+            cancelled: false,
+            ...finished,
+          };
+        });
+        return screen.getByRole("status");
+      }
+
+      it("counts the saved pages", () => {
+        mockCommands(() => undefined);
+        const banner = renderSummary(
+          samplePdf1,
+          null,
+          { status: "ok", outputs: ["1", "2", "3", "4"] },
+          { succeeded: 1 },
+        );
+        expect(banner).toHaveTextContent(
+          /^変換が終わりました：4 ページ保存しました$/,
+        );
+      });
+
+      it("adds the failed pages", () => {
+        mockCommands(() => undefined);
+        const banner = renderSummary(
+          samplePdf1,
+          null,
+          { status: "partial", outputs: ["1", "2", "3"], failedPages: [4] },
+          { failed: 1 },
+        );
+        expect(banner).toHaveTextContent(
+          /^変換が終わりました：3 ページ保存しました · 失敗 1 ページ$/,
+        );
+      });
+
+      it("counts the selected pages a cancel did not reach", () => {
+        mockCommands(() => undefined);
+        // 8 of the 10 pages are selected; 3 saved, so 5 were not reached.
+        const banner = renderSummary(
+          samplePdf10Pages,
+          [
+            [1, 5],
+            [8, 10],
+          ],
+          { status: "cancelled", outputs: ["1", "2", "3"] },
+          { cancelled: true },
+        );
+        expect(banner).toHaveTextContent(
+          /^キャンセルしました：3 ページ保存しました · 未処理 5 ページ$/,
+        );
+      });
+
+      it("counts every selected page as not processed when nothing was reached", () => {
+        mockCommands(() => undefined);
+        const banner = renderSummary(samplePdf1, null, null, {
+          unprocessed: 1,
+          cancelled: true,
+        });
+        expect(banner).toHaveTextContent(
+          /^キャンセルしました：未処理 4 ページ$/,
+        );
+      });
+
+      it("lists only the failure when no page was saved", () => {
+        mockCommands(() => undefined);
+        const banner = renderSummary(
+          samplePdf1,
+          [[1, 3]],
+          {
+            status: "failed",
+            outputs: [],
+            failedPages: [1],
+            error: { code: "WriteFailed", detail: null },
+          },
+          { failed: 1, unprocessed: 0 },
+        );
+        // Page 1 failed and the conversion stopped there: 2 and 3 were not reached.
+        expect(banner).toHaveTextContent(
+          /^変換が終わりました：失敗 1 ページ · 未処理 2 ページ$/,
+        );
+      });
+
+      it("counts the pages that failed before a cancel", () => {
+        mockCommands(() => undefined);
+        const banner = renderSummary(
+          samplePdf10Pages,
+          [[1, 5]],
+          { status: "cancelled", outputs: ["1", "3"], failedPages: [2] },
+          { cancelled: true },
+        );
+        expect(banner).toHaveTextContent(
+          /^キャンセルしました：2 ページ保存しました · 失敗 1 ページ · 未処理 2 ページ$/,
+        );
+      });
+
+      it("counts every selected page as failed when the PDF failed as a whole", () => {
+        mockCommands(() => undefined);
+        const banner = renderSummary(
+          samplePdf10Pages,
+          null,
+          {
+            status: "failed",
+            outputs: [],
+            error: { code: "PdfOpenFailed", detail: null },
+          },
+          { failed: 1 },
+        );
+        expect(banner).toHaveTextContent(
+          /^変換が終わりました：失敗 10 ページ$/,
+        );
+      });
+
+      it("keeps counting items when two PDFs were converted", () => {
+        mockCommands(() => undefined);
+        renderView((state) => {
+          state.pdfToImages.items = [samplePdf1, samplePdf2];
+          state.job.phase = "finished";
+          state.job.kind = "pdfToImages";
+          state.job.targets = [
+            { id: 1, name: samplePdf1.name },
+            { id: 2, name: samplePdf2.name },
+          ];
+          state.job.finished = {
+            succeeded: 2,
+            failed: 0,
+            noPages: 0,
+            unprocessed: 0,
+            cancelled: false,
+          };
+        });
+        expect(screen.getByRole("status")).toHaveTextContent(
+          /^変換が終わりました：成功 2 件$/,
+        );
+      });
     });
 
     it("shows nothing under a single PDF before any conversion", () => {

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   cancelJob,
   normalizeIpcError,
+  type IpcError,
   saveMergedPdf,
   startImagesToPdfs,
   startPdfsToImages,
@@ -45,27 +46,45 @@ export function useJobRunner(): JobRunner {
       kind: ActiveTab,
       targets: JobTarget[],
       command: (ids: number[]) => Promise<T>,
-    ): Promise<T | undefined> {
+    ): Promise<{ result: T } | { error: IpcError }> {
       dispatch({ type: "JOB_STARTED", kind, targets });
       try {
-        return await command(targets.map((target) => target.id));
+        return { result: await command(targets.map((target) => target.id)) };
       } catch (error: unknown) {
-        dispatch({ type: "JOB_FAILED", error: normalizeIpcError(error) });
-        return undefined;
+        const ipcError = normalizeIpcError(error);
+        if (ipcError.code === "OutputDirMissing") {
+          // Rust has forgotten the folder, so the field reads "未選択" and
+          // the next start asks for a folder (`useEnsureOutputDir`). This
+          // comes before JOB_FAILED because changing a setting drops a
+          // result that is already there.
+          dispatch(
+            kind === "imagesToPdf"
+              ? { type: "SET_IMAGES_OUTPUT_DIR", outputDir: null }
+              : { type: "SET_PDFS_OUTPUT_DIR", outputDir: null },
+          );
+        }
+        dispatch({ type: "JOB_FAILED", error: ipcError });
+        return { error: ipcError };
       }
     }
 
     return {
       async saveMergedPdf(targets, pageSize) {
-        const result = await run("imagesToPdf", targets, (ids) =>
+        const outcome = await run("imagesToPdf", targets, (ids) =>
           saveMergedPdf(ids, pageSize),
         );
-        if (result === null) {
+        if ("error" in outcome) {
+          return;
+        }
+        if (outcome.result === null) {
           // The save dialog was cancelled; nothing ran.
           dispatch({ type: "JOB_RESET" });
-        } else if (result !== undefined) {
-          dispatch({ type: "JOB_SAVED", savedName: result.savedName });
+        } else if (outcome.result.savedName !== null) {
+          dispatch({ type: "JOB_SAVED", savedName: outcome.result.savedName });
         }
+        // Otherwise the job ran but wrote no PDF (it was cancelled, or no
+        // image could be added). `job-finished` has already set the result,
+        // and the banner and rows keep showing it.
       },
       async startImagesToPdfs(targets, pageSize) {
         await run("imagesToPdf", targets, (ids) =>

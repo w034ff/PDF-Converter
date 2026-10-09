@@ -1,58 +1,239 @@
 import { describe, expect, it } from "vitest";
 import { en, ja } from "../../i18n";
-import { formatJobSummary, jobOutcome } from "./jobSummary";
+import {
+  formatJobSummary,
+  jobOutcome,
+  singlePdfPageCounts,
+} from "./jobSummary";
+
+const NOTHING = {
+  succeeded: 0,
+  failed: 0,
+  noPages: 0,
+  unprocessed: 0,
+  cancelled: false,
+};
 
 describe("formatJobSummary", () => {
-  it("lists successes and only the other counts that are not zero", () => {
-    expect(
-      formatJobSummary(ja, {
-        succeeded: 3,
-        failed: 2,
-        noPages: 1,
-        unprocessed: 0,
-        cancelled: false,
-      }),
-    ).toBe("変換が終わりました：成功 3 件 · 失敗 2 件 · 対象のページなし 1 件");
+  describe("counting items", () => {
+    it("lists the counts that are not zero", () => {
+      expect(
+        formatJobSummary(ja, {
+          ...NOTHING,
+          succeeded: 3,
+          failed: 2,
+          noPages: 1,
+        }),
+      ).toBe(
+        "変換が終わりました：成功 3 件 · 失敗 2 件 · 対象のページなし 1 件",
+      );
+    });
+
+    it("does not list zero successes", () => {
+      expect(formatJobSummary(ja, { ...NOTHING, failed: 1 })).toBe(
+        "変換が終わりました：失敗 1 件",
+      );
+      expect(
+        formatJobSummary(
+          ja,
+          { ...NOTHING, failed: 2 },
+          { kind: "items", partial: 2 },
+        ),
+      ).toBe("変換が終わりました：一部失敗 2 件");
+    });
+
+    it("lists partly failed PDFs on their own instead of as failures", () => {
+      expect(
+        formatJobSummary(
+          ja,
+          { ...NOTHING, succeeded: 1, failed: 3 },
+          { kind: "items", partial: 1 },
+        ),
+      ).toBe("変換が終わりました：成功 1 件 · 失敗 2 件 · 一部失敗 1 件");
+    });
+
+    it("says a cancelled job was cancelled and counts what was left", () => {
+      expect(
+        formatJobSummary(en, {
+          ...NOTHING,
+          succeeded: 2,
+          unprocessed: 4,
+          cancelled: true,
+        }),
+      ).toBe("Cancelled: 2 succeeded · 4 not processed");
+    });
+
+    it("does not list zero successes of a cancelled job either", () => {
+      expect(
+        formatJobSummary(ja, { ...NOTHING, unprocessed: 3, cancelled: true }),
+      ).toBe("キャンセルしました：未処理 3 件");
+    });
   });
 
-  it("lists zero successes", () => {
-    expect(
-      formatJobSummary(ja, {
-        succeeded: 0,
-        failed: 1,
-        noPages: 0,
-        unprocessed: 0,
-        cancelled: false,
-      }),
-    ).toBe("変換が終わりました：成功 0 件 · 失敗 1 件");
+  describe("counting the pages of one PDF", () => {
+    const pages = (saved: number, failed: number, unprocessed: number) =>
+      ({ kind: "pages", saved, failed, unprocessed }) as const;
+
+    it("says how many pages were saved", () => {
+      expect(formatJobSummary(ja, NOTHING, pages(3, 0, 0))).toBe(
+        "変換が終わりました：3 ページ保存しました",
+      );
+    });
+
+    it("adds the pages that failed", () => {
+      expect(formatJobSummary(ja, NOTHING, pages(2, 1, 0))).toBe(
+        "変換が終わりました：2 ページ保存しました · 失敗 1 ページ",
+      );
+    });
+
+    it("adds the pages that were not reached, for a cancel or a stop", () => {
+      expect(
+        formatJobSummary(
+          ja,
+          { ...NOTHING, cancelled: true },
+          pages(18, 0, 182),
+        ),
+      ).toBe("キャンセルしました：18 ページ保存しました · 未処理 182 ページ");
+      expect(formatJobSummary(ja, NOTHING, pages(5, 1, 94))).toBe(
+        "変換が終わりました：5 ページ保存しました · 失敗 1 ページ · 未処理 94 ページ",
+      );
+    });
+
+    it("lists only the failure when no page was saved", () => {
+      expect(formatJobSummary(ja, NOTHING, pages(0, 3, 0))).toBe(
+        "変換が終わりました：失敗 3 ページ",
+      );
+    });
+
+    it("uses the singular for one page in English", () => {
+      expect(formatJobSummary(en, NOTHING, pages(1, 1, 1))).toBe(
+        "Conversion finished: 1 page saved · 1 page failed · 1 page not processed",
+      );
+      expect(formatJobSummary(en, NOTHING, pages(2, 3, 4))).toBe(
+        "Conversion finished: 2 pages saved · 3 pages failed · 4 pages not processed",
+      );
+    });
   });
 
-  it("lists partly failed PDFs on their own instead of as failures", () => {
+  describe("counting the pages of the merged PDF", () => {
+    it("says how many pages the PDF has, without its name", () => {
+      expect(
+        formatJobSummary(
+          ja,
+          { ...NOTHING, succeeded: 10 },
+          { kind: "mergedPdf", pages: 10, failedImages: 0 },
+        ),
+      ).toBe("変換が終わりました：10 ページの PDF を保存しました");
+    });
+
+    it("adds the images that failed", () => {
+      expect(
+        formatJobSummary(
+          ja,
+          { ...NOTHING, succeeded: 10, failed: 1 },
+          { kind: "mergedPdf", pages: 10, failedImages: 1 },
+        ),
+      ).toBe("変換が終わりました：10 ページの PDF を保存しました · 失敗 1 枚");
+    });
+
+    it("reads in English, with one page too", () => {
+      expect(
+        formatJobSummary(
+          en,
+          { ...NOTHING, succeeded: 1, failed: 2 },
+          { kind: "mergedPdf", pages: 1, failedImages: 2 },
+        ),
+      ).toBe("Conversion finished: Saved a 1-page PDF · 2 failed");
+      expect(
+        formatJobSummary(
+          en,
+          { ...NOTHING, succeeded: 10 },
+          { kind: "mergedPdf", pages: 10, failedImages: 0 },
+        ),
+      ).toBe("Conversion finished: Saved a 10-page PDF");
+    });
+  });
+
+  describe("a merged PDF that was not saved", () => {
+    const CANCELLED = { ...NOTHING, unprocessed: 2, cancelled: true };
+
+    it("says no PDF was saved, with no counts", () => {
+      expect(
+        formatJobSummary(ja, CANCELLED, { kind: "mergedPdfNotSaved" }),
+      ).toBe("キャンセルしました：PDF は保存していません");
+    });
+
+    it("reads in English", () => {
+      expect(
+        formatJobSummary(en, CANCELLED, { kind: "mergedPdfNotSaved" }),
+      ).toBe("Cancelled: the PDF was not saved");
+    });
+  });
+});
+
+describe("singlePdfPageCounts", () => {
+  it("counts the selected pages neither saved nor failed as not processed", () => {
     expect(
-      formatJobSummary(
-        ja,
-        {
-          succeeded: 1,
-          failed: 3,
-          noPages: 0,
-          unprocessed: 0,
-          cancelled: false,
-        },
-        1,
+      singlePdfPageCounts(
+        { id: 1, status: "cancelled", outputs: ["a", "b"] },
+        200,
       ),
-    ).toBe("変換が終わりました：成功 1 件 · 失敗 2 件 · 一部失敗 1 件");
+    ).toEqual({ kind: "pages", saved: 2, failed: 0, unprocessed: 198 });
+    expect(
+      singlePdfPageCounts(
+        {
+          id: 1,
+          status: "partial",
+          outputs: ["a", "b"],
+          failedPages: [3],
+        },
+        5,
+      ),
+    ).toEqual({ kind: "pages", saved: 2, failed: 1, unprocessed: 2 });
   });
 
-  it("says a cancelled job was cancelled and counts what was left", () => {
+  it("counts a cancel after a failed page as reached", () => {
+    // Pages 1-5 selected: 1 saved, 2 failed, 3 saved, then cancelled.
     expect(
-      formatJobSummary(en, {
-        succeeded: 2,
-        failed: 0,
-        noPages: 0,
-        unprocessed: 4,
-        cancelled: true,
-      }),
-    ).toBe("Cancelled: 2 succeeded · 4 not processed");
+      singlePdfPageCounts(
+        {
+          id: 1,
+          status: "cancelled",
+          outputs: ["a", "b"],
+          failedPages: [2],
+        },
+        5,
+      ),
+    ).toEqual({ kind: "pages", saved: 2, failed: 1, unprocessed: 2 });
+  });
+
+  it("counts all selected pages as failed when the PDF failed as a whole", () => {
+    expect(
+      singlePdfPageCounts(
+        {
+          id: 1,
+          status: "failed",
+          outputs: [],
+          error: { code: "PdfOpenFailed", detail: null },
+        },
+        200,
+      ),
+    ).toEqual({ kind: "pages", saved: 0, failed: 200, unprocessed: 0 });
+  });
+
+  it("does not take a cancel for a failure of the whole PDF", () => {
+    expect(
+      singlePdfPageCounts({ id: 1, status: "cancelled", outputs: [] }, 4),
+    ).toEqual({ kind: "pages", saved: 0, failed: 0, unprocessed: 4 });
+  });
+
+  it("counts every selected page as not processed before any result", () => {
+    expect(singlePdfPageCounts(undefined, 7)).toEqual({
+      kind: "pages",
+      saved: 0,
+      failed: 0,
+      unprocessed: 7,
+    });
   });
 });
 

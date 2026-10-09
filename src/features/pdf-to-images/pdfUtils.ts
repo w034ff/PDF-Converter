@@ -1,5 +1,5 @@
 import { formatMessage, type Translations } from "../../i18n";
-import type { PageSizePt, Skipped } from "../../ipc";
+import type { JobItemPayload, PageSizePt, Skipped } from "../../ipc";
 
 const A4_SHORT_PT = 595.28;
 const A4_LONG_PT = 841.89;
@@ -83,6 +83,49 @@ export function countPagesInIntervals(
     }
   }
   return total;
+}
+
+/**
+ * Whether a PDF failed as a whole: its `job-item` says `failed` and names no
+ * page, as when the PDF could not be opened. Every page that was selected
+ * then counts as failed, not as left unprocessed (design §6.3).
+ */
+export function failedAsAWhole(result: JobItemPayload | undefined): boolean {
+  return (
+    result !== undefined &&
+    result.status === "failed" &&
+    (result.failedPages ?? []).length === 0
+  );
+}
+
+/** What a conversion did to a page of the single PDF the screen shows. */
+export type PageOutcome = "done" | "failed" | "unprocessed";
+
+/**
+ * Tells, for each selected page, what the conversion did to it (design §6.3).
+ *
+ * Pages are converted from the first selected one on, so the conversion
+ * reached the first `savedCount + failedPages.length` of them. Those are
+ * `failed` if listed in `failedPages` and `done` otherwise; the rest were
+ * never reached, by a cancel or by a stop after a write failure.
+ *
+ * @param selectedPages the pages that were selected, in ascending order.
+ */
+export function pageOutcomes(
+  selectedPages: readonly number[],
+  savedCount: number,
+  failedPages: readonly number[],
+): Map<number, PageOutcome> {
+  const reached = savedCount + failedPages.length;
+  const outcomes = new Map<number, PageOutcome>();
+  selectedPages.forEach((page, index) => {
+    if (index >= reached) {
+      outcomes.set(page, "unprocessed");
+    } else {
+      outcomes.set(page, failedPages.includes(page) ? "failed" : "done");
+    }
+  });
+  return outcomes;
 }
 
 /**

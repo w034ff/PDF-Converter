@@ -21,6 +21,9 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
   ConversionRunning: "変換中は操作できません",
   UnknownHandle: "ファイルをもう一度追加してください",
   InvalidParams: "無効な設定です",
+  OutputDirMissing:
+    "保存先のフォルダが見つかりません。フォルダを選び直してください",
+  OutputDirNotWritable: "保存先のフォルダに書き込めません",
 };
 
 export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
@@ -40,6 +43,8 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
   ConversionRunning: "Not available during conversion",
   UnknownHandle: "Please add the file again",
   InvalidParams: "Invalid settings",
+  OutputDirMissing: "The output folder can't be found. Choose a folder again.",
+  OutputDirNotWritable: "Can't write to the output folder",
 };
 
 /**

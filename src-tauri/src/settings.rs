@@ -338,12 +338,26 @@ impl SettingsStore {
     ///
     /// `WriteFailed` if the file cannot be written.
     pub fn record_output_dir(&self, kind: OutputKind, dir: &Path) -> Result<(), IpcError> {
+        self.set_output_dir(kind, Some(dir.to_path_buf()))
+    }
+
+    /// Forgets the folder of `kind` in the held settings and writes the file.
+    /// The folder stays forgotten in memory if the write fails.
+    ///
+    /// # Errors
+    ///
+    /// `WriteFailed` if the file cannot be written.
+    pub fn clear_output_dir(&self, kind: OutputKind) -> Result<(), IpcError> {
+        self.set_output_dir(kind, None)
+    }
+
+    fn set_output_dir(&self, kind: OutputKind, dir: Option<PathBuf>) -> Result<(), IpcError> {
         let mut stored = self.lock();
         let slot = match kind {
             OutputKind::ImagesToPdf => &mut stored.file.images_to_pdf.output_dir,
             OutputKind::PdfToImages => &mut stored.file.pdf_to_images.output_dir,
         };
-        *slot = Some(dir.to_path_buf());
+        *slot = dir;
         write(stored.config_dir.as_deref(), &stored.file)
     }
 }
@@ -429,4 +443,20 @@ pub fn apply_picked_dir(
         .lock()
         .expect("output_dir lock") = Some(dir);
     (label, persisted)
+}
+
+/// Puts the output folder of `kind` back to "not chosen", in the state and in
+/// the settings file (design §6.5).
+///
+/// The folder is forgotten in the state even if the file cannot be written.
+///
+/// # Errors
+///
+/// `WriteFailed` if the settings file cannot be written.
+pub fn clear_output_dir(state: &AppState, kind: OutputKind) -> Result<(), IpcError> {
+    let persisted = state.settings.clear_output_dir(kind);
+    *output_dir_slot(state, kind)
+        .lock()
+        .expect("output_dir lock") = None;
+    persisted
 }
