@@ -14,24 +14,18 @@ import { useAppDispatch, type ActiveTab, type JobTarget } from "../../state";
 export interface JobRunner {
   /** Starts "1 つの PDF": opens the save dialog, then merges `targets` in order. */
   saveMergedPdf(targets: JobTarget[], pageSize: PageSizeChoice): Promise<void>;
-  /**
-   * Starts "1 枚ずつ" for `targets` (design §6.2). Resolves with the error
-   * that refused the start, or `null` if it started.
-   */
+  /** Starts "1 枚ずつ" for `targets` (design §6.2). */
   startImagesToPdfs(
     targets: JobTarget[],
     pageSize: PageSizeChoice,
-  ): Promise<IpcError | null>;
-  /**
-   * Starts PDF → images for `targets` (design §6.3). Resolves with the error
-   * that refused the start, or `null` if it started.
-   */
+  ): Promise<void>;
+  /** Starts PDF → images for `targets` (design §6.3). */
   startPdfsToImages(
     targets: JobTarget[],
     range: string,
     format: RenderFormatChoice,
     dpi: number,
-  ): Promise<IpcError | null>;
+  ): Promise<void>;
   /** Shows "キャンセル中…" at once and asks the backend to stop (design §6.5). */
   cancel(): Promise<void>;
 }
@@ -59,8 +53,10 @@ export function useJobRunner(): JobRunner {
       } catch (error: unknown) {
         const ipcError = normalizeIpcError(error);
         if (ipcError.code === "OutputDirMissing") {
-          // Rust has forgotten the folder. This comes before JOB_FAILED
-          // because changing a setting drops a result that is already there.
+          // Rust has forgotten the folder, so the field reads "未選択" and
+          // the next start asks for a folder (`useEnsureOutputDir`). This
+          // comes before JOB_FAILED because changing a setting drops a
+          // result that is already there.
           dispatch(
             kind === "imagesToPdf"
               ? { type: "SET_IMAGES_OUTPUT_DIR", outputDir: null }
@@ -91,16 +87,14 @@ export function useJobRunner(): JobRunner {
         // and the banner and rows keep showing it.
       },
       async startImagesToPdfs(targets, pageSize) {
-        const outcome = await run("imagesToPdf", targets, (ids) =>
+        await run("imagesToPdf", targets, (ids) =>
           startImagesToPdfs(ids, pageSize),
         );
-        return "error" in outcome ? outcome.error : null;
       },
       async startPdfsToImages(targets, range, format, dpi) {
-        const outcome = await run("pdfToImages", targets, (ids) =>
+        await run("pdfToImages", targets, (ids) =>
           startPdfsToImages(ids, range, format, dpi),
         );
-        return "error" in outcome ? outcome.error : null;
       },
       async cancel() {
         dispatch({ type: "JOB_CANCEL_REQUESTED" });

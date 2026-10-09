@@ -291,7 +291,7 @@ describe("PdfToImages integration workflow", () => {
     expect(await screen.findByText("PDF を追加")).toBeInTheDocument();
   });
 
-  it("asks for a folder again when the output folder has gone, and starts with the new one", async () => {
+  it("forgets an output folder that has gone, and asks for one on the next start", async () => {
     let starts = 0;
     let picks = 0;
     const calls = setupIpc((cmd) => {
@@ -322,6 +322,18 @@ describe("PdfToImages integration workflow", () => {
         "old-folder",
       );
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+
+    expect(await screen.findByTestId("error-display")).toHaveTextContent(
+      "保存先のフォルダが見つかりません。フォルダを選び直してください",
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "変換を開始" })).toBeEnabled();
+    });
+    expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
+    // The folder dialog waits for the next start.
+    expect(picks).toBe(1);
 
     fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
 

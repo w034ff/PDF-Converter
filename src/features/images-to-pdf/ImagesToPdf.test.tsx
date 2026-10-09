@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -798,8 +799,33 @@ describe("ImagesToPdf (T11)", () => {
     const countOf = (calls: IpcCall[], cmd: string) =>
       calls.filter((call) => call.cmd === cmd).length;
 
-    it("asks for a folder again when it is gone, then starts with the new one", async () => {
-      let answerPick: (label: unknown) => void = () => {};
+    it("forgets a folder that is gone without opening the folder dialog", async () => {
+      const calls = mockEach(
+        [() => Promise.reject({ code: "OutputDirMissing", detail: null })],
+        [() => ({ dirLabel: "old-folder" })],
+      );
+
+      await chooseFolderAndStart();
+
+      expect(await screen.findByTestId("error-display")).toHaveTextContent(
+        MISSING_MESSAGE,
+      );
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "変換を開始" }),
+        ).toBeEnabled();
+      });
+      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
+      // Only the pick that chose the folder in the first place.
+      expect(countOf(calls, "pick_output_dir")).toBe(1);
+      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
+      expect(
+        within(screen.getByTestId("error-display")).queryByRole("button"),
+      ).toBeNull();
+    });
+
+    it("asks for a folder on the next start after a folder was gone", async () => {
       const calls = mockEach(
         [
           () => Promise.reject({ code: "OutputDirMissing", detail: null }),
@@ -807,79 +833,28 @@ describe("ImagesToPdf (T11)", () => {
         ],
         [
           () => ({ dirLabel: "old-folder" }),
-          () => new Promise((resolve) => (answerPick = resolve)),
-        ],
-      );
-
-      await chooseFolderAndStart();
-
-      // The dialog is open: the field is empty and the reason is on screen.
-      await waitFor(() => {
-        expect(countOf(calls, "pick_output_dir")).toBe(2);
-      });
-      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
-      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
-      expect(screen.getByTestId("error-display")).toHaveTextContent(
-        MISSING_MESSAGE,
-      );
-      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
-
-      await act(async () => {
-        answerPick({ dirLabel: "new-folder" });
-      });
-
-      await waitFor(() => {
-        expect(countOf(calls, "start_images_to_pdfs")).toBe(2);
-      });
-      expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
-        "new-folder",
-      );
-      expect(screen.queryByText(MISSING_MESSAGE)).toBeNull();
-    });
-
-    it("starts nothing when the folder dialog is cancelled", async () => {
-      const calls = mockEach(
-        [() => Promise.reject({ code: "OutputDirMissing", detail: null })],
-        [() => ({ dirLabel: "old-folder" }), () => null],
-      );
-
-      await chooseFolderAndStart();
-
-      await waitFor(() => {
-        expect(countOf(calls, "pick_output_dir")).toBe(2);
-      });
-      await waitFor(() => {
-        expect(
-          screen.getByRole("button", { name: "変換を開始" }),
-        ).toBeEnabled();
-      });
-      expect(countOf(calls, "start_images_to_pdfs")).toBe(1);
-      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
-      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
-    });
-
-    it("does not ask again for a folder it has just been given", async () => {
-      const calls = mockEach(
-        [() => Promise.reject({ code: "OutputDirMissing", detail: null })],
-        [
-          () => ({ dirLabel: "old-folder" }),
           () => ({ dirLabel: "new-folder" }),
         ],
       );
 
       await chooseFolderAndStart();
-
-      await waitFor(() => {
-        expect(countOf(calls, "start_images_to_pdfs")).toBe(2);
-      });
+      await screen.findByText(MISSING_MESSAGE);
       await waitFor(() => {
         expect(
           screen.getByRole("button", { name: "変換を開始" }),
         ).toBeEnabled();
       });
+
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+
+      await waitFor(() => {
+        expect(countOf(calls, "start_images_to_pdfs")).toBe(2);
+      });
       expect(countOf(calls, "pick_output_dir")).toBe(2);
-      expect(screen.getByTestId("output-dir-name")).toHaveTextContent("未選択");
-      expect(screen.getAllByText(MISSING_MESSAGE)).toHaveLength(1);
+      expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
+        "new-folder",
+      );
+      expect(screen.queryByText(MISSING_MESSAGE)).toBeNull();
     });
 
     it("shows that the folder cannot be written to and starts nothing else", async () => {
@@ -905,6 +880,9 @@ describe("ImagesToPdf (T11)", () => {
       expect(screen.getByTestId("output-dir-name")).toHaveTextContent(
         "old-folder",
       );
+      expect(
+        within(screen.getByTestId("error-display")).queryByRole("button"),
+      ).toBeNull();
     });
   });
 

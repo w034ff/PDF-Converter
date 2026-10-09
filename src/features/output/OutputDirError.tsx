@@ -1,6 +1,6 @@
 import { ErrorDisplay } from "../../components";
-import { formatErrorMessage, getTranslations } from "../../i18n";
-import { useAppDispatch, useAppState, type ActiveTab } from "../../state";
+import { formatErrorMessage } from "../../i18n";
+import { useAppState, type ActiveTab } from "../../state";
 import { isOutputDirError } from "./outputDirErrors";
 
 export interface OutputDirErrorProps {
@@ -12,14 +12,15 @@ export interface OutputDirErrorProps {
  * The band above a list that says a conversion did not start because its
  * output folder is gone or cannot be written to (design §6.5, §10.3). The
  * bottom bar does not repeat it.
+ *
+ * It has no close button: it stays while the folder is unusable, and goes
+ * once a folder is chosen, a setting changes or a conversion starts.
  */
 export function OutputDirError({ tab }: OutputDirErrorProps) {
   const { language, job } = useAppState();
-  const dispatch = useAppDispatch();
   if (job.kind !== tab || job.error === null || !isOutputDirError(job.error)) {
     return null;
   }
-  const t = getTranslations(language.language);
   return (
     <ErrorDisplay
       message={formatErrorMessage(
@@ -27,8 +28,6 @@ export function OutputDirError({ tab }: OutputDirErrorProps) {
         job.error.detail,
         language.language,
       )}
-      onDismiss={() => dispatch({ type: "JOB_RESET" })}
-      dismissLabel={t.errors.dismiss}
     />
   );
 }
