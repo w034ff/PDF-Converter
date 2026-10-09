@@ -176,6 +176,41 @@ describe("singlePdfPageCounts", () => {
     ).toEqual({ kind: "pages", saved: 2, failed: 1, unprocessed: 2 });
   });
 
+  it("counts a cancel after a failed page as reached", () => {
+    // Pages 1-5 selected: 1 saved, 2 failed, 3 saved, then cancelled.
+    expect(
+      singlePdfPageCounts(
+        {
+          id: 1,
+          status: "cancelled",
+          outputs: ["a", "b"],
+          failedPages: [2],
+        },
+        5,
+      ),
+    ).toEqual({ kind: "pages", saved: 2, failed: 1, unprocessed: 2 });
+  });
+
+  it("counts all selected pages as failed when the PDF failed as a whole", () => {
+    expect(
+      singlePdfPageCounts(
+        {
+          id: 1,
+          status: "failed",
+          outputs: [],
+          error: { code: "PdfOpenFailed", detail: null },
+        },
+        200,
+      ),
+    ).toEqual({ kind: "pages", saved: 0, failed: 200, unprocessed: 0 });
+  });
+
+  it("does not take a cancel for a failure of the whole PDF", () => {
+    expect(
+      singlePdfPageCounts({ id: 1, status: "cancelled", outputs: [] }, 4),
+    ).toEqual({ kind: "pages", saved: 0, failed: 0, unprocessed: 4 });
+  });
+
   it("counts every selected page as not processed before any result", () => {
     expect(singlePdfPageCounts(undefined, 7)).toEqual({
       kind: "pages",

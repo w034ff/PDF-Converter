@@ -1115,7 +1115,9 @@ where
                         status: JobItemStatus::Cancelled,
                         outputs,
                         error: None,
-                        failed_pages: None,
+                        // Pages that failed before the cancel still count as
+                        // reached, so the screen must be told of them.
+                        failed_pages: (!failed_pages.is_empty()).then_some(failed_pages),
                     });
                 } else if failed_pages.is_empty() && outputs.len() == task.pages.len() {
                     succeeded_count.fetch_add(1, Ordering::SeqCst);

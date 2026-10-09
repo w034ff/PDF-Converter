@@ -1,5 +1,6 @@
 import { formatMessage, type Translations } from "../../i18n";
 import type { JobFinishedPayload, JobItemPayload } from "../../ipc";
+import { failedAsAWhole } from "../pdf-to-images/pdfUtils";
 
 /**
  * What the summary counts. Most conversions count items. A conversion of one
@@ -97,6 +98,7 @@ export function formatJobSummary(
 /**
  * The page counts of a conversion of one PDF: saved and failed from its
  * `job-item`, and the selected pages that neither reached (design §6.3).
+ * A PDF that failed as a whole (see `failedAsAWhole`) has all of them failed.
  *
  * @param result the PDF's `job-item`, if it has sent one.
  * @param selectedPages how many pages the range selected in that PDF.
@@ -106,7 +108,9 @@ export function singlePdfPageCounts(
   selectedPages: number,
 ): Extract<JobSummaryShape, { kind: "pages" }> {
   const saved = result?.outputs.length ?? 0;
-  const failed = result?.failedPages?.length ?? 0;
+  const failed = failedAsAWhole(result)
+    ? selectedPages
+    : (result?.failedPages?.length ?? 0);
   return {
     kind: "pages",
     saved,

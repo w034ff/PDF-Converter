@@ -448,8 +448,11 @@ pub fn apply_picked_dir(
 /// Puts the output folder of `kind` back to "not chosen", in the state and in
 /// the settings file (design §6.5).
 ///
-/// Returns whether the settings file could be written. The folder is
-/// forgotten in the state either way.
+/// The folder is forgotten in the state even if the file cannot be written.
+///
+/// # Errors
+///
+/// `WriteFailed` if the settings file cannot be written.
 pub fn clear_output_dir(state: &AppState, kind: OutputKind) -> Result<(), IpcError> {
     let persisted = state.settings.clear_output_dir(kind);
     *output_dir_slot(state, kind)

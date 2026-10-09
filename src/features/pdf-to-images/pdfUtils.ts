@@ -1,5 +1,5 @@
 import { formatMessage, type Translations } from "../../i18n";
-import type { PageSizePt, Skipped } from "../../ipc";
+import type { JobItemPayload, PageSizePt, Skipped } from "../../ipc";
 
 const A4_SHORT_PT = 595.28;
 const A4_LONG_PT = 841.89;
@@ -83,6 +83,19 @@ export function countPagesInIntervals(
     }
   }
   return total;
+}
+
+/**
+ * Whether a PDF failed as a whole: its `job-item` says `failed` and names no
+ * page, as when the PDF could not be opened. Every page that was selected
+ * then counts as failed, not as left unprocessed (design §6.3).
+ */
+export function failedAsAWhole(result: JobItemPayload | undefined): boolean {
+  return (
+    result !== undefined &&
+    result.status === "failed" &&
+    (result.failedPages ?? []).length === 0
+  );
 }
 
 /** What a conversion did to a page of the single PDF the screen shows. */

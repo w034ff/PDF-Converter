@@ -33,6 +33,7 @@ import {
   countPagesInIntervals,
   formatFileSize,
   formatPaperSize,
+  failedAsAWhole,
   formatSkippedSummary,
   intervalsToRangeText,
   isPageInIntervals,
@@ -503,14 +504,20 @@ export function PdfToImagesView() {
     displayed.pageSelection === "all" ||
     (displayed.rangeResult !== null &&
       isPageInIntervals(displayed.rangeResult.intervals, page));
+  const singleSelectedPages =
+    singleItem !== null
+      ? Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).filter(
+          isPageSelected,
+        )
+      : [];
   const singleOutcomes =
-    singleItem !== null && singleResult !== undefined
+    singleResult !== undefined
       ? pageOutcomes(
-          Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).filter(
-            isPageSelected,
-          ),
+          singleSelectedPages,
           singleResult.outputs.length,
-          singleResult.failedPages ?? [],
+          failedAsAWhole(singleResult)
+            ? singleSelectedPages
+            : (singleResult.failedPages ?? []),
         )
       : null;
 

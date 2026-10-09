@@ -1694,3 +1694,97 @@ fn pages_that_cannot_be_rendered_do_not_stop_the_other_pdfs() {
     }
     assert_eq!(recorder.finished().unprocessed, 0);
 }
+
+#[test]
+fn a_cancel_after_a_failed_page_still_reports_that_page() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let path = copy_fixture(temp_in.path(), "mixed_sizes.pdf", "mixed.pdf");
+    let ids: Vec<u64> = add_pdfs(&app_state, &[path])
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    // At 300 dpi page 2 is too large. Cancel once it has been tried, so
+    // page 3 is never reached: page 1 saved, page 2 failed, page 3 left.
+    let cancel_flag = Arc::clone(&app_state.cancel_flag);
+    let recorder = TestRecorder::new();
+    let default_cb = recorder.callbacks();
+    let callbacks = JobCallbacks {
+        on_progress: {
+            let on_prog = default_cb.on_progress;
+            move |prog: JobProgressPayload| {
+                if prog.done == 2 {
+                    cancel_flag.store(true, Ordering::SeqCst);
+                }
+                on_prog(prog);
+            }
+        },
+        on_item: default_cb.on_item,
+        on_finished: default_cb.on_finished,
+    };
+    run_pdfs_to_images(
+        &app_state,
+        &ids,
+        &parse_page_range("1-3").unwrap(),
+        RenderFormatChoice::Png,
+        300,
+        temp_out.path(),
+        callbacks,
+    )
+    .unwrap();
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Cancelled);
+    assert_eq!(items[0].outputs.len(), 1);
+    assert_eq!(items[0].failed_pages, Some(vec![2]));
+}
+
+#[test]
+fn a_cancel_without_a_failed_page_sends_no_failed_pages() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let ids: Vec<u64> = add_pdfs(&app_state, &[path])
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let cancel_flag = Arc::clone(&app_state.cancel_flag);
+    let recorder = TestRecorder::new();
+    let default_cb = recorder.callbacks();
+    let callbacks = JobCallbacks {
+        on_progress: {
+            let on_prog = default_cb.on_progress;
+            move |prog: JobProgressPayload| {
+                if prog.done == 1 {
+                    cancel_flag.store(true, Ordering::SeqCst);
+                }
+                on_prog(prog);
+            }
+        },
+        on_item: default_cb.on_item,
+        on_finished: default_cb.on_finished,
+    };
+    run_pdfs_to_images(
+        &app_state,
+        &ids,
+        &parse_page_range("1-3").unwrap(),
+        RenderFormatChoice::Png,
+        72,
+        temp_out.path(),
+        callbacks,
+    )
+    .unwrap();
+
+    let items = recorder.items();
+    assert_eq!(items[0].status, JobItemStatus::Cancelled);
+    assert_eq!(items[0].failed_pages, None);
+}

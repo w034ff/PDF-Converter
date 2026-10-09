@@ -22,7 +22,8 @@ export interface AboutDialogProps {
 }
 
 /**
- * "About this app" (FR-08): the version, whether pdfium loads, this app's MIT license, and the third-party licenses (design §8.3).
+ * "About this app" (FR-08): the version, whether pdfium loads, this app's
+ * MIT license, and the third-party licenses (design §8.3).
  * The third-party list is loaded only when it is first expanded, since it is
  * far larger than the rest of the app's text.
  */
