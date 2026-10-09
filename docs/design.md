@@ -394,7 +394,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
   - 「1 つの PDF」で PDF を書いたとき: 「10 ページの PDF を保存しました」。失敗した画像があれば「 · 失敗 1 枚」を続ける。保存したファイル名は出さない。英語は `Saved a 10-page PDF`（1 ページは `Saved a 1-page PDF`）。
   - 「1 つの PDF」をキャンセルしたとき: 「キャンセルしました：PDF は保存していません」（英語は `Cancelled: the PDF was not saved`）。PDF のファイルがないので、処理した画像の件数は出さない（出すと保存したように読める）。保存ダイアログを取り消したときは何も実行していないので、帯は出さない。
 - 結果の帯は、失敗があれば左の縁と「✕」を赤、すべて成功なら緑にする。理由は帯に書かず、一覧の各行（画像の表・行の一覧、PDF の表、単一 PDF の失敗したページ）に出す。
-- WebView2 のブラウザーのショートカットのうち、検索（Ctrl+F、F3、Ctrl+G、Ctrl+Shift+G）、印刷（Ctrl+P）、再読み込み（Ctrl+R、Ctrl+Shift+R、F5、Ctrl+F5）は、`window` の `keydown` で `preventDefault` して止める（`useBlockBrowserShortcuts`。止めるキーは `BLOCKED_BROWSER_SHORTCUTS`）。入力欄にフォーカスがあっても同じ。拡大・縮小、コピー、貼り付け、全選択、元に戻すなどは止めない。macOS の Command も Ctrl と同じに扱う。WebView2 の `AreBrowserAcceleratorKeysEnabled` は Tauri 2.12.1 から変えられず、`unsafe` を足すことになるので使わない。
+- WebView2 のブラウザーのショートカットのうち、検索（Ctrl+F、F3、Ctrl+G、Ctrl+Shift+G）、印刷（Ctrl+P、Ctrl+Shift+P）、再読み込み（Ctrl+R、Ctrl+Shift+R、F5、Ctrl+F5）、ダウンロードの一覧（Ctrl+J）、キャレット ブラウズ（F7）は、`window` の `keydown` で `preventDefault` して止める（`useBlockBrowserShortcuts`。止めるキーは `BLOCKED_BROWSER_SHORTCUTS`）。入力欄にフォーカスがあっても同じ。止めるのは、Windows のインストール版で押して何かが出たキーだけにする（Ctrl+S、Ctrl+U、F11、Alt+←/→、Ctrl+N/T/W/H/D は何も出ないので入れない）。拡大・縮小、コピー、貼り付け、全選択、元に戻すなどは止めない。macOS の Command も Ctrl と同じに扱う。WebView2 の `AreBrowserAcceleratorKeysEnabled` は Tauri 2.12.1 から変えられず、`unsafe` を足すことになるので使わない。
 - 結果は、その画面の一覧か設定が変わったら消し、下部バーは予告の 1 行に戻す（件数・行の状態・失敗したページが、もうない項目や設定を指すことになるため）。変換中は消さない。
 
 ### 10.2 状態管理、多言語

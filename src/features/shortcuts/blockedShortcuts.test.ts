@@ -16,6 +16,9 @@ describe("isBlockedBrowserShortcut", () => {
     ["Ctrl+Shift+R", press("R", { ctrlKey: true, shiftKey: true })],
     ["F5", press("F5")],
     ["Ctrl+F5", press("F5", { ctrlKey: true })],
+    ["Ctrl+Shift+P", press("P", { ctrlKey: true, shiftKey: true })],
+    ["Ctrl+J", press("j", { ctrlKey: true })],
+    ["F7", press("F7")],
   ])("blocks %s", (_name, event) => {
     expect(isBlockedBrowserShortcut(event)).toBe(true);
   });
@@ -43,6 +46,10 @@ describe("isBlockedBrowserShortcut", () => {
     ["f typed", press("f")],
     ["r typed", press("r")],
     ["p typed", press("p")],
+    ["j typed", press("j")],
+    ["Ctrl+S", press("s", { ctrlKey: true })],
+    ["Ctrl+U", press("u", { ctrlKey: true })],
+    ["Shift+F7", press("F7", { shiftKey: true })],
     ["Tab", press("Tab")],
     ["F12", press("F12")],
     ["Ctrl+Alt+F (AltGr)", press("f", { ctrlKey: true, altKey: true })],

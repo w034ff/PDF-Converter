@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { isBlockedBrowserShortcut } from "./blockedShortcuts";
 
 /**
- * Stops the browser's own shortcuts for find, print and reload from reaching
+ * Stops the browser's own shortcuts for find, print, reload, downloads and
+ * caret browsing from reaching
  * the WebView (design §10.1). Listens on `window`, so a key pressed while an
  * input has focus is stopped too.
  */
