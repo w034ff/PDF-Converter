@@ -77,12 +77,14 @@ describe("PdfToImagesStatus", () => {
       expect(getPdfToImagesStatusText(state, en)).toBe("No PDFs selected");
     });
 
-    it("returns 'no PDFs selected' when all PDFs have errors", () => {
+    it("asks to remove unreadable PDFs when all PDFs have errors", () => {
       const state = createBaseState({ items: [corruptPdf] });
       expect(getPdfToImagesStatusText(state, ja)).toBe(
-        "PDF が選ばれていません",
+        "変換できる PDF がありません。読み込めない PDF を外してください",
       );
-      expect(getPdfToImagesStatusText(state, en)).toBe("No PDFs selected");
+      expect(getPdfToImagesStatusText(state, en)).toBe(
+        "No PDFs can be converted. Remove the ones that couldn't be loaded.",
+      );
     });
 
     describe("when pageSelection is 'all'", () => {
@@ -335,6 +337,37 @@ describe("PdfToImagesStatus", () => {
       );
 
       expect(container).toBeEmptyDOMElement();
+    });
+
+    it("renders the unreadable-only line as a warning", () => {
+      const initialState = createInitialAppState("ja-JP");
+      initialState.language.activeTab = "pdfToImages";
+      initialState.pdfToImages.items = [corruptPdf];
+
+      render(
+        <AppStateProvider initialState={initialState}>
+          <PdfToImagesStatus />
+        </AppStateProvider>,
+      );
+
+      expect(
+        screen.getByText(
+          "変換できる PDF がありません。読み込めない PDF を外してください",
+        ),
+      ).toHaveClass("error-text");
+    });
+
+    it("keeps the empty-list line plain", () => {
+      const initialState = createInitialAppState("ja-JP");
+      initialState.language.activeTab = "pdfToImages";
+
+      render(
+        <AppStateProvider initialState={initialState}>
+          <PdfToImagesStatus />
+        </AppStateProvider>,
+      );
+
+      expect(screen.getByText("PDF が選ばれていません")).toHaveClass("hint");
     });
   });
 });

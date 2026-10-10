@@ -1,6 +1,6 @@
 import { getTranslations } from "../../i18n";
 import { useAppState } from "../../state";
-import { getImagesToPdfStatusText } from "./imagesToPdfStatusText";
+import { describeImagesToPdfStatus } from "./imagesToPdfStatusText";
 
 /**
  * Bottom bar status text for Images to PDF (design §10.1, mockup `ImagesMerge`).
@@ -8,6 +8,10 @@ import { getImagesToPdfStatusText } from "./imagesToPdfStatusText";
 export function ImagesToPdfStatus() {
   const { language, imagesToPdf } = useAppState();
   const t = getTranslations(language.language);
-  const text = getImagesToPdfStatusText(imagesToPdf, t);
-  return <span className="hint">{text}</span>;
+  const status = describeImagesToPdfStatus(imagesToPdf, t);
+  return (
+    <span className={status.isWarning ? "error-text" : "hint"}>
+      {status.text}
+    </span>
+  );
 }

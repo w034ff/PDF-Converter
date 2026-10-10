@@ -60,7 +60,7 @@ describe("ImagesToPdfStatus", () => {
       expect(getImagesToPdfStatusText(state, en)).toBe("No images selected");
     });
 
-    it("returns 'no images selected' when all items have errors", () => {
+    it("asks to remove unreadable images when all items have errors", () => {
       const state: ImagesToPdfState = {
         items: [corruptItem],
         output: "merge",
@@ -69,9 +69,11 @@ describe("ImagesToPdfStatus", () => {
         outputDir: null,
       };
       expect(getImagesToPdfStatusText(state, ja)).toBe(
-        "画像が選ばれていません",
+        "変換できる画像がありません。読み込めない画像を外してください",
       );
-      expect(getImagesToPdfStatusText(state, en)).toBe("No images selected");
+      expect(getImagesToPdfStatusText(state, en)).toBe(
+        "No images can be converted. Remove the ones that couldn't be loaded.",
+      );
     });
 
     describe("single PDF mode (merge)", () => {
@@ -184,6 +186,35 @@ describe("ImagesToPdfStatus", () => {
       const span = screen.getByText("1 ページの PDF になります");
       expect(span).toBeInTheDocument();
       expect(span).toHaveClass("hint");
+    });
+
+    it("renders the unreadable-only line as a warning", () => {
+      const initialState = createInitialAppState("ja-JP");
+      initialState.imagesToPdf.items = [corruptItem];
+
+      render(
+        <AppStateProvider initialState={initialState}>
+          <ImagesToPdfStatus />
+        </AppStateProvider>,
+      );
+
+      expect(
+        screen.getByText(
+          "変換できる画像がありません。読み込めない画像を外してください",
+        ),
+      ).toHaveClass("error-text");
+    });
+
+    it("keeps the empty-list line plain", () => {
+      const initialState = createInitialAppState("ja-JP");
+
+      render(
+        <AppStateProvider initialState={initialState}>
+          <ImagesToPdfStatus />
+        </AppStateProvider>,
+      );
+
+      expect(screen.getByText("画像が選ばれていません")).toHaveClass("hint");
     });
   });
 });

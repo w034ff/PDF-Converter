@@ -31,18 +31,22 @@ export interface PdfToImagesStatusLine {
  * Describes what starting would do, for the footer while idle (design
  * §10.1). Counts only items without errors. `null` when nothing should be
  * shown: the range has an error, which the settings panel shows, or has not
- * been checked yet. A range that matches no page is a warning, since it
- * converts nothing and should be noticed before pressing the button.
+ * been checked yet. A range that matches no page, and a list holding only
+ * PDFs that could not be loaded, are warnings: both leave the start button
+ * disabled, and "no PDFs selected" would contradict the rows on screen.
  */
 export function describePdfToImagesStatus(
   state: PdfToImagesState,
   t: Translations,
 ): PdfToImagesStatusLine | null {
   const plain = (text: string) => ({ text, isWarning: false });
+  if (state.items.length === 0) {
+    return plain(t.footer.noPdfsSelected);
+  }
   const validPdfs = state.items.filter((item) => item.error === null);
   const count = validPdfs.length;
   if (count === 0) {
-    return plain(t.footer.noPdfsSelected);
+    return { text: t.footer.noReadablePdfs, isWarning: true };
   }
 
   const format =

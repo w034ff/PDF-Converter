@@ -33,6 +33,10 @@ export const ja = {
   footer: {
     noImagesSelected: "画像が選ばれていません",
     noPdfsSelected: "PDF が選ばれていません",
+    noReadableImages:
+      "変換できる画像がありません。読み込めない画像を外してください",
+    noReadablePdfs:
+      "変換できる PDF がありません。読み込めない PDF を外してください",
     savePdf: "PDF を保存",
     startConversion: "変換を開始",
     cancel: "キャンセル",

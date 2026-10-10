@@ -35,6 +35,10 @@ export const en: Translations = {
   footer: {
     noImagesSelected: "No images selected",
     noPdfsSelected: "No PDFs selected",
+    noReadableImages:
+      "No images can be converted. Remove the ones that couldn't be loaded.",
+    noReadablePdfs:
+      "No PDFs can be converted. Remove the ones that couldn't be loaded.",
     savePdf: "Save PDF",
     startConversion: "Start conversion",
     cancel: "Cancel",
