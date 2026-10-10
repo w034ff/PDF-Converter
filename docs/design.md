@@ -114,7 +114,10 @@
 
 - EXIF の向きが 90 度・270 度の回転を含むとき、表示上の幅と高さを入れ替えてから以下を計算する。
 - **画像に合わせる**: ページの大きさを「画素数 ÷ dpi × 72」pt とする（余白なし）。300 dpi の A4 の読み取り画像は A4 のページになる。
-- **A4**: 210×297 mm（595.28×841.89 pt）。表示上の幅が高さより大きい画像は横向き、それ以外は縦向きにする。四辺に `A4_MARGIN_MM`（10 mm）の余白を取り、残りの領域に縦横比を保って収まる最大の大きさで、中央に置く。小さい画像も拡大する。
+- **A4**: 210×297 mm（595.28×841.89 pt）。ページの向きは「向き」の選択（`A4Orientation`）で決める。
+  - 自動（`auto`、既定）: 表示上の幅が高さより大きい画像は横向き、それ以外は縦向きにする。結合では画像ごとに決まるので、縦と横のページが混ざる。
+  - 縦（`portrait`）・横（`landscape`）: 画像によらず、すべてのページをその向きにする。画像は回転させない（横長の画像を縦のページに入れると、幅に合わせて縮み、上下の余白が広がる）。
+  - どの向きでも、四辺に `A4_MARGIN_MM`（10 mm）の余白を取り、残りの領域に縦横比を保って収まる最大の大きさで、中央に置く。小さい画像も拡大する。
 - 1 ページの辺の長さは `MAX_PAGE_SIDE_PT`（14400 pt = 200 インチ）までにする。Acrobat が扱えるページの大きさの上限で、これを超えると開けないビューアーがあるため。「画像に合わせる」でこれを超える場合は、縦横比を保って上限に収まるよう縮める。
 
 ### 4.3 PDF の書き出し（FR-02、FR-03）
@@ -296,15 +299,15 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 ### 6.7 設定の保存（FR-07、FR-10）
 
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
-- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a4", outputDir }`、`pdfToImages: { format: "png" | "jpeg", dpi, outputDir }`。
+- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a4", a4Orientation: "auto" | "portrait" | "landscape", outputDir }`、`pdfToImages: { format: "png" | "jpeg", dpi, outputDir }`。
 - 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。
-- 既定値: 「1 つの PDF」、「画像に合わせる」、PNG、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
+- 既定値: 「1 つの PDF」、「画像に合わせる」、A4 の向きは「自動」、PNG、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
 - `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
-- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, outputDir }, pdfToImages: { format, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
+- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, a4Orientation, outputDir }, pdfToImages: { format, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
 - `save_settings` は、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の `DPI_CHOICES` にないなどの不正な値は `InvalidParams` で拒み、何も保存しない。書き込みに失敗したら `WriteFailed` を返す。
 - `pick_output_dir` は、選ばれたフォルダを §6.5 の Rust の状態と設定に入れ、設定ファイルを書き直す。書き込みに失敗しても、選んだフォルダはそのセッションで使い、`{ dirLabel }` を返す（設定ファイルの問題で変換を始められなくならないようにするため）。
 - 起動時、保存されたフォルダが存在すればそれを §6.5 の状態に入れ、存在しなければ未選択に戻す。
-- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
+- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`a4Orientation` も `pageSize` とは別に確かめる。`a4Orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
 
 ## 7. IPC
 
@@ -318,8 +321,8 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `remove_items` | `ids` | – |
 | `get_thumbnail` | `id, page?` | PNG のバイナリ（`tauri::ipc::Response`） |
 | `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages"` | `{ dirLabel } \| null` |
-| `save_merged_pdf` | `ids, pageSize` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
-| `start_images_to_pdfs` | `ids, pageSize` | –（§6.2 の「1 枚ずつ」） |
+| `save_merged_pdf` | `ids, pageSize, a4Orientation` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
+| `start_images_to_pdfs` | `ids, pageSize, a4Orientation` | –（§6.2 の「1 枚ずつ」）。`a4Orientation` は `pageSize` が `a4` のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ） |
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][] }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, dpi` | – |
 | `cancel_job` | – | – |
@@ -384,7 +387,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 
 - アプリ名は「PDF Converter」。ウィンドウの既定の大きさは 1200×800、最小は 960×640。
 - 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像）、言語の切り替え、「このアプリについて」。
-- 左の設定パネル: 画像 → PDF は「出力」「ページの大きさ」と、「1 枚ずつ」のときの保存先フォルダ。PDF → 画像は「ページ」「形式」「解像度」「保存先フォルダ」。
+- 左の設定パネル: 画像 → PDF は「出力」「ページの大きさ」、A4 のときの「向き」（自動 / 縦 / 横）と、「1 枚ずつ」のときの保存先フォルダ。「画像に合わせる」の間は「向き」を出さないが、選んだ値は状態と設定に残す。PDF → 画像は「ページ」「形式」「解像度」「保存先フォルダ」。
 - 右の一覧: 空のときはドロップ領域。画像は行の一覧（番号、サムネイル、名前、寸法、↑↓、外す）。PDF は 1 つならページのサムネイルの格子、複数なら表。
 - 下部バー: 状態の説明と、実行のボタン（「PDF を保存」または「変換を開始」）。変換中は進捗バーと「キャンセル」。
 - 下部バーの左には、変換していない間、その画面で実行のボタンを押すと何が起きるかを 1 行で出す（「3 ページの PDF になります」「24 ページを PNG で保存します」など。数えるのはエラーのない項目だけ）。「範囲を指定」のページ数は `check_page_range` の `totalPages` を使い、画面で範囲を数えない（§4.5）。保存するファイル名の例は出さない（名前の規則は §6.4 の `naming.rs` だけに置くため）。変換中・変換のあと・エラーのときは、その表示が優先される。変換のあとは結果を色と記号で示す（すべて成功なら緑の「✓ すべて完了しました」、失敗が 1 件でもあれば赤の「✕ 失敗があります」、キャンセルや対象のページなしだけなら記号なし）。変換を始められなかったときなど、結果より後に起きたエラーは結果より優先する。
