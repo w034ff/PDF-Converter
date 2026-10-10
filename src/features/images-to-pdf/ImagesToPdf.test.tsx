@@ -462,7 +462,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [2, 1], pageSize: "fit" },
+        args: { ids: [2, 1], pageSize: "fit", a4Orientation: "auto" },
       });
     });
   });
@@ -513,7 +513,7 @@ describe("ImagesToPdf (T11)", () => {
       // Targets only contain valid items 1 and 2, corrupt item 3 is excluded
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [1, 2], pageSize: "fit" },
+        args: { ids: [1, 2], pageSize: "fit", a4Orientation: "auto" },
       });
     });
   });
@@ -575,7 +575,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit" },
+        args: { ids: [1], pageSize: "fit", a4Orientation: "auto" },
       });
     });
   });
@@ -737,7 +737,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit" },
+        args: { ids: [1], pageSize: "fit", a4Orientation: "auto" },
       });
     });
 
@@ -1810,5 +1810,93 @@ describe("ImagesToPdf (T11)", () => {
       await screen.findByText("Conversion finished: Saved a 2-page PDF"),
     ).toBeInTheDocument();
     expect(screen.queryByText(/merged\.pdf/)).not.toBeInTheDocument();
+  });
+
+  it("controls A4 orientation and hint in settings panel", async () => {
+    const calls = mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        const result: AddResult<ImageItem> = {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+        return result;
+      }
+      if (cmd === "save_merged_pdf") {
+        return { savedName: "merged.pdf" };
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    // In default "fit" mode, orientation control is not visible
+    expect(
+      screen.queryByRole("button", { name: "自動" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "縦" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "横" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("画像の大きさのページにします"),
+    ).toBeInTheDocument();
+
+    // Click "A4"
+    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+    expect(screen.getByText("余白を付けて A4 に収めます")).toBeInTheDocument();
+
+    // Orientation control is now visible, defaulting to "自動"
+    const autoBtn = screen.getByRole("button", { name: "自動" });
+    const portraitBtn = screen.getByRole("button", { name: "縦" });
+    const landscapeBtn = screen.getByRole("button", { name: "横" });
+    expect(autoBtn).toHaveAttribute("aria-pressed", "true");
+    expect(portraitBtn).toHaveAttribute("aria-pressed", "false");
+    expect(landscapeBtn).toHaveAttribute("aria-pressed", "false");
+
+    // Hint is shown for "auto"
+    expect(
+      screen.getByText("画像の縦横に合わせてページごとに自動で切り替えます"),
+    ).toBeInTheDocument();
+
+    // Click "縦"
+    fireEvent.click(portraitBtn);
+    expect(portraitBtn).toHaveAttribute("aria-pressed", "true");
+    expect(autoBtn).toHaveAttribute("aria-pressed", "false");
+    // Hint is hidden for "portrait"
+    expect(
+      screen.queryByText("画像の縦横に合わせてページごとに自動で切り替えます"),
+    ).not.toBeInTheDocument();
+
+    // Switch back to "画像に合わせる"
+    fireEvent.click(screen.getByRole("button", { name: "画像に合わせる" }));
+    expect(
+      screen.queryByRole("button", { name: "自動" }),
+    ).not.toBeInTheDocument();
+
+    // Switch back to "A4" - orientation selection (portrait) is retained!
+    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+    expect(screen.getByRole("button", { name: "縦" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      screen.queryByText("画像の縦横に合わせてページごとに自動で切り替えます"),
+    ).not.toBeInTheDocument();
+
+    // Add an image and click "PDF を保存" to verify args
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "save_merged_pdf",
+        args: { ids: [1], pageSize: "a4", a4Orientation: "portrait" },
+      });
+    });
   });
 });

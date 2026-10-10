@@ -31,6 +31,7 @@ const SAVED_SETTINGS: Settings = {
   imagesToPdf: {
     output: "each",
     pageSize: "a4",
+    a4Orientation: "auto",
     outputDir: { dirLabel: "Scans" },
   },
   pdfToImages: {
@@ -290,7 +291,11 @@ describe("App", () => {
         {
           settings: {
             language: null,
-            imagesToPdf: { output: "merge", pageSize: "fit" },
+            imagesToPdf: {
+              output: "merge",
+              pageSize: "fit",
+              a4Orientation: "auto",
+            },
             pdfToImages: { format: "jpeg", dpi: 300 },
           },
         },
@@ -339,7 +344,11 @@ describe("App", () => {
         {
           settings: {
             language: "en",
-            imagesToPdf: { output: "merge", pageSize: "fit" },
+            imagesToPdf: {
+              output: "merge",
+              pageSize: "fit",
+              a4Orientation: "auto",
+            },
             pdfToImages: { format: "png", dpi: 150 },
           },
         },

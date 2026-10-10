@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
-use pdf_converter_lib::jobs::{PageSizeChoice, RenderFormatChoice};
+use pdf_converter_lib::jobs::{A4OrientationChoice, PageSizeChoice, RenderFormatChoice};
 use pdf_converter_lib::settings::{
     ImagesToPdfOptions, Language, OutputKind, OutputMode, PdfToImagesOptions, SETTINGS_FILE_NAME,
     SettingsFile, SettingsInput, apply_picked_dir, dir_label, get_settings_internal, load_settings,
@@ -43,6 +43,7 @@ fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
         "imagesToPdf": {
             "output": "each",
             "pageSize": "a4",
+            "a4Orientation": "portrait",
             "outputDir": images_dir,
         },
         "pdfToImages": {
@@ -63,6 +64,7 @@ fn input() -> SettingsInput {
         images_to_pdf: ImagesToPdfOptions {
             output: OutputMode::Each,
             page_size: PageSizeChoice::A4,
+            a4_orientation: A4OrientationChoice::Portrait,
         },
         pdf_to_images: PdfToImagesOptions {
             format: RenderFormatChoice::Jpeg,
@@ -87,6 +89,10 @@ fn the_defaults_are_those_of_the_design() {
     assert_eq!(file.language, None);
     assert_eq!(file.images_to_pdf.options.output, OutputMode::Merge);
     assert_eq!(file.images_to_pdf.options.page_size, PageSizeChoice::Fit);
+    assert_eq!(
+        file.images_to_pdf.options.a4_orientation,
+        A4OrientationChoice::Auto
+    );
     assert_eq!(file.images_to_pdf.output_dir, None);
     assert_eq!(file.pdf_to_images.options.format, RenderFormatChoice::Png);
     assert_eq!(file.pdf_to_images.options.dpi, 150);
@@ -258,6 +264,27 @@ fn an_unknown_page_size_resets_only_the_page_size() {
 }
 
 #[test]
+fn an_unknown_a4_orientation_resets_only_the_a4_orientation() {
+    assert_only_resets(
+        |json| json["imagesToPdf"]["a4Orientation"] = json!("diagonal"),
+        |file| file.images_to_pdf.options.a4_orientation = A4OrientationChoice::Auto,
+    );
+}
+
+#[test]
+fn a_missing_a4_orientation_resets_only_the_a4_orientation() {
+    assert_only_resets(
+        |json| {
+            json["imagesToPdf"]
+                .as_object_mut()
+                .unwrap()
+                .remove("a4Orientation");
+        },
+        |file| file.images_to_pdf.options.a4_orientation = A4OrientationChoice::Auto,
+    );
+}
+
+#[test]
 fn an_unknown_format_resets_only_the_format() {
     assert_only_resets(
         |json| json["pdfToImages"]["format"] = json!("gif"),
@@ -284,6 +311,10 @@ fn an_item_of_the_wrong_type_resets_only_that_item() {
     assert_only_resets(
         |json| json["imagesToPdf"]["pageSize"] = json!(["a4"]),
         |file| file.images_to_pdf.options.page_size = PageSizeChoice::Fit,
+    );
+    assert_only_resets(
+        |json| json["imagesToPdf"]["a4Orientation"] = json!(true),
+        |file| file.images_to_pdf.options.a4_orientation = A4OrientationChoice::Auto,
     );
     assert_only_resets(
         |json| json["pdfToImages"]["format"] = json!({"png": true}),
@@ -320,6 +351,10 @@ fn a_missing_item_resets_only_that_item() {
         |file| file.images_to_pdf.options.page_size = PageSizeChoice::Fit,
     );
     assert_only_resets(
+        |json| remove(json, "imagesToPdf", "a4Orientation"),
+        |file| file.images_to_pdf.options.a4_orientation = A4OrientationChoice::Auto,
+    );
+    assert_only_resets(
         |json| remove(json, "imagesToPdf", "outputDir"),
         |file| file.images_to_pdf.output_dir = None,
     );
@@ -340,6 +375,32 @@ fn a_missing_item_resets_only_that_item() {
             json.as_object_mut().expect("an object").remove("language");
         },
         |file| file.language = None,
+    );
+}
+
+#[test]
+fn v0_1_0_settings_file_without_a4_orientation_loads_with_auto_and_preserves_page_size() {
+    let temp = TempDir::new().expect("temp dir");
+    let v010_json = json!({
+        "schemaVersion": 1,
+        "language": "ja",
+        "imagesToPdf": {
+            "output": "each",
+            "pageSize": "a4",
+            "outputDir": null,
+        },
+        "pdfToImages": {
+            "format": "png",
+            "dpi": 150,
+            "outputDir": null,
+        },
+    });
+    let file = load_from(temp.path(), &v010_json);
+    assert_eq!(file.images_to_pdf.options.output, OutputMode::Each);
+    assert_eq!(file.images_to_pdf.options.page_size, PageSizeChoice::A4);
+    assert_eq!(
+        file.images_to_pdf.options.a4_orientation,
+        A4OrientationChoice::Auto
     );
 }
 
@@ -553,6 +614,7 @@ fn get_settings_has_no_path() {
             "imagesToPdf": {
                 "output": "each",
                 "pageSize": "a4",
+                "a4Orientation": "portrait",
                 "outputDir": { "dirLabel": "images-out" },
             },
             "pdfToImages": {
@@ -573,7 +635,7 @@ fn get_settings_of_the_defaults_has_no_folders() {
         json,
         json!({
             "language": null,
-            "imagesToPdf": { "output": "merge", "pageSize": "fit", "outputDir": null },
+            "imagesToPdf": { "output": "merge", "pageSize": "fit", "a4Orientation": "auto", "outputDir": null },
             "pdfToImages": { "format": "png", "dpi": 150, "outputDir": null },
         })
     );

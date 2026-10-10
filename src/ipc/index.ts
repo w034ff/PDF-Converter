@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { A4OrientationChoice } from "./generated/A4OrientationChoice";
 import type { AddResult } from "./generated/AddResult";
 import type { AddSource } from "./generated/AddSource";
 import type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
@@ -19,6 +20,7 @@ import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
 import type { Settings } from "./generated/Settings";
 import type { SettingsInput } from "./generated/SettingsInput";
 
+export type { A4OrientationChoice } from "./generated/A4OrientationChoice";
 export type { AboutInfo } from "./generated/AboutInfo";
 export type { AddResult } from "./generated/AddResult";
 export type { AddSource } from "./generated/AddSource";
@@ -160,6 +162,9 @@ export function isSettings(value: unknown): value is Settings {
     isRecord(imagesToPdf) &&
     (imagesToPdf.output === "merge" || imagesToPdf.output === "each") &&
     (imagesToPdf.pageSize === "fit" || imagesToPdf.pageSize === "a4") &&
+    (imagesToPdf.a4Orientation === "auto" ||
+      imagesToPdf.a4Orientation === "portrait" ||
+      imagesToPdf.a4Orientation === "landscape") &&
     isOutputDirLabel(imagesToPdf.outputDir) &&
     isRecord(pdfToImages) &&
     (pdfToImages.format === "png" || pdfToImages.format === "jpeg") &&
@@ -266,10 +271,12 @@ export async function cancelJob(): Promise<void> {
 export async function saveMergedPdf(
   ids: number[],
   pageSize: PageSizeChoice,
+  a4Orientation: A4OrientationChoice,
 ): Promise<SaveMergedPdfResult | null> {
   return invokeWrapped<SaveMergedPdfResult | null>("save_merged_pdf", {
     ids,
     pageSize,
+    a4Orientation,
   });
 }
 
@@ -277,8 +284,13 @@ export async function saveMergedPdf(
 export async function startImagesToPdfs(
   ids: number[],
   pageSize: PageSizeChoice,
+  a4Orientation: A4OrientationChoice,
 ): Promise<void> {
-  return invokeWrapped<void>("start_images_to_pdfs", { ids, pageSize });
+  return invokeWrapped<void>("start_images_to_pdfs", {
+    ids,
+    pageSize,
+    a4Orientation,
+  });
 }
 
 /** Starts batch conversion of PDF pages to image files in the background (design §6.3, §7.1). */

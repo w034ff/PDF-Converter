@@ -214,6 +214,42 @@ describe("state reducers", () => {
       expect(unchanged).toBe(updated);
     });
 
+    it("updates orientation with SET_IMAGES_A4_ORIENTATION", () => {
+      const initial: ImagesToPdfState = initialImagesToPdfState;
+      const updated = imagesToPdfReducer(initial, {
+        type: "SET_IMAGES_A4_ORIENTATION",
+        a4Orientation: "portrait",
+      });
+      expect(updated.a4Orientation).toBe("portrait");
+
+      const unchanged = imagesToPdfReducer(updated, {
+        type: "SET_IMAGES_A4_ORIENTATION",
+        a4Orientation: "portrait",
+      });
+      expect(unchanged).toBe(updated);
+    });
+
+    it("retains a4Orientation when pageSize changes", () => {
+      const initial: ImagesToPdfState = {
+        ...initialImagesToPdfState,
+        pageSize: "a4",
+        a4Orientation: "landscape",
+      };
+      const switchedToFit = imagesToPdfReducer(initial, {
+        type: "SET_IMAGES_PAGE_SIZE",
+        pageSize: "fit",
+      });
+      expect(switchedToFit.pageSize).toBe("fit");
+      expect(switchedToFit.a4Orientation).toBe("landscape");
+
+      const switchedBackToA4 = imagesToPdfReducer(switchedToFit, {
+        type: "SET_IMAGES_PAGE_SIZE",
+        pageSize: "a4",
+      });
+      expect(switchedBackToA4.pageSize).toBe("a4");
+      expect(switchedBackToA4.a4Orientation).toBe("landscape");
+    });
+
     it("updates output dir with SET_IMAGES_OUTPUT_DIR", () => {
       const initial: ImagesToPdfState = initialImagesToPdfState;
       const updated = imagesToPdfReducer(initial, {
@@ -315,6 +351,20 @@ describe("state reducers", () => {
       expect(state.pdfToImages.items).toHaveLength(0);
     });
 
+    it("restores a4Orientation from settings in createInitialAppState", () => {
+      const state = createInitialAppState("ja-JP", {
+        language: "ja",
+        imagesToPdf: {
+          output: "merge",
+          pageSize: "a4",
+          a4Orientation: "portrait",
+          outputDir: null,
+        },
+        pdfToImages: { format: "png", dpi: 150, outputDir: null },
+      });
+      expect(state.imagesToPdf.a4Orientation).toBe("portrait");
+    });
+
     it("dispatches actions to appropriate sub-reducers", () => {
       let state = createInitialAppState("ja-JP");
 
@@ -375,6 +425,14 @@ describe("state reducers", () => {
         const state = appReducer(finishedOn("pdfToImages"), {
           type: "SET_RENDER_DPI",
           dpi: 300,
+        });
+        expect(state.job.finished).toBeNull();
+      });
+
+      it("drops it when a4 orientation of imagesToPdf changes", () => {
+        const state = appReducer(finishedOn("imagesToPdf"), {
+          type: "SET_IMAGES_A4_ORIENTATION",
+          a4Orientation: "landscape",
         });
         expect(state.job.finished).toBeNull();
       });
