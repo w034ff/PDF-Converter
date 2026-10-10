@@ -151,10 +151,26 @@ a:hover {
   padding: 0 12px;
 }
 
+/* Without a line, two unpressed neighbours of a three-way control read as
+   one button. */
+.seg button + button {
+  border-left: 1px solid var(--color-border-subtle);
+}
+
 .seg button[aria-pressed="true"] {
   background: var(--color-accent);
   color: var(--color-text-on-accent);
   font-weight: 500;
+}
+
+/* bg-muted rather than the ghost buttons' bg-subtle, which is barely
+   distinguishable from the surface in the light theme. */
+.seg button:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--color-bg-muted);
+}
+
+.seg button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--color-accent-hover);
 }
 
 .seg button:disabled {
