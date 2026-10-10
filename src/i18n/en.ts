@@ -158,8 +158,12 @@ export const en: Translations = {
     pageSizeFit: "Fit to image",
     pageSizeA4: "A4",
     pageSizeFitHint: "Sets the page to the image size",
-    pageSizeA4Hint:
-      "Fits into A4 portrait or landscape with margins, matching image orientation",
+    pageSizeA4Hint: "Fits into A4 with margins",
+    orientationLabel: "Orientation",
+    orientationAuto: "Auto",
+    orientationPortrait: "Portrait",
+    orientationLandscape: "Landscape",
+    orientationAutoHint: "Landscape for wide images, portrait for the rest",
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
     imageCount: "{count} image(s)",

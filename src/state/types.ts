@@ -1,5 +1,6 @@
 import type { Language } from "../i18n";
 import type {
+  A4OrientationChoice,
   CheckPageRangeResult,
   ImageItem,
   IpcError,
@@ -32,6 +33,7 @@ export interface ImagesToPdfState {
   items: ImageItem[];
   output: OutputMode;
   pageSize: PageSizeChoice;
+  a4Orientation: A4OrientationChoice;
   outputDir: OutputDirLabel | null;
 }
 
@@ -41,6 +43,7 @@ export type ImagesToPdfAction =
   | { type: "CLEAR_IMAGE_ITEMS" }
   | { type: "SET_IMAGES_OUTPUT_MODE"; output: OutputMode }
   | { type: "SET_IMAGES_PAGE_SIZE"; pageSize: PageSizeChoice }
+  | { type: "SET_IMAGES_A4_ORIENTATION"; a4Orientation: A4OrientationChoice }
   | { type: "SET_IMAGES_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
   | { type: "MOVE_IMAGE_ITEM"; fromIndex: number; toIndex: number };
 

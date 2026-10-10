@@ -9,6 +9,7 @@ import {
   getThumbnail,
   isErrorCode,
   isIpcError,
+  isSettings,
   ITEMS_DROPPED_EVENT,
   JOB_FINISHED_EVENT,
   JOB_ITEM_EVENT,
@@ -159,6 +160,7 @@ describe("ipc", () => {
         imagesToPdf: {
           output: "merge",
           pageSize: "fit",
+          a4Orientation: "auto",
           outputDir: { dirLabel: "out" },
         },
         pdfToImages: { format: "png", dpi: 150, outputDir: null },
@@ -176,7 +178,11 @@ describe("ipc", () => {
     it("sends the settings to save_settings under one argument, without folders", async () => {
       const settings: SettingsInput = {
         language: "ja",
-        imagesToPdf: { output: "each", pageSize: "a4" },
+        imagesToPdf: {
+          output: "each",
+          pageSize: "a4",
+          a4Orientation: "portrait",
+        },
         pdfToImages: { format: "jpeg", dpi: 300 },
       };
       const calls: unknown[] = [];
@@ -197,7 +203,11 @@ describe("ipc", () => {
       await expect(
         saveSettings({
           language: null,
-          imagesToPdf: { output: "merge", pageSize: "fit" },
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "fit",
+            a4Orientation: "auto",
+          },
           pdfToImages: { format: "png", dpi: 100 },
         }),
       ).rejects.toEqual({ code: "InvalidParams", detail: null });
@@ -238,20 +248,25 @@ describe("ipc", () => {
         return { savedName: "out.pdf" };
       });
 
-      const res = await saveMergedPdf([1, 2], "fit");
+      const res = await saveMergedPdf([1, 2], "fit", "auto");
       expect(res).toEqual({ savedName: "out.pdf" });
       expect(calls).toEqual([
-        ["save_merged_pdf", { ids: [1, 2], pageSize: "fit" }],
+        [
+          "save_merged_pdf",
+          { ids: [1, 2], pageSize: "fit", a4Orientation: "auto" },
+        ],
       ]);
     });
 
     it("tells a cancelled dialog from a merge that wrote no PDF", async () => {
       mockIPC(() => null);
-      expect(await saveMergedPdf([1], "fit")).toBeNull();
+      expect(await saveMergedPdf([1], "fit", "auto")).toBeNull();
 
       clearMocks();
       mockIPC(() => ({ savedName: null }));
-      expect(await saveMergedPdf([1], "fit")).toEqual({ savedName: null });
+      expect(await saveMergedPdf([1], "fit", "auto")).toEqual({
+        savedName: null,
+      });
     });
 
     it("calls startImagesToPdfs", async () => {
@@ -261,9 +276,12 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await startImagesToPdfs([1, 2], "a4");
+      await startImagesToPdfs([1, 2], "a4", "portrait");
       expect(calls).toEqual([
-        ["start_images_to_pdfs", { ids: [1, 2], pageSize: "a4" }],
+        [
+          "start_images_to_pdfs",
+          { ids: [1, 2], pageSize: "a4", a4Orientation: "portrait" },
+        ],
       ]);
     });
 
@@ -318,6 +336,48 @@ describe("ipc", () => {
         code: "InvalidParams",
         detail: "undefined",
       });
+    });
+
+    it("validates settings shape including a4Orientation", () => {
+      const valid: Settings = {
+        language: "ja",
+        imagesToPdf: {
+          output: "merge",
+          pageSize: "a4",
+          a4Orientation: "auto",
+          outputDir: null,
+        },
+        pdfToImages: { format: "png", dpi: 150, outputDir: null },
+      };
+      expect(isSettings(valid)).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, a4Orientation: "portrait" },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, a4Orientation: "landscape" },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, a4Orientation: "square" },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "a4",
+            outputDir: null,
+          },
+        }),
+      ).toBe(false);
     });
   });
 

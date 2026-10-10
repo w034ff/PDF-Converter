@@ -24,13 +24,24 @@ pub const MM_PER_INCH: f32 = 25.4;
 /// Corresponds to 200 inches (14,400 pt), Acrobat's page limit.
 pub const MAX_PAGE_SIDE_PT: f32 = 14400.0;
 
+/// Orientation choice for an A4 page (design §4.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum A4Orientation {
+    /// Chooses landscape if display width > display height, otherwise portrait.
+    Auto,
+    /// Always portrait (595.28 × 841.89 pt).
+    Portrait,
+    /// Always landscape (841.89 × 595.28 pt).
+    Landscape,
+}
+
 /// Page size specification for image-to-PDF conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageSize {
     /// Fits the page to the image dimensions at its native resolution (no margins).
     Fit,
     /// Places the image onto an A4 page with margins, scaled to fit and centered.
-    A4,
+    A4(A4Orientation),
 }
 
 /// A 2D rectangle in points with origin at the top-left corner (Y-down).
@@ -105,10 +116,12 @@ pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
                 },
             }
         }
-        PageSize::A4 => {
-            // Images with display width > display height use landscape orientation,
-            // otherwise portrait orientation (design §4.2).
-            let is_landscape = display_w > display_h;
+        PageSize::A4(orientation) => {
+            let is_landscape = match orientation {
+                A4Orientation::Auto => display_w > display_h,
+                A4Orientation::Portrait => false,
+                A4Orientation::Landscape => true,
+            };
             let (page_w, page_h) = if is_landscape {
                 (A4_HEIGHT_PT, A4_WIDTH_PT)
             } else {
@@ -175,24 +188,86 @@ mod tests {
     }
 
     #[test]
-    fn a4_chooses_landscape_or_portrait() {
+    fn a4_auto_chooses_landscape_or_portrait() {
         // Wider than tall -> Landscape (width = 841.89, height = 595.28)
         let landscape_img = make_info(1200, 800, Orientation::NoTransforms, 96);
-        let layout_l = calculate_layout(&landscape_img, PageSize::A4);
+        let layout_l = calculate_layout(&landscape_img, PageSize::A4(A4Orientation::Auto));
         assert_eq!(layout_l.page_width, A4_HEIGHT_PT);
         assert_eq!(layout_l.page_height, A4_WIDTH_PT);
 
         // Taller than wide -> Portrait (width = 595.28, height = 841.89)
         let portrait_img = make_info(800, 1200, Orientation::NoTransforms, 96);
-        let layout_p = calculate_layout(&portrait_img, PageSize::A4);
+        let layout_p = calculate_layout(&portrait_img, PageSize::A4(A4Orientation::Auto));
         assert_eq!(layout_p.page_width, A4_WIDTH_PT);
         assert_eq!(layout_p.page_height, A4_HEIGHT_PT);
 
         // Square image (w == h) -> Portrait
         let square_img = make_info(500, 500, Orientation::NoTransforms, 96);
-        let layout_s = calculate_layout(&square_img, PageSize::A4);
+        let layout_s = calculate_layout(&square_img, PageSize::A4(A4Orientation::Auto));
         assert_eq!(layout_s.page_width, A4_WIDTH_PT);
         assert_eq!(layout_s.page_height, A4_HEIGHT_PT);
+    }
+
+    #[test]
+    fn a4_portrait_always_uses_portrait_dimensions() {
+        let expected_margin_pt = A4_MARGIN_MM * POINTS_PER_INCH / MM_PER_INCH;
+        let avail_w = A4_WIDTH_PT - 2.0 * expected_margin_pt;
+        let avail_h = A4_HEIGHT_PT - 2.0 * expected_margin_pt;
+
+        // Landscape image on portrait page: width fills avail_w, centered vertically
+        let landscape_img = make_info(1200, 800, Orientation::NoTransforms, 96);
+        let layout_l = calculate_layout(&landscape_img, PageSize::A4(A4Orientation::Portrait));
+        assert_eq!(layout_l.page_width, A4_WIDTH_PT);
+        assert_eq!(layout_l.page_height, A4_HEIGHT_PT);
+        assert!((layout_l.image_rect.width - avail_w).abs() < 1e-4);
+        assert!((layout_l.image_rect.x - expected_margin_pt).abs() < 1e-4);
+        let exp_h = avail_w * (800.0 / 1200.0);
+        assert!((layout_l.image_rect.height - exp_h).abs() < 1e-4);
+        let exp_y = expected_margin_pt + (avail_h - exp_h) / 2.0;
+        assert!((layout_l.image_rect.y - exp_y).abs() < 1e-4);
+
+        // Portrait image on portrait page
+        let portrait_img = make_info(800, 1200, Orientation::NoTransforms, 96);
+        let layout_p = calculate_layout(&portrait_img, PageSize::A4(A4Orientation::Portrait));
+        assert_eq!(layout_p.page_width, A4_WIDTH_PT);
+        assert_eq!(layout_p.page_height, A4_HEIGHT_PT);
+
+        // Square image on portrait page
+        let square_img = make_info(500, 500, Orientation::NoTransforms, 96);
+        let layout_s = calculate_layout(&square_img, PageSize::A4(A4Orientation::Portrait));
+        assert_eq!(layout_s.page_width, A4_WIDTH_PT);
+        assert_eq!(layout_s.page_height, A4_HEIGHT_PT);
+    }
+
+    #[test]
+    fn a4_landscape_always_uses_landscape_dimensions() {
+        let expected_margin_pt = A4_MARGIN_MM * POINTS_PER_INCH / MM_PER_INCH;
+        let avail_w = A4_HEIGHT_PT - 2.0 * expected_margin_pt;
+        let avail_h = A4_WIDTH_PT - 2.0 * expected_margin_pt;
+
+        // Portrait image on landscape page: height fills avail_h, centered horizontally
+        let portrait_img = make_info(800, 1200, Orientation::NoTransforms, 96);
+        let layout_p = calculate_layout(&portrait_img, PageSize::A4(A4Orientation::Landscape));
+        assert_eq!(layout_p.page_width, A4_HEIGHT_PT);
+        assert_eq!(layout_p.page_height, A4_WIDTH_PT);
+        assert!((layout_p.image_rect.height - avail_h).abs() < 1e-4);
+        assert!((layout_p.image_rect.y - expected_margin_pt).abs() < 1e-4);
+        let exp_w = avail_h * (800.0 / 1200.0);
+        assert!((layout_p.image_rect.width - exp_w).abs() < 1e-4);
+        let exp_x = expected_margin_pt + (avail_w - exp_w) / 2.0;
+        assert!((layout_p.image_rect.x - exp_x).abs() < 1e-4);
+
+        // Landscape image on landscape page
+        let landscape_img = make_info(1200, 800, Orientation::NoTransforms, 96);
+        let layout_l = calculate_layout(&landscape_img, PageSize::A4(A4Orientation::Landscape));
+        assert_eq!(layout_l.page_width, A4_HEIGHT_PT);
+        assert_eq!(layout_l.page_height, A4_WIDTH_PT);
+
+        // Square image on landscape page
+        let square_img = make_info(500, 500, Orientation::NoTransforms, 96);
+        let layout_s = calculate_layout(&square_img, PageSize::A4(A4Orientation::Landscape));
+        assert_eq!(layout_s.page_width, A4_HEIGHT_PT);
+        assert_eq!(layout_s.page_height, A4_WIDTH_PT);
     }
 
     #[test]
@@ -200,7 +275,7 @@ mod tests {
         assert_eq!(A4_MARGIN_MM, 10.0);
         let expected_margin_pt = 10.0 * POINTS_PER_INCH / MM_PER_INCH;
         let img = make_info(400, 200, Orientation::NoTransforms, 96);
-        let layout = calculate_layout(&img, PageSize::A4);
+        let layout = calculate_layout(&img, PageSize::A4(A4Orientation::Auto));
 
         // Landscape page
         let avail_w = A4_HEIGHT_PT - 2.0 * expected_margin_pt;
@@ -220,16 +295,51 @@ mod tests {
     fn a4_scales_up_small_images_and_scales_down_large_images() {
         let margin_pt = A4_MARGIN_MM * POINTS_PER_INCH / MM_PER_INCH;
 
-        // Very small image (10x20 px)
+        // Very small image (10x20 px) in Auto (portrait)
         let small = make_info(10, 20, Orientation::NoTransforms, 96);
-        let layout_small = calculate_layout(&small, PageSize::A4);
+        let layout_small = calculate_layout(&small, PageSize::A4(A4Orientation::Auto));
         let avail_h = A4_HEIGHT_PT - 2.0 * margin_pt;
         assert!((layout_small.image_rect.height - avail_h).abs() < 1e-3);
 
+        // Small image scaled up in Portrait and Landscape
+        let layout_small_p = calculate_layout(&small, PageSize::A4(A4Orientation::Portrait));
+        assert!((layout_small_p.image_rect.height - avail_h).abs() < 1e-3);
+        let layout_small_l = calculate_layout(&small, PageSize::A4(A4Orientation::Landscape));
+        let avail_h_landscape = A4_WIDTH_PT - 2.0 * margin_pt;
+        assert!((layout_small_l.image_rect.height - avail_h_landscape).abs() < 1e-3);
+
         // Very large image (10000x20000 px)
         let large = make_info(10000, 20000, Orientation::NoTransforms, 96);
-        let layout_large = calculate_layout(&large, PageSize::A4);
+        let layout_large = calculate_layout(&large, PageSize::A4(A4Orientation::Auto));
         assert!((layout_large.image_rect.height - avail_h).abs() < 1e-3);
+
+        let layout_large_p = calculate_layout(&large, PageSize::A4(A4Orientation::Portrait));
+        assert!((layout_large_p.image_rect.height - avail_h).abs() < 1e-3);
+
+        let layout_large_l = calculate_layout(&large, PageSize::A4(A4Orientation::Landscape));
+        assert!((layout_large_l.image_rect.height - avail_h_landscape).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a4_respects_exif_90_degree_rotation_dimensions() {
+        // Raw pixels: 160 x 96 (wider than tall), but Rotate90 swaps display to 96 x 160 (taller than wide).
+        let rotated_img = make_info(160, 96, Orientation::Rotate90, 96);
+        let margin_pt = A4_MARGIN_MM * POINTS_PER_INCH / MM_PER_INCH;
+
+        // Auto uses display dimensions: 96 x 160 is portrait
+        let layout_auto = calculate_layout(&rotated_img, PageSize::A4(A4Orientation::Auto));
+        assert_eq!(layout_auto.page_width, A4_WIDTH_PT);
+        assert_eq!(layout_auto.page_height, A4_HEIGHT_PT);
+
+        // Portrait: uses display dimensions
+        let layout_p = calculate_layout(&rotated_img, PageSize::A4(A4Orientation::Portrait));
+        let avail_h_p = A4_HEIGHT_PT - 2.0 * margin_pt;
+        assert!((layout_p.image_rect.height - avail_h_p).abs() < 1e-3);
+
+        // Landscape: uses display dimensions
+        let layout_l = calculate_layout(&rotated_img, PageSize::A4(A4Orientation::Landscape));
+        let avail_h_l = A4_WIDTH_PT - 2.0 * margin_pt;
+        assert!((layout_l.image_rect.height - avail_h_l).abs() < 1e-3);
     }
 
     #[test]

@@ -30,10 +30,18 @@ export function ImagesToPdfAction() {
 
   const handleClick = () => {
     if (isMerge) {
-      void runner.saveMergedPdf(validTargets, imagesToPdf.pageSize);
+      void runner.saveMergedPdf(
+        validTargets,
+        imagesToPdf.pageSize,
+        imagesToPdf.a4Orientation,
+      );
     } else {
       void runWithOutputDir(imagesToPdf.outputDir, () =>
-        runner.startImagesToPdfs(validTargets, imagesToPdf.pageSize),
+        runner.startImagesToPdfs(
+          validTargets,
+          imagesToPdf.pageSize,
+          imagesToPdf.a4Orientation,
+        ),
       );
     }
   };

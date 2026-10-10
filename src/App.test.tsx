@@ -31,6 +31,7 @@ const SAVED_SETTINGS: Settings = {
   imagesToPdf: {
     output: "each",
     pageSize: "a4",
+    a4Orientation: "auto",
     outputDir: { dirLabel: "Scans" },
   },
   pdfToImages: {
@@ -290,7 +291,11 @@ describe("App", () => {
         {
           settings: {
             language: null,
-            imagesToPdf: { output: "merge", pageSize: "fit" },
+            imagesToPdf: {
+              output: "merge",
+              pageSize: "fit",
+              a4Orientation: "auto",
+            },
             pdfToImages: { format: "jpeg", dpi: 300 },
           },
         },
@@ -324,6 +329,33 @@ describe("App", () => {
       expect(saved).toEqual([]);
     });
 
+    it("saves when changing orientation alone", async () => {
+      vi.useFakeTimers();
+      const saved = mockSaves();
+      render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
+
+      const orientation = screen.getByRole("group", { name: "Orientation" });
+      fireEvent.click(
+        within(orientation).getByRole("button", { name: "Portrait" }),
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS);
+      });
+      expect(saved).toEqual([
+        {
+          settings: {
+            language: "en",
+            imagesToPdf: {
+              output: "each",
+              pageSize: "a4",
+              a4Orientation: "portrait",
+            },
+            pdfToImages: { format: "jpeg", dpi: 300 },
+          },
+        },
+      ]);
+    });
+
     it("saves the picked language, not the one taken from the OS", async () => {
       vi.useFakeTimers();
       const saved = mockSaves();
@@ -339,7 +371,11 @@ describe("App", () => {
         {
           settings: {
             language: "en",
-            imagesToPdf: { output: "merge", pageSize: "fit" },
+            imagesToPdf: {
+              output: "merge",
+              pageSize: "fit",
+              a4Orientation: "auto",
+            },
             pdfToImages: { format: "png", dpi: 150 },
           },
         },

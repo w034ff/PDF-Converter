@@ -15,7 +15,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
-use crate::jobs::{PageSizeChoice, RenderFormatChoice};
+use crate::jobs::{A4OrientationChoice, PageSizeChoice, RenderFormatChoice};
 
 /// The `schemaVersion` this build reads and writes (design §6.7).
 pub const SCHEMA_VERSION: u32 = 1;
@@ -25,6 +25,7 @@ pub const SETTINGS_FILE_NAME: &str = "settings.json";
 
 const DEFAULT_OUTPUT: OutputMode = OutputMode::Merge;
 const DEFAULT_PAGE_SIZE: PageSizeChoice = PageSizeChoice::Fit;
+const DEFAULT_A4_ORIENTATION: A4OrientationChoice = A4OrientationChoice::Auto;
 const DEFAULT_FORMAT: RenderFormatChoice = RenderFormatChoice::Png;
 
 /// The UI language the user chose (design §6.7).
@@ -65,6 +66,7 @@ pub struct OutputDirLabel {
 pub struct ImagesToPdfOptions {
     pub output: OutputMode,
     pub page_size: PageSizeChoice,
+    pub a4_orientation: A4OrientationChoice,
 }
 
 /// The "PDF to images" options the user can change (design §6.7).
@@ -106,6 +108,7 @@ impl SettingsInput {
 pub struct ImagesToPdfSettings {
     pub output: OutputMode,
     pub page_size: PageSizeChoice,
+    pub a4_orientation: A4OrientationChoice,
     pub output_dir: Option<OutputDirLabel>,
 }
 
@@ -167,6 +170,7 @@ impl Default for SettingsFile {
                 options: ImagesToPdfOptions {
                     output: DEFAULT_OUTPUT,
                     page_size: DEFAULT_PAGE_SIZE,
+                    a4_orientation: DEFAULT_A4_ORIENTATION,
                 },
                 output_dir: None,
             },
@@ -215,6 +219,7 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
             options: ImagesToPdfOptions {
                 output: field(images, "output").unwrap_or(DEFAULT_OUTPUT),
                 page_size: field(images, "pageSize").unwrap_or(DEFAULT_PAGE_SIZE),
+                a4_orientation: field(images, "a4Orientation").unwrap_or(DEFAULT_A4_ORIENTATION),
             },
             output_dir: field(images, "outputDir"),
         },
@@ -414,6 +419,7 @@ pub fn get_settings_internal(state: &AppState) -> Settings {
         images_to_pdf: ImagesToPdfSettings {
             output: file.images_to_pdf.options.output,
             page_size: file.images_to_pdf.options.page_size,
+            a4_orientation: file.images_to_pdf.options.a4_orientation,
             output_dir: label_of(&state.images_output_dir),
         },
         pdf_to_images: PdfToImagesSettings {

@@ -7,7 +7,9 @@ use std::path::PathBuf;
 
 use image::Rgb;
 use pdfconv_core::probe::probe_reader;
-use pdfconv_core::{POINTS_PER_INCH, PageSize, PdfWriter, ProbeError, calculate_layout};
+use pdfconv_core::{
+    A4Orientation, POINTS_PER_INCH, PageSize, PdfWriter, ProbeError, calculate_layout,
+};
 use pdfium_render::prelude::*;
 
 /// Tolerance for pixel value differences when comparing rendered image with original (design §11.2).
@@ -188,103 +190,180 @@ fn pdf_quality_and_conformance_suite() {
 
     println!("\n--- [A4] Placement Test Results ---");
     let scale_a4 = RENDER_DPI_A4 / POINTS_PER_INCH;
+    let a4_orientations = [
+        A4Orientation::Auto,
+        A4Orientation::Portrait,
+        A4Orientation::Landscape,
+    ];
 
-    for name in a4_fixtures {
-        let path = fix_dir.join(name);
-        let raw_bytes = std::fs::read(&path).unwrap();
-        let info = probe_reader(std::io::Cursor::new(&raw_bytes)).unwrap();
+    for orientation in a4_orientations {
+        for name in a4_fixtures {
+            let path = fix_dir.join(name);
+            let raw_bytes = std::fs::read(&path).unwrap();
+            let info = probe_reader(std::io::Cursor::new(&raw_bytes)).unwrap();
 
-        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
-        writer.add_page(&raw_bytes, PageSize::A4).unwrap();
-        let pdf_bytes = writer.finish().unwrap();
+            let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+            writer
+                .add_page(&raw_bytes, PageSize::A4(orientation))
+                .unwrap();
+            let pdf_bytes = writer.finish().unwrap();
 
-        let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
-        let page = doc.pages().get(0).unwrap();
+            let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
+            let page = doc.pages().get(0).unwrap();
 
-        let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
-        let rendered_image = render_page_to_rgb(&page, &render_config);
+            let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
+            let rendered_image = render_page_to_rgb(&page, &render_config);
 
-        let layout = calculate_layout(&info, PageSize::A4);
+            let layout = calculate_layout(&info, PageSize::A4(orientation));
 
-        // Expected bounding box on the rendered pixel grid:
-        // Start is rounded down (floor), end is rounded up (ceil) (design §11.2).
-        let exp_min_x = (layout.image_rect.x * scale_a4).floor() as u32;
-        let exp_min_y = (layout.image_rect.y * scale_a4).floor() as u32;
-        let exp_max_x = ((layout.image_rect.x + layout.image_rect.width) * scale_a4).ceil() as u32;
-        let exp_max_y = ((layout.image_rect.y + layout.image_rect.height) * scale_a4).ceil() as u32;
+            // Expected bounding box on the rendered pixel grid:
+            // Start is rounded down (floor), end is rounded up (ceil) (design §11.2).
+            let exp_min_x = (layout.image_rect.x * scale_a4).floor() as u32;
+            let exp_min_y = (layout.image_rect.y * scale_a4).floor() as u32;
+            let exp_max_x =
+                ((layout.image_rect.x + layout.image_rect.width) * scale_a4).ceil() as u32;
+            let exp_max_y =
+                ((layout.image_rect.y + layout.image_rect.height) * scale_a4).ceil() as u32;
 
-        // Measure actual non-white bounding box (RGB any < 250)
-        let mut act_min_x = u32::MAX;
-        let mut act_min_y = u32::MAX;
-        let mut act_max_x = 0u32;
-        let mut act_max_y = 0u32;
+            // Measure actual non-white bounding box (RGB any < 250)
+            let mut act_min_x = u32::MAX;
+            let mut act_min_y = u32::MAX;
+            let mut act_max_x = 0u32;
+            let mut act_max_y = 0u32;
 
-        for (x, y, pixel) in rendered_image.enumerate_pixels() {
-            let [r, g, b] = pixel.0;
-            if r < 250 || g < 250 || b < 250 {
-                act_min_x = act_min_x.min(x);
-                act_min_y = act_min_y.min(y);
-                act_max_x = act_max_x.max(x);
-                act_max_y = act_max_y.max(y);
-            }
-        }
-
-        // End pixel coordinate (exclusive) is max_x + 1
-        let act_end_x = act_max_x + 1;
-        let act_end_y = act_max_y + 1;
-
-        println!(
-            "{name:<20}: actual [{act_min_x}, {act_min_y}, {act_end_x}, {act_end_y}] vs expected [{exp_min_x}, {exp_min_y}, {exp_max_x}, {exp_max_y}]"
-        );
-
-        assert!(
-            (act_min_x as i64 - exp_min_x as i64).abs() <= 1,
-            "{name}: min_x diff too large: act={act_min_x}, exp={exp_min_x}"
-        );
-        assert!(
-            (act_min_y as i64 - exp_min_y as i64).abs() <= 1,
-            "{name}: min_y diff too large: act={act_min_y}, exp={exp_min_y}"
-        );
-        assert!(
-            (act_end_x as i64 - exp_max_x as i64).abs() <= 1,
-            "{name}: max_x diff too large: act={act_end_x}, exp={exp_max_x}"
-        );
-        assert!(
-            (act_end_y as i64 - exp_max_y as i64).abs() <= 1,
-            "{name}: max_y diff too large: act={act_end_y}, exp={exp_max_y}"
-        );
-
-        // For the 8 orientation fixtures, verify quadrant center colors
-        if name.starts_with("rotate") || name.starts_with("flip") {
-            // Displayed dimensions are 160 x 96.
-            // Centers of the 4 quadrants:
-            // Top-left: (40, 24) -> RED [220, 40, 40]
-            // Top-right: (120, 24) -> GREEN [40, 170, 90]
-            // Bottom-left: (40, 72) -> BLUE [40, 80, 200]
-            // Bottom-right: (120, 72) -> YELLOW [250, 210, 0]
-            let quadrants = [
-                ((40.0, 24.0), [220u8, 40, 40], "top-left (red)"),
-                ((120.0, 24.0), [40, 170, 90], "top-right (green)"),
-                ((40.0, 72.0), [40, 80, 200], "bottom-left (blue)"),
-                ((120.0, 72.0), [250, 210, 0], "bottom-right (yellow)"),
-            ];
-
-            for &((disp_cx, disp_cy), expected_color, label) in &quadrants {
-                let pt_x = layout.image_rect.x + (disp_cx / 160.0) * layout.image_rect.width;
-                let pt_y = layout.image_rect.y + (disp_cy / 96.0) * layout.image_rect.height;
-                let px_x = (pt_x * scale_a4).round() as u32;
-                let px_y = (pt_y * scale_a4).round() as u32;
-
-                let actual_pixel = rendered_image.get_pixel(px_x, px_y).0;
-                for c in 0..3 {
-                    let diff =
-                        (actual_pixel[c] as i16 - expected_color[c] as i16).unsigned_abs() as u8;
-                    assert!(
-                        diff <= COLOR_TOLERANCE_RENDER,
-                        "{name} {label} channel {c} mismatch: actual={actual_pixel:?}, expected={expected_color:?}, diff={diff}"
-                    );
+            for (x, y, pixel) in rendered_image.enumerate_pixels() {
+                let [r, g, b] = pixel.0;
+                if r < 250 || g < 250 || b < 250 {
+                    act_min_x = act_min_x.min(x);
+                    act_min_y = act_min_y.min(y);
+                    act_max_x = act_max_x.max(x);
+                    act_max_y = act_max_y.max(y);
                 }
             }
+
+            // End pixel coordinate (exclusive) is max_x + 1
+            let act_end_x = act_max_x + 1;
+            let act_end_y = act_max_y + 1;
+
+            println!(
+                "{name:<20} ({orientation:?}): actual [{act_min_x}, {act_min_y}, {act_end_x}, {act_end_y}] vs expected [{exp_min_x}, {exp_min_y}, {exp_max_x}, {exp_max_y}]"
+            );
+
+            assert!(
+                (act_min_x as i64 - exp_min_x as i64).abs() <= 1,
+                "{name} ({orientation:?}): min_x diff too large: act={act_min_x}, exp={exp_min_x}"
+            );
+            assert!(
+                (act_min_y as i64 - exp_min_y as i64).abs() <= 1,
+                "{name} ({orientation:?}): min_y diff too large: act={act_min_y}, exp={exp_min_y}"
+            );
+            assert!(
+                (act_end_x as i64 - exp_max_x as i64).abs() <= 1,
+                "{name} ({orientation:?}): max_x diff too large: act={act_end_x}, exp={exp_max_x}"
+            );
+            assert!(
+                (act_end_y as i64 - exp_max_y as i64).abs() <= 1,
+                "{name} ({orientation:?}): max_y diff too large: act={act_end_y}, exp={exp_max_y}"
+            );
+
+            // For the 8 orientation fixtures, verify quadrant center colors
+            if name.starts_with("rotate") || name.starts_with("flip") {
+                // Displayed dimensions are 160 x 96.
+                // Centers of the 4 quadrants:
+                // Top-left: (40, 24) -> RED [220, 40, 40]
+                // Top-right: (120, 24) -> GREEN [40, 170, 90]
+                // Bottom-left: (40, 72) -> BLUE [40, 80, 200]
+                // Bottom-right: (120, 72) -> YELLOW [250, 210, 0]
+                let quadrants = [
+                    ((40.0, 24.0), [220u8, 40, 40], "top-left (red)"),
+                    ((120.0, 24.0), [40, 170, 90], "top-right (green)"),
+                    ((40.0, 72.0), [40, 80, 200], "bottom-left (blue)"),
+                    ((120.0, 72.0), [250, 210, 0], "bottom-right (yellow)"),
+                ];
+
+                for &((disp_cx, disp_cy), expected_color, label) in &quadrants {
+                    let pt_x = layout.image_rect.x + (disp_cx / 160.0) * layout.image_rect.width;
+                    let pt_y = layout.image_rect.y + (disp_cy / 96.0) * layout.image_rect.height;
+                    let px_x = (pt_x * scale_a4).round() as u32;
+                    let px_y = (pt_y * scale_a4).round() as u32;
+
+                    let actual_pixel = rendered_image.get_pixel(px_x, px_y).0;
+                    for c in 0..3 {
+                        let diff = (actual_pixel[c] as i16 - expected_color[c] as i16)
+                            .unsigned_abs() as u8;
+                        assert!(
+                            diff <= COLOR_TOLERANCE_RENDER,
+                            "{name} ({orientation:?}) {label} channel {c} mismatch: actual={actual_pixel:?}, expected={expected_color:?}, diff={diff}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Verify rendered dimensions match page orientation for landscape (photo.jpg) and portrait (shapes_150dpi_p1.png) fixtures
+    let landscape_bytes = std::fs::read(fix_dir.join("photo.jpg")).unwrap();
+    let portrait_bytes = std::fs::read(fix_dir.join("shapes_150dpi_p1.png")).unwrap();
+
+    for (orient, expect_portrait) in [
+        (A4Orientation::Portrait, true),
+        (A4Orientation::Landscape, false),
+        (A4Orientation::Auto, false), // photo.jpg is landscape -> landscape in Auto
+    ] {
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        writer
+            .add_page(&landscape_bytes, PageSize::A4(orient))
+            .unwrap();
+        let pdf_bytes = writer.finish().unwrap();
+        let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
+        let page = doc.pages().get(0).unwrap();
+        let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
+        let rendered_image = render_page_to_rgb(&page, &render_config);
+        if expect_portrait {
+            assert!(
+                rendered_image.height() > rendered_image.width(),
+                "photo.jpg with {orient:?} should render portrait, got {}x{}",
+                rendered_image.width(),
+                rendered_image.height()
+            );
+        } else {
+            assert!(
+                rendered_image.width() > rendered_image.height(),
+                "photo.jpg with {orient:?} should render landscape, got {}x{}",
+                rendered_image.width(),
+                rendered_image.height()
+            );
+        }
+    }
+
+    for (orient, expect_portrait) in [
+        (A4Orientation::Portrait, true),
+        (A4Orientation::Landscape, false),
+        (A4Orientation::Auto, true), // shapes_150dpi_p1.png is portrait -> portrait in Auto
+    ] {
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        writer
+            .add_page(&portrait_bytes, PageSize::A4(orient))
+            .unwrap();
+        let pdf_bytes = writer.finish().unwrap();
+        let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
+        let page = doc.pages().get(0).unwrap();
+        let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
+        let rendered_image = render_page_to_rgb(&page, &render_config);
+        if expect_portrait {
+            assert!(
+                rendered_image.height() > rendered_image.width(),
+                "shapes_150dpi_p1.png with {orient:?} should render portrait, got {}x{}",
+                rendered_image.width(),
+                rendered_image.height()
+            );
+        } else {
+            assert!(
+                rendered_image.width() > rendered_image.height(),
+                "shapes_150dpi_p1.png with {orient:?} should render landscape, got {}x{}",
+                rendered_image.width(),
+                rendered_image.height()
+            );
         }
     }
 

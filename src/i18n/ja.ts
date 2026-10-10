@@ -155,8 +155,12 @@ export const ja = {
     pageSizeFit: "画像に合わせる",
     pageSizeA4: "A4",
     pageSizeFitHint: "画像の大きさのページにします",
-    pageSizeA4Hint:
-      "A4 の縦か横（画像の向きに合わせる）に、余白を付けて収めます",
+    pageSizeA4Hint: "余白を付けて A4 に収めます",
+    orientationLabel: "向き",
+    orientationAuto: "自動",
+    orientationPortrait: "縦",
+    orientationLandscape: "横",
+    orientationAutoHint: "横長の画像は横、それ以外は縦にします",
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
     imageCount: "画像 {count} 枚",

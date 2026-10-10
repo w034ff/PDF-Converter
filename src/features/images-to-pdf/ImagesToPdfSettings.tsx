@@ -1,7 +1,11 @@
 import { SegmentedControl, type SegmentedOption } from "../../components";
 import { OutputDirField } from "../output/OutputDirField";
 import { getTranslations } from "../../i18n";
-import type { OutputMode, PageSizeChoice } from "../../ipc";
+import type {
+  A4OrientationChoice,
+  OutputMode,
+  PageSizeChoice,
+} from "../../ipc";
 import { isJobActive, useAppDispatch, useAppState } from "../../state";
 import "./ImagesToPdf.css";
 
@@ -23,6 +27,12 @@ export function ImagesToPdfSettings() {
   const pageSizeOptions: readonly SegmentedOption<PageSizeChoice>[] = [
     { value: "fit", label: t.imagesToPdf.pageSizeFit },
     { value: "a4", label: t.imagesToPdf.pageSizeA4 },
+  ];
+
+  const orientationOptions: readonly SegmentedOption<A4OrientationChoice>[] = [
+    { value: "auto", label: t.imagesToPdf.orientationAuto },
+    { value: "portrait", label: t.imagesToPdf.orientationPortrait },
+    { value: "landscape", label: t.imagesToPdf.orientationLandscape },
   ];
 
   return (
@@ -57,6 +67,27 @@ export function ImagesToPdfSettings() {
             : t.imagesToPdf.pageSizeA4Hint}
         </span>
       </div>
+
+      {imagesToPdf.pageSize === "a4" && (
+        <div className="images-settings-field">
+          <span className="label">{t.imagesToPdf.orientationLabel}</span>
+          <SegmentedControl
+            label={t.imagesToPdf.orientationLabel}
+            options={orientationOptions}
+            value={imagesToPdf.a4Orientation}
+            onChange={(value) =>
+              dispatch({
+                type: "SET_IMAGES_A4_ORIENTATION",
+                a4Orientation: value,
+              })
+            }
+            disabled={disabled}
+          />
+          {imagesToPdf.a4Orientation === "auto" && (
+            <span className="hint">{t.imagesToPdf.orientationAutoHint}</span>
+          )}
+        </div>
+      )}
 
       {imagesToPdf.output === "each" && (
         <OutputDirField
