@@ -160,7 +160,7 @@ export const ja = {
     orientationAuto: "自動",
     orientationPortrait: "縦",
     orientationLandscape: "横",
-    orientationAutoHint: "画像の縦横に合わせてページごとに自動で切り替えます",
+    orientationAutoHint: "横長の画像は横、それ以外は縦にします",
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
     imageCount: "画像 {count} 枚",

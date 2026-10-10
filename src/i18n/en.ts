@@ -163,7 +163,7 @@ export const en: Translations = {
     orientationAuto: "Auto",
     orientationPortrait: "Portrait",
     orientationLandscape: "Landscape",
-    orientationAutoHint: "Switches automatically per page to match each image",
+    orientationAutoHint: "Landscape for wide images, portrait for the rest",
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
     imageCount: "{count} image(s)",

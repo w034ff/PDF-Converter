@@ -1205,12 +1205,13 @@ describe("ImagesToPdf (T11)", () => {
       expect(screen.getByText("photo.jpg")).toBeInTheDocument();
     });
 
-    // Switch to each mode and pick dir
+    // Switch to each mode, pick dir, and select A4 so orientation controls appear
     fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
     fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
     await waitFor(() => {
       expect(screen.getByText("out")).toBeInTheDocument();
     });
+    fireEvent.click(screen.getByRole("button", { name: "A4" }));
 
     // Start conversion
     fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
@@ -1228,6 +1229,9 @@ describe("ImagesToPdf (T11)", () => {
       screen.getByRole("button", { name: "画像に合わせる" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "A4" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "自動" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "縦" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "横" })).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "フォルダを選ぶ" }),
     ).toBeDisabled();
@@ -1857,7 +1861,7 @@ describe("ImagesToPdf (T11)", () => {
 
     // Hint is shown for "auto"
     expect(
-      screen.getByText("画像の縦横に合わせてページごとに自動で切り替えます"),
+      screen.getByText("横長の画像は横、それ以外は縦にします"),
     ).toBeInTheDocument();
 
     // Click "縦"
@@ -1866,7 +1870,7 @@ describe("ImagesToPdf (T11)", () => {
     expect(autoBtn).toHaveAttribute("aria-pressed", "false");
     // Hint is hidden for "portrait"
     expect(
-      screen.queryByText("画像の縦横に合わせてページごとに自動で切り替えます"),
+      screen.queryByText("横長の画像は横、それ以外は縦にします"),
     ).not.toBeInTheDocument();
 
     // Switch back to "画像に合わせる"
@@ -1882,7 +1886,7 @@ describe("ImagesToPdf (T11)", () => {
       "true",
     );
     expect(
-      screen.queryByText("画像の縦横に合わせてページごとに自動で切り替えます"),
+      screen.queryByText("横長の画像は横、それ以外は縦にします"),
     ).not.toBeInTheDocument();
 
     // Add an image and click "PDF を保存" to verify args
@@ -1898,5 +1902,81 @@ describe("ImagesToPdf (T11)", () => {
         args: { ids: [1], pageSize: "a4", a4Orientation: "portrait" },
       });
     });
+  });
+
+  it("passes selected orientation to start_images_to_pdfs in each mode", async () => {
+    const calls = mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        return {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+      }
+      if (cmd === "pick_output_dir") {
+        return { dirLabel: "out" };
+      }
+      if (cmd === "start_images_to_pdfs") {
+        return undefined;
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+
+    // Switch to each mode and pick dir
+    fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+    fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+    await waitFor(() => {
+      expect(screen.getByText("out")).toBeInTheDocument();
+    });
+
+    // Switch to A4 and select Landscape ("横")
+    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+    fireEvent.click(screen.getByRole("button", { name: "横" }));
+
+    // Start conversion
+    fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "start_images_to_pdfs",
+        args: { ids: [1], pageSize: "a4", a4Orientation: "landscape" },
+      });
+    });
+  });
+
+  it("displays orientation controls and hints in English when language is en", async () => {
+    mockAppIpc(() => undefined);
+    renderHarness("en-US");
+
+    // Click A4
+    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+
+    // Group name "Orientation"
+    expect(
+      screen.getByRole("group", { name: "Orientation" }),
+    ).toBeInTheDocument();
+
+    // 3 choices
+    expect(screen.getByRole("button", { name: "Auto" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Portrait" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Landscape" }),
+    ).toBeInTheDocument();
+
+    // 2 hints: A4 hint and auto orientation hint
+    expect(screen.getByText("Fits into A4 with margins")).toBeInTheDocument();
+    expect(
+      screen.getByText("Landscape for wide images, portrait for the rest"),
+    ).toBeInTheDocument();
   });
 });
