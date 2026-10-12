@@ -332,11 +332,20 @@ fn pdf_quality_and_conformance_suite() {
     // -----------------------------------------------------------------------
     println!("\n--- [Letter & JIS B5] Placement and Dimension Tests ---");
     let other_papers = [(PaperSize::Letter, "Letter"), (PaperSize::JisB5, "JIS B5")];
-    // Landscape fixture: rotate0.jpg (160x96, no white)
-    // Portrait fixture: dpi300.png (2480x3508, no white)
-    let nonwhite_fixtures = [
-        ("rotate0.jpg", "landscape fixture"),
-        ("dpi300.png", "portrait fixture"),
+    // One wide and one tall image, both free of white pixels. Every fixture
+    // without white is wide once its EXIF orientation is applied, so the tall
+    // one is made here.
+    let wide_bytes = std::fs::read(fix_dir.join("rotate0.jpg")).unwrap();
+    let mut tall_bytes = Vec::new();
+    image::RgbImage::from_pixel(96, 160, Rgb([40, 90, 160]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut tall_bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let nonwhite_images = [
+        ("rotate0.jpg (160x96)", &wide_bytes),
+        ("generated tall PNG (96x160)", &tall_bytes),
     ];
 
     for (paper, paper_name) in other_papers {
@@ -350,13 +359,11 @@ fn pdf_quality_and_conformance_suite() {
             let exp_rendered_w = (exp_w_pt * scale_a4).round() as u32;
             let exp_rendered_h = (exp_h_pt * scale_a4).round() as u32;
 
-            for (fix_name, _) in nonwhite_fixtures {
-                let path = fix_dir.join(fix_name);
-                let raw_bytes = std::fs::read(&path).unwrap();
-                let context = format!("{paper_name} ({orientation:?}) {fix_name}");
+            for (image_name, raw_bytes) in nonwhite_images {
+                let context = format!("{paper_name} ({orientation:?}) {image_name}");
                 let (rendered_image, _) = assert_paper_placement(
                     &pdfium,
-                    &raw_bytes,
+                    raw_bytes,
                     PageSize::Paper(paper, orientation),
                     scale_a4,
                     &context,
