@@ -2,19 +2,19 @@
 
 [日本語 (Japanese)](README.ja.md)
 
-PDF Converter is an open-source desktop application that converts raster images (PNG, JPEG, WebP, BMP) to PDF and PDF files to raster images (PNG, JPEG) locally on your machine.
+PDF Converter is an open-source desktop application that converts raster images (PNG, JPEG, WebP, BMP) to PDF and PDF files to raster images (PNG, JPEG, WebP) locally on your machine.
 All processing runs entirely on your computer without uploading any files to external online services. Supported operating systems are Windows and Linux (x64).
 
 ## Features
 
 - **Images → PDF**: Converts images to PDF without compromising original quality. JPEG images are embedded directly without recompression, and transparent PNG, WebP, and BMP images retain transparency with lossless compression. Respects EXIF orientation and supports both "Fit to image" and "A4" page sizes (with Auto, Portrait, or Landscape orientation).
 - **Merge & Reorder**: Combine multiple images into a single multi-page PDF. Flexible reordering via drag-and-drop or keyboard shortcuts (↑ / ↓, Alt + ↑ / ↓). Individual items can also be removed from the list.
-- **PDF → Images**: Render PDF pages into PNG or JPEG images. Select from 72 dpi, 150 dpi, or 300 dpi resolutions, rendered with crisp white backgrounds.
+- **PDF → Images**: Render PDF pages into PNG, JPEG, or lossless WebP images in full color or grayscale. Choose from 72 dpi, 150 dpi, 300 dpi, or specify any custom resolution from 36 to 1000 dpi, rendered with crisp white backgrounds.
 - **Page Range Selection**: Convert all pages or specify custom page ranges (e.g. `1-3, 5`). Select individual pages interactively by clicking thumbnails for single PDFs, or apply the same range across multiple PDFs in bulk.
 - **Batch Conversion & Cancellation**: Convert multiple files in bulk to a chosen destination folder utilizing multi-core parallel processing. Can be cancelled at any time without leaving incomplete or corrupted files in the output directory.
 - **Sequential Numbering & No Overwriting**: Automatically resolves output name conflicts by appending sequential numbers (such as `name (1).pdf` or `name_p1 (1).png`) to ensure existing files are never overwritten.
 - **Bilingual Interface**: Full interface support for Japanese and English. Your preferred language setting is remembered across restarts.
-- **Settings Persistence**: Remembers your last-used conversion settings (page size, output format, resolution, output folder, etc.) and restores them automatically on next launch.
+- **Settings Persistence**: Remembers your last-used conversion settings (page size, orientation, output format, color mode, resolution, output folder, etc.) and restores them automatically on next launch.
 - **Password-Protected PDFs**: Password-protected PDF files cannot be opened.
 - **No Network Communication**: The application itself makes no network requests (contains no telemetry and no update checks). On Windows, the Microsoft Edge WebView2 runtime used to display the UI may connect to Microsoft services on its own; the application cannot disable this.
 

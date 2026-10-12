@@ -163,7 +163,12 @@ describe("ipc", () => {
           a4Orientation: "auto",
           outputDir: { dirLabel: "out" },
         },
-        pdfToImages: { format: "png", dpi: 150, outputDir: null },
+        pdfToImages: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          outputDir: null,
+        },
       };
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
@@ -183,7 +188,7 @@ describe("ipc", () => {
           pageSize: "a4",
           a4Orientation: "portrait",
         },
-        pdfToImages: { format: "jpeg", dpi: 300 },
+        pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
       };
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
@@ -208,9 +213,31 @@ describe("ipc", () => {
             pageSize: "fit",
             a4Orientation: "auto",
           },
-          pdfToImages: { format: "png", dpi: 100 },
+          pdfToImages: { format: "png", colorMode: "color", dpi: 100 },
         }),
       ).rejects.toEqual({ code: "InvalidParams", detail: null });
+    });
+
+    it("rejects save_settings with InvalidParams when Tauri cannot read arguments (e.g. missing colorMode)", async () => {
+      mockIPC(() => {
+        throw "invalid args `settings` for command `save_settings`: missing field `colorMode`";
+      });
+
+      await expect(
+        saveSettings({
+          language: null,
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "fit",
+            a4Orientation: "auto",
+          },
+          pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
+        }),
+      ).rejects.toEqual({
+        code: "InvalidParams",
+        detail:
+          "invalid args `settings` for command `save_settings`: missing field `colorMode`",
+      });
     });
 
     it("asks pick_output_dir for the kind and returns the label", async () => {
@@ -292,11 +319,17 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await startPdfsToImages([1, 2], "1-3", "png", 150);
+      await startPdfsToImages([1, 2], "1-3", "png", "color", 150);
       expect(calls).toEqual([
         [
           "start_pdfs_to_images",
-          { ids: [1, 2], range: "1-3", format: "png", dpi: 150 },
+          {
+            ids: [1, 2],
+            range: "1-3",
+            format: "png",
+            colorMode: "color",
+            dpi: 150,
+          },
         ],
       ]);
     });
@@ -338,7 +371,7 @@ describe("ipc", () => {
       });
     });
 
-    it("validates settings shape including a4Orientation", () => {
+    it("validates settings shape including a4Orientation, format, colorMode, and dpi", () => {
       const valid: Settings = {
         language: "ja",
         imagesToPdf: {
@@ -347,7 +380,12 @@ describe("ipc", () => {
           a4Orientation: "auto",
           outputDir: null,
         },
-        pdfToImages: { format: "png", dpi: 150, outputDir: null },
+        pdfToImages: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          outputDir: null,
+        },
       };
       expect(isSettings(valid)).toBe(true);
       expect(
@@ -366,6 +404,60 @@ describe("ipc", () => {
         isSettings({
           ...valid,
           imagesToPdf: { ...valid.imagesToPdf, a4Orientation: "square" },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, format: "webp" },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, format: "gif" },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, colorMode: "gray" },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, colorMode: "sepia" },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, dpi: 36 },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, dpi: 1000 },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, dpi: 35 },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, dpi: 1001 },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          pdfToImages: { ...valid.pdfToImages, dpi: 150.5 },
         }),
       ).toBe(false);
       expect(

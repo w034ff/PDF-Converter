@@ -18,7 +18,7 @@ use pdf_converter_lib::error::ErrorCode;
 use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items};
 use pdf_converter_lib::jobs::{
     A4OrientationChoice, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus,
-    JobProgressPayload, PageSizeChoice, RenderFormatChoice, RunningGuard,
+    JobProgressPayload, PageSizeChoice, RenderColorChoice, RenderFormatChoice, RunningGuard,
     check_page_range_internal, list_existing_files, run_images_to_pdfs, run_pdfs_to_images,
     run_save_merged_pdf, save_atomic, start_images_to_pdfs_internal, start_pdfs_to_images_internal,
 };
@@ -251,6 +251,7 @@ fn pdfs_to_images_mixed_success_and_failure() {
         &ids,
         &page_set,
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         temp_out.path(),
         recorder.callbacks(),
@@ -302,6 +303,7 @@ fn pdfs_to_images_no_pages_and_out_of_bounds() {
         &ids,
         &page_set,
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         temp_out.path(),
         recorder.callbacks(),
@@ -339,6 +341,7 @@ fn pdfs_to_images_partial_failure_with_mixed_sizes() {
         &ids,
         &page_set,
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         300,
         temp_out.path(),
         recorder.callbacks(),
@@ -536,6 +539,7 @@ fn crash_on_open_file_name_recovers_and_continues_batch() {
         &ids,
         &page_set,
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         temp_out.path(),
         recorder.callbacks(),
@@ -597,6 +601,7 @@ fn conversion_running_rejects_operations() {
         &[id],
         "1",
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         recorder.callbacks(),
     )
@@ -636,6 +641,7 @@ fn conversion_running_rejects_operations() {
         &[id],
         "1",
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         recorder.callbacks(),
     )
@@ -671,6 +677,7 @@ fn unset_output_dir_rejects_with_invalid_params() {
         &[id],
         "1",
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         recorder.callbacks(),
     )
@@ -707,6 +714,7 @@ fn unknown_handle_rejects() {
         &[nonexistent_id],
         "1",
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         recorder.callbacks(),
     )
@@ -733,6 +741,7 @@ fn unknown_handle_rejects() {
         &[nonexistent_id],
         &page_set,
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         temp_out.path(),
         recorder.callbacks(),
@@ -793,6 +802,7 @@ fn output_dir_that_cannot_be_listed_rejects_and_resets_is_running() {
         &[id],
         "1",
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         recorder.callbacks(),
     )
@@ -842,6 +852,7 @@ fn start_internal_ok_delivers_job_finished() {
         &[pdf_id],
         "1",
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         recorder.callbacks_recording_running(Arc::clone(&app_state.is_running)),
     )
@@ -889,6 +900,7 @@ fn cancellation_during_pdf_to_images_saves_early_pages_and_cleans_temp() {
         &[pdf_id],
         &page_set,
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         temp_out.path(),
         callbacks,
@@ -1348,6 +1360,7 @@ fn page_images_get_the_permissions_of_a_new_file() {
         &ids,
         &parse_page_range("1").unwrap(),
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         72,
         temp_out.path(),
         recorder.callbacks(),
@@ -1405,6 +1418,7 @@ fn start_both(app_state: &AppState, image_id: u64, pdf_id: u64) -> (ErrorCode, E
         &[pdf_id],
         "1",
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         150,
         recorder.callbacks(),
     )
@@ -1625,6 +1639,7 @@ fn a_write_failure_stops_pdfs_to_images_and_leaves_the_rest_unprocessed() {
         &ids,
         &parse_page_range("1-3").unwrap(),
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         72,
         &missing_dir(temp_out.path()),
         recorder.callbacks(),
@@ -1685,6 +1700,7 @@ fn a_write_failure_after_some_pages_makes_the_pdf_partial() {
         &ids,
         &parse_page_range("1-3").unwrap(),
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         72,
         &out_dir,
         callbacks,
@@ -1762,6 +1778,7 @@ fn pages_that_cannot_be_rendered_do_not_stop_the_other_pdfs() {
         &ids,
         &parse_page_range("1-3").unwrap(),
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         300,
         temp_out.path(),
         recorder.callbacks(),
@@ -1814,6 +1831,7 @@ fn a_cancel_after_a_failed_page_still_reports_that_page() {
         &ids,
         &parse_page_range("1-3").unwrap(),
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         300,
         temp_out.path(),
         callbacks,
@@ -1861,6 +1879,7 @@ fn a_cancel_without_a_failed_page_sends_no_failed_pages() {
         &ids,
         &parse_page_range("1-3").unwrap(),
         RenderFormatChoice::Png,
+        RenderColorChoice::Color,
         72,
         temp_out.path(),
         callbacks,
@@ -1992,4 +2011,195 @@ fn fit_page_size_ignores_a4_orientation() {
     let size_p = add_pdf.added[0].first_page_size_pt.unwrap();
     let size_l = add_pdf.added[1].first_page_size_pt.unwrap();
     assert_eq!(size_p, size_l);
+}
+
+#[test]
+fn pdfs_to_images_webp_extension_and_content() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let pdf_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let add_pdf = add_pdfs(&app_state, &[pdf_path]);
+    let pdf_id = add_pdf.added[0].id;
+
+    let page_set = parse_page_range("1").unwrap();
+    let recorder = TestRecorder::new();
+
+    run_pdfs_to_images(
+        &app_state,
+        &[pdf_id],
+        &page_set,
+        RenderFormatChoice::Webp,
+        RenderColorChoice::Color,
+        150,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .expect("run_pdfs_to_images should succeed");
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Ok);
+    assert_eq!(items[0].outputs.len(), 1);
+    let output_name = &items[0].outputs[0];
+    assert!(
+        output_name.ends_with(".webp"),
+        "extension must be .webp: {output_name}"
+    );
+
+    let output_path = temp_out.path().join(output_name);
+    let bytes = fs::read(&output_path).expect("reading webp output");
+    assert_eq!(&bytes[0..4], b"RIFF");
+    assert_eq!(&bytes[8..12], b"WEBP");
+    let info = pdfconv_core::probe(&output_path).expect("probe webp");
+    assert_eq!(info.format, pdfconv_core::ImageFormat::WebP);
+    assert_eq!((info.width, info.height), (1240, 1754));
+}
+
+#[test]
+fn pdfs_to_images_gray_and_color_modes() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let pdf_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let add_pdf = add_pdfs(&app_state, &[pdf_path]);
+    let pdf_id = add_pdf.added[0].id;
+
+    let page_set = parse_page_range("1").unwrap();
+
+    // Render with Gray
+    let recorder_gray = TestRecorder::new();
+    run_pdfs_to_images(
+        &app_state,
+        &[pdf_id],
+        &page_set,
+        RenderFormatChoice::Png,
+        RenderColorChoice::Gray,
+        150,
+        temp_out.path(),
+        recorder_gray.callbacks(),
+    )
+    .expect("render gray should succeed");
+    let items_gray = recorder_gray.items();
+    assert_eq!(items_gray[0].status, JobItemStatus::Ok);
+    let gray_path = temp_out.path().join(&items_gray[0].outputs[0]);
+    let gray_bytes = fs::read(&gray_path).unwrap();
+    assert_eq!(&gray_bytes[0..8], b"\x89PNG\r\n\x1a\n");
+    // PNG IHDR color type is at byte 25: 0 is Grayscale, 2 is Truecolor RGB
+    assert_eq!(gray_bytes[25], 0, "PNG color type must be Grayscale (0)");
+    let gray_info = pdfconv_core::probe(&gray_path).expect("probe gray");
+    assert_eq!(gray_info.format, pdfconv_core::ImageFormat::Png);
+
+    // Render with Color into a clean directory
+    let temp_out_color = TempDir::new().unwrap();
+    let recorder_color = TestRecorder::new();
+    run_pdfs_to_images(
+        &app_state,
+        &[pdf_id],
+        &page_set,
+        RenderFormatChoice::Png,
+        RenderColorChoice::Color,
+        150,
+        temp_out_color.path(),
+        recorder_color.callbacks(),
+    )
+    .expect("render color should succeed");
+    let items_color = recorder_color.items();
+    assert_eq!(items_color[0].status, JobItemStatus::Ok);
+    let color_path = temp_out_color.path().join(&items_color[0].outputs[0]);
+    let color_bytes = fs::read(&color_path).unwrap();
+    assert_eq!(&color_bytes[0..8], b"\x89PNG\r\n\x1a\n");
+    assert_eq!(
+        color_bytes[25], 2,
+        "PNG color type must be Truecolor RGB (2)"
+    );
+    let color_info = pdfconv_core::probe(&color_path).expect("probe color");
+    assert_eq!(color_info.format, pdfconv_core::ImageFormat::Png);
+}
+
+#[test]
+fn pdfs_to_images_custom_non_choice_dpi_dimensions() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let pdf_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let add_pdf = add_pdfs(&app_state, &[pdf_path]);
+    let pdf_id = add_pdf.added[0].id;
+
+    let page_set = parse_page_range("1").unwrap();
+    let recorder = TestRecorder::new();
+
+    let dpi = 96;
+    run_pdfs_to_images(
+        &app_state,
+        &[pdf_id],
+        &page_set,
+        RenderFormatChoice::Png,
+        RenderColorChoice::Color,
+        dpi,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .expect("custom dpi should succeed");
+
+    let items = recorder.items();
+    assert_eq!(items[0].status, JobItemStatus::Ok);
+    let output_path = temp_out.path().join(&items[0].outputs[0]);
+    let info = pdfconv_core::probe(&output_path).expect("probe img");
+    // shapes.pdf page 1: 595.28 x 841.89 pt
+    let expected_w = (595.28 / 72.0 * (dpi as f64)).round() as u32;
+    let expected_h = (841.89 / 72.0 * (dpi as f64)).round() as u32;
+    assert_eq!((info.width, info.height), (expected_w, expected_h));
+}
+
+#[test]
+fn start_pdfs_to_images_out_of_range_dpi_resets_is_running() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let pdf_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let add_pdf = add_pdfs(&app_state, &[pdf_path]);
+    let pdf_id = add_pdf.added[0].id;
+
+    *app_state.pdfs_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+
+    for bad_dpi in [35, 1001, 0] {
+        let recorder = TestRecorder::new();
+        let err = start_pdfs_to_images_internal(
+            &app_state,
+            &[pdf_id],
+            "1",
+            RenderFormatChoice::Png,
+            RenderColorChoice::Color,
+            bad_dpi,
+            recorder.callbacks(),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidParams, "bad dpi {bad_dpi}");
+        assert!(
+            !app_state.is_running.load(Ordering::SeqCst),
+            "is_running must be reset after bad dpi {bad_dpi}"
+        );
+    }
+
+    // Verify a subsequent valid conversion starts successfully
+    let recorder = TestRecorder::new();
+    start_pdfs_to_images_internal(
+        &app_state,
+        &[pdf_id],
+        "1",
+        RenderFormatChoice::Png,
+        RenderColorChoice::Color,
+        150,
+        recorder.callbacks_recording_running(Arc::clone(&app_state.is_running)),
+    )
+    .expect("valid conversion must start after failed attempts");
+
+    let finished = recorder.wait_finished(Duration::from_secs(5));
+    assert_eq!(finished.succeeded, 1);
+    assert!(!app_state.is_running.load(Ordering::SeqCst));
 }

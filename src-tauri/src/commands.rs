@@ -17,8 +17,8 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
-    self, A4OrientationChoice, CheckPageRangeResult, PageSizeChoice, RenderFormatChoice,
-    SaveMergedPdfResult,
+    self, A4OrientationChoice, CheckPageRangeResult, PageSizeChoice, RenderColorChoice,
+    RenderFormatChoice, SaveMergedPdfResult,
 };
 use crate::settings::{self, OutputDirLabel, OutputKind, Settings, SettingsInput};
 
@@ -326,6 +326,7 @@ pub async fn start_pdfs_to_images(
     ids: Vec<u64>,
     range: String,
     format: RenderFormatChoice,
+    color_mode: RenderColorChoice,
     dpi: u32,
 ) -> Result<(), IpcError> {
     let w1 = window.clone();
@@ -344,7 +345,7 @@ pub async fn start_pdfs_to_images(
         },
     };
 
-    jobs::start_pdfs_to_images_internal(&state, &ids, &range, format, dpi, callbacks)
+    jobs::start_pdfs_to_images_internal(&state, &ids, &range, format, color_mode, dpi, callbacks)
 }
 
 /// Returns the PNG thumbnail of an item. `page` is used for a PDF only and

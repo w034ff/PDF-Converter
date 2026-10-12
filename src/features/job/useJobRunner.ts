@@ -8,6 +8,7 @@ import {
   startImagesToPdfs,
   startPdfsToImages,
   type PageSizeChoice,
+  type RenderColorChoice,
   type RenderFormatChoice,
 } from "../../ipc";
 import { useAppDispatch, type ActiveTab, type JobTarget } from "../../state";
@@ -30,6 +31,7 @@ export interface JobRunner {
     targets: JobTarget[],
     range: string,
     format: RenderFormatChoice,
+    colorMode: RenderColorChoice,
     dpi: number,
   ): Promise<void>;
   /** Shows "キャンセル中…" at once and asks the backend to stop (design §6.5). */
@@ -97,9 +99,9 @@ export function useJobRunner(): JobRunner {
           startImagesToPdfs(ids, pageSize, a4Orientation),
         );
       },
-      async startPdfsToImages(targets, range, format, dpi) {
+      async startPdfsToImages(targets, range, format, colorMode, dpi) {
         await run("pdfToImages", targets, (ids) =>
-          startPdfsToImages(ids, range, format, dpi),
+          startPdfsToImages(ids, range, format, colorMode, dpi),
         );
       },
       async cancel() {

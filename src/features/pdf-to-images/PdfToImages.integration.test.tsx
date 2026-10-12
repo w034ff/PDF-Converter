@@ -206,7 +206,7 @@ describe("PdfToImages integration workflow", () => {
     // Click "変換を開始"
     fireEvent.click(startButton);
 
-    // Verify start_pdfs_to_images command called with expected ids, range, format, dpi
+    // Verify start_pdfs_to_images command called with expected ids, range, format, colorMode, dpi
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_pdfs_to_images",
@@ -214,6 +214,7 @@ describe("PdfToImages integration workflow", () => {
           ids: [1],
           range: "1-2",
           format: "png",
+          colorMode: "color",
           dpi: 300,
         },
       });

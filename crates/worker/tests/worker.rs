@@ -6,13 +6,17 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use pdfconv_worker::client::{WorkerError, WorkerProcess};
-use pdfconv_worker::protocol::{RenderFormat, Request, Response};
+use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError, WorkerProcess};
+use pdfconv_worker::protocol::{RenderColor, RenderFormat, Request, Response};
+use pdfconv_worker::{RENDER_DPI_MAX, RENDER_DPI_MIN};
 
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Tolerance for pixel color differences in PDF -> Image render tests (design §11.2).
 const COLOR_TOLERANCE_RENDER: i16 = 32;
+
+/// Tolerance for pixel difference between grayscale render and BT.601 luma (design §11.2).
+const COLOR_TOLERANCE_GRAY: i16 = 8;
 
 /// Maximum allowable ratio of mismatched pixels for render tests (design §11.2: 0.5%).
 const MAX_MISMATCH_RATIO_RENDER: f64 = 0.005;
@@ -160,7 +164,7 @@ fn opens_shapes_pdf_and_checks_page_count_and_dimensions() {
 }
 
 #[test]
-fn renders_page_to_png_and_jpeg_with_white_background() {
+fn renders_page_in_all_formats_and_color_modes() {
     let mut worker = start();
     worker
         .request(
@@ -171,47 +175,66 @@ fn renders_page_to_png_and_jpeg_with_white_background() {
         )
         .expect("Open should succeed");
 
-    // Render Page 1 at 150 dpi in PNG
-    let (resp_png, body_png) = worker
-        .request(
-            &Request::Render {
-                page: 1,
-                dpi: 150,
-                format: RenderFormat::Png,
-            },
-            ANSWER_TIMEOUT,
-        )
-        .expect("Render PNG should succeed");
-    assert_eq!(resp_png, Response::Render);
+    for format in [RenderFormat::Png, RenderFormat::Jpeg, RenderFormat::Webp] {
+        for color in [RenderColor::Color, RenderColor::Gray] {
+            let (resp, body) = worker
+                .request(
+                    &Request::Render {
+                        page: 1,
+                        dpi: 150,
+                        format,
+                        color,
+                    },
+                    ANSWER_TIMEOUT,
+                )
+                .unwrap_or_else(|e| panic!("Render {format:?} {color:?} failed: {e:?}"));
+            assert_eq!(resp, Response::Render);
 
-    let png_img = image::load_from_memory(&body_png)
-        .expect("body should be valid PNG")
-        .to_rgb8();
-    // A4 at 150 dpi: 595.28 / 72 * 150 = 1240.17 -> 1240, 841.89 / 72 * 150 = 1753.94 -> 1754
-    assert_eq!(png_img.dimensions(), (1240, 1754));
-    // Top-left corner (0, 0) has no shape, so background must be pure white (255, 255, 255)
-    assert_eq!(png_img.get_pixel(0, 0).0, [255, 255, 255]);
+            let expected_format = match format {
+                RenderFormat::Png => image::ImageFormat::Png,
+                RenderFormat::Jpeg => image::ImageFormat::Jpeg,
+                RenderFormat::Webp => image::ImageFormat::WebP,
+            };
+            assert_eq!(
+                image::guess_format(&body).expect("guess format should succeed"),
+                expected_format,
+                "Format should match for {format:?} {color:?}"
+            );
 
-    // Render Page 1 at 150 dpi in JPEG
-    let (resp_jpeg, body_jpeg) = worker
-        .request(
-            &Request::Render {
-                page: 1,
-                dpi: 150,
-                format: RenderFormat::Jpeg,
-            },
-            ANSWER_TIMEOUT,
-        )
-        .expect("Render JPEG should succeed");
-    assert_eq!(resp_jpeg, Response::Render);
+            let img = image::load_from_memory(&body)
+                .unwrap_or_else(|e| panic!("Decoding {format:?} {color:?} failed: {e:?}"));
+            // A4 at 150 dpi: 595.28 / 72 * 150 = 1240.17 -> 1240, 841.89 / 72 * 150 = 1753.94 -> 1754
+            assert_eq!((img.width(), img.height()), (1240, 1754));
 
-    let jpeg_img = image::load_from_memory(&body_jpeg)
-        .expect("body should be valid JPEG")
-        .to_rgb8();
-    assert_eq!(jpeg_img.dimensions(), (1240, 1754));
-    let corner = jpeg_img.get_pixel(0, 0).0;
-    // JPEG has lossy compression, allow small tolerance near 255
-    assert!(corner[0] >= 250 && corner[1] >= 250 && corner[2] >= 250);
+            match color {
+                RenderColor::Color => {
+                    assert_eq!(img.color(), image::ColorType::Rgb8);
+                    let [r, g, b] = img.to_rgb8().get_pixel(0, 0).0;
+                    if format == RenderFormat::Jpeg {
+                        assert!(r >= 250 && g >= 250 && b >= 250);
+                    } else {
+                        assert_eq!([r, g, b], [255, 255, 255]);
+                    }
+                }
+                RenderColor::Gray => {
+                    if format == RenderFormat::Webp {
+                        // WebP bitstream only supports RGB/RGBA; verify all channels are equal and match white corner
+                        assert_eq!(img.color(), image::ColorType::Rgb8);
+                        let [r, g, b] = img.to_rgb8().get_pixel(0, 0).0;
+                        assert_eq!([r, g, b], [255, 255, 255]);
+                    } else {
+                        assert_eq!(img.color(), image::ColorType::L8);
+                        let l = img.to_luma8().get_pixel(0, 0).0[0];
+                        if format == RenderFormat::Jpeg {
+                            assert!(l >= 250);
+                        } else {
+                            assert_eq!(l, 255);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -325,18 +348,19 @@ fn rejects_render_exceeding_max_render_pixels() {
     worker
         .request(
             &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
+                path: fixtures_dir().join("mixed_sizes.pdf"),
             },
             ANSWER_TIMEOUT,
         )
         .expect("Open should succeed");
 
-    // Rendering A4 at 4000 dpi gives ~1.5 billion pixels (> 100_000_000 MAX_RENDER_PIXELS)
+    // Page 2 of mixed_sizes.pdf is 3000x3000 pt. At 300 dpi, it produces ~156M pixels (> 100_000_000 MAX_RENDER_PIXELS).
     match worker.request(
         &Request::Render {
-            page: 1,
-            dpi: 4000,
+            page: 2,
+            dpi: 300,
             format: RenderFormat::Png,
+            color: RenderColor::Color,
         },
         ANSWER_TIMEOUT,
     ) {
@@ -355,6 +379,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
             page: 1,
             dpi: 150,
             format: RenderFormat::Png,
+            color: RenderColor::Color,
         },
         ANSWER_TIMEOUT,
     ) {
@@ -389,6 +414,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
             page: 0,
             dpi: 150,
             format: RenderFormat::Png,
+            color: RenderColor::Color,
         },
         ANSWER_TIMEOUT,
     ) {
@@ -402,6 +428,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
             page: 4,
             dpi: 150,
             format: RenderFormat::Png,
+            color: RenderColor::Color,
         },
         ANSWER_TIMEOUT,
     ) {
@@ -415,12 +442,56 @@ fn rejects_invalid_parameters_and_closed_documents() {
             page: 1,
             dpi: 0,
             format: RenderFormat::Png,
+            color: RenderColor::Color,
         },
         ANSWER_TIMEOUT,
     ) {
         Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
+
+    // DPI RENDER_DPI_MIN - 1 (35) -> InvalidParams
+    match worker.request(
+        &Request::Render {
+            page: 1,
+            dpi: RENDER_DPI_MIN - 1,
+            format: RenderFormat::Png,
+            color: RenderColor::Color,
+        },
+        ANSWER_TIMEOUT,
+    ) {
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        other => panic!("expected InvalidParams, got {other:?}"),
+    }
+
+    // DPI RENDER_DPI_MAX + 1 (1001) -> InvalidParams
+    match worker.request(
+        &Request::Render {
+            page: 1,
+            dpi: RENDER_DPI_MAX + 1,
+            format: RenderFormat::Png,
+            color: RenderColor::Color,
+        },
+        ANSWER_TIMEOUT,
+    ) {
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        other => panic!("expected InvalidParams, got {other:?}"),
+    }
+
+    // RENDER_DPI_MIN succeeds. RENDER_DPI_MAX is rendered by
+    // renders_a4_at_the_maximum_dpi, which needs a release build.
+    let (resp_min, _) = worker
+        .request(
+            &Request::Render {
+                page: 1,
+                dpi: RENDER_DPI_MIN,
+                format: RenderFormat::Png,
+                color: RenderColor::Color,
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("RENDER_DPI_MIN should succeed");
+    assert_eq!(resp_min, Response::Render);
 
     // max_side 0 -> InvalidParams
     match worker.request(
@@ -446,6 +517,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
             page: 1,
             dpi: 150,
             format: RenderFormat::Png,
+            color: RenderColor::Color,
         },
         ANSWER_TIMEOUT,
     ) {
@@ -473,6 +545,7 @@ fn quality_pdf_to_images_shapes() {
                     page: page_num,
                     dpi: 150,
                     format: RenderFormat::Png,
+                    color: RenderColor::Color,
                 },
                 ANSWER_TIMEOUT,
             )
@@ -492,6 +565,116 @@ fn quality_pdf_to_images_shapes() {
         assert!(
             ratio <= MAX_MISMATCH_RATIO_RENDER,
             "Page {page_num} mismatch ratio {ratio} exceeded limit {MAX_MISMATCH_RATIO_RENDER}"
+        );
+    }
+}
+
+#[test]
+fn quality_pdf_to_images_grayscale_and_webp() {
+    let mut worker = start();
+    worker
+        .request(
+            &Request::Open {
+                path: fixtures_dir().join("shapes.pdf"),
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("Open shapes.pdf should succeed");
+
+    for page_num in 1..=3 {
+        // 1. Render color PNG
+        let (resp_color, body_color) = worker
+            .request(
+                &Request::Render {
+                    page: page_num,
+                    dpi: 150,
+                    format: RenderFormat::Png,
+                    color: RenderColor::Color,
+                },
+                ANSWER_TIMEOUT,
+            )
+            .expect("Render color PNG should succeed");
+        assert_eq!(resp_color, Response::Render);
+        let color_dynamic = image::load_from_memory(&body_color).expect("color PNG should decode");
+        assert_eq!(color_dynamic.color(), image::ColorType::Rgb8);
+        let color_img = color_dynamic.to_rgb8();
+
+        // 2. Render grayscale PNG
+        let (resp_gray, body_gray) = worker
+            .request(
+                &Request::Render {
+                    page: page_num,
+                    dpi: 150,
+                    format: RenderFormat::Png,
+                    color: RenderColor::Gray,
+                },
+                ANSWER_TIMEOUT,
+            )
+            .expect("Render gray PNG should succeed");
+        assert_eq!(resp_gray, Response::Render);
+        let gray_dynamic = image::load_from_memory(&body_gray).expect("gray PNG should decode");
+        assert_eq!(gray_dynamic.color(), image::ColorType::L8);
+        let gray_img = gray_dynamic.to_luma8();
+
+        assert_eq!(color_img.dimensions(), gray_img.dimensions());
+        let (w, h) = color_img.dimensions();
+        for y in 0..h {
+            for x in 0..w {
+                let [r, g, b] = color_img.get_pixel(x, y).0;
+                let expected_luma = (0.299 * (r as f64) + 0.587 * (g as f64) + 0.114 * (b as f64))
+                    .round()
+                    .clamp(0.0, 255.0) as u8;
+                let actual_luma = gray_img.get_pixel(x, y).0[0];
+                let diff = (expected_luma as i16 - actual_luma as i16).abs();
+                assert!(
+                    diff <= COLOR_TOLERANCE_GRAY,
+                    "Page {page_num} at ({x}, {y}): diff {diff} > tolerance {COLOR_TOLERANCE_GRAY} (expected {expected_luma}, got {actual_luma})"
+                );
+            }
+        }
+
+        // 3. Render color WebP and compare with color PNG
+        let (resp_webp_color, body_webp_color) = worker
+            .request(
+                &Request::Render {
+                    page: page_num,
+                    dpi: 150,
+                    format: RenderFormat::Webp,
+                    color: RenderColor::Color,
+                },
+                ANSWER_TIMEOUT,
+            )
+            .expect("Render color WebP should succeed");
+        assert_eq!(resp_webp_color, Response::Render);
+        let webp_color_dynamic =
+            image::load_from_memory(&body_webp_color).expect("WebP color should decode");
+        assert_eq!(webp_color_dynamic.color(), image::ColorType::Rgb8);
+        assert_eq!(
+            webp_color_dynamic.to_rgb8().into_raw(),
+            color_img.clone().into_raw(),
+            "Page {page_num} WebP color pixels must match PNG color pixels exactly"
+        );
+
+        // 4. Render grayscale WebP and compare with grayscale PNG
+        let (resp_webp_gray, body_webp_gray) = worker
+            .request(
+                &Request::Render {
+                    page: page_num,
+                    dpi: 150,
+                    format: RenderFormat::Webp,
+                    color: RenderColor::Gray,
+                },
+                ANSWER_TIMEOUT,
+            )
+            .expect("Render gray WebP should succeed");
+        assert_eq!(resp_webp_gray, Response::Render);
+        let webp_gray_dynamic =
+            image::load_from_memory(&body_webp_gray).expect("WebP gray should decode");
+        assert_eq!(webp_gray_dynamic.color(), image::ColorType::Rgb8);
+        assert_eq!(
+            webp_gray_dynamic.to_luma8().into_raw(),
+            gray_img.clone().into_raw(),
+            "Page {page_num} WebP gray pixels must match PNG gray pixels exactly"
         );
     }
 }
@@ -519,6 +702,7 @@ fn performance_render_a4_150dpi() {
                 page: 1,
                 dpi: 150,
                 format: RenderFormat::Png,
+                color: RenderColor::Color,
             },
             ANSWER_TIMEOUT,
         )
@@ -532,6 +716,47 @@ fn performance_render_a4_150dpi() {
         elapsed < Duration::from_secs(3),
         "Render took {elapsed:?}, exceeding 3s limit"
     );
+}
+
+/// The maximum resolution is chosen so that an A4 page renders within the
+/// worker's memory limit and render timeout (design §4.4). An unoptimized
+/// build encodes the 97-megapixel page too slowly for that timeout.
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "rendering at the maximum resolution is only fast enough in release builds"
+)]
+fn renders_a4_at_the_maximum_dpi() {
+    let mut worker = start();
+    worker
+        .request(
+            &Request::Open {
+                path: fixtures_dir().join("shapes.pdf"),
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("Open shapes.pdf should succeed");
+
+    for format in [RenderFormat::Png, RenderFormat::Jpeg, RenderFormat::Webp] {
+        let (resp, body) = worker
+            .request(
+                &Request::Render {
+                    page: 1,
+                    dpi: RENDER_DPI_MAX,
+                    format,
+                    color: RenderColor::Color,
+                },
+                RENDER_TIMEOUT,
+            )
+            .unwrap_or_else(|e| panic!("{format:?} at RENDER_DPI_MAX should succeed: {e:?}"));
+        assert_eq!(resp, Response::Render);
+        let dimensions = image::ImageReader::new(std::io::Cursor::new(&body))
+            .with_guessed_format()
+            .expect("guess format")
+            .into_dimensions()
+            .expect("read dimensions");
+        assert_eq!(dimensions, (8268, 11693), "{format:?}");
+    }
 }
 
 #[cfg(feature = "test-hooks")]

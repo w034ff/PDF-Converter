@@ -22,8 +22,35 @@ pub const MAX_RENDER_PIXELS: u64 = 100_000_000;
 /// Quality for JPEG encoding (design §4.4).
 pub const JPEG_QUALITY: u8 = 90;
 
-/// Allowed resolution choices in DPI (design §4.4).
-pub const DPI_CHOICES: [u32; 3] = [72, 150, 300];
+/// Minimum render resolution in DPI (design §4.4).
+pub const RENDER_DPI_MIN: u32 = 36;
+
+/// Maximum render resolution in DPI (design §4.4).
+pub const RENDER_DPI_MAX: u32 = 1000;
 
 /// Default render resolution in DPI (design §4.4).
 pub const DEFAULT_RENDER_DPI: u32 = 150;
+
+/// Returns whether `dpi` falls within the allowed render resolution range (design §4.4).
+pub fn is_render_dpi_in_range(dpi: u32) -> bool {
+    (RENDER_DPI_MIN..=RENDER_DPI_MAX).contains(&dpi)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_render_dpi_in_range() {
+        assert!(is_render_dpi_in_range(RENDER_DPI_MIN));
+        assert!(is_render_dpi_in_range(RENDER_DPI_MAX));
+        assert!(is_render_dpi_in_range(DEFAULT_RENDER_DPI));
+        assert!(is_render_dpi_in_range(72));
+        assert!(is_render_dpi_in_range(300));
+        assert!(is_render_dpi_in_range(600));
+
+        assert!(!is_render_dpi_in_range(0));
+        assert!(!is_render_dpi_in_range(RENDER_DPI_MIN - 1));
+        assert!(!is_render_dpi_in_range(RENDER_DPI_MAX + 1));
+    }
+}

@@ -1,10 +1,22 @@
-import type { RenderFormatChoice } from "../ipc";
+import type { RenderColorChoice, RenderFormatChoice } from "../ipc";
 import type { PdfToImagesAction, PdfToImagesState } from "./types";
 
 /**
- * Resolution choices matching Rust `DPI_CHOICES` in `crates/worker/src/lib.rs`.
+ * Resolution choices matching the presets offered in the resolution dropdown (design §4.4).
  */
 export const DPI_CHOICES: readonly number[] = [72, 150, 300];
+
+/**
+ * Minimum render resolution in dpi.
+ * Matches `RENDER_DPI_MIN` in `crates/worker/src/lib.rs`.
+ */
+export const RENDER_DPI_MIN = 36;
+
+/**
+ * Maximum render resolution in dpi.
+ * Matches `RENDER_DPI_MAX` in `crates/worker/src/lib.rs`.
+ */
+export const RENDER_DPI_MAX = 1000;
 
 /** Default render resolution (150 dpi, design §4.4). */
 export const DEFAULT_RENDER_DPI = 150;
@@ -12,12 +24,56 @@ export const DEFAULT_RENDER_DPI = 150;
 /** Default render format choice ("png", design §6.7). */
 export const DEFAULT_RENDER_FORMAT: RenderFormatChoice = "png";
 
+/** Default render color mode ("color", design §6.7). */
+export const DEFAULT_RENDER_COLOR_MODE: RenderColorChoice = "color";
+
+/**
+ * Parses a custom DPI string. Trims leading and trailing ASCII and full-width
+ * whitespace, normalizes full-width digits (０-９) to 0-9, and checks that
+ * the string contains only digits and represents an integer in [RENDER_DPI_MIN, RENDER_DPI_MAX].
+ * Returns the parsed integer if valid, or null otherwise.
+ */
+export function parseCustomDpi(text: string): number | null {
+  const trimmed = text.replace(/^[\s\u3000]+|[\s\u3000]+$/g, "");
+  if (trimmed === "") {
+    return null;
+  }
+  const normalized = trimmed.replace(/[\uFF10-\uFF19]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
+  );
+  if (!/^[0-9]+$/.test(normalized)) {
+    return null;
+  }
+  const val = Number.parseInt(normalized, 10);
+  if (
+    Number.isSafeInteger(val) &&
+    val >= RENDER_DPI_MIN &&
+    val <= RENDER_DPI_MAX
+  ) {
+    return val;
+  }
+  return null;
+}
+
+/**
+ * Whether the state has custom resolution selected with an invalid value
+ * (empty, malformed, or outside [RENDER_DPI_MIN, RENDER_DPI_MAX]).
+ */
+export function hasInvalidCustomDpi(
+  state: Pick<PdfToImagesState, "isCustomDpi" | "customDpiText">,
+): boolean {
+  return state.isCustomDpi && parseCustomDpi(state.customDpiText) === null;
+}
+
 export const initialPdfToImagesState: PdfToImagesState = {
   items: [],
   pageSelection: "all",
   rangeText: "",
   format: DEFAULT_RENDER_FORMAT,
+  colorMode: DEFAULT_RENDER_COLOR_MODE,
   dpi: DEFAULT_RENDER_DPI,
+  isCustomDpi: false,
+  customDpiText: String(DEFAULT_RENDER_DPI),
   outputDir: null,
   rangeResult: null,
   rangeError: null,
@@ -84,13 +140,51 @@ export function pdfToImagesReducer(
         format: action.format,
       };
     }
+    case "SET_RENDER_COLOR_MODE": {
+      if (state.colorMode === action.colorMode) {
+        return state;
+      }
+      return {
+        ...state,
+        colorMode: action.colorMode,
+      };
+    }
     case "SET_RENDER_DPI": {
-      if (state.dpi === action.dpi) {
+      if (state.dpi === action.dpi && !state.isCustomDpi) {
         return state;
       }
       return {
         ...state,
         dpi: action.dpi,
+        isCustomDpi: false,
+        customDpiText: String(action.dpi),
+      };
+    }
+    case "SET_IS_CUSTOM_DPI": {
+      if (state.isCustomDpi === action.isCustom) {
+        return state;
+      }
+      return {
+        ...state,
+        isCustomDpi: action.isCustom,
+        customDpiText: String(state.dpi),
+      };
+    }
+    case "SET_CUSTOM_DPI_TEXT": {
+      if (state.customDpiText === action.text) {
+        return state;
+      }
+      const parsed = parseCustomDpi(action.text);
+      if (parsed !== null) {
+        return {
+          ...state,
+          customDpiText: action.text,
+          dpi: parsed,
+        };
+      }
+      return {
+        ...state,
+        customDpiText: action.text,
       };
     }
     case "SET_PDFS_OUTPUT_DIR": {

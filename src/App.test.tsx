@@ -36,6 +36,7 @@ const SAVED_SETTINGS: Settings = {
   },
   pdfToImages: {
     format: "jpeg",
+    colorMode: "color",
     dpi: 300,
     outputDir: { dirLabel: "Rendered" },
   },
@@ -296,7 +297,7 @@ describe("App", () => {
               pageSize: "fit",
               a4Orientation: "auto",
             },
-            pdfToImages: { format: "jpeg", dpi: 300 },
+            pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
           },
         },
       ]);
@@ -350,7 +351,35 @@ describe("App", () => {
               pageSize: "a4",
               a4Orientation: "portrait",
             },
-            pdfToImages: { format: "jpeg", dpi: 300 },
+            pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+          },
+        },
+      ]);
+    });
+
+    it("saves when changing colorMode alone", async () => {
+      vi.useFakeTimers();
+      const saved = mockSaves();
+      render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
+      fireEvent.click(screen.getByRole("tab", { name: "PDF → Images" }));
+
+      const colorGroup = screen.getByRole("group", { name: "Color" });
+      fireEvent.click(
+        within(colorGroup).getByRole("button", { name: "Grayscale" }),
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS);
+      });
+      expect(saved).toEqual([
+        {
+          settings: {
+            language: "en",
+            imagesToPdf: {
+              output: "each",
+              pageSize: "a4",
+              a4Orientation: "auto",
+            },
+            pdfToImages: { format: "jpeg", colorMode: "gray", dpi: 300 },
           },
         },
       ]);
@@ -376,7 +405,7 @@ describe("App", () => {
               pageSize: "fit",
               a4Orientation: "auto",
             },
-            pdfToImages: { format: "png", dpi: 150 },
+            pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
           },
         },
       ]);

@@ -3,4 +3,4 @@
 /**
  * Image format choice for PDF-to-image conversion (design §6.3, §7.1).
  */
-export type RenderFormatChoice = "png" | "jpeg";
+export type RenderFormatChoice = "png" | "jpeg" | "webp";

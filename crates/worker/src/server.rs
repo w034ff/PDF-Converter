@@ -8,14 +8,15 @@ use image::ExtendedColorType;
 use image::ImageEncoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
+use image::codecs::webp::WebPEncoder;
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfPage, PdfRenderConfig, Pdfium, PdfiumError, PdfiumInternalError,
 };
 
 use crate::protocol::{
-    PageDimensions, RenderFormat, Request, Response, read_message, write_message,
+    PageDimensions, RenderColor, RenderFormat, Request, Response, read_message, write_message,
 };
-use crate::{JPEG_QUALITY, MAX_PDF_PAGES, MAX_RENDER_PIXELS};
+use crate::{JPEG_QUALITY, MAX_PDF_PAGES, MAX_RENDER_PIXELS, is_render_dpi_in_range};
 
 /// How much memory one worker may use (design §5.3). Allocations beyond it
 /// fail and end the worker, which the main process reports as a crash.
@@ -150,8 +151,13 @@ impl State {
                 self.document = Some(doc);
                 (Response::Open { page_count, pages }, Vec::new())
             }
-            Request::Render { page, dpi, format } => {
-                if dpi == 0 {
+            Request::Render {
+                page,
+                dpi,
+                format,
+                color,
+            } => {
+                if !is_render_dpi_in_range(dpi) {
                     return (
                         Response::Error {
                             code: CODE_INVALID_PARAMS.into(),
@@ -183,21 +189,28 @@ impl State {
                 let target_width = (width_px as u32).max(1);
                 let target_height = (height_px as u32).max(1);
 
-                let rgb = match render_page_to_rgb(&pdf_page, target_width, target_height) {
-                    Ok(bytes) => bytes,
-                    Err(resp) => return (resp, Vec::new()),
-                };
+                let (pixels, color_type) =
+                    match render_page_pixels(&pdf_page, target_width, target_height, color) {
+                        Ok(p) => p,
+                        Err(resp) => return (resp, Vec::new()),
+                    };
 
                 let mut encoded = Vec::new();
                 let encode_result = match format {
                     RenderFormat::Png => PngEncoder::new(&mut encoded).write_image(
-                        &rgb,
+                        &pixels,
                         target_width,
                         target_height,
-                        ExtendedColorType::Rgb8,
+                        color_type,
                     ),
                     RenderFormat::Jpeg => JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY)
-                        .write_image(&rgb, target_width, target_height, ExtendedColorType::Rgb8),
+                        .write_image(&pixels, target_width, target_height, color_type),
+                    RenderFormat::Webp => WebPEncoder::new_lossless(&mut encoded).write_image(
+                        &pixels,
+                        target_width,
+                        target_height,
+                        color_type,
+                    ),
                 };
 
                 match encode_result {
@@ -261,18 +274,16 @@ impl State {
                     );
                 }
 
-                let rgb = match render_page_to_rgb(&pdf_page, target_w, target_h) {
-                    Ok(bytes) => bytes,
-                    Err(resp) => return (resp, Vec::new()),
-                };
+                let (pixels, color_type) =
+                    match render_page_pixels(&pdf_page, target_w, target_h, RenderColor::Color) {
+                        Ok(p) => p,
+                        Err(resp) => return (resp, Vec::new()),
+                    };
 
                 let mut encoded = Vec::new();
-                match PngEncoder::new(&mut encoded).write_image(
-                    &rgb,
-                    target_w,
-                    target_h,
-                    ExtendedColorType::Rgb8,
-                ) {
+                match PngEncoder::new(&mut encoded)
+                    .write_image(&pixels, target_w, target_h, color_type)
+                {
                     Ok(()) => (Response::Thumbnail, encoded),
                     Err(e) => (
                         Response::Error {
@@ -365,14 +376,18 @@ fn map_pdfium_open_error(error: &PdfiumError) -> Response {
     }
 }
 
-fn render_page_to_rgb(
+fn render_page_pixels(
     page: &PdfPage<'_>,
     target_width: u32,
     target_height: u32,
-) -> Result<Vec<u8>, Response> {
-    let config = PdfRenderConfig::new()
+    color: RenderColor,
+) -> Result<(Vec<u8>, ExtendedColorType), Response> {
+    let mut config = PdfRenderConfig::new()
         .set_target_size(target_width as i32, target_height as i32)
         .set_clear_color(PdfColor::WHITE);
+    if color == RenderColor::Gray {
+        config = config.use_grayscale_rendering(true);
+    }
 
     let bitmap = page
         .render_with_config(&config)
@@ -382,11 +397,23 @@ fn render_page_to_rgb(
         })?;
 
     let rgba = bitmap.as_rgba_bytes();
-    let mut rgb = Vec::with_capacity((target_width as usize) * (target_height as usize) * 3);
-    for chunk in rgba.as_chunks::<4>().0 {
-        rgb.extend_from_slice(&chunk[0..3]);
+    let num_pixels = (target_width as usize) * (target_height as usize);
+    match color {
+        RenderColor::Color => {
+            let mut rgb = Vec::with_capacity(num_pixels * 3);
+            for chunk in rgba.as_chunks::<4>().0 {
+                rgb.extend_from_slice(&chunk[0..3]);
+            }
+            Ok((rgb, ExtendedColorType::Rgb8))
+        }
+        RenderColor::Gray => {
+            let mut gray = Vec::with_capacity(num_pixels);
+            for chunk in rgba.as_chunks::<4>().0 {
+                gray.push(chunk[0]);
+            }
+            Ok((gray, ExtendedColorType::L8))
+        }
     }
-    Ok(rgb)
 }
 
 fn unavailable(error: &dyn std::fmt::Debug) -> Response {

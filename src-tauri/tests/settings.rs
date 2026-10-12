@@ -6,14 +6,16 @@ use std::path::{Path, PathBuf};
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
-use pdf_converter_lib::jobs::{A4OrientationChoice, PageSizeChoice, RenderFormatChoice};
+use pdf_converter_lib::jobs::{
+    A4OrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice,
+};
 use pdf_converter_lib::settings::{
     ImagesToPdfOptions, Language, OutputKind, OutputMode, PdfToImagesOptions, SETTINGS_FILE_NAME,
     SettingsFile, SettingsInput, apply_picked_dir, dir_label, get_settings_internal, load_settings,
     restore_settings, save_settings_to_dir,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
-use pdfconv_worker::{DEFAULT_RENDER_DPI, DPI_CHOICES};
+use pdfconv_worker::{DEFAULT_RENDER_DPI, RENDER_DPI_MAX, RENDER_DPI_MIN};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -48,6 +50,7 @@ fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
         },
         "pdfToImages": {
             "format": "jpeg",
+            "colorMode": "gray",
             "dpi": 300,
             "outputDir": pdfs_dir,
         },
@@ -68,6 +71,7 @@ fn input() -> SettingsInput {
         },
         pdf_to_images: PdfToImagesOptions {
             format: RenderFormatChoice::Jpeg,
+            color_mode: RenderColorChoice::Gray,
             dpi: 72,
         },
     }
@@ -95,6 +99,10 @@ fn the_defaults_are_those_of_the_design() {
     );
     assert_eq!(file.images_to_pdf.output_dir, None);
     assert_eq!(file.pdf_to_images.options.format, RenderFormatChoice::Png);
+    assert_eq!(
+        file.pdf_to_images.options.color_mode,
+        RenderColorChoice::Color
+    );
     assert_eq!(file.pdf_to_images.options.dpi, 150);
     assert_eq!(file.pdf_to_images.options.dpi, DEFAULT_RENDER_DPI);
     assert_eq!(file.pdf_to_images.output_dir, None);
@@ -232,17 +240,50 @@ fn a_file_in_place_of_a_folder_resets_the_folder() {
 }
 
 #[test]
-fn a_dpi_that_is_not_a_choice_resets_only_the_dpi() {
-    for dpi in [json!(100), json!(0), json!(-150), json!(150.5), json!(1e12)] {
+fn a_dpi_out_of_range_or_wrong_type_resets_only_the_dpi() {
+    for dpi in [
+        json!(35),
+        json!(1001),
+        json!(0),
+        json!(-150),
+        json!(150.5),
+        json!("150"),
+        json!(1e12),
+    ] {
         assert_only_resets(
             |json| json["pdfToImages"]["dpi"] = dpi.clone(),
             |file| file.pdf_to_images.options.dpi = DEFAULT_RENDER_DPI,
         );
     }
-    for choice in DPI_CHOICES {
+    for valid in [RENDER_DPI_MIN, RENDER_DPI_MAX, 600, 72, 150, 300] {
         assert_only_resets(
-            |json| json["pdfToImages"]["dpi"] = json!(choice),
-            |file| file.pdf_to_images.options.dpi = choice,
+            |json| json["pdfToImages"]["dpi"] = json!(valid),
+            |file| file.pdf_to_images.options.dpi = valid,
+        );
+    }
+}
+
+#[test]
+fn an_unknown_color_mode_resets_only_the_color_mode() {
+    for bad in [json!("sepia"), json!(123), json!(true), json!(null)] {
+        assert_only_resets(
+            |json| json["pdfToImages"]["colorMode"] = bad.clone(),
+            |file| file.pdf_to_images.options.color_mode = RenderColorChoice::Color,
+        );
+    }
+    assert_only_resets(
+        |json| {
+            json["pdfToImages"]
+                .as_object_mut()
+                .expect("section")
+                .remove("colorMode");
+        },
+        |file| file.pdf_to_images.options.color_mode = RenderColorChoice::Color,
+    );
+    for valid in [RenderColorChoice::Color, RenderColorChoice::Gray] {
+        assert_only_resets(
+            |json| json["pdfToImages"]["colorMode"] = json!(valid),
+            |file| file.pdf_to_images.options.color_mode = valid,
         );
     }
 }
@@ -321,6 +362,10 @@ fn an_item_of_the_wrong_type_resets_only_that_item() {
         |file| file.pdf_to_images.options.format = RenderFormatChoice::Png,
     );
     assert_only_resets(
+        |json| json["pdfToImages"]["colorMode"] = json!(123),
+        |file| file.pdf_to_images.options.color_mode = RenderColorChoice::Color,
+    );
+    assert_only_resets(
         |json| json["pdfToImages"]["dpi"] = json!("300"),
         |file| file.pdf_to_images.options.dpi = DEFAULT_RENDER_DPI,
     );
@@ -361,6 +406,10 @@ fn a_missing_item_resets_only_that_item() {
     assert_only_resets(
         |json| remove(json, "pdfToImages", "format"),
         |file| file.pdf_to_images.options.format = RenderFormatChoice::Png,
+    );
+    assert_only_resets(
+        |json| remove(json, "pdfToImages", "colorMode"),
+        |file| file.pdf_to_images.options.color_mode = RenderColorChoice::Color,
     );
     assert_only_resets(
         |json| remove(json, "pdfToImages", "dpi"),
@@ -431,7 +480,7 @@ fn several_bad_items_reset_each_on_its_own() {
     assert_only_resets(
         |json| {
             json["imagesToPdf"]["output"] = json!("zip");
-            json["pdfToImages"]["dpi"] = json!(100);
+            json["pdfToImages"]["dpi"] = json!(35);
         },
         |file| {
             file.images_to_pdf.options.output = OutputMode::Merge;
@@ -465,7 +514,7 @@ fn save_settings_takes_the_input_over_and_keeps_the_folders() {
 }
 
 #[test]
-fn save_settings_rejects_a_dpi_that_is_not_a_choice_and_changes_nothing() {
+fn save_settings_rejects_an_out_of_range_dpi_and_changes_nothing() {
     let temp = TempDir::new().expect("temp dir");
     let config_dir = temp.path().join("config");
     let state = state();
@@ -474,7 +523,7 @@ fn save_settings_rejects_a_dpi_that_is_not_a_choice_and_changes_nothing() {
     let before = fs::read(config_dir.join(SETTINGS_FILE_NAME)).expect("reading the file");
     let held = state.settings.file();
 
-    for dpi in [0, 100, 151, 600, u32::MAX] {
+    for dpi in [0, 35, 1001, u32::MAX] {
         let mut bad = input();
         bad.language = None;
         bad.images_to_pdf.output = OutputMode::Merge;
@@ -494,16 +543,85 @@ fn save_settings_rejects_a_dpi_that_is_not_a_choice_and_changes_nothing() {
 }
 
 #[test]
-fn save_settings_accepts_every_dpi_choice() {
+fn save_settings_accepts_valid_dpis() {
     let temp = TempDir::new().expect("temp dir");
     let state = state();
     restore_settings(&state, temp.path());
-    for dpi in DPI_CHOICES {
+    for dpi in [RENDER_DPI_MIN, RENDER_DPI_MAX, 600, 72, 150, 300] {
         let mut valid = input();
         valid.pdf_to_images.dpi = dpi;
         state.settings.save(&valid).expect("saving");
         assert_eq!(load_settings(temp.path()).pdf_to_images.options.dpi, dpi);
     }
+}
+
+#[test]
+fn settings_input_requires_color_mode() {
+    let images_dir = PathBuf::from("/tmp/images-out");
+    let pdfs_dir = PathBuf::from("/tmp/pdfs-out");
+    let mut bad_json = customized(&images_dir, &pdfs_dir);
+    bad_json["pdfToImages"]
+        .as_object_mut()
+        .expect("pdfToImages object")
+        .remove("colorMode");
+
+    let result = serde_json::from_value::<SettingsInput>(bad_json);
+    assert!(
+        result.is_err(),
+        "SettingsInput without colorMode must fail deserialization"
+    );
+}
+
+#[test]
+fn round_trips_webp_gray_and_custom_dpi() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    let mut custom = input();
+    custom.pdf_to_images.format = RenderFormatChoice::Webp;
+    custom.pdf_to_images.color_mode = RenderColorChoice::Gray;
+    custom.pdf_to_images.dpi = 600;
+
+    state.settings.save(&custom).expect("saving");
+
+    let loaded = load_settings(&config_dir);
+    assert_eq!(
+        loaded.pdf_to_images.options.format,
+        RenderFormatChoice::Webp
+    );
+    assert_eq!(
+        loaded.pdf_to_images.options.color_mode,
+        RenderColorChoice::Gray
+    );
+    assert_eq!(loaded.pdf_to_images.options.dpi, 600);
+}
+
+#[test]
+fn reads_legacy_settings_file_without_color_mode() {
+    let temp = TempDir::new().expect("temp dir");
+    let legacy = json!({
+        "schemaVersion": 1,
+        "imagesToPdf": {
+            "output": "merge",
+            "pageSize": "fit",
+            "a4Orientation": "auto",
+            "outputDir": null,
+        },
+        "pdfToImages": {
+            "format": "png",
+            "dpi": 150,
+            "outputDir": null,
+        },
+    });
+    write_settings(temp.path(), &legacy);
+    let loaded = load_settings(temp.path());
+    assert_eq!(
+        loaded.pdf_to_images.options.color_mode,
+        RenderColorChoice::Color
+    );
+    assert_eq!(loaded.pdf_to_images.options.format, RenderFormatChoice::Png);
+    assert_eq!(loaded.pdf_to_images.options.dpi, 150);
 }
 
 #[test]
@@ -619,6 +737,7 @@ fn get_settings_has_no_path() {
             },
             "pdfToImages": {
                 "format": "jpeg",
+                "colorMode": "gray",
                 "dpi": 300,
                 "outputDir": { "dirLabel": "pdfs-out" },
             },
@@ -636,7 +755,7 @@ fn get_settings_of_the_defaults_has_no_folders() {
         json!({
             "language": null,
             "imagesToPdf": { "output": "merge", "pageSize": "fit", "a4Orientation": "auto", "outputDir": null },
-            "pdfToImages": { "format": "png", "dpi": 150, "outputDir": null },
+            "pdfToImages": { "format": "png", "colorMode": "color", "dpi": 150, "outputDir": null },
         })
     );
 }

@@ -19,7 +19,7 @@
 ┌────────────┴──────── ワーカープロセス（同じ実行ファイル） ──────┐
 │  `pdf-converter --pdf-worker` で起動。WebView を作らない          │
 │   ・pdfium で PDF を開く、ページ数・大きさを返す                 │
-│   ・ページを描画し、PNG / JPEG にして返す（サムネイルも同じ）    │
+│   ・ページを描画し、画像にして返す（サムネイルも同じ）           │
 │   ・ファイルを書かない。読むのは渡された PDF 1 つだけ             │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -36,7 +36,7 @@
 | アプリ基盤 | Tauri 2 | 要件で決定済み |
 | PDF の描画 | `pdfium-render` + bblanchon/pdfium-binaries（版を固定、§8） | スパイクで決定。暗号化された PDF を開ける、速い |
 | PDF の書き出し | `krilla`（`raster-images` 機能） | スパイクで決定。JPEG を再圧縮せずに入れられる、純 Rust |
-| 画像の読み込み | `image`（png、jpeg、webp、bmp 機能のみ） | 寸法・EXIF の向きの取得、BMP の読み込み、PDF → 画像の PNG / JPEG の書き出し |
+| 画像の読み込み | `image`（png、jpeg、webp、bmp 機能のみ） | 寸法・EXIF の向きの取得、BMP の読み込み、PDF → 画像の PNG / JPEG / WebP の書き出し |
 | 並列処理 | `std::thread` とチャネル | ワーカーはプロセスなので、スレッドプールのライブラリは要らない |
 | 一時ファイル | `tempfile` | 原子的な保存（§6.5） |
 | IPC 型共有 | `ts-rs` | SVG Tracer と同じ |
@@ -135,11 +135,14 @@
 
 ワーカーが pdfium の描画結果（BGRA）を受け取り、次のように画像にする。
 
-- 背景は白で塗り、その上に描画する（PNG と JPEG の両方）。PDF のページは紙を表すので、透過のまま出すと、表示するソフトによっては文字が黒い背景に溶けて読めなくなるため。
-- PNG: 8 ビットの RGB。圧縮の強さは `image` の既定。
-- JPEG: 品質 `JPEG_QUALITY`（90）。
+- 背景は白で塗り、その上に描画する（どの形式でも）。PDF のページは紙を表すので、透過のまま出すと、表示するソフトによっては文字が黒い背景に溶けて読めなくなるため。
+- 色: カラーは 8 ビットの RGB で書く。グレースケールは、pdfium の `FPDF_GRAYSCALE`（`pdfium-render` の `PdfRenderConfig::use_grayscale_rendering`）で描き、8 ビットのグレー（1 チャンネル）で書く。この描画の結果はすべての画素で R = G = B になる（PDF の中の写真も灰色になる。U09 の前の試作で、`shapes.pdf` と、`photo.jpg`・`logo_alpha.png` を入れた PDF で確かめた）ので、1 つのチャンネルを取り出す。描画の速さはカラーと変わらない。
+- PNG: 8 ビット（RGB またはグレー）。圧縮の強さは `image` の既定。
+- JPEG: 品質 `JPEG_QUALITY`（90）。グレースケールは 1 成分の JPEG。
+- WebP: 可逆の圧縮（`image` の WebP の書き出し）。`image` が書ける WebP は可逆だけで、非可逆には C の libwebp が要るため、非可逆は扱わない。図形の多いページでは PNG のおよそ 3 分の 1、写真のページでは 7 割ほどの大きさになる（試作の値）。
 - 描画の寸法は「ページの大きさ（pt）÷ 72 × dpi」を四捨五入した値。総ピクセル数が `MAX_RENDER_PIXELS`（100_000_000）を超えるページは描かずに `RenderTooLarge` とする。A0 を 300 dpi で描くと約 1.4 億画素になり、これは上限を超える。
-- 解像度の選択肢は 72、150、300 dpi、既定は 150 dpi。定数 `DPI_CHOICES` と `DEFAULT_RENDER_DPI` に置く。
+- 解像度は `RENDER_DPI_MIN`（36）〜`RENDER_DPI_MAX`（1000）の整数。既定は `DEFAULT_RENDER_DPI`（150）。上限は、A4 が `MAX_RENDER_PIXELS` に収まる切りのいい値（A4 を 1000 dpi で描くと 8268 × 11693 ≈ 9670 万画素、1100 dpi では約 1.17 億画素で超える）。このときの 1 ページの描画と書き出しは、試作で最大約 1.05 GB のメモリ、描画と書き出しを合わせて 2 秒ほど（JPEG が最も遅い）で、`WORKER_MEMORY_LIMIT`（2 GiB、§5.3）と `RENDER_TIMEOUT`（60 秒）に収まる。下限は 72 dpi の半分で、これより小さい画像はページの確認にも使いにくい。
+- 画面の解像度の選択肢（72、150、300 dpi）は `DPI_CHOICES` で、フロントエンドだけが持つ（§10.1）。Rust の検査（`save_settings`、`start_pdfs_to_images`、ワーカーの `Render`）は選択肢ではなく範囲で行う。
 
 ### 4.5 ページの範囲（FR-04）
 
@@ -163,7 +166,7 @@
 | 要求 | 内容 | 応答 |
 | --- | --- | --- |
 | `Open { path }` | PDF を開く。前に開いていたものは閉じる | `{ pageCount, pages: [{ widthPt, heightPt }] }` またはエラー |
-| `Render { page, dpi, format }` | 開いている PDF の 1 ページを描画して書き出す | 本体に PNG / JPEG のバイト列 |
+| `Render { page, dpi, format, color }` | 開いている PDF の 1 ページを描画して書き出す（`format` は `png` / `jpeg` / `webp`、`color` は `color` / `gray`、§4.4） | 本体に画像のバイト列 |
 | `Thumbnail { page, maxSide }` | 長い辺を `maxSide` px にして描画し、PNG にする | 本体に PNG |
 | `Close` | 開いている PDF を閉じる | `{}` |
 
@@ -233,8 +236,8 @@
   | 届かなかった（キャンセル、§6.5 の打ち切り） | `{page}  未処理`（灰）/ `{page}  Not processed`（行の状態の「未処理」と同じ語） |
 
 - 変換に失敗したページは、枠を赤にし、サムネイルに薄い赤を重ねて、右上に ✕ の印を付ける。選んだページの枠（アクセントの色）は赤と系統が近く（§10.3）、枠の色だけでは見分けられないため。
-- 「変換を開始」で、保存先のフォルダと、形式、解像度、範囲を渡す。PDF ごとにワーカーを 1 つ借り、`Open` → 対象のページごとに `Render` → 保存、を行う。PDF の単位で並列にする。
-- 出力名: `元の名前_p{番号}.{png|jpg}`。番号は、その PDF のページ数の桁数で 0 を詰める（8 ページなら `p1`〜`p8`、120 ページなら `p001`〜`p120`）。ファイルの一覧で名前の順に並べたとき、ページの順になるようにするため。
+- 「変換を開始」で、保存先のフォルダと、形式、色、解像度、範囲を渡す。PDF ごとにワーカーを 1 つ借り、`Open` → 対象のページごとに `Render` → 保存、を行う。PDF の単位で並列にする。
+- 出力名: `元の名前_p{番号}.{png|jpg|webp}`。番号は、その PDF のページ数の桁数で 0 を詰める（8 ページなら `p1`〜`p8`、120 ページなら `p001`〜`p120`）。ファイルの一覧で名前の順に並べたとき、ページの順になるようにするため。
 - 1 つの PDF の途中のページで失敗したときは、その PDF の残りのページを続け、その PDF を「一部失敗」として失敗のページ番号を表示する。
 
 ### 6.4 出力名の決定
@@ -299,15 +302,15 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 ### 6.7 設定の保存（FR-07、FR-10）
 
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
-- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a4", a4Orientation: "auto" | "portrait" | "landscape", outputDir }`、`pdfToImages: { format: "png" | "jpeg", dpi, outputDir }`。
+- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a4", a4Orientation: "auto" | "portrait" | "landscape", outputDir }`、`pdfToImages: { format: "png" | "jpeg" | "webp", colorMode: "color" | "gray", dpi, outputDir }`。`dpi` は §4.4 の範囲の整数。
 - 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。
-- 既定値: 「1 つの PDF」、「画像に合わせる」、A4 の向きは「自動」、PNG、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
+- 既定値: 「1 つの PDF」、「画像に合わせる」、A4 の向きは「自動」、PNG、カラー、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
 - `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
-- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, a4Orientation, outputDir }, pdfToImages: { format, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
-- `save_settings` は、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の `DPI_CHOICES` にないなどの不正な値は `InvalidParams` で拒み、何も保存しない。書き込みに失敗したら `WriteFailed` を返す。
+- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, a4Orientation, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
+- `save_settings` は、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にあるなどの不正な値は `InvalidParams` で拒み、何も保存しない。書き込みに失敗したら `WriteFailed` を返す。
 - `pick_output_dir` は、選ばれたフォルダを §6.5 の Rust の状態と設定に入れ、設定ファイルを書き直す。書き込みに失敗しても、選んだフォルダはそのセッションで使い、`{ dirLabel }` を返す（設定ファイルの問題で変換を始められなくならないようにするため）。
 - 起動時、保存されたフォルダが存在すればそれを §6.5 の状態に入れ、存在しなければ未選択に戻す。
-- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`a4Orientation` も `pageSize` とは別に確かめる。`a4Orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
+- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`a4Orientation` も `pageSize` とは別に確かめる。`a4Orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい。`colorMode` も同じく、ない設定ファイルは「カラー」になる。逆に、新しい版が書いた `webp`、`gray`、選択肢にない `dpi` を `v0.1.0` が読むと、その項目だけが既定値に戻り、ほかの項目は残る）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
 
 ## 7. IPC
 
@@ -324,7 +327,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `save_merged_pdf` | `ids, pageSize, a4Orientation` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
 | `start_images_to_pdfs` | `ids, pageSize, a4Orientation` | –（§6.2 の「1 枚ずつ」）。`a4Orientation` は `pageSize` が `a4` のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ） |
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][] }` または `InvalidPageRange` |
-| `start_pdfs_to_images` | `ids, range, format, dpi` | – |
+| `start_pdfs_to_images` | `ids, range, format, colorMode, dpi` | –（`dpi` が §4.4 の範囲の外なら `InvalidParams`） |
 | `cancel_job` | – | – |
 | `get_about` | – | `{ version, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか。pdfium の版は返さず、「このアプリについて」の第三者ライセンスの一覧に出る） |
 
@@ -387,7 +390,8 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 
 - アプリ名は「PDF Converter」。ウィンドウの既定の大きさは 1200×800、最小は 960×640。
 - 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像）、言語の切り替え、「このアプリについて」。
-- 左の設定パネル: 画像 → PDF は「出力」「ページの大きさ」、A4 のときの「向き」（自動 / 縦 / 横）と、「1 枚ずつ」のときの保存先フォルダ。「画像に合わせる」の間は「向き」を出さないが、選んだ値は状態と設定に残す。PDF → 画像は「ページ」「形式」「解像度」「保存先フォルダ」。
+- 左の設定パネル: 画像 → PDF は「出力」「ページの大きさ」、A4 のときの「向き」（自動 / 縦 / 横）と、「1 枚ずつ」のときの保存先フォルダ。「画像に合わせる」の間は「向き」を出さないが、選んだ値は状態と設定に残す。PDF → 画像は「ページ」「形式」（PNG / JPEG / WebP）「色」（カラー / グレースケール）「解像度」「保存先フォルダ」。ページのサムネイルは、グレースケールのときもカラーのまま出す（ページの確認と選択のためのもので、出力の見本ではないため）。
+- 解像度の欄は、選択肢「72 dpi / 150 dpi / 300 dpi / 指定する」（英語は `Custom`）。「指定する」を選ぶと、すぐ下に数値の欄（右に「dpi」）を出し、今の解像度を入れておく。欄は半角と全角の数字を受け付け、前後の空白（全角を含む）は無視する。§4.4 の範囲の整数でない（空、小数、範囲の外、数字以外の文字）ときは、「変換を開始」をすぐ無効にし、「{min}〜{max} の整数を入れてください」/ `Enter a whole number from {min} to {max}` を、範囲の誤り（§6.3）と同じ規則（入力が 0.6 秒止まるか欄から離れたとき）で欄の下に赤で出す。誤りの間は、下部バーの説明と「A4 の 1 ページ → … px」の行を出さず、状態と設定の `dpi` は最後の正しい値のままにする。選択肢に戻すとその値になり、欄と誤りは消える。「指定する」を選んでいるかは画面だけが持ち、保存しない。起動時は、保存された `dpi` が選択肢にあればその選択肢を、なければ「指定する」とその値を出す。範囲の上限と下限は Rust の `RENDER_DPI_MIN`・`RENDER_DPI_MAX` を写した定数にする（範囲の解釈（§4.5）と違い、整数を読むだけなので画面で確かめる。Rust も同じ範囲で拒む）。
 - 切り替えのボタン（`.seg`）は、ボタンの間に区切り線を引き、押せるボタンはポインターを乗せると背景を変える。選択肢が 3 つ以上あると、選んでいない 2 つが隣り合い、線がなければ 1 つのボタンに見えるため。
 - 右の一覧: 空のときはドロップ領域。画像は行の一覧（番号、サムネイル、名前、寸法、↑↓、外す）。PDF は 1 つならページのサムネイルの格子、複数なら表。
 - 下部バー: 状態の説明と、実行のボタン（「PDF を保存」または「変換を開始」）。変換中は進捗バーと「キャンセル」。
@@ -469,6 +473,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
   - 向きのフィクスチャは、4 つの色の領域の中心の色が元の画像と同じであること（差が `COLOR_TOLERANCE_RENDER` 以内）。
 - 画像 → PDF の品質テストは、pdfium をテストのプロセスに読み込んで描画する。`pdfium-render` は `crates/core` の dev-dependencies で、アプリのメインプロセスには入らない（§9 の検査は dev-dependencies を除く）。
 - **PDF → 画像**: `shapes.pdf` を描画し、`gen_fixtures` が同じ図形から計算した期待の画像と比べる。図形の縁のぼかし方の差を許すため、`COLOR_TOLERANCE_RENDER`（32）、`MAX_MISMATCH_RATIO_RENDER`（0.5%）とする。T02 の実測では最も悪いページで 0.12% だった（pdfium は画像を x 方向に 1 画素ずらして描く、A4 の高さが整数の画素にならない、などの 1 画素の差が図形の縁に出る）。4 倍の余裕を残しつつ、描画の劣化を見逃しにくい値にしている。
+- **PDF → 画像のグレースケールと WebP**: グレースケールは、同じページを同じ dpi のカラーで描いた画像から BT.601 の輝度（`0.299R + 0.587G + 0.114B` を四捨五入）を求め、グレーの画像と全画素で差が `COLOR_TOLERANCE_GRAY`（8）以内であること、画像が 1 チャンネルであること。U09 の前の試作では、`shapes.pdf` と写真を入れた PDF で差の最大が 3 だった（`image` の `to_luma8` は BT.709 の係数で、差が最大 28 になるので基準にしない）。WebP は、同じページを PNG で書いたものと、復号した画素が完全に一致すること（可逆）。
 - 出力した PDF が一般的なビューアーで開けること（NFR-03）は、手動の確認でブラウザー内蔵のビューアーで開いて確かめる。
 
 ### 11.3 テストの一覧
@@ -478,7 +483,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | crates/core | 単体 | probe（形式、寸法、向き、dpi、上限）、ページの配置（画像に合わせる、A4 の縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
 | crates/core | 品質 | §11.2 の画像 → PDF |
 | crates/worker | 品質 | §11.2 の PDF → 画像 |
-| crates/worker | 単体 | メッセージの読み書き、`Open` / `Render` / `Thumbnail`、パスワード、壊れた PDF、ページ数の上限、描画の上限 |
+| crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード、壊れた PDF、ページ数の上限、描画の上限 |
 | crates/worker | 結合 | 単独のワーカー（`pdfconv-worker`）を起動し、テスト用の要求（`test-hooks` 機能の `CrashForTest`、`HangForTest`、`AllocateForTest`）で、異常終了、時間切れ、メモリの上限のあとにメインプロセスの側が続けて動くこと、新しいワーカーが起動することを確かめる（T01） |
 | src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。設定の読み書き |
 | フロントエンド | 単体 | 一覧の追加・並べ替え・削除、範囲の入力と開始ボタンの有効・無効、変換中の無効化、エラーコードから文言、状態の色と記号 |
