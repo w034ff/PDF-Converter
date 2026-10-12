@@ -310,11 +310,13 @@ export function PdfToImagesSettings() {
           </option>
         </select>
         {pdfToImages.isCustomDpi && (
-          <div className="pdf-custom-dpi-row">
+          // The box is drawn by the label so that the unit sits inside it and
+          // a click on the unit focuses the input.
+          <label className="settings-control pdf-custom-dpi-field">
             <input
               type="text"
               inputMode="numeric"
-              className="settings-control pdf-custom-dpi-input"
+              className="pdf-custom-dpi-input"
               aria-label={t.pdfToImages.settings.customDpiLabel}
               value={pdfToImages.customDpiText}
               onChange={(e) =>
@@ -329,7 +331,7 @@ export function PdfToImagesSettings() {
             <span className="pdf-custom-dpi-unit">
               {t.pdfToImages.settings.customDpiUnit}
             </span>
-          </div>
+          </label>
         )}
         {isCustomDpiErrorShown && (
           <span className="error-text" role="alert">

@@ -7,7 +7,7 @@ All processing runs entirely on your computer without uploading any files to ext
 
 ## Features
 
-- **Images → PDF**: Converts images to PDF without compromising original quality. JPEG images are embedded directly without recompression, and transparent PNG, WebP, and BMP images retain transparency with lossless compression. Respects EXIF orientation and supports choosing between "Fit to image" and seven paper sizes (A3, A4, A5, JIS B4, JIS B5, Letter, Legal), with Auto, Portrait, or Landscape orientation for paper sizes.
+- **Images → PDF**: Converts images to PDF without compromising original quality. JPEG images are embedded directly without recompression, and transparent PNG, WebP, and BMP images retain transparency with lossless compression. Respects EXIF orientation and supports choosing between "Same as image" and seven paper sizes (A3, A4, A5, JIS B4, JIS B5, Letter, Legal), with Auto, Portrait, or Landscape orientation for paper sizes.
 - **Merge & Reorder**: Combine multiple images into a single multi-page PDF. Flexible reordering via drag-and-drop or keyboard shortcuts (↑ / ↓, Alt + ↑ / ↓). Individual items can also be removed from the list.
 - **PDF → Images**: Render PDF pages into PNG, JPEG, or lossless WebP images in full color or grayscale. Choose from 72 dpi, 150 dpi, 300 dpi, or specify any custom resolution from 36 to 1000 dpi, rendered with crisp white backgrounds.
 - **Page Range Selection**: Convert all pages or specify custom page ranges (e.g. `1-3, 5`). Select individual pages interactively by clicking thumbnails for single PDFs, or apply the same range across multiple PDFs in bulk.

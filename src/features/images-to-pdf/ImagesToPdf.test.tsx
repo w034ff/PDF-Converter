@@ -1591,7 +1591,7 @@ describe("ImagesToPdf (T11)", () => {
       }
     });
 
-    it("keeps the first half of the note under 'Fit to image'", () => {
+    it("keeps the first half of the note under 'Same as image'", () => {
       mockTwoImages();
       renderHarness("ja-JP");
 
@@ -1829,7 +1829,7 @@ describe("ImagesToPdf (T11)", () => {
       }),
     );
     expect(optionsJa).toEqual([
-      { value: "fit", label: "画像に合わせる" },
+      { value: "fit", label: "画像と同じ大きさ" },
       { value: "a3", label: "A3 (297 × 420 mm)" },
       { value: "a4", label: "A4 (210 × 297 mm)" },
       { value: "a5", label: "A5 (148 × 210 mm)" },
@@ -1852,7 +1852,7 @@ describe("ImagesToPdf (T11)", () => {
       }),
     );
     expect(optionsEn).toEqual([
-      { value: "fit", label: "Fit to image" },
+      { value: "fit", label: "Same as image" },
       { value: "a3", label: "A3 (297 × 420 mm)" },
       { value: "a4", label: "A4 (210 × 297 mm)" },
       { value: "a5", label: "A5 (148 × 210 mm)" },
@@ -1880,15 +1880,14 @@ describe("ImagesToPdf (T11)", () => {
 
     renderHarness();
 
-    // In default "fit" mode, orientation control is not visible
+    // In default "fit" mode, the orientation control is shown but disabled,
+    // with the reason instead of the "auto" hint
+    for (const name of ["自動", "縦", "横"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    expect(screen.getByText("用紙を選ぶと使えます")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "自動" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "縦" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "横" }),
+      screen.queryByText("横長の画像は横、それ以外は縦にします"),
     ).not.toBeInTheDocument();
     expect(
       screen.getByText("画像の大きさのページにします"),
@@ -1902,13 +1901,15 @@ describe("ImagesToPdf (T11)", () => {
     fireEvent.change(pageSizeSelect, { target: { value: "a4" } });
     expect(screen.getByText("余白を付けて用紙に収めます")).toBeInTheDocument();
 
-    // Orientation control is now visible, defaulting to "自動"
+    // Orientation control is now enabled, defaulting to "自動"
     const autoBtn = screen.getByRole("button", { name: "自動" });
     const portraitBtn = screen.getByRole("button", { name: "縦" });
     const landscapeBtn = screen.getByRole("button", { name: "横" });
     expect(autoBtn).toHaveAttribute("aria-pressed", "true");
     expect(portraitBtn).toHaveAttribute("aria-pressed", "false");
     expect(landscapeBtn).toHaveAttribute("aria-pressed", "false");
+    expect(autoBtn).toBeEnabled();
+    expect(screen.queryByText("用紙を選ぶと使えます")).not.toBeInTheDocument();
 
     // Hint is shown for "auto"
     expect(
@@ -1932,11 +1933,15 @@ describe("ImagesToPdf (T11)", () => {
     );
     expect(screen.getByText("余白を付けて用紙に収めます")).toBeInTheDocument();
 
-    // Switch to "画像に合わせる" (fit)
+    // Switch to "画像と同じ大きさ" (fit): the control stays in place, disabled,
+    // still showing the choice
     fireEvent.change(pageSizeSelect, { target: { value: "fit" } });
-    expect(
-      screen.queryByRole("button", { name: "自動" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "縦" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "縦" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("用紙を選ぶと使えます")).toBeInTheDocument();
     expect(
       screen.getByText("画像の大きさのページにします"),
     ).toBeInTheDocument();
@@ -2020,6 +2025,12 @@ describe("ImagesToPdf (T11)", () => {
   it("displays orientation controls and hints in English when language is en", async () => {
     mockAppIpc(() => undefined);
     renderHarness("en-US");
+
+    // Same as image: the control is disabled with the reason
+    expect(screen.getByRole("button", { name: "Auto" })).toBeDisabled();
+    expect(
+      screen.getByText("Available when a paper size is chosen"),
+    ).toBeInTheDocument();
 
     // Select Letter
     const pageSizeSelect = screen.getByRole("combobox", { name: "Page size" });
