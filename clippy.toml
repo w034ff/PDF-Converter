@@ -1,0 +1,3 @@
+# In tests, failures should immediately fail the test, so unwraps and panics are expected.
+allow-unwrap-in-tests = true
+allow-panic-in-tests = true

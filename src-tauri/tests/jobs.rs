@@ -1,5 +1,11 @@
 //! Integration tests for conversion execution and jobs (work-plan T08, design §6.2-§6.5).
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    reason = "integration-test helpers: a failure here should fail the test"
+)]
+
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};

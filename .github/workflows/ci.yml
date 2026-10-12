@@ -103,6 +103,10 @@ jobs:
         with:
           tool: cargo-deny@0.20.2,cargo-about@0.9.2
 
+      - name: Layer Check
+        if: runner.os == 'Linux'
+        run: npm run layers:check
+
       - name: License Check
         if: runner.os == 'Linux'
         run: npm run licenses:check
