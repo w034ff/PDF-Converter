@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use pdfconv_worker::client::{WorkerError, WorkerProcess};
+use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::{RenderColor, RenderFormat, Request, Response};
 use pdfconv_worker::{RENDER_DPI_MAX, RENDER_DPI_MIN};
 
@@ -478,7 +478,8 @@ fn rejects_invalid_parameters_and_closed_documents() {
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
-    // DPI RENDER_DPI_MIN (36) and RENDER_DPI_MAX (1000) succeed
+    // RENDER_DPI_MIN succeeds. RENDER_DPI_MAX is rendered by
+    // renders_a4_at_the_maximum_dpi, which needs a release build.
     let (resp_min, _) = worker
         .request(
             &Request::Render {
@@ -491,19 +492,6 @@ fn rejects_invalid_parameters_and_closed_documents() {
         )
         .expect("RENDER_DPI_MIN should succeed");
     assert_eq!(resp_min, Response::Render);
-
-    let (resp_max, _) = worker
-        .request(
-            &Request::Render {
-                page: 1,
-                dpi: RENDER_DPI_MAX,
-                format: RenderFormat::Png,
-                color: RenderColor::Color,
-            },
-            ANSWER_TIMEOUT,
-        )
-        .expect("RENDER_DPI_MAX should succeed");
-    assert_eq!(resp_max, Response::Render);
 
     // max_side 0 -> InvalidParams
     match worker.request(
@@ -728,6 +716,47 @@ fn performance_render_a4_150dpi() {
         elapsed < Duration::from_secs(3),
         "Render took {elapsed:?}, exceeding 3s limit"
     );
+}
+
+/// The maximum resolution is chosen so that an A4 page renders within the
+/// worker's memory limit and render timeout (design §4.4). An unoptimized
+/// build encodes the 97-megapixel page too slowly for that timeout.
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "rendering at the maximum resolution is only fast enough in release builds"
+)]
+fn renders_a4_at_the_maximum_dpi() {
+    let mut worker = start();
+    worker
+        .request(
+            &Request::Open {
+                path: fixtures_dir().join("shapes.pdf"),
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("Open shapes.pdf should succeed");
+
+    for format in [RenderFormat::Png, RenderFormat::Jpeg, RenderFormat::Webp] {
+        let (resp, body) = worker
+            .request(
+                &Request::Render {
+                    page: 1,
+                    dpi: RENDER_DPI_MAX,
+                    format,
+                    color: RenderColor::Color,
+                },
+                RENDER_TIMEOUT,
+            )
+            .unwrap_or_else(|e| panic!("{format:?} at RENDER_DPI_MAX should succeed: {e:?}"));
+        assert_eq!(resp, Response::Render);
+        let dimensions = image::ImageReader::new(std::io::Cursor::new(&body))
+            .with_guessed_format()
+            .expect("guess format")
+            .into_dimensions()
+            .expect("read dimensions");
+        assert_eq!(dimensions, (8268, 11693), "{format:?}");
+    }
 }
 
 #[cfg(feature = "test-hooks")]
