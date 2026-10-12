@@ -200,4 +200,39 @@ describe("checkLayers", () => {
     expect(violations[0]).toContain("foo-bar");
     expect(violations[0]).not.toContain("foo_bar");
   });
+
+  it("throws an error when a root package like pdfconv-core is missing", () => {
+    const metadata = {
+      packages: [
+        { id: "pkg-worker", name: "pdfconv-worker" },
+        { id: "pkg-image", name: "image" },
+      ],
+      resolve: {
+        nodes: [
+          {
+            id: "pkg-worker",
+            deps: [],
+          },
+          {
+            id: "pkg-image",
+            deps: [],
+          },
+        ],
+      },
+    };
+
+    expect(() => checkLayers(metadata)).toThrow("pdfconv-core");
+  });
+
+  it("throws an error when resolve is null", () => {
+    const metadata = {
+      packages: [
+        { id: "pkg-core", name: "pdfconv-core" },
+        { id: "pkg-worker", name: "pdfconv-worker" },
+      ],
+      resolve: null,
+    };
+
+    expect(() => checkLayers(metadata)).toThrow();
+  });
 });

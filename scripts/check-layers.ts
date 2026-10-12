@@ -127,7 +127,9 @@ export function checkLayers(metadata: unknown): string[] {
     throw new Error("Invalid cargo metadata structure");
   }
   if (!metadata.resolve) {
-    return [];
+    throw new Error(
+      "Cargo metadata has no resolve graph (was --no-deps used?)",
+    );
   }
 
   const packageById = new Map<string, CargoPackage>();
@@ -145,7 +147,16 @@ export function checkLayers(metadata: unknown): string[] {
   for (const rootName of ROOT_PACKAGES) {
     const rootPkg = metadata.packages.find((pkg) => pkg.name === rootName);
     if (!rootPkg) {
-      continue;
+      throw new Error(
+        `Root package "${rootName}" was not found in cargo metadata packages`,
+      );
+    }
+
+    const rootNode = nodeById.get(rootPkg.id);
+    if (!rootNode) {
+      throw new Error(
+        `Root node for "${rootName}" (${rootPkg.id}) was not found in cargo metadata resolve graph`,
+      );
     }
 
     const queue: QueueEntry[] = [{ id: rootPkg.id, path: [rootPkg.name] }];
