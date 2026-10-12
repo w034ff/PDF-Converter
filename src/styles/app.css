@@ -178,6 +178,24 @@ a:hover {
   opacity: 0.5;
 }
 
+/* Settings form controls (select, text/number input) */
+.settings-control {
+  font: inherit;
+  font-size: 13px;
+  min-height: 34px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  box-sizing: border-box;
+}
+
+.settings-control:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Layout classes */
 /* The window is the scroll boundary: the header and the footer stay in view
    and only the side panel and the list scroll, so the start button is never

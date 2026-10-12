@@ -62,7 +62,7 @@ export function ImagesToPdfSettings() {
         </label>
         <select
           id="pageSize"
-          className="images-settings-select"
+          className="settings-control"
           value={imagesToPdf.pageSize}
           onChange={handlePageSizeChange}
           disabled={disabled}

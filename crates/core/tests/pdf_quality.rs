@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use image::Rgb;
 use pdfconv_core::probe::probe_reader;
 use pdfconv_core::{
-    POINTS_PER_INCH, PageOrientation, PageSize, PaperSize, PdfWriter, ProbeError, calculate_layout,
+    POINTS_PER_INCH, PageLayout, PageOrientation, PageSize, PaperSize, PdfWriter, ProbeError,
+    calculate_layout,
 };
 use pdfium_render::prelude::*;
 
@@ -20,6 +21,12 @@ const MAX_MISMATCH_RATIO_IMAGE: f64 = 0.001; // 0.1%
 
 /// Tolerance for quadrant center colors in the A4 orientation test (design §11.2).
 const COLOR_TOLERANCE_RENDER: u8 = 32;
+
+/// Threshold below which an RGB channel is considered non-white (design §11.2).
+const NON_WHITE_THRESHOLD: u8 = 250;
+
+/// Maximum allowable pixel coordinate discrepancy for image bounding boxes (design §11.2).
+const PLACEMENT_TOLERANCE_PX: i64 = 1;
 
 /// DPI used for rendering A4 pages.
 const RENDER_DPI_A4: f32 = 150.0;
@@ -64,6 +71,82 @@ fn composite_over_white(rgba: &image::RgbaImage) -> image::RgbImage {
         rgb.put_pixel(x, y, Rgb([r, g, b]));
     }
     rgb
+}
+
+/// Writes a single-page PDF with `page_size`, renders it at `scale`, and verifies that
+/// the non-white pixel bounding box matches `calculate_layout` within [`PLACEMENT_TOLERANCE_PX`].
+fn assert_paper_placement(
+    pdfium: &Pdfium,
+    raw_bytes: &[u8],
+    page_size: PageSize,
+    scale: f32,
+    context: &str,
+) -> (image::RgbImage, PageLayout) {
+    let info = probe_reader(std::io::Cursor::new(raw_bytes)).expect("probing fixture image");
+    let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+    writer
+        .add_page(raw_bytes, page_size)
+        .expect("adding page to pdf");
+    let pdf_bytes = writer.finish().expect("finishing pdf");
+
+    let doc = pdfium
+        .load_pdf_from_byte_slice(&pdf_bytes, None)
+        .expect("loading written pdf");
+    let page = doc.pages().get(0).expect("getting first page of pdf");
+
+    let render_config = PdfRenderConfig::new().scale_page_by_factor(scale);
+    let rendered_image = render_page_to_rgb(&page, &render_config);
+
+    let layout = calculate_layout(&info, page_size);
+
+    // Expected bounding box on the rendered pixel grid:
+    // Start is rounded down (floor), end is rounded up (ceil) (design §11.2).
+    let exp_min_x = (layout.image_rect.x * scale).floor() as u32;
+    let exp_min_y = (layout.image_rect.y * scale).floor() as u32;
+    let exp_max_x = ((layout.image_rect.x + layout.image_rect.width) * scale).ceil() as u32;
+    let exp_max_y = ((layout.image_rect.y + layout.image_rect.height) * scale).ceil() as u32;
+
+    // Measure actual non-white bounding box (RGB any < NON_WHITE_THRESHOLD)
+    let mut act_min_x = u32::MAX;
+    let mut act_min_y = u32::MAX;
+    let mut act_max_x = 0u32;
+    let mut act_max_y = 0u32;
+
+    for (x, y, pixel) in rendered_image.enumerate_pixels() {
+        let [r, g, b] = pixel.0;
+        if r < NON_WHITE_THRESHOLD || g < NON_WHITE_THRESHOLD || b < NON_WHITE_THRESHOLD {
+            act_min_x = act_min_x.min(x);
+            act_min_y = act_min_y.min(y);
+            act_max_x = act_max_x.max(x);
+            act_max_y = act_max_y.max(y);
+        }
+    }
+
+    let act_end_x = act_max_x + 1;
+    let act_end_y = act_max_y + 1;
+
+    println!(
+        "{context:<25}: actual [{act_min_x}, {act_min_y}, {act_end_x}, {act_end_y}] vs expected [{exp_min_x}, {exp_min_y}, {exp_max_x}, {exp_max_y}]"
+    );
+
+    assert!(
+        (act_min_x as i64 - exp_min_x as i64).abs() <= PLACEMENT_TOLERANCE_PX,
+        "{context}: min_x diff too large: act={act_min_x}, exp={exp_min_x}"
+    );
+    assert!(
+        (act_min_y as i64 - exp_min_y as i64).abs() <= PLACEMENT_TOLERANCE_PX,
+        "{context}: min_y diff too large: act={act_min_y}, exp={exp_min_y}"
+    );
+    assert!(
+        (act_end_x as i64 - exp_max_x as i64).abs() <= PLACEMENT_TOLERANCE_PX,
+        "{context}: max_x diff too large: act={act_end_x}, exp={exp_max_x}"
+    );
+    assert!(
+        (act_end_y as i64 - exp_max_y as i64).abs() <= PLACEMENT_TOLERANCE_PX,
+        "{context}: max_y diff too large: act={act_end_y}, exp={exp_max_y}"
+    );
+
+    (rendered_image, layout)
 }
 
 #[test]
@@ -200,70 +283,13 @@ fn pdf_quality_and_conformance_suite() {
         for name in a4_fixtures {
             let path = fix_dir.join(name);
             let raw_bytes = std::fs::read(&path).unwrap();
-            let info = probe_reader(std::io::Cursor::new(&raw_bytes)).unwrap();
-
-            let mut writer = PdfWriter::new("PDF Converter 0.1.0");
-            writer
-                .add_page(&raw_bytes, PageSize::Paper(PaperSize::A4, orientation))
-                .unwrap();
-            let pdf_bytes = writer.finish().unwrap();
-
-            let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
-            let page = doc.pages().get(0).unwrap();
-
-            let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
-            let rendered_image = render_page_to_rgb(&page, &render_config);
-
-            let layout = calculate_layout(&info, PageSize::Paper(PaperSize::A4, orientation));
-
-            // Expected bounding box on the rendered pixel grid:
-            // Start is rounded down (floor), end is rounded up (ceil) (design §11.2).
-            let exp_min_x = (layout.image_rect.x * scale_a4).floor() as u32;
-            let exp_min_y = (layout.image_rect.y * scale_a4).floor() as u32;
-            let exp_max_x =
-                ((layout.image_rect.x + layout.image_rect.width) * scale_a4).ceil() as u32;
-            let exp_max_y =
-                ((layout.image_rect.y + layout.image_rect.height) * scale_a4).ceil() as u32;
-
-            // Measure actual non-white bounding box (RGB any < 250)
-            let mut act_min_x = u32::MAX;
-            let mut act_min_y = u32::MAX;
-            let mut act_max_x = 0u32;
-            let mut act_max_y = 0u32;
-
-            for (x, y, pixel) in rendered_image.enumerate_pixels() {
-                let [r, g, b] = pixel.0;
-                if r < 250 || g < 250 || b < 250 {
-                    act_min_x = act_min_x.min(x);
-                    act_min_y = act_min_y.min(y);
-                    act_max_x = act_max_x.max(x);
-                    act_max_y = act_max_y.max(y);
-                }
-            }
-
-            // End pixel coordinate (exclusive) is max_x + 1
-            let act_end_x = act_max_x + 1;
-            let act_end_y = act_max_y + 1;
-
-            println!(
-                "{name:<20} ({orientation:?}): actual [{act_min_x}, {act_min_y}, {act_end_x}, {act_end_y}] vs expected [{exp_min_x}, {exp_min_y}, {exp_max_x}, {exp_max_y}]"
-            );
-
-            assert!(
-                (act_min_x as i64 - exp_min_x as i64).abs() <= 1,
-                "{name} ({orientation:?}): min_x diff too large: act={act_min_x}, exp={exp_min_x}"
-            );
-            assert!(
-                (act_min_y as i64 - exp_min_y as i64).abs() <= 1,
-                "{name} ({orientation:?}): min_y diff too large: act={act_min_y}, exp={exp_min_y}"
-            );
-            assert!(
-                (act_end_x as i64 - exp_max_x as i64).abs() <= 1,
-                "{name} ({orientation:?}): max_x diff too large: act={act_end_x}, exp={exp_max_x}"
-            );
-            assert!(
-                (act_end_y as i64 - exp_max_y as i64).abs() <= 1,
-                "{name} ({orientation:?}): max_y diff too large: act={act_end_y}, exp={exp_max_y}"
+            let context = format!("{name} ({orientation:?})");
+            let (rendered_image, layout) = assert_paper_placement(
+                &pdfium,
+                &raw_bytes,
+                PageSize::Paper(PaperSize::A4, orientation),
+                scale_a4,
+                &context,
             );
 
             // For the 8 orientation fixtures, verify quadrant center colors
@@ -327,76 +353,29 @@ fn pdf_quality_and_conformance_suite() {
             for (fix_name, _) in nonwhite_fixtures {
                 let path = fix_dir.join(fix_name);
                 let raw_bytes = std::fs::read(&path).unwrap();
-                let info = probe_reader(std::io::Cursor::new(&raw_bytes)).unwrap();
-
-                let mut writer = PdfWriter::new("PDF Converter 0.1.0");
-                writer
-                    .add_page(&raw_bytes, PageSize::Paper(paper, orientation))
-                    .unwrap();
-                let pdf_bytes = writer.finish().unwrap();
-
-                let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
-                let page = doc.pages().get(0).unwrap();
-
-                let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
-                let rendered_image = render_page_to_rgb(&page, &render_config);
+                let context = format!("{paper_name} ({orientation:?}) {fix_name}");
+                let (rendered_image, _) = assert_paper_placement(
+                    &pdfium,
+                    &raw_bytes,
+                    PageSize::Paper(paper, orientation),
+                    scale_a4,
+                    &context,
+                );
 
                 // Verify rendered dimensions match paper dimensions and orientation (within 1 px for rounding)
                 assert!(
-                    (rendered_image.width() as i64 - exp_rendered_w as i64).abs() <= 1,
-                    "{paper_name} ({orientation:?}) {fix_name}: width mismatch: got {}, exp {}",
+                    (rendered_image.width() as i64 - exp_rendered_w as i64).abs()
+                        <= PLACEMENT_TOLERANCE_PX,
+                    "{context}: width mismatch: got {}, exp {}",
                     rendered_image.width(),
                     exp_rendered_w
                 );
                 assert!(
-                    (rendered_image.height() as i64 - exp_rendered_h as i64).abs() <= 1,
-                    "{paper_name} ({orientation:?}) {fix_name}: height mismatch: got {}, exp {}",
+                    (rendered_image.height() as i64 - exp_rendered_h as i64).abs()
+                        <= PLACEMENT_TOLERANCE_PX,
+                    "{context}: height mismatch: got {}, exp {}",
                     rendered_image.height(),
                     exp_rendered_h
-                );
-
-                // Check placement (bounding box of non-white pixels matches calculate_layout)
-                let layout = calculate_layout(&info, PageSize::Paper(paper, orientation));
-                let exp_min_x = (layout.image_rect.x * scale_a4).floor() as u32;
-                let exp_min_y = (layout.image_rect.y * scale_a4).floor() as u32;
-                let exp_max_x =
-                    ((layout.image_rect.x + layout.image_rect.width) * scale_a4).ceil() as u32;
-                let exp_max_y =
-                    ((layout.image_rect.y + layout.image_rect.height) * scale_a4).ceil() as u32;
-
-                let mut act_min_x = u32::MAX;
-                let mut act_min_y = u32::MAX;
-                let mut act_max_x = 0u32;
-                let mut act_max_y = 0u32;
-
-                for (x, y, pixel) in rendered_image.enumerate_pixels() {
-                    let [r, g, b] = pixel.0;
-                    if r < 250 || g < 250 || b < 250 {
-                        act_min_x = act_min_x.min(x);
-                        act_min_y = act_min_y.min(y);
-                        act_max_x = act_max_x.max(x);
-                        act_max_y = act_max_y.max(y);
-                    }
-                }
-
-                let act_end_x = act_max_x + 1;
-                let act_end_y = act_max_y + 1;
-
-                assert!(
-                    (act_min_x as i64 - exp_min_x as i64).abs() <= 1,
-                    "{paper_name} ({orientation:?}) {fix_name}: min_x diff: act={act_min_x}, exp={exp_min_x}"
-                );
-                assert!(
-                    (act_min_y as i64 - exp_min_y as i64).abs() <= 1,
-                    "{paper_name} ({orientation:?}) {fix_name}: min_y diff: act={act_min_y}, exp={exp_min_y}"
-                );
-                assert!(
-                    (act_end_x as i64 - exp_max_x as i64).abs() <= 1,
-                    "{paper_name} ({orientation:?}) {fix_name}: max_x diff: act={act_end_x}, exp={exp_max_x}"
-                );
-                assert!(
-                    (act_end_y as i64 - exp_max_y as i64).abs() <= 1,
-                    "{paper_name} ({orientation:?}) {fix_name}: max_y diff: act={act_end_y}, exp={exp_max_y}"
                 );
             }
         }

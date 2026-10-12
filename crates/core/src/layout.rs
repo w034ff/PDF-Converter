@@ -170,7 +170,7 @@ pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
                 (portrait_w, portrait_h)
             };
 
-            let margin_pt = PAGE_MARGIN_MM * POINTS_PER_INCH / MM_PER_INCH;
+            let margin_pt = mm_to_pt(PAGE_MARGIN_MM);
             let avail_w = page_w - 2.0 * margin_pt;
             let avail_h = page_h - 2.0 * margin_pt;
 
