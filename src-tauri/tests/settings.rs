@@ -556,6 +556,23 @@ fn save_settings_accepts_valid_dpis() {
 }
 
 #[test]
+fn settings_input_requires_color_mode() {
+    let images_dir = PathBuf::from("/tmp/images-out");
+    let pdfs_dir = PathBuf::from("/tmp/pdfs-out");
+    let mut bad_json = customized(&images_dir, &pdfs_dir);
+    bad_json["pdfToImages"]
+        .as_object_mut()
+        .expect("pdfToImages object")
+        .remove("colorMode");
+
+    let result = serde_json::from_value::<SettingsInput>(bad_json);
+    assert!(
+        result.is_err(),
+        "SettingsInput without colorMode must fail deserialization"
+    );
+}
+
+#[test]
 fn round_trips_webp_gray_and_custom_dpi() {
     let temp = TempDir::new().expect("temp dir");
     let config_dir = temp.path().join("config");

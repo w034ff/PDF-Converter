@@ -1,5 +1,5 @@
 import { getTranslations } from "../../i18n";
-import { isJobActive, parseCustomDpi, useAppState } from "../../state";
+import { hasInvalidCustomDpi, isJobActive, useAppState } from "../../state";
 import { useEnsureOutputDir } from "../output";
 import { useJobRunner } from "../job/useJobRunner";
 
@@ -30,9 +30,7 @@ export function PdfToImagesAction() {
       pdfToImages.rangeResult !== null &&
       pdfToImages.rangeResult.totalPages > 0);
 
-  const isDpiValid =
-    !pdfToImages.isCustomDpi ||
-    parseCustomDpi(pdfToImages.customDpiText) !== null;
+  const isDpiValid = !hasInvalidCustomDpi(pdfToImages);
 
   const disabled =
     !hasTargets || isBusy || !isRangeValid || !isDpiValid || isPicking;

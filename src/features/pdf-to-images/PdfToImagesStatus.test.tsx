@@ -161,6 +161,39 @@ describe("PdfToImagesStatus", () => {
           "Will save 5 pages as JPEG",
         );
       });
+
+      it("changes format label when format is webp", () => {
+        const state = createBaseState({ items: [validPdf1], format: "webp" });
+        expect(getPdfToImagesStatusText(state, ja)).toBe(
+          "5 ページを WebP で保存します",
+        );
+        expect(getPdfToImagesStatusText(state, en)).toBe(
+          "Will save 5 pages as WebP",
+        );
+      });
+    });
+
+    it("returns null when custom dpi is invalid", () => {
+      const stateInvalid = createBaseState({
+        isCustomDpi: true,
+        customDpiText: "35",
+      });
+      expect(getPdfToImagesStatusText(stateInvalid, ja)).toBeNull();
+      expect(getPdfToImagesStatusText(stateInvalid, en)).toBeNull();
+
+      const stateEmpty = createBaseState({
+        isCustomDpi: true,
+        customDpiText: "",
+      });
+      expect(getPdfToImagesStatusText(stateEmpty, ja)).toBeNull();
+
+      const stateValid = createBaseState({
+        isCustomDpi: true,
+        customDpiText: "600",
+      });
+      expect(getPdfToImagesStatusText(stateValid, ja)).toBe(
+        "5 ページを PNG で保存します",
+      );
     });
 
     describe("when pageSelection is 'range'", () => {
@@ -340,6 +373,39 @@ describe("PdfToImagesStatus", () => {
       );
 
       expect(container).toBeEmptyDOMElement();
+    });
+
+    it("renders nothing when custom dpi is invalid", () => {
+      const initialState = createInitialAppState("ja-JP");
+      initialState.language.activeTab = "pdfToImages";
+      initialState.pdfToImages.items = [validPdf1];
+      initialState.pdfToImages.isCustomDpi = true;
+      initialState.pdfToImages.customDpiText = "35";
+
+      const { container } = render(
+        <AppStateProvider initialState={initialState}>
+          <PdfToImagesStatus />
+        </AppStateProvider>,
+      );
+
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it("renders status with WebP label when format is webp", () => {
+      const initialState = createInitialAppState("ja-JP");
+      initialState.language.activeTab = "pdfToImages";
+      initialState.pdfToImages.items = [validPdf1];
+      initialState.pdfToImages.format = "webp";
+
+      render(
+        <AppStateProvider initialState={initialState}>
+          <PdfToImagesStatus />
+        </AppStateProvider>,
+      );
+
+      expect(
+        screen.getByText("5 ページを WebP で保存します"),
+      ).toBeInTheDocument();
     });
 
     it("renders the unreadable-only line as a warning", () => {

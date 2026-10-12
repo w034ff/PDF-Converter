@@ -16,8 +16,8 @@ import {
   DPI_CHOICES,
   RENDER_DPI_MAX,
   RENDER_DPI_MIN,
+  hasInvalidCustomDpi,
   isJobActive,
-  parseCustomDpi,
   useAppDispatch,
   useAppState,
   type PageSelection,
@@ -27,7 +27,7 @@ import { calculateRenderDimensions, formatPaperSize } from "./pdfUtils";
 import "./pdfToImages.css";
 
 /** How long typing must pause before a field error is shown. */
-export const RANGE_ERROR_REVEAL_DELAY_MS = 600;
+export const FIELD_ERROR_REVEAL_DELAY_MS = 600;
 
 const DPI_LABEL_KEYS: Record<
   number,
@@ -44,7 +44,7 @@ const DPI_LABEL_KEYS: Record<
 function useDelayedReveal(
   value: string,
   hasError: boolean,
-  delayMs = RANGE_ERROR_REVEAL_DELAY_MS,
+  delayMs = FIELD_ERROR_REVEAL_DELAY_MS,
 ): [boolean, () => void] {
   const [revealedFor, setRevealedFor] = useState<string | null>(null);
 
@@ -82,9 +82,7 @@ export function PdfToImagesSettings() {
   );
 
   // Custom DPI error is delayed in the same manner.
-  const isCustomDpiError =
-    pdfToImages.isCustomDpi &&
-    parseCustomDpi(pdfToImages.customDpiText) === null;
+  const isCustomDpiError = hasInvalidCustomDpi(pdfToImages);
   const [isCustomDpiErrorShown, revealCustomDpiError] = useDelayedReveal(
     pdfToImages.customDpiText,
     isCustomDpiError,
@@ -179,9 +177,7 @@ export function PdfToImagesSettings() {
       ? pdfToImages.items[0]
       : null;
 
-  const isDpiValid =
-    !pdfToImages.isCustomDpi ||
-    parseCustomDpi(pdfToImages.customDpiText) !== null;
+  const isDpiValid = !isCustomDpiError;
 
   const renderDimensionHint =
     isDpiValid && singlePdf !== null && singlePdf.firstPageSizePt !== null

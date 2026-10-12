@@ -16,8 +16,8 @@ import {
   type AppState,
 } from "../../state";
 import {
+  FIELD_ERROR_REVEAL_DELAY_MS,
   PdfToImagesSettings,
-  RANGE_ERROR_REVEAL_DELAY_MS,
 } from "./PdfToImagesSettings";
 import { PdfToImagesStatus } from "./PdfToImagesStatus";
 
@@ -269,7 +269,7 @@ describe("PdfToImagesSettings", () => {
       fireEvent.change(input, { target: { value: "1-" } });
       await act(async () => {});
       act(() => {
-        vi.advanceTimersByTime(RANGE_ERROR_REVEAL_DELAY_MS - 1);
+        vi.advanceTimersByTime(FIELD_ERROR_REVEAL_DELAY_MS - 1);
       });
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
@@ -303,7 +303,7 @@ describe("PdfToImagesSettings", () => {
       fireEvent.change(input, { target: { value: "1-" } });
       await act(async () => {});
       act(() => {
-        vi.advanceTimersByTime(RANGE_ERROR_REVEAL_DELAY_MS);
+        vi.advanceTimersByTime(FIELD_ERROR_REVEAL_DELAY_MS);
       });
       expect(screen.getByRole("alert")).toBeInTheDocument();
 
@@ -594,7 +594,7 @@ describe("PdfToImagesSettings", () => {
 
     // Advance 600ms -> error appears
     act(() => {
-      vi.advanceTimersByTime(RANGE_ERROR_REVEAL_DELAY_MS);
+      vi.advanceTimersByTime(FIELD_ERROR_REVEAL_DELAY_MS);
     });
     expect(
       screen.getByText("36〜1000 の整数を入れてください"),

@@ -55,6 +55,16 @@ export function parseCustomDpi(text: string): number | null {
   return null;
 }
 
+/**
+ * Whether the state has custom resolution selected with an invalid value
+ * (empty, malformed, or outside [RENDER_DPI_MIN, RENDER_DPI_MAX]).
+ */
+export function hasInvalidCustomDpi(
+  state: Pick<PdfToImagesState, "isCustomDpi" | "customDpiText">,
+): boolean {
+  return state.isCustomDpi && parseCustomDpi(state.customDpiText) === null;
+}
+
 export const initialPdfToImagesState: PdfToImagesState = {
   items: [],
   pageSelection: "all",

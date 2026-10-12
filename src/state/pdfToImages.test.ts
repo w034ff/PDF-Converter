@@ -7,6 +7,7 @@ import {
   DPI_CHOICES,
   RENDER_DPI_MAX,
   RENDER_DPI_MIN,
+  hasInvalidCustomDpi,
   initialPdfToImagesState,
   parseCustomDpi,
   pdfToImagesReducer,
@@ -295,5 +296,40 @@ describe("pdfToImagesReducer", () => {
     expect(parseCustomDpi("abc")).toBeNull();
     expect(parseCustomDpi("600dpi")).toBeNull();
     expect(parseCustomDpi("6 00")).toBeNull();
+  });
+
+  it("checks whether state has invalid custom DPI", () => {
+    // When isCustomDpi is false, hasInvalidCustomDpi is false even with invalid text
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: false, customDpiText: "bad" }),
+    ).toBe(false);
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: false, customDpiText: "600" }),
+    ).toBe(false);
+
+    // When isCustomDpi is true, validates customDpiText
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "600" }),
+    ).toBe(false);
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "36" }),
+    ).toBe(false);
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "1000" }),
+    ).toBe(false);
+
+    // Invalid values
+    expect(hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "" })).toBe(
+      true,
+    );
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "35" }),
+    ).toBe(true);
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "1001" }),
+    ).toBe(true);
+    expect(
+      hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "abc" }),
+    ).toBe(true);
   });
 });

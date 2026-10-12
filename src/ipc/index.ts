@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { RENDER_DPI_MAX, RENDER_DPI_MIN } from "../state/pdfToImages";
 import type { A4OrientationChoice } from "./generated/A4OrientationChoice";
 import type { AddResult } from "./generated/AddResult";
 import type { AddSource } from "./generated/AddSource";
@@ -175,8 +176,8 @@ export function isSettings(value: unknown): value is Settings {
     (pdfToImages.colorMode === "color" || pdfToImages.colorMode === "gray") &&
     typeof pdfToImages.dpi === "number" &&
     Number.isInteger(pdfToImages.dpi) &&
-    pdfToImages.dpi >= 36 &&
-    pdfToImages.dpi <= 1000 &&
+    pdfToImages.dpi >= RENDER_DPI_MIN &&
+    pdfToImages.dpi <= RENDER_DPI_MAX &&
     isOutputDirLabel(pdfToImages.outputDir)
   );
 }

@@ -1,5 +1,5 @@
 import { formatMessage, type Translations } from "../../i18n";
-import { parseCustomDpi, type PdfToImagesState } from "../../state";
+import { hasInvalidCustomDpi, type PdfToImagesState } from "../../state";
 
 function formatSavePages(
   pages: number,
@@ -39,7 +39,7 @@ export function describePdfToImagesStatus(
   state: PdfToImagesState,
   t: Translations,
 ): PdfToImagesStatusLine | null {
-  if (state.isCustomDpi && parseCustomDpi(state.customDpiText) === null) {
+  if (hasInvalidCustomDpi(state)) {
     return null;
   }
 

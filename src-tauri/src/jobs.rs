@@ -101,10 +101,9 @@ impl From<RenderFormatChoice> for RenderFormat {
 }
 
 /// Color mode choice for PDF-to-image conversion (design §6.3, §7.1).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum RenderColorChoice {
-    #[default]
     Color,
     Gray,
 }

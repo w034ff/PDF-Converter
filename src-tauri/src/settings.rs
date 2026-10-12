@@ -75,7 +75,6 @@ pub struct ImagesToPdfOptions {
 #[serde(rename_all = "camelCase")]
 pub struct PdfToImagesOptions {
     pub format: RenderFormatChoice,
-    #[serde(default)]
     pub color_mode: RenderColorChoice,
     pub dpi: u32,
 }

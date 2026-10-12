@@ -218,6 +218,28 @@ describe("ipc", () => {
       ).rejects.toEqual({ code: "InvalidParams", detail: null });
     });
 
+    it("rejects save_settings with InvalidParams when Tauri cannot read arguments (e.g. missing colorMode)", async () => {
+      mockIPC(() => {
+        throw "invalid args `settings` for command `save_settings`: missing field `colorMode`";
+      });
+
+      await expect(
+        saveSettings({
+          language: null,
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "fit",
+            a4Orientation: "auto",
+          },
+          pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
+        }),
+      ).rejects.toEqual({
+        code: "InvalidParams",
+        detail:
+          "invalid args `settings` for command `save_settings`: missing field `colorMode`",
+      });
+    });
+
     it("asks pick_output_dir for the kind and returns the label", async () => {
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
