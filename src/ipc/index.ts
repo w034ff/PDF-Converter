@@ -15,6 +15,7 @@ import type { OutputDirLabel } from "./generated/OutputDirLabel";
 import type { OutputKind } from "./generated/OutputKind";
 import type { PageSizeChoice } from "./generated/PageSizeChoice";
 import type { PdfItem } from "./generated/PdfItem";
+import type { RenderColorChoice } from "./generated/RenderColorChoice";
 import type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
 import type { Settings } from "./generated/Settings";
@@ -45,6 +46,7 @@ export type { PageSizePt } from "./generated/PageSizePt";
 export type { PdfItem } from "./generated/PdfItem";
 export type { PdfToImagesOptions } from "./generated/PdfToImagesOptions";
 export type { PdfToImagesSettings } from "./generated/PdfToImagesSettings";
+export type { RenderColorChoice } from "./generated/RenderColorChoice";
 export type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 export type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
 export type { Settings } from "./generated/Settings";
@@ -167,8 +169,14 @@ export function isSettings(value: unknown): value is Settings {
       imagesToPdf.a4Orientation === "landscape") &&
     isOutputDirLabel(imagesToPdf.outputDir) &&
     isRecord(pdfToImages) &&
-    (pdfToImages.format === "png" || pdfToImages.format === "jpeg") &&
+    (pdfToImages.format === "png" ||
+      pdfToImages.format === "jpeg" ||
+      pdfToImages.format === "webp") &&
+    (pdfToImages.colorMode === "color" || pdfToImages.colorMode === "gray") &&
     typeof pdfToImages.dpi === "number" &&
+    Number.isInteger(pdfToImages.dpi) &&
+    pdfToImages.dpi >= 36 &&
+    pdfToImages.dpi <= 1000 &&
     isOutputDirLabel(pdfToImages.outputDir)
   );
 }
@@ -298,12 +306,14 @@ export async function startPdfsToImages(
   ids: number[],
   range: string,
   format: RenderFormatChoice,
+  colorMode: RenderColorChoice,
   dpi: number,
 ): Promise<void> {
   return invokeWrapped<void>("start_pdfs_to_images", {
     ids,
     range,
     format,
+    colorMode,
     dpi,
   });
 }

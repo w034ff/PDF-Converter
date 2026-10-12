@@ -23,6 +23,15 @@ pub const MAX_BODY_BYTES: u64 = 1024 * 1024 * 1024;
 pub enum RenderFormat {
     Png,
     Jpeg,
+    Webp,
+}
+
+/// The color mode to render a PDF page in (design §4.4, §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RenderColor {
+    Color,
+    Gray,
 }
 
 /// Width and height of a PDF page in points (1/72 inch) (design §5.1).
@@ -45,11 +54,12 @@ pub enum Request {
     Hello,
     /// Opens a PDF document at `path` (design §5.1).
     Open { path: PathBuf },
-    /// Renders page `page` (1-based) at `dpi` in `format` (design §5.1).
+    /// Renders page `page` (1-based) at `dpi` in `format` and `color` (design §5.1).
     Render {
         page: u32,
         dpi: u32,
         format: RenderFormat,
+        color: RenderColor,
     },
     /// Renders page `page` (1-based) with the longer side at `max_side` as PNG (design §5.1).
     Thumbnail { page: u32, max_side: u32 },
@@ -252,11 +262,24 @@ mod tests {
             page: 1,
             dpi: 150,
             format: RenderFormat::Jpeg,
+            color: RenderColor::Color,
         };
         let render_json = serde_json::to_string(&render_req).unwrap();
         assert_eq!(
             render_json,
-            r#"{"type":"render","page":1,"dpi":150,"format":"jpeg"}"#
+            r#"{"type":"render","page":1,"dpi":150,"format":"jpeg","color":"color"}"#
+        );
+
+        let render_webp_gray = Request::Render {
+            page: 3,
+            dpi: 600,
+            format: RenderFormat::Webp,
+            color: RenderColor::Gray,
+        };
+        let render_webp_gray_json = serde_json::to_string(&render_webp_gray).unwrap();
+        assert_eq!(
+            render_webp_gray_json,
+            r#"{"type":"render","page":3,"dpi":600,"format":"webp","color":"gray"}"#
         );
 
         let resp = Response::Open {

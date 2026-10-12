@@ -28,6 +28,21 @@
   cursor: not-allowed;
 }
 
+.pdf-custom-dpi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-custom-dpi-input {
+  width: 100px;
+}
+
+.pdf-custom-dpi-unit {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
 /* PDF to Images View styles */
 .pdf-view {
   display: flex;

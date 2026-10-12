@@ -84,6 +84,7 @@ function Harness({ tab = "imagesToPdf" }: { tab?: ActiveTab }) {
             [{ id: 7, name: "doc.pdf" }],
             "1-2",
             "jpeg",
+            "color",
             300,
           )
         }
@@ -279,7 +280,13 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     await waitFor(() =>
       expect(calls).toContainEqual({
         cmd: "start_pdfs_to_images",
-        args: { ids: [7], range: "1-2", format: "jpeg", dpi: 300 },
+        args: {
+          ids: [7],
+          range: "1-2",
+          format: "jpeg",
+          colorMode: "color",
+          dpi: 300,
+        },
       }),
     );
   });

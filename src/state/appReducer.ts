@@ -1,7 +1,11 @@
 import { createInitialLanguageState, languageReducer } from "./language";
 import { imagesToPdfReducer, initialImagesToPdfState } from "./imagesToPdf";
 import { initialJobState, jobReducer } from "./job";
-import { pdfToImagesReducer, initialPdfToImagesState } from "./pdfToImages";
+import {
+  DPI_CHOICES,
+  pdfToImagesReducer,
+  initialPdfToImagesState,
+} from "./pdfToImages";
 import type { Settings } from "../ipc";
 import type { AppAction, AppState } from "./types";
 
@@ -23,6 +27,8 @@ export function createInitialAppState(
       job: { ...initialJobState },
     };
   }
+  const dpi = settings.pdfToImages.dpi;
+  const isCustomDpi = !DPI_CHOICES.includes(dpi);
   return {
     language: createInitialLanguageState(initialNavLang, settings.language),
     imagesToPdf: {
@@ -35,7 +41,10 @@ export function createInitialAppState(
     pdfToImages: {
       ...initialPdfToImagesState,
       format: settings.pdfToImages.format,
-      dpi: settings.pdfToImages.dpi,
+      colorMode: settings.pdfToImages.colorMode,
+      dpi,
+      isCustomDpi,
+      customDpiText: String(dpi),
       outputDir: settings.pdfToImages.outputDir,
     },
     job: { ...initialJobState },
@@ -91,7 +100,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_PAGE_SELECTION":
     case "SET_RANGE_TEXT":
     case "SET_RENDER_FORMAT":
+    case "SET_RENDER_COLOR_MODE":
     case "SET_RENDER_DPI":
+    case "SET_IS_CUSTOM_DPI":
+    case "SET_CUSTOM_DPI_TEXT":
     case "SET_PDFS_OUTPUT_DIR": {
       const pdfToImages = pdfToImagesReducer(state.pdfToImages, action);
       return pdfToImages === state.pdfToImages

@@ -177,6 +177,7 @@ describe("PdfToImagesAction", () => {
           ids: [1],
           range: "1-4",
           format: "png",
+          colorMode: "color",
           dpi: 150,
         },
       });
@@ -293,6 +294,7 @@ describe("PdfToImagesAction", () => {
           ids: [1],
           range: "1-4",
           format: "png",
+          colorMode: "color",
           dpi: 150,
         },
       });
@@ -419,6 +421,7 @@ describe("PdfToImagesAction", () => {
           ids: [1, 2], // errorPdf (id: 3) is excluded
           range: "1-7", // 1-{maxPages}
           format: "png",
+          colorMode: "color",
           dpi: 150,
         },
       });
@@ -458,7 +461,81 @@ describe("PdfToImagesAction", () => {
           ids: [1, 2],
           range: "1-3, 5",
           format: "jpeg",
+          colorMode: "color",
           dpi: 300,
+        },
+      });
+    });
+  });
+
+  it("disables start button when custom dpi is invalid, and enables when valid", async () => {
+    const calls = mockCommands(() => undefined);
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = { dirLabel: "output" };
+      state.pdfToImages.isCustomDpi = true;
+      state.pdfToImages.customDpiText = "35";
+    });
+
+    const startBtn = screen.getByRole("button", { name: "変換を開始" });
+    expect(startBtn).toBeDisabled();
+
+    cleanup();
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = { dirLabel: "output" };
+      state.pdfToImages.isCustomDpi = true;
+      state.pdfToImages.customDpiText = "1001";
+    });
+    expect(screen.getByRole("button", { name: "変換を開始" })).toBeDisabled();
+
+    cleanup();
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = { dirLabel: "output" };
+      state.pdfToImages.isCustomDpi = true;
+      state.pdfToImages.customDpiText = "12.5";
+    });
+    expect(screen.getByRole("button", { name: "変換を開始" })).toBeDisabled();
+
+    cleanup();
+
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = { dirLabel: "output" };
+      state.pdfToImages.isCustomDpi = true;
+      state.pdfToImages.customDpiText = "";
+    });
+    expect(screen.getByRole("button", { name: "変換を開始" })).toBeDisabled();
+
+    cleanup();
+
+    // Valid custom DPI and gray color mode
+    renderAction((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.outputDir = { dirLabel: "output" };
+      state.pdfToImages.isCustomDpi = true;
+      state.pdfToImages.customDpiText = "600";
+      state.pdfToImages.dpi = 600;
+      state.pdfToImages.colorMode = "gray";
+      state.pdfToImages.format = "webp";
+    });
+    const enabledBtn = screen.getByRole("button", { name: "変換を開始" });
+    expect(enabledBtn).toBeEnabled();
+
+    fireEvent.click(enabledBtn);
+    await waitFor(() => {
+      expect(calls).toContainEqual({
+        cmd: "start_pdfs_to_images",
+        args: {
+          ids: [1],
+          range: "1-4",
+          format: "webp",
+          colorMode: "gray",
+          dpi: 600,
         },
       });
     });

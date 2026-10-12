@@ -8,6 +8,7 @@ import type {
   OutputMode,
   PageSizeChoice,
   PdfItem,
+  RenderColorChoice,
   RenderFormatChoice,
 } from "../ipc";
 import type { JobAction, JobState } from "./job";
@@ -54,7 +55,10 @@ export interface PdfToImagesState {
   pageSelection: PageSelection;
   rangeText: string;
   format: RenderFormatChoice;
+  colorMode: RenderColorChoice;
   dpi: number;
+  isCustomDpi: boolean;
+  customDpiText: string;
   outputDir: OutputDirLabel | null;
   rangeResult: CheckPageRangeResult | null;
   rangeError: IpcError | null;
@@ -68,7 +72,10 @@ export type PdfToImagesAction =
   | { type: "SET_PAGE_SELECTION"; selection: PageSelection }
   | { type: "SET_RANGE_TEXT"; rangeText: string }
   | { type: "SET_RENDER_FORMAT"; format: RenderFormatChoice }
+  | { type: "SET_RENDER_COLOR_MODE"; colorMode: RenderColorChoice }
   | { type: "SET_RENDER_DPI"; dpi: number }
+  | { type: "SET_IS_CUSTOM_DPI"; isCustom: boolean }
+  | { type: "SET_CUSTOM_DPI_TEXT"; text: string }
   | { type: "SET_PDFS_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
   | { type: "CHECK_RANGE_STARTED" }
   | { type: "CHECK_RANGE_SUCCESS"; result: CheckPageRangeResult }

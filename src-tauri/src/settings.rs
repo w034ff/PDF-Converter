@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use pdfconv_worker::{DEFAULT_RENDER_DPI, DPI_CHOICES};
+use pdfconv_worker::{DEFAULT_RENDER_DPI, is_render_dpi_in_range};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -15,7 +15,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
-use crate::jobs::{A4OrientationChoice, PageSizeChoice, RenderFormatChoice};
+use crate::jobs::{A4OrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice};
 
 /// The `schemaVersion` this build reads and writes (design §6.7).
 pub const SCHEMA_VERSION: u32 = 1;
@@ -27,6 +27,7 @@ const DEFAULT_OUTPUT: OutputMode = OutputMode::Merge;
 const DEFAULT_PAGE_SIZE: PageSizeChoice = PageSizeChoice::Fit;
 const DEFAULT_A4_ORIENTATION: A4OrientationChoice = A4OrientationChoice::Auto;
 const DEFAULT_FORMAT: RenderFormatChoice = RenderFormatChoice::Png;
+const DEFAULT_RENDER_COLOR_MODE: RenderColorChoice = RenderColorChoice::Color;
 
 /// The UI language the user chose (design §6.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -74,6 +75,8 @@ pub struct ImagesToPdfOptions {
 #[serde(rename_all = "camelCase")]
 pub struct PdfToImagesOptions {
     pub format: RenderFormatChoice,
+    #[serde(default)]
+    pub color_mode: RenderColorChoice,
     pub dpi: u32,
 }
 
@@ -92,9 +95,9 @@ impl SettingsInput {
     ///
     /// # Errors
     ///
-    /// `InvalidParams` if `dpi` is not one of `DPI_CHOICES`.
+    /// `InvalidParams` if `dpi` is not within [`pdfconv_worker::RENDER_DPI_MIN`]..=[`pdfconv_worker::RENDER_DPI_MAX`].
     pub fn validate(&self) -> Result<(), IpcError> {
-        if DPI_CHOICES.contains(&self.pdf_to_images.dpi) {
+        if is_render_dpi_in_range(self.pdf_to_images.dpi) {
             Ok(())
         } else {
             Err(IpcError::from_code(ErrorCode::InvalidParams))
@@ -117,6 +120,7 @@ pub struct ImagesToPdfSettings {
 #[serde(rename_all = "camelCase")]
 pub struct PdfToImagesSettings {
     pub format: RenderFormatChoice,
+    pub color_mode: RenderColorChoice,
     pub dpi: u32,
     pub output_dir: Option<OutputDirLabel>,
 }
@@ -177,6 +181,7 @@ impl Default for SettingsFile {
             pdf_to_images: PdfToImagesFile {
                 options: PdfToImagesOptions {
                     format: DEFAULT_FORMAT,
+                    color_mode: DEFAULT_RENDER_COLOR_MODE,
                     dpi: DEFAULT_RENDER_DPI,
                 },
                 output_dir: None,
@@ -226,8 +231,9 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
         pdf_to_images: PdfToImagesFile {
             options: PdfToImagesOptions {
                 format: field(pdfs, "format").unwrap_or(DEFAULT_FORMAT),
+                color_mode: field(pdfs, "colorMode").unwrap_or(DEFAULT_RENDER_COLOR_MODE),
                 dpi: field(pdfs, "dpi")
-                    .filter(|dpi| DPI_CHOICES.contains(dpi))
+                    .filter(|dpi| is_render_dpi_in_range(*dpi))
                     .unwrap_or(DEFAULT_RENDER_DPI),
             },
             output_dir: field(pdfs, "outputDir"),
@@ -424,6 +430,7 @@ pub fn get_settings_internal(state: &AppState) -> Settings {
         },
         pdf_to_images: PdfToImagesSettings {
             format: file.pdf_to_images.options.format,
+            color_mode: file.pdf_to_images.options.color_mode,
             dpi: file.pdf_to_images.options.dpi,
             output_dir: label_of(&state.pdfs_output_dir),
         },

@@ -11,7 +11,7 @@ use pdfconv_core::naming::{
     PdfToImageInput, resolve_image_to_pdf_names, resolve_pdf_to_image_names, split_stem_and_ext,
 };
 use pdfconv_core::{PageSet, PdfWriter, parse_page_range};
-use pdfconv_worker::DPI_CHOICES;
+use pdfconv_worker::is_render_dpi_in_range;
 use pdfconv_worker::protocol::{RenderFormat, Request, Response};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -76,6 +76,7 @@ impl From<A4OrientationChoice> for pdfconv_core::layout::A4Orientation {
 pub enum RenderFormatChoice {
     Png,
     Jpeg,
+    Webp,
 }
 
 impl RenderFormatChoice {
@@ -84,6 +85,7 @@ impl RenderFormatChoice {
         match self {
             Self::Png => "png",
             Self::Jpeg => "jpg",
+            Self::Webp => "webp",
         }
     }
 }
@@ -93,6 +95,25 @@ impl From<RenderFormatChoice> for RenderFormat {
         match choice {
             RenderFormatChoice::Png => Self::Png,
             RenderFormatChoice::Jpeg => Self::Jpeg,
+            RenderFormatChoice::Webp => Self::Webp,
+        }
+    }
+}
+
+/// Color mode choice for PDF-to-image conversion (design §6.3, §7.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum RenderColorChoice {
+    #[default]
+    Color,
+    Gray,
+}
+
+impl From<RenderColorChoice> for pdfconv_worker::protocol::RenderColor {
+    fn from(choice: RenderColorChoice) -> Self {
+        match choice {
+            RenderColorChoice::Color => Self::Color,
+            RenderColorChoice::Gray => Self::Gray,
         }
     }
 }
@@ -834,11 +855,14 @@ struct PdfConversionTask {
 }
 
 /// Executes PDF-to-image conversion across multiple PDFs (design §6.3, §6.5).
+// Parameters mirror the conversion options and callbacks needed for the multi-step pipeline.
+#[allow(clippy::too_many_arguments)]
 pub fn run_pdfs_to_images<FProg, FItem, FFin>(
     state: &AppState,
     ids: &[u64],
     page_set: &PageSet,
     format: RenderFormatChoice,
+    color_mode: RenderColorChoice,
     dpi: u32,
     output_dir: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
@@ -848,7 +872,7 @@ where
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
     FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
 {
-    if !DPI_CHOICES.contains(&dpi) {
+    if !is_render_dpi_in_range(dpi) {
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
 
@@ -1067,6 +1091,7 @@ where
                         page,
                         dpi,
                         format: format.into(),
+                        color: color_mode.into(),
                     });
 
                     match render_result {
@@ -1310,6 +1335,7 @@ pub fn start_pdfs_to_images_internal<FProg, FItem, FFin>(
     ids: &[u64],
     range: &str,
     format: RenderFormatChoice,
+    color_mode: RenderColorChoice,
     dpi: u32,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<(), IpcError>
@@ -1328,7 +1354,7 @@ where
     }
     state.cancel_flag.store(false, Ordering::SeqCst);
 
-    if !DPI_CHOICES.contains(&dpi) {
+    if !is_render_dpi_in_range(dpi) {
         state.is_running.store(false, Ordering::SeqCst);
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
@@ -1398,6 +1424,7 @@ where
                 &ids_owned,
                 &page_set,
                 format,
+                color_mode,
                 dpi,
                 &output_dir,
                 wrapped_callbacks,

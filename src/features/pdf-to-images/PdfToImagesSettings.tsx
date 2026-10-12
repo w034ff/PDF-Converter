@@ -9,11 +9,15 @@ import {
 import {
   checkPageRange,
   normalizeIpcError,
+  type RenderColorChoice,
   type RenderFormatChoice,
 } from "../../ipc";
 import {
   DPI_CHOICES,
+  RENDER_DPI_MAX,
+  RENDER_DPI_MIN,
   isJobActive,
+  parseCustomDpi,
   useAppDispatch,
   useAppState,
   type PageSelection,
@@ -22,7 +26,7 @@ import { OutputDirField } from "../output/OutputDirField";
 import { calculateRenderDimensions, formatPaperSize } from "./pdfUtils";
 import "./pdfToImages.css";
 
-/** How long typing must pause before a range error is shown. */
+/** How long typing must pause before a field error is shown. */
 export const RANGE_ERROR_REVEAL_DELAY_MS = 600;
 
 const DPI_LABEL_KEYS: Record<
@@ -33,6 +37,29 @@ const DPI_LABEL_KEYS: Record<
   150: "dpi150",
   300: "dpi300",
 };
+
+/**
+ * Hook to delay revealing an error until typing has paused or the input has blurred.
+ */
+function useDelayedReveal(
+  value: string,
+  hasError: boolean,
+  delayMs = RANGE_ERROR_REVEAL_DELAY_MS,
+): [boolean, () => void] {
+  const [revealedFor, setRevealedFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasError) {
+      return;
+    }
+    const timer = setTimeout(() => setRevealedFor(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, hasError, delayMs]);
+
+  const isRevealed = hasError && revealedFor === value;
+  const reveal = () => setRevealedFor(value);
+  return [isRevealed, reveal];
+}
 
 /**
  * Settings panel for PDF to Images (mockups `PdfSingle` and `PdfBatch`).
@@ -47,27 +74,21 @@ export function PdfToImagesSettings() {
 
   // A range error is shown once typing pauses or the field loses focus, so
   // a half-typed "1-" is not flagged; the start button is disabled at once.
-  const [revealedFor, setRevealedFor] = useState<string | null>(null);
-  const isRangeErrorShown =
-    pdfToImages.rangeError !== null &&
-    !pdfToImages.rangeChecking &&
-    revealedFor === pdfToImages.rangeText;
-
-  useEffect(() => {
-    if (pdfToImages.rangeError === null || pdfToImages.rangeChecking) {
-      return;
-    }
-    const text = pdfToImages.rangeText;
-    const timer = setTimeout(
-      () => setRevealedFor(text),
-      RANGE_ERROR_REVEAL_DELAY_MS,
-    );
-    return () => clearTimeout(timer);
-  }, [
-    pdfToImages.rangeError,
-    pdfToImages.rangeChecking,
+  const hasRangeError =
+    pdfToImages.rangeError !== null && !pdfToImages.rangeChecking;
+  const [isRangeErrorShown, revealRangeError] = useDelayedReveal(
     pdfToImages.rangeText,
-  ]);
+    hasRangeError,
+  );
+
+  // Custom DPI error is delayed in the same manner.
+  const isCustomDpiError =
+    pdfToImages.isCustomDpi &&
+    parseCustomDpi(pdfToImages.customDpiText) === null;
+  const [isCustomDpiErrorShown, revealCustomDpiError] = useDelayedReveal(
+    pdfToImages.customDpiText,
+    isCustomDpiError,
+  );
 
   useEffect(() => {
     if (pdfToImages.pageSelection !== "range") {
@@ -116,6 +137,12 @@ export function PdfToImagesSettings() {
   const formatOptions: readonly SegmentedOption<RenderFormatChoice>[] = [
     { value: "png", label: t.pdfToImages.settings.formatPng },
     { value: "jpeg", label: t.pdfToImages.settings.formatJpeg },
+    { value: "webp", label: t.pdfToImages.settings.formatWebp },
+  ];
+
+  const colorOptions: readonly SegmentedOption<RenderColorChoice>[] = [
+    { value: "color", label: t.pdfToImages.settings.colorFullColor },
+    { value: "gray", label: t.pdfToImages.settings.colorGrayscale },
   ];
 
   // An empty range selects no page, so switching from "all" to it would
@@ -137,9 +164,13 @@ export function PdfToImagesSettings() {
     }
   }
 
-  function handleDpiChange(e: ChangeEvent<HTMLSelectElement>) {
-    const dpi = Number(e.target.value);
-    dispatch({ type: "SET_RENDER_DPI", dpi });
+  function handleDpiSelectChange(e: ChangeEvent<HTMLSelectElement>) {
+    if (e.target.value === "custom") {
+      dispatch({ type: "SET_IS_CUSTOM_DPI", isCustom: true });
+    } else {
+      const dpi = Number(e.target.value);
+      dispatch({ type: "SET_RENDER_DPI", dpi });
+    }
   }
 
   // When 1 valid PDF is in the list, compute rendered dimensions at selected dpi (design §4.4)
@@ -148,8 +179,12 @@ export function PdfToImagesSettings() {
       ? pdfToImages.items[0]
       : null;
 
+  const isDpiValid =
+    !pdfToImages.isCustomDpi ||
+    parseCustomDpi(pdfToImages.customDpiText) !== null;
+
   const renderDimensionHint =
-    singlePdf !== null && singlePdf.firstPageSizePt !== null
+    isDpiValid && singlePdf !== null && singlePdf.firstPageSizePt !== null
       ? (() => {
           const sizeName = formatPaperSize(singlePdf.firstPageSizePt);
           const dims = calculateRenderDimensions(
@@ -163,6 +198,10 @@ export function PdfToImagesSettings() {
           });
         })()
       : null;
+
+  const selectDpiValue = pdfToImages.isCustomDpi
+    ? "custom"
+    : String(pdfToImages.dpi);
 
   return (
     <div className="pdf-settings">
@@ -199,7 +238,7 @@ export function PdfToImagesSettings() {
                   rangeText: e.target.value,
                 })
               }
-              onBlur={() => setRevealedFor(pdfToImages.rangeText)}
+              onBlur={revealRangeError}
               disabled={busy}
             />
             {/* How many pages this converts is in the footer (design §10.1). */}
@@ -233,6 +272,20 @@ export function PdfToImagesSettings() {
         />
       </div>
 
+      {/* 色 */}
+      <div className="pdf-settings-group">
+        <span className="label">{t.pdfToImages.settings.colorTitle}</span>
+        <SegmentedControl<RenderColorChoice>
+          label={t.pdfToImages.settings.colorTitle}
+          options={colorOptions}
+          value={pdfToImages.colorMode}
+          onChange={(colorMode) =>
+            dispatch({ type: "SET_RENDER_COLOR_MODE", colorMode })
+          }
+          disabled={busy}
+        />
+      </div>
+
       {/* 解像度 */}
       <div className="pdf-settings-group">
         <label className="label" htmlFor="dpi">
@@ -241,8 +294,8 @@ export function PdfToImagesSettings() {
         <select
           id="dpi"
           className="pdf-settings-field"
-          value={pdfToImages.dpi}
-          onChange={handleDpiChange}
+          value={selectDpiValue}
+          onChange={handleDpiSelectChange}
           disabled={busy}
         >
           {DPI_CHOICES.map((choice) => {
@@ -256,7 +309,40 @@ export function PdfToImagesSettings() {
               </option>
             );
           })}
+          <option value="custom">
+            {t.pdfToImages.settings.dpiChoices.custom}
+          </option>
         </select>
+        {pdfToImages.isCustomDpi && (
+          <div className="pdf-custom-dpi-row">
+            <input
+              type="text"
+              inputMode="numeric"
+              className="pdf-settings-field pdf-custom-dpi-input"
+              aria-label={t.pdfToImages.settings.customDpiLabel}
+              value={pdfToImages.customDpiText}
+              onChange={(e) =>
+                dispatch({
+                  type: "SET_CUSTOM_DPI_TEXT",
+                  text: e.target.value,
+                })
+              }
+              onBlur={revealCustomDpiError}
+              disabled={busy}
+            />
+            <span className="pdf-custom-dpi-unit">
+              {t.pdfToImages.settings.customDpiUnit}
+            </span>
+          </div>
+        )}
+        {isCustomDpiErrorShown && (
+          <span className="error-text" role="alert">
+            {formatMessage(t.pdfToImages.settings.customDpiError, {
+              min: RENDER_DPI_MIN,
+              max: RENDER_DPI_MAX,
+            })}
+          </span>
+        )}
         {renderDimensionHint !== null && (
           <span className="mono">{renderDimensionHint}</span>
         )}

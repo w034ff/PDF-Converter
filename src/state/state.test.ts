@@ -351,8 +351,8 @@ describe("state reducers", () => {
       expect(state.pdfToImages.items).toHaveLength(0);
     });
 
-    it("restores a4Orientation from settings in createInitialAppState", () => {
-      const state = createInitialAppState("ja-JP", {
+    it("restores a4Orientation, colorMode, and custom DPI from settings in createInitialAppState", () => {
+      const statePreset = createInitialAppState("ja-JP", {
         language: "ja",
         imagesToPdf: {
           output: "merge",
@@ -360,9 +360,38 @@ describe("state reducers", () => {
           a4Orientation: "portrait",
           outputDir: null,
         },
-        pdfToImages: { format: "png", dpi: 150, outputDir: null },
+        pdfToImages: {
+          format: "png",
+          colorMode: "gray",
+          dpi: 300,
+          outputDir: null,
+        },
       });
-      expect(state.imagesToPdf.a4Orientation).toBe("portrait");
+      expect(statePreset.imagesToPdf.a4Orientation).toBe("portrait");
+      expect(statePreset.pdfToImages.colorMode).toBe("gray");
+      expect(statePreset.pdfToImages.dpi).toBe(300);
+      expect(statePreset.pdfToImages.isCustomDpi).toBe(false);
+      expect(statePreset.pdfToImages.customDpiText).toBe("300");
+
+      const stateCustom = createInitialAppState("ja-JP", {
+        language: "ja",
+        imagesToPdf: {
+          output: "merge",
+          pageSize: "a4",
+          a4Orientation: "auto",
+          outputDir: null,
+        },
+        pdfToImages: {
+          format: "webp",
+          colorMode: "color",
+          dpi: 600,
+          outputDir: null,
+        },
+      });
+      expect(stateCustom.pdfToImages.dpi).toBe(600);
+      expect(stateCustom.pdfToImages.isCustomDpi).toBe(true);
+      expect(stateCustom.pdfToImages.customDpiText).toBe("600");
+      expect(stateCustom.pdfToImages.format).toBe("webp");
     });
 
     it("dispatches actions to appropriate sub-reducers", () => {
@@ -425,6 +454,22 @@ describe("state reducers", () => {
         const state = appReducer(finishedOn("pdfToImages"), {
           type: "SET_RENDER_DPI",
           dpi: 300,
+        });
+        expect(state.job.finished).toBeNull();
+      });
+
+      it("drops it when colorMode of pdfToImages changes", () => {
+        const state = appReducer(finishedOn("pdfToImages"), {
+          type: "SET_RENDER_COLOR_MODE",
+          colorMode: "gray",
+        });
+        expect(state.job.finished).toBeNull();
+      });
+
+      it("drops it when custom DPI of pdfToImages changes", () => {
+        const state = appReducer(finishedOn("pdfToImages"), {
+          type: "SET_CUSTOM_DPI_TEXT",
+          text: "600",
         });
         expect(state.job.finished).toBeNull();
       });

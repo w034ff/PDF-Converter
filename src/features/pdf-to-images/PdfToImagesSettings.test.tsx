@@ -466,17 +466,17 @@ describe("PdfToImagesSettings", () => {
     expect(screen.queryByText(/の 1 ページ →/)).not.toBeInTheDocument();
   });
 
-  it("names the resolutions by their number only", () => {
+  it("names the resolutions by their number and includes Custom", () => {
     mockCommands(() => undefined);
     renderSettings();
 
     const options = within(screen.getByLabelText("解像度"))
       .getAllByRole("option")
       .map((option) => option.textContent);
-    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi"]);
+    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi", "指定する"]);
   });
 
-  it("names the resolutions by their number only in English", () => {
+  it("names the resolutions by their number and includes Custom in English", () => {
     mockCommands(() => undefined);
     const state = createInitialAppState("en-US");
     state.language.activeTab = "pdfToImages";
@@ -489,13 +489,14 @@ describe("PdfToImagesSettings", () => {
     const options = within(screen.getByLabelText("Resolution"))
       .getAllByRole("option")
       .map((option) => option.textContent);
-    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi"]);
+    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi", "Custom"]);
   });
 
   it("disables all inputs when conversion is running", () => {
     mockCommands(() => undefined);
     renderSettings((state) => {
       state.pdfToImages.pageSelection = "all";
+      state.pdfToImages.isCustomDpi = true;
       state.job.phase = "running";
     });
 
@@ -503,9 +504,145 @@ describe("PdfToImagesSettings", () => {
     expect(screen.getByRole("button", { name: "範囲を指定" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "PNG" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "JPEG" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "WebP" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "カラー" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "グレースケール" }),
+    ).toBeDisabled();
     expect(screen.getByLabelText("解像度")).toBeDisabled();
+    expect(screen.getByLabelText("解像度（dpi）")).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "フォルダを選ぶ" }),
     ).toBeDisabled();
+  });
+
+  it("supports WebP format selection", () => {
+    mockCommands(() => undefined);
+    renderSettings();
+
+    const webpButton = screen.getByRole("button", { name: "WebP" });
+    expect(webpButton).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(webpButton);
+    expect(webpButton).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("supports Color and Grayscale mode selection and English labels", () => {
+    mockCommands(() => undefined);
+    renderSettings();
+
+    const colorButton = screen.getByRole("button", { name: "カラー" });
+    const grayButton = screen.getByRole("button", { name: "グレースケール" });
+    expect(colorButton).toHaveAttribute("aria-pressed", "true");
+    expect(grayButton).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(grayButton);
+    expect(grayButton).toHaveAttribute("aria-pressed", "true");
+    expect(colorButton).toHaveAttribute("aria-pressed", "false");
+
+    cleanup();
+
+    const enState = createInitialAppState("en-US");
+    enState.language.activeTab = "pdfToImages";
+    render(
+      <AppStateProvider initialState={enState}>
+        <PdfToImagesSettings />
+      </AppStateProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Full color" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Grayscale" }),
+    ).toBeInTheDocument();
+  });
+
+  it("handles custom DPI input, normalization, validation, delay and dimension hint", async () => {
+    mockCommands(() => undefined);
+    vi.useFakeTimers();
+
+    renderSettings((state) => {
+      state.pdfToImages.items = [samplePdf1];
+      state.pdfToImages.dpi = 150;
+    });
+
+    const select = screen.getByLabelText("解像度");
+    expect(screen.queryByLabelText("解像度（dpi）")).not.toBeInTheDocument();
+
+    // Select "指定する"
+    fireEvent.change(select, { target: { value: "custom" } });
+    const customInput = screen.getByLabelText("解像度（dpi）");
+    expect(customInput).toHaveValue("150");
+    expect(screen.getByText("dpi")).toBeInTheDocument();
+
+    // Type valid custom DPI
+    fireEvent.change(customInput, { target: { value: "600" } });
+    expect(customInput).toHaveValue("600");
+    // Dimensions hint updates
+    expect(screen.getByText(/4961 × 7016 px/)).toBeInTheDocument();
+
+    // Type full-width digits with whitespace
+    fireEvent.change(customInput, { target: { value: "　６００　" } });
+    expect(screen.getByText(/4961 × 7016 px/)).toBeInTheDocument();
+
+    // Type invalid DPI (35)
+    fireEvent.change(customInput, { target: { value: "35" } });
+    // Error does not show immediately
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // Hint is hidden on error
+    expect(screen.queryByText(/4961 × 7016 px/)).not.toBeInTheDocument();
+
+    // Advance 600ms -> error appears
+    act(() => {
+      vi.advanceTimersByTime(RANGE_ERROR_REVEAL_DELAY_MS);
+    });
+    expect(
+      screen.getByText("36〜1000 の整数を入れてください"),
+    ).toBeInTheDocument();
+
+    // Type valid value -> error disappears immediately
+    fireEvent.change(customInput, { target: { value: "300" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // Type invalid value and blur -> error appears immediately on blur
+    fireEvent.change(customInput, { target: { value: "1001" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.blur(customInput);
+    expect(
+      screen.getByText("36〜1000 の整数を入れてください"),
+    ).toBeInTheDocument();
+
+    // Switch back to choice (72) -> custom input and error disappear
+    fireEvent.change(select, { target: { value: "72" } });
+    expect(screen.queryByLabelText("解像度（dpi）")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText(/595 × 842 px/)).toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
+  it("shows English custom DPI error message and labels", () => {
+    mockCommands(() => undefined);
+    vi.useFakeTimers();
+
+    const enState = createInitialAppState("en-US");
+    enState.language.activeTab = "pdfToImages";
+    render(
+      <AppStateProvider initialState={enState}>
+        <PdfToImagesSettings />
+      </AppStateProvider>,
+    );
+
+    const select = screen.getByLabelText("Resolution");
+    fireEvent.change(select, { target: { value: "custom" } });
+    const customInput = screen.getByLabelText("Resolution (dpi)");
+    fireEvent.change(customInput, { target: { value: "abc" } });
+    fireEvent.blur(customInput);
+
+    expect(
+      screen.getByText("Enter a whole number from 36 to 1000"),
+    ).toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 });

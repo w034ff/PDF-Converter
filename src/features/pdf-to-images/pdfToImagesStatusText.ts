@@ -1,5 +1,5 @@
 import { formatMessage, type Translations } from "../../i18n";
-import type { PdfToImagesState } from "../../state";
+import { parseCustomDpi, type PdfToImagesState } from "../../state";
 
 function formatSavePages(
   pages: number,
@@ -39,6 +39,10 @@ export function describePdfToImagesStatus(
   state: PdfToImagesState,
   t: Translations,
 ): PdfToImagesStatusLine | null {
+  if (state.isCustomDpi && parseCustomDpi(state.customDpiText) === null) {
+    return null;
+  }
+
   const plain = (text: string) => ({ text, isWarning: false });
   if (state.items.length === 0) {
     return plain(t.footer.noPdfsSelected);
@@ -52,7 +56,9 @@ export function describePdfToImagesStatus(
   const format =
     state.format === "jpeg"
       ? t.pdfToImages.settings.formatJpeg
-      : t.pdfToImages.settings.formatPng;
+      : state.format === "webp"
+        ? t.pdfToImages.settings.formatWebp
+        : t.pdfToImages.settings.formatPng;
 
   if (state.pageSelection === "all") {
     const pages = validPdfs.reduce((sum, item) => sum + item.pageCount, 0);

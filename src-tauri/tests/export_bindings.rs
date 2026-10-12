@@ -10,7 +10,7 @@ use pdf_converter_lib::items::{
 };
 use pdf_converter_lib::jobs::{
     A4OrientationChoice, CheckPageRangeResult, JobFinishedPayload, JobItemPayload, JobItemStatus,
-    JobProgressPayload, PageSizeChoice, RenderFormatChoice, SaveMergedPdfResult,
+    JobProgressPayload, PageSizeChoice, RenderColorChoice, RenderFormatChoice, SaveMergedPdfResult,
 };
 use pdf_converter_lib::settings::{
     ImagesToPdfOptions, ImagesToPdfSettings, Language, OutputDirLabel, OutputKind, OutputMode,
@@ -37,6 +37,7 @@ fn export_typescript_bindings() {
     ItemsDropped::export_all(&cfg).expect("exporting ItemsDropped");
     PageSizeChoice::export_all(&cfg).expect("exporting PageSizeChoice");
     A4OrientationChoice::export_all(&cfg).expect("exporting A4OrientationChoice");
+    RenderColorChoice::export_all(&cfg).expect("exporting RenderColorChoice");
     RenderFormatChoice::export_all(&cfg).expect("exporting RenderFormatChoice");
     JobItemStatus::export_all(&cfg).expect("exporting JobItemStatus");
     JobProgressPayload::export_all(&cfg).expect("exporting JobProgressPayload");
