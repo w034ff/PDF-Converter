@@ -1,11 +1,5 @@
 #!/bin/sh
-# Every commit, by a person or an agent, passes the local checks of
-# docs/work-plan.md §5, so a broken state never reaches a branch.
+# Every commit, by a person or an agent, passes the local checks defined
+# in package.json ("check"), so a broken state never reaches a branch.
 set -e
-cargo fmt --check
-cargo clippy --workspace --all-targets --all-features --quiet -- -D warnings
-cargo test --workspace --all-features --quiet
-npm run --silent format:check
-npm run --silent lint
-npm run --silent typecheck
-npm test --silent
+npm run --silent check

@@ -19,7 +19,9 @@
     "pdfium:fetch": "node scripts/fetch-pdfium.ts",
     "licenses:check": "cargo deny check licenses bans sources && license-checker-rseidelsohn --production --excludePrivatePackages --summary --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;Zlib\"",
     "licenses:generate": "node scripts/generate-licenses.ts",
-    "manual-test:files": "node scripts/make-manual-test-files.ts"
+    "manual-test:files": "node scripts/make-manual-test-files.ts",
+    "layers:check": "node scripts/check-layers.ts",
+    "check": "cargo fmt --check && cargo clippy --workspace --all-targets --all-features --quiet -- -D warnings && cargo test --workspace --all-features --quiet && npm run --silent format:check && npm run --silent lint && npm run --silent typecheck && npm test --silent && npm run --silent layers:check"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",
