@@ -30,8 +30,8 @@ const SAVED_SETTINGS: Settings = {
   language: "en",
   imagesToPdf: {
     output: "each",
-    pageSize: "a4",
-    a4Orientation: "auto",
+    pageSize: "letter",
+    orientation: "auto",
     outputDir: { dirLabel: "Scans" },
   },
   pdfToImages: {
@@ -186,9 +186,12 @@ describe("App", () => {
       expect(
         within(output).getByRole("button", { name: "Each image" }),
       ).toHaveAttribute("aria-pressed", "true");
-      const pageSize = screen.getByRole("group", { name: "Page size" });
+      expect(screen.getByRole("combobox", { name: "Page size" })).toHaveValue(
+        "letter",
+      );
+      const orientation = screen.getByRole("group", { name: "Orientation" });
       expect(
-        within(pageSize).getByRole("button", { name: "A4" }),
+        within(orientation).getByRole("button", { name: "Auto" }),
       ).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByText("Scans")).toBeInTheDocument();
 
@@ -295,7 +298,7 @@ describe("App", () => {
             imagesToPdf: {
               output: "merge",
               pageSize: "fit",
-              a4Orientation: "auto",
+              orientation: "auto",
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
           },
@@ -319,11 +322,9 @@ describe("App", () => {
       const saved = mockSaves();
       render(<App initialNavLang="ja" initialSettings={null} />);
 
-      const pageSize = screen.getByRole("group", { name: "ページの大きさ" });
-      fireEvent.click(within(pageSize).getByRole("button", { name: "A4" }));
-      fireEvent.click(
-        within(pageSize).getByRole("button", { name: "画像に合わせる" }),
-      );
+      const pageSize = screen.getByRole("combobox", { name: "ページの大きさ" });
+      fireEvent.change(pageSize, { target: { value: "a4" } });
+      fireEvent.change(pageSize, { target: { value: "fit" } });
       await act(async () => {
         vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS * 2);
       });
@@ -348,8 +349,33 @@ describe("App", () => {
             language: "en",
             imagesToPdf: {
               output: "each",
-              pageSize: "a4",
-              a4Orientation: "portrait",
+              pageSize: "letter",
+              orientation: "portrait",
+            },
+            pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+          },
+        },
+      ]);
+    });
+
+    it("saves when changing page size alone", async () => {
+      vi.useFakeTimers();
+      const saved = mockSaves();
+      render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
+
+      const pageSize = screen.getByRole("combobox", { name: "Page size" });
+      fireEvent.change(pageSize, { target: { value: "jisB5" } });
+      await act(async () => {
+        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS);
+      });
+      expect(saved).toEqual([
+        {
+          settings: {
+            language: "en",
+            imagesToPdf: {
+              output: "each",
+              pageSize: "jisB5",
+              orientation: "auto",
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
           },
@@ -376,8 +402,8 @@ describe("App", () => {
             language: "en",
             imagesToPdf: {
               output: "each",
-              pageSize: "a4",
-              a4Orientation: "auto",
+              pageSize: "letter",
+              orientation: "auto",
             },
             pdfToImages: { format: "jpeg", colorMode: "gray", dpi: 300 },
           },
@@ -403,7 +429,7 @@ describe("App", () => {
             imagesToPdf: {
               output: "merge",
               pageSize: "fit",
-              a4Orientation: "auto",
+              orientation: "auto",
             },
             pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
           },

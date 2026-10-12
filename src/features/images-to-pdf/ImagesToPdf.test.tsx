@@ -462,7 +462,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [2, 1], pageSize: "fit", a4Orientation: "auto" },
+        args: { ids: [2, 1], pageSize: "fit", orientation: "auto" },
       });
     });
   });
@@ -513,7 +513,7 @@ describe("ImagesToPdf (T11)", () => {
       // Targets only contain valid items 1 and 2, corrupt item 3 is excluded
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [1, 2], pageSize: "fit", a4Orientation: "auto" },
+        args: { ids: [1, 2], pageSize: "fit", orientation: "auto" },
       });
     });
   });
@@ -575,7 +575,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit", a4Orientation: "auto" },
+        args: { ids: [1], pageSize: "fit", orientation: "auto" },
       });
     });
   });
@@ -737,7 +737,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit", a4Orientation: "auto" },
+        args: { ids: [1], pageSize: "fit", orientation: "auto" },
       });
     });
 
@@ -1211,7 +1211,9 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(screen.getByText("out")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "ページの大きさ" }), {
+      target: { value: "a4" },
+    });
 
     // Start conversion
     fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
@@ -1226,9 +1228,8 @@ describe("ImagesToPdf (T11)", () => {
     expect(screen.getByRole("button", { name: "1 つの PDF" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "1 枚ずつ" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "画像に合わせる" }),
+      screen.getByRole("combobox", { name: "ページの大きさ" }),
     ).toBeDisabled();
-    expect(screen.getByRole("button", { name: "A4" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "自動" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "縦" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "横" })).toBeDisabled();
@@ -1816,7 +1817,53 @@ describe("ImagesToPdf (T11)", () => {
     expect(screen.queryByText(/merged\.pdf/)).not.toBeInTheDocument();
   });
 
-  it("controls A4 orientation and hint in settings panel", async () => {
+  it("renders page size select with all 8 choices in order in Japanese", async () => {
+    mockAppIpc(() => undefined);
+    renderHarness();
+
+    const selectJa = screen.getByRole("combobox", { name: "ページの大きさ" });
+    const optionsJa = Array.from(selectJa.querySelectorAll("option")).map(
+      (o) => ({
+        value: o.value,
+        label: o.textContent,
+      }),
+    );
+    expect(optionsJa).toEqual([
+      { value: "fit", label: "画像に合わせる" },
+      { value: "a3", label: "A3 (297 × 420 mm)" },
+      { value: "a4", label: "A4 (210 × 297 mm)" },
+      { value: "a5", label: "A5 (148 × 210 mm)" },
+      { value: "jisB4", label: "B4 (257 × 364 mm)" },
+      { value: "jisB5", label: "B5 (182 × 257 mm)" },
+      { value: "letter", label: "Letter (8.5 × 11 in)" },
+      { value: "legal", label: "Legal (8.5 × 14 in)" },
+    ]);
+  });
+
+  it("renders page size select with all 8 choices in order in English", async () => {
+    mockAppIpc(() => undefined);
+    renderHarness("en-US");
+
+    const selectEn = screen.getByRole("combobox", { name: "Page size" });
+    const optionsEn = Array.from(selectEn.querySelectorAll("option")).map(
+      (o) => ({
+        value: o.value,
+        label: o.textContent,
+      }),
+    );
+    expect(optionsEn).toEqual([
+      { value: "fit", label: "Fit to image" },
+      { value: "a3", label: "A3 (297 × 420 mm)" },
+      { value: "a4", label: "A4 (210 × 297 mm)" },
+      { value: "a5", label: "A5 (148 × 210 mm)" },
+      { value: "jisB4", label: "B4 (257 × 364 mm)" },
+      { value: "jisB5", label: "B5 (182 × 257 mm)" },
+      { value: "letter", label: "Letter (8.5 × 11 in)" },
+      { value: "legal", label: "Legal (8.5 × 14 in)" },
+    ]);
+  });
+
+  it("controls paper size and orientation, hints, and retains orientation when switching sizes", async () => {
     const calls = mockAppIpc((cmd) => {
       if (cmd === "add_images") {
         const result: AddResult<ImageItem> = {
@@ -1847,9 +1894,13 @@ describe("ImagesToPdf (T11)", () => {
       screen.getByText("画像の大きさのページにします"),
     ).toBeInTheDocument();
 
-    // Click "A4"
-    fireEvent.click(screen.getByRole("button", { name: "A4" }));
-    expect(screen.getByText("余白を付けて A4 に収めます")).toBeInTheDocument();
+    const pageSizeSelect = screen.getByRole("combobox", {
+      name: "ページの大きさ",
+    });
+
+    // Select "A4"
+    fireEvent.change(pageSizeSelect, { target: { value: "a4" } });
+    expect(screen.getByText("余白を付けて用紙に収めます")).toBeInTheDocument();
 
     // Orientation control is now visible, defaulting to "自動"
     const autoBtn = screen.getByRole("button", { name: "自動" });
@@ -1873,14 +1924,25 @@ describe("ImagesToPdf (T11)", () => {
       screen.queryByText("横長の画像は横、それ以外は縦にします"),
     ).not.toBeInTheDocument();
 
-    // Switch back to "画像に合わせる"
-    fireEvent.click(screen.getByRole("button", { name: "画像に合わせる" }));
+    // Switch to another paper size "jisB5" - orientation selection (portrait) is retained!
+    fireEvent.change(pageSizeSelect, { target: { value: "jisB5" } });
+    expect(screen.getByRole("button", { name: "縦" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("余白を付けて用紙に収めます")).toBeInTheDocument();
+
+    // Switch to "画像に合わせる" (fit)
+    fireEvent.change(pageSizeSelect, { target: { value: "fit" } });
     expect(
       screen.queryByRole("button", { name: "自動" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("画像の大きさのページにします"),
+    ).toBeInTheDocument();
 
-    // Switch back to "A4" - orientation selection (portrait) is retained!
-    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+    // Switch back to "jisB5" - orientation selection (portrait) is still retained!
+    fireEvent.change(pageSizeSelect, { target: { value: "jisB5" } });
     expect(screen.getByRole("button", { name: "縦" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -1899,7 +1961,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [1], pageSize: "a4", a4Orientation: "portrait" },
+        args: { ids: [1], pageSize: "jisB5", orientation: "portrait" },
       });
     });
   });
@@ -1938,8 +2000,11 @@ describe("ImagesToPdf (T11)", () => {
       expect(screen.getByText("out")).toBeInTheDocument();
     });
 
-    // Switch to A4 and select Landscape ("横")
-    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+    // Switch to Letter and select Landscape ("横")
+    const pageSizeSelect = screen.getByRole("combobox", {
+      name: "ページの大きさ",
+    });
+    fireEvent.change(pageSizeSelect, { target: { value: "letter" } });
     fireEvent.click(screen.getByRole("button", { name: "横" }));
 
     // Start conversion
@@ -1947,7 +2012,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "a4", a4Orientation: "landscape" },
+        args: { ids: [1], pageSize: "letter", orientation: "landscape" },
       });
     });
   });
@@ -1956,8 +2021,9 @@ describe("ImagesToPdf (T11)", () => {
     mockAppIpc(() => undefined);
     renderHarness("en-US");
 
-    // Click A4
-    fireEvent.click(screen.getByRole("button", { name: "A4" }));
+    // Select Letter
+    const pageSizeSelect = screen.getByRole("combobox", { name: "Page size" });
+    fireEvent.change(pageSizeSelect, { target: { value: "letter" } });
 
     // Group name "Orientation"
     expect(
@@ -1973,8 +2039,10 @@ describe("ImagesToPdf (T11)", () => {
       screen.getByRole("button", { name: "Landscape" }),
     ).toBeInTheDocument();
 
-    // 2 hints: A4 hint and auto orientation hint
-    expect(screen.getByText("Fits into A4 with margins")).toBeInTheDocument();
+    // 2 hints: paper hint and auto orientation hint
+    expect(
+      screen.getByText("Fits onto the paper with margins"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Landscape for wide images, portrait for the rest"),
     ).toBeInTheDocument();

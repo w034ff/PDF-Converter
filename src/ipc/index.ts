@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { isPageSizeChoice } from "../state/imagesToPdf";
 import { RENDER_DPI_MAX, RENDER_DPI_MIN } from "../state/pdfToImages";
-import type { A4OrientationChoice } from "./generated/A4OrientationChoice";
 import type { AddResult } from "./generated/AddResult";
 import type { AddSource } from "./generated/AddSource";
 import type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
@@ -14,6 +14,7 @@ import type { JobItemPayload } from "./generated/JobItemPayload";
 import type { JobProgressPayload } from "./generated/JobProgressPayload";
 import type { OutputDirLabel } from "./generated/OutputDirLabel";
 import type { OutputKind } from "./generated/OutputKind";
+import type { PageOrientationChoice } from "./generated/PageOrientationChoice";
 import type { PageSizeChoice } from "./generated/PageSizeChoice";
 import type { PdfItem } from "./generated/PdfItem";
 import type { RenderColorChoice } from "./generated/RenderColorChoice";
@@ -22,7 +23,6 @@ import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
 import type { Settings } from "./generated/Settings";
 import type { SettingsInput } from "./generated/SettingsInput";
 
-export type { A4OrientationChoice } from "./generated/A4OrientationChoice";
 export type { AboutInfo } from "./generated/AboutInfo";
 export type { AddResult } from "./generated/AddResult";
 export type { AddSource } from "./generated/AddSource";
@@ -42,6 +42,7 @@ export type { Language } from "./generated/Language";
 export type { OutputDirLabel } from "./generated/OutputDirLabel";
 export type { OutputKind } from "./generated/OutputKind";
 export type { OutputMode } from "./generated/OutputMode";
+export type { PageOrientationChoice } from "./generated/PageOrientationChoice";
 export type { PageSizeChoice } from "./generated/PageSizeChoice";
 export type { PageSizePt } from "./generated/PageSizePt";
 export type { PdfItem } from "./generated/PdfItem";
@@ -154,6 +155,12 @@ function isOutputDirLabel(value: unknown): value is OutputDirLabel | null {
   );
 }
 
+export function isPageOrientationChoice(
+  value: unknown,
+): value is PageOrientationChoice {
+  return value === "auto" || value === "portrait" || value === "landscape";
+}
+
 /** Whether a value has the shape of the `get_settings` answer (design §6.7). */
 export function isSettings(value: unknown): value is Settings {
   if (!isRecord(value)) {
@@ -164,10 +171,8 @@ export function isSettings(value: unknown): value is Settings {
     (language === "ja" || language === "en" || language === null) &&
     isRecord(imagesToPdf) &&
     (imagesToPdf.output === "merge" || imagesToPdf.output === "each") &&
-    (imagesToPdf.pageSize === "fit" || imagesToPdf.pageSize === "a4") &&
-    (imagesToPdf.a4Orientation === "auto" ||
-      imagesToPdf.a4Orientation === "portrait" ||
-      imagesToPdf.a4Orientation === "landscape") &&
+    isPageSizeChoice(imagesToPdf.pageSize) &&
+    isPageOrientationChoice(imagesToPdf.orientation) &&
     isOutputDirLabel(imagesToPdf.outputDir) &&
     isRecord(pdfToImages) &&
     (pdfToImages.format === "png" ||
@@ -280,12 +285,12 @@ export async function cancelJob(): Promise<void> {
 export async function saveMergedPdf(
   ids: number[],
   pageSize: PageSizeChoice,
-  a4Orientation: A4OrientationChoice,
+  orientation: PageOrientationChoice,
 ): Promise<SaveMergedPdfResult | null> {
   return invokeWrapped<SaveMergedPdfResult | null>("save_merged_pdf", {
     ids,
     pageSize,
-    a4Orientation,
+    orientation,
   });
 }
 
@@ -293,12 +298,12 @@ export async function saveMergedPdf(
 export async function startImagesToPdfs(
   ids: number[],
   pageSize: PageSizeChoice,
-  a4Orientation: A4OrientationChoice,
+  orientation: PageOrientationChoice,
 ): Promise<void> {
   return invokeWrapped<void>("start_images_to_pdfs", {
     ids,
     pageSize,
-    a4Orientation,
+    orientation,
   });
 }
 

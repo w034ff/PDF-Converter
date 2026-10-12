@@ -12,6 +12,23 @@
   gap: 8px;
 }
 
+.images-settings-select {
+  font: inherit;
+  font-size: 13px;
+  min-height: 34px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  box-sizing: border-box;
+}
+
+.images-settings-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .images-view {
   display: flex;
   flex-direction: column;

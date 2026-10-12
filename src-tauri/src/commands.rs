@@ -17,7 +17,7 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
-    self, A4OrientationChoice, CheckPageRangeResult, PageSizeChoice, RenderColorChoice,
+    self, CheckPageRangeResult, PageOrientationChoice, PageSizeChoice, RenderColorChoice,
     RenderFormatChoice, SaveMergedPdfResult,
 };
 use crate::settings::{self, OutputDirLabel, OutputKind, Settings, SettingsInput};
@@ -206,7 +206,7 @@ pub async fn save_merged_pdf(
     state: tauri::State<'_, AppState>,
     ids: Vec<u64>,
     page_size: PageSizeChoice,
-    a4_orientation: A4OrientationChoice,
+    orientation: PageOrientationChoice,
 ) -> Result<Option<SaveMergedPdfResult>, IpcError> {
     if state
         .is_running
@@ -280,7 +280,7 @@ pub async fn save_merged_pdf(
             &state_inner,
             &ids,
             page_size,
-            a4_orientation,
+            orientation,
             &dest_path,
             callbacks,
         )
@@ -297,7 +297,7 @@ pub async fn start_images_to_pdfs(
     state: tauri::State<'_, AppState>,
     ids: Vec<u64>,
     page_size: PageSizeChoice,
-    a4_orientation: A4OrientationChoice,
+    orientation: PageOrientationChoice,
 ) -> Result<(), IpcError> {
     let w1 = window.clone();
     let w2 = window.clone();
@@ -315,7 +315,7 @@ pub async fn start_images_to_pdfs(
         },
     };
 
-    jobs::start_images_to_pdfs_internal(&state, &ids, page_size, a4_orientation, callbacks)
+    jobs::start_images_to_pdfs_internal(&state, &ids, page_size, orientation, callbacks)
 }
 
 /// Starts batch conversion of PDF pages to image files in the background (design §6.3, §7.1).

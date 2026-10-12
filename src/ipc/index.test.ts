@@ -31,6 +31,7 @@ import {
   type JobFinishedPayload,
   type JobItemPayload,
   type JobProgressPayload,
+  type PageSizeChoice,
   type PdfItem,
   type Settings,
   type SettingsInput,
@@ -160,7 +161,7 @@ describe("ipc", () => {
         imagesToPdf: {
           output: "merge",
           pageSize: "fit",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: { dirLabel: "out" },
         },
         pdfToImages: {
@@ -186,7 +187,7 @@ describe("ipc", () => {
         imagesToPdf: {
           output: "each",
           pageSize: "a4",
-          a4Orientation: "portrait",
+          orientation: "portrait",
         },
         pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
       };
@@ -211,7 +212,7 @@ describe("ipc", () => {
           imagesToPdf: {
             output: "merge",
             pageSize: "fit",
-            a4Orientation: "auto",
+            orientation: "auto",
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 100 },
         }),
@@ -229,7 +230,7 @@ describe("ipc", () => {
           imagesToPdf: {
             output: "merge",
             pageSize: "fit",
-            a4Orientation: "auto",
+            orientation: "auto",
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
         }),
@@ -280,7 +281,7 @@ describe("ipc", () => {
       expect(calls).toEqual([
         [
           "save_merged_pdf",
-          { ids: [1, 2], pageSize: "fit", a4Orientation: "auto" },
+          { ids: [1, 2], pageSize: "fit", orientation: "auto" },
         ],
       ]);
     });
@@ -307,7 +308,7 @@ describe("ipc", () => {
       expect(calls).toEqual([
         [
           "start_images_to_pdfs",
-          { ids: [1, 2], pageSize: "a4", a4Orientation: "portrait" },
+          { ids: [1, 2], pageSize: "a4", orientation: "portrait" },
         ],
       ]);
     });
@@ -371,13 +372,13 @@ describe("ipc", () => {
       });
     });
 
-    it("validates settings shape including a4Orientation, format, colorMode, and dpi", () => {
+    it("validates settings shape including orientation, paper sizes, format, colorMode, and dpi", () => {
       const valid: Settings = {
         language: "ja",
         imagesToPdf: {
           output: "merge",
           pageSize: "a4",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         },
         pdfToImages: {
@@ -388,24 +389,76 @@ describe("ipc", () => {
         },
       };
       expect(isSettings(valid)).toBe(true);
+
+      // Accepts all 8 page sizes
+      const allSizes: readonly PageSizeChoice[] = [
+        "fit",
+        "a3",
+        "a4",
+        "a5",
+        "jisB4",
+        "jisB5",
+        "letter",
+        "legal",
+      ];
+      for (const pageSize of allSizes) {
+        expect(
+          isSettings({
+            ...valid,
+            imagesToPdf: { ...valid.imagesToPdf, pageSize },
+          }),
+        ).toBe(true);
+      }
       expect(
         isSettings({
           ...valid,
-          imagesToPdf: { ...valid.imagesToPdf, a4Orientation: "portrait" },
-        }),
-      ).toBe(true);
-      expect(
-        isSettings({
-          ...valid,
-          imagesToPdf: { ...valid.imagesToPdf, a4Orientation: "landscape" },
-        }),
-      ).toBe(true);
-      expect(
-        isSettings({
-          ...valid,
-          imagesToPdf: { ...valid.imagesToPdf, a4Orientation: "square" },
+          imagesToPdf: { ...valid.imagesToPdf, pageSize: "b5" },
         }),
       ).toBe(false);
+
+      // Accepts orientations
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, orientation: "portrait" },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, orientation: "landscape" },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, orientation: "square" },
+        }),
+      ).toBe(false);
+
+      // Rejects missing orientation (including a4Orientation only)
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "a4",
+            outputDir: null,
+          },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "a4",
+            a4Orientation: "auto",
+            outputDir: null,
+          },
+        }),
+      ).toBe(false);
+
       expect(
         isSettings({
           ...valid,
@@ -458,16 +511,6 @@ describe("ipc", () => {
         isSettings({
           ...valid,
           pdfToImages: { ...valid.pdfToImages, dpi: 150.5 },
-        }),
-      ).toBe(false);
-      expect(
-        isSettings({
-          ...valid,
-          imagesToPdf: {
-            output: "merge",
-            pageSize: "a4",
-            outputDir: null,
-          },
         }),
       ).toBe(false);
     });

@@ -33,14 +33,14 @@ export function ImagesToPdfAction() {
       void runner.saveMergedPdf(
         validTargets,
         imagesToPdf.pageSize,
-        imagesToPdf.a4Orientation,
+        imagesToPdf.orientation,
       );
     } else {
       void runWithOutputDir(imagesToPdf.outputDir, () =>
         runner.startImagesToPdfs(
           validTargets,
           imagesToPdf.pageSize,
-          imagesToPdf.a4Orientation,
+          imagesToPdf.orientation,
         ),
       );
     }

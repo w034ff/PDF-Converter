@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use image::Rgb;
 use pdfconv_core::probe::probe_reader;
 use pdfconv_core::{
-    A4Orientation, POINTS_PER_INCH, PageSize, PdfWriter, ProbeError, calculate_layout,
+    POINTS_PER_INCH, PageOrientation, PageSize, PaperSize, PdfWriter, ProbeError, calculate_layout,
 };
 use pdfium_render::prelude::*;
 
@@ -191,9 +191,9 @@ fn pdf_quality_and_conformance_suite() {
     println!("\n--- [A4] Placement Test Results ---");
     let scale_a4 = RENDER_DPI_A4 / POINTS_PER_INCH;
     let a4_orientations = [
-        A4Orientation::Auto,
-        A4Orientation::Portrait,
-        A4Orientation::Landscape,
+        PageOrientation::Auto,
+        PageOrientation::Portrait,
+        PageOrientation::Landscape,
     ];
 
     for orientation in a4_orientations {
@@ -204,7 +204,7 @@ fn pdf_quality_and_conformance_suite() {
 
             let mut writer = PdfWriter::new("PDF Converter 0.1.0");
             writer
-                .add_page(&raw_bytes, PageSize::A4(orientation))
+                .add_page(&raw_bytes, PageSize::Paper(PaperSize::A4, orientation))
                 .unwrap();
             let pdf_bytes = writer.finish().unwrap();
 
@@ -214,7 +214,7 @@ fn pdf_quality_and_conformance_suite() {
             let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
             let rendered_image = render_page_to_rgb(&page, &render_config);
 
-            let layout = calculate_layout(&info, PageSize::A4(orientation));
+            let layout = calculate_layout(&info, PageSize::Paper(PaperSize::A4, orientation));
 
             // Expected bounding box on the rendered pixel grid:
             // Start is rounded down (floor), end is rounded up (ceil) (design §11.2).
@@ -301,18 +301,119 @@ fn pdf_quality_and_conformance_suite() {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // 2b. Letter and JIS B5 placement and dimension tests (design §11.2)
+    // -----------------------------------------------------------------------
+    println!("\n--- [Letter & JIS B5] Placement and Dimension Tests ---");
+    let other_papers = [(PaperSize::Letter, "Letter"), (PaperSize::JisB5, "JIS B5")];
+    // Landscape fixture: rotate0.jpg (160x96, no white)
+    // Portrait fixture: dpi300.png (2480x3508, no white)
+    let nonwhite_fixtures = [
+        ("rotate0.jpg", "landscape fixture"),
+        ("dpi300.png", "portrait fixture"),
+    ];
+
+    for (paper, paper_name) in other_papers {
+        let (paper_w_pt, paper_h_pt) = paper.portrait_dimensions_pt();
+        for orientation in [PageOrientation::Portrait, PageOrientation::Landscape] {
+            let (exp_w_pt, exp_h_pt) = match orientation {
+                PageOrientation::Portrait => (paper_w_pt, paper_h_pt),
+                PageOrientation::Landscape => (paper_h_pt, paper_w_pt),
+                PageOrientation::Auto => unreachable!(),
+            };
+            let exp_rendered_w = (exp_w_pt * scale_a4).round() as u32;
+            let exp_rendered_h = (exp_h_pt * scale_a4).round() as u32;
+
+            for (fix_name, _) in nonwhite_fixtures {
+                let path = fix_dir.join(fix_name);
+                let raw_bytes = std::fs::read(&path).unwrap();
+                let info = probe_reader(std::io::Cursor::new(&raw_bytes)).unwrap();
+
+                let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+                writer
+                    .add_page(&raw_bytes, PageSize::Paper(paper, orientation))
+                    .unwrap();
+                let pdf_bytes = writer.finish().unwrap();
+
+                let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
+                let page = doc.pages().get(0).unwrap();
+
+                let render_config = PdfRenderConfig::new().scale_page_by_factor(scale_a4);
+                let rendered_image = render_page_to_rgb(&page, &render_config);
+
+                // Verify rendered dimensions match paper dimensions and orientation (within 1 px for rounding)
+                assert!(
+                    (rendered_image.width() as i64 - exp_rendered_w as i64).abs() <= 1,
+                    "{paper_name} ({orientation:?}) {fix_name}: width mismatch: got {}, exp {}",
+                    rendered_image.width(),
+                    exp_rendered_w
+                );
+                assert!(
+                    (rendered_image.height() as i64 - exp_rendered_h as i64).abs() <= 1,
+                    "{paper_name} ({orientation:?}) {fix_name}: height mismatch: got {}, exp {}",
+                    rendered_image.height(),
+                    exp_rendered_h
+                );
+
+                // Check placement (bounding box of non-white pixels matches calculate_layout)
+                let layout = calculate_layout(&info, PageSize::Paper(paper, orientation));
+                let exp_min_x = (layout.image_rect.x * scale_a4).floor() as u32;
+                let exp_min_y = (layout.image_rect.y * scale_a4).floor() as u32;
+                let exp_max_x =
+                    ((layout.image_rect.x + layout.image_rect.width) * scale_a4).ceil() as u32;
+                let exp_max_y =
+                    ((layout.image_rect.y + layout.image_rect.height) * scale_a4).ceil() as u32;
+
+                let mut act_min_x = u32::MAX;
+                let mut act_min_y = u32::MAX;
+                let mut act_max_x = 0u32;
+                let mut act_max_y = 0u32;
+
+                for (x, y, pixel) in rendered_image.enumerate_pixels() {
+                    let [r, g, b] = pixel.0;
+                    if r < 250 || g < 250 || b < 250 {
+                        act_min_x = act_min_x.min(x);
+                        act_min_y = act_min_y.min(y);
+                        act_max_x = act_max_x.max(x);
+                        act_max_y = act_max_y.max(y);
+                    }
+                }
+
+                let act_end_x = act_max_x + 1;
+                let act_end_y = act_max_y + 1;
+
+                assert!(
+                    (act_min_x as i64 - exp_min_x as i64).abs() <= 1,
+                    "{paper_name} ({orientation:?}) {fix_name}: min_x diff: act={act_min_x}, exp={exp_min_x}"
+                );
+                assert!(
+                    (act_min_y as i64 - exp_min_y as i64).abs() <= 1,
+                    "{paper_name} ({orientation:?}) {fix_name}: min_y diff: act={act_min_y}, exp={exp_min_y}"
+                );
+                assert!(
+                    (act_end_x as i64 - exp_max_x as i64).abs() <= 1,
+                    "{paper_name} ({orientation:?}) {fix_name}: max_x diff: act={act_end_x}, exp={exp_max_x}"
+                );
+                assert!(
+                    (act_end_y as i64 - exp_max_y as i64).abs() <= 1,
+                    "{paper_name} ({orientation:?}) {fix_name}: max_y diff: act={act_end_y}, exp={exp_max_y}"
+                );
+            }
+        }
+    }
+
     // Verify rendered dimensions match page orientation for landscape (photo.jpg) and portrait (shapes_150dpi_p1.png) fixtures
     let landscape_bytes = std::fs::read(fix_dir.join("photo.jpg")).unwrap();
     let portrait_bytes = std::fs::read(fix_dir.join("shapes_150dpi_p1.png")).unwrap();
 
     for (orient, expect_portrait) in [
-        (A4Orientation::Portrait, true),
-        (A4Orientation::Landscape, false),
-        (A4Orientation::Auto, false), // photo.jpg is landscape -> landscape in Auto
+        (PageOrientation::Portrait, true),
+        (PageOrientation::Landscape, false),
+        (PageOrientation::Auto, false), // photo.jpg is landscape -> landscape in Auto
     ] {
         let mut writer = PdfWriter::new("PDF Converter 0.1.0");
         writer
-            .add_page(&landscape_bytes, PageSize::A4(orient))
+            .add_page(&landscape_bytes, PageSize::Paper(PaperSize::A4, orient))
             .unwrap();
         let pdf_bytes = writer.finish().unwrap();
         let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();
@@ -337,13 +438,13 @@ fn pdf_quality_and_conformance_suite() {
     }
 
     for (orient, expect_portrait) in [
-        (A4Orientation::Portrait, true),
-        (A4Orientation::Landscape, false),
-        (A4Orientation::Auto, true), // shapes_150dpi_p1.png is portrait -> portrait in Auto
+        (PageOrientation::Portrait, true),
+        (PageOrientation::Landscape, false),
+        (PageOrientation::Auto, true), // shapes_150dpi_p1.png is portrait -> portrait in Auto
     ] {
         let mut writer = PdfWriter::new("PDF Converter 0.1.0");
         writer
-            .add_page(&portrait_bytes, PageSize::A4(orient))
+            .add_page(&portrait_bytes, PageSize::Paper(PaperSize::A4, orient))
             .unwrap();
         let pdf_bytes = writer.finish().unwrap();
         let doc = pdfium.load_pdf_from_byte_slice(&pdf_bytes, None).unwrap();

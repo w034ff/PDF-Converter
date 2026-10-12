@@ -214,40 +214,47 @@ describe("state reducers", () => {
       expect(unchanged).toBe(updated);
     });
 
-    it("updates orientation with SET_IMAGES_A4_ORIENTATION", () => {
+    it("updates orientation with SET_IMAGES_ORIENTATION", () => {
       const initial: ImagesToPdfState = initialImagesToPdfState;
       const updated = imagesToPdfReducer(initial, {
-        type: "SET_IMAGES_A4_ORIENTATION",
-        a4Orientation: "portrait",
+        type: "SET_IMAGES_ORIENTATION",
+        orientation: "portrait",
       });
-      expect(updated.a4Orientation).toBe("portrait");
+      expect(updated.orientation).toBe("portrait");
 
       const unchanged = imagesToPdfReducer(updated, {
-        type: "SET_IMAGES_A4_ORIENTATION",
-        a4Orientation: "portrait",
+        type: "SET_IMAGES_ORIENTATION",
+        orientation: "portrait",
       });
       expect(unchanged).toBe(updated);
     });
 
-    it("retains a4Orientation when pageSize changes", () => {
+    it("retains orientation when pageSize changes", () => {
       const initial: ImagesToPdfState = {
         ...initialImagesToPdfState,
         pageSize: "a4",
-        a4Orientation: "landscape",
+        orientation: "landscape",
       };
-      const switchedToFit = imagesToPdfReducer(initial, {
+      const switchedToB5 = imagesToPdfReducer(initial, {
+        type: "SET_IMAGES_PAGE_SIZE",
+        pageSize: "jisB5",
+      });
+      expect(switchedToB5.pageSize).toBe("jisB5");
+      expect(switchedToB5.orientation).toBe("landscape");
+
+      const switchedToFit = imagesToPdfReducer(switchedToB5, {
         type: "SET_IMAGES_PAGE_SIZE",
         pageSize: "fit",
       });
       expect(switchedToFit.pageSize).toBe("fit");
-      expect(switchedToFit.a4Orientation).toBe("landscape");
+      expect(switchedToFit.orientation).toBe("landscape");
 
       const switchedBackToA4 = imagesToPdfReducer(switchedToFit, {
         type: "SET_IMAGES_PAGE_SIZE",
         pageSize: "a4",
       });
       expect(switchedBackToA4.pageSize).toBe("a4");
-      expect(switchedBackToA4.a4Orientation).toBe("landscape");
+      expect(switchedBackToA4.orientation).toBe("landscape");
     });
 
     it("updates output dir with SET_IMAGES_OUTPUT_DIR", () => {
@@ -351,13 +358,13 @@ describe("state reducers", () => {
       expect(state.pdfToImages.items).toHaveLength(0);
     });
 
-    it("restores a4Orientation, colorMode, and custom DPI from settings in createInitialAppState", () => {
+    it("restores orientation, colorMode, and custom DPI from settings in createInitialAppState", () => {
       const statePreset = createInitialAppState("ja-JP", {
         language: "ja",
         imagesToPdf: {
           output: "merge",
           pageSize: "a4",
-          a4Orientation: "portrait",
+          orientation: "portrait",
           outputDir: null,
         },
         pdfToImages: {
@@ -367,7 +374,7 @@ describe("state reducers", () => {
           outputDir: null,
         },
       });
-      expect(statePreset.imagesToPdf.a4Orientation).toBe("portrait");
+      expect(statePreset.imagesToPdf.orientation).toBe("portrait");
       expect(statePreset.pdfToImages.colorMode).toBe("gray");
       expect(statePreset.pdfToImages.dpi).toBe(300);
       expect(statePreset.pdfToImages.isCustomDpi).toBe(false);
@@ -378,7 +385,7 @@ describe("state reducers", () => {
         imagesToPdf: {
           output: "merge",
           pageSize: "a4",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         },
         pdfToImages: {
@@ -474,10 +481,10 @@ describe("state reducers", () => {
         expect(state.job.finished).toBeNull();
       });
 
-      it("drops it when a4 orientation of imagesToPdf changes", () => {
+      it("drops it when orientation of imagesToPdf changes", () => {
         const state = appReducer(finishedOn("imagesToPdf"), {
-          type: "SET_IMAGES_A4_ORIENTATION",
-          a4Orientation: "landscape",
+          type: "SET_IMAGES_ORIENTATION",
+          orientation: "landscape",
         });
         expect(state.job.finished).toBeNull();
       });
