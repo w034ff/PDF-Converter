@@ -21,6 +21,7 @@ export function ImagesToPdfSettings() {
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language);
   const disabled = isJobActive(job);
+  const isFit = imagesToPdf.pageSize === "fit";
 
   const outputOptions: readonly SegmentedOption<OutputMode>[] = [
     { value: "merge", label: t.imagesToPdf.outputMerge },
@@ -75,32 +76,39 @@ export function ImagesToPdfSettings() {
           ))}
         </select>
         <span className="hint">
-          {imagesToPdf.pageSize === "fit"
+          {isFit
             ? t.imagesToPdf.pageSizeFitHint
             : t.imagesToPdf.pageSizePaperHint}
         </span>
       </div>
 
-      {imagesToPdf.pageSize !== "fit" && (
-        <div className="images-settings-field">
-          <span className="label">{t.imagesToPdf.orientationLabel}</span>
-          <SegmentedControl
-            label={t.imagesToPdf.orientationLabel}
-            options={orientationOptions}
-            value={imagesToPdf.orientation}
-            onChange={(value) =>
-              dispatch({
-                type: "SET_IMAGES_ORIENTATION",
-                orientation: value,
-              })
-            }
-            disabled={disabled}
-          />
-          {imagesToPdf.orientation === "auto" && (
+      {/* Always shown, so choosing a page size never moves the fields below
+          it: a field popping in where the dropdown list just closed reads as
+          a ghost of the list (design §10.1). */}
+      <div className="images-settings-field">
+        <span className="label">{t.imagesToPdf.orientationLabel}</span>
+        <SegmentedControl
+          label={t.imagesToPdf.orientationLabel}
+          options={orientationOptions}
+          value={imagesToPdf.orientation}
+          onChange={(value) =>
+            dispatch({
+              type: "SET_IMAGES_ORIENTATION",
+              orientation: value,
+            })
+          }
+          disabled={disabled || isFit}
+        />
+        {isFit ? (
+          <span className="hint">
+            {t.imagesToPdf.orientationUnavailableHint}
+          </span>
+        ) : (
+          imagesToPdf.orientation === "auto" && (
             <span className="hint">{t.imagesToPdf.orientationAutoHint}</span>
-          )}
-        </div>
-      )}
+          )
+        )}
+      </div>
 
       {imagesToPdf.output === "each" && (
         <OutputDirField

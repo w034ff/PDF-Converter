@@ -473,7 +473,7 @@ describe("PdfToImagesSettings", () => {
     const options = within(screen.getByLabelText("解像度"))
       .getAllByRole("option")
       .map((option) => option.textContent);
-    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi", "指定する"]);
+    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi", "数値で指定…"]);
   });
 
   it("names the resolutions by their number and includes Custom in English", () => {
@@ -489,7 +489,7 @@ describe("PdfToImagesSettings", () => {
     const options = within(screen.getByLabelText("Resolution"))
       .getAllByRole("option")
       .map((option) => option.textContent);
-    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi", "Custom"]);
+    expect(options).toEqual(["72 dpi", "150 dpi", "300 dpi", "Custom…"]);
   });
 
   it("disables all inputs when conversion is running", () => {
@@ -569,11 +569,14 @@ describe("PdfToImagesSettings", () => {
     const select = screen.getByLabelText("解像度");
     expect(screen.queryByLabelText("解像度（dpi）")).not.toBeInTheDocument();
 
-    // Select "指定する"
+    // Select "数値で指定…"
     fireEvent.change(select, { target: { value: "custom" } });
     const customInput = screen.getByLabelText("解像度（dpi）");
     expect(customInput).toHaveValue("150");
-    expect(screen.getByText("dpi")).toBeInTheDocument();
+    // The unit is inside the same box (the label) as the input
+    expect(customInput.closest("label")).toContainElement(
+      screen.getByText("dpi"),
+    );
 
     // Type valid custom DPI
     fireEvent.change(customInput, { target: { value: "600" } });

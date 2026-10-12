@@ -11,18 +11,39 @@
   gap: 8px;
 }
 
-.pdf-custom-dpi-row {
+/* Short, since it takes at most four digits and belongs to the dropdown above
+   it; the left edge still lines up with the other controls. */
+.pdf-custom-dpi-field {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: 120px;
+  cursor: text;
+}
+
+/* The input has no box of its own, so the focus ring goes on the label that
+   draws the box. */
+.pdf-custom-dpi-field:focus-within {
+  outline: -webkit-focus-ring-color auto 1px;
+}
+
+.pdf-custom-dpi-field:has(.pdf-custom-dpi-input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .pdf-custom-dpi-input {
-  width: 100px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
 }
 
 .pdf-custom-dpi-unit {
-  font-size: 13px;
   color: var(--color-text-secondary);
 }
 
