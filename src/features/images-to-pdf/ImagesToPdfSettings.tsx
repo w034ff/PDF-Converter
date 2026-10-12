@@ -1,17 +1,20 @@
+import type { ChangeEvent } from "react";
 import { SegmentedControl, type SegmentedOption } from "../../components";
 import { OutputDirField } from "../output/OutputDirField";
 import { getTranslations } from "../../i18n";
-import type {
-  A4OrientationChoice,
-  OutputMode,
-  PageSizeChoice,
-} from "../../ipc";
-import { isJobActive, useAppDispatch, useAppState } from "../../state";
+import type { OutputMode, PageOrientationChoice } from "../../ipc";
+import {
+  isJobActive,
+  isPageSizeChoice,
+  PAPER_SIZE_OPTIONS,
+  useAppDispatch,
+  useAppState,
+} from "../../state";
 import "./ImagesToPdf.css";
 
 /**
  * Settings panel for Images to PDF (design §6.1, §6.2, mockups Main.dc.html, ImagesMerge.dc.html, ImagesEach.dc.html).
- * Provides output mode ("merge" | "each"), page size ("fit" | "a4"), and output folder picker for "each" mode.
+ * Provides output mode ("merge" | "each"), page size dropdown, orientation, and output folder picker for "each" mode.
  */
 export function ImagesToPdfSettings() {
   const { imagesToPdf, job, language } = useAppState();
@@ -24,16 +27,19 @@ export function ImagesToPdfSettings() {
     { value: "each", label: t.imagesToPdf.outputEach },
   ];
 
-  const pageSizeOptions: readonly SegmentedOption<PageSizeChoice>[] = [
-    { value: "fit", label: t.imagesToPdf.pageSizeFit },
-    { value: "a4", label: t.imagesToPdf.pageSizeA4 },
-  ];
+  const orientationOptions: readonly SegmentedOption<PageOrientationChoice>[] =
+    [
+      { value: "auto", label: t.imagesToPdf.orientationAuto },
+      { value: "portrait", label: t.imagesToPdf.orientationPortrait },
+      { value: "landscape", label: t.imagesToPdf.orientationLandscape },
+    ];
 
-  const orientationOptions: readonly SegmentedOption<A4OrientationChoice>[] = [
-    { value: "auto", label: t.imagesToPdf.orientationAuto },
-    { value: "portrait", label: t.imagesToPdf.orientationPortrait },
-    { value: "landscape", label: t.imagesToPdf.orientationLandscape },
-  ];
+  const handlePageSizeChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    if (isPageSizeChoice(value)) {
+      dispatch({ type: "SET_IMAGES_PAGE_SIZE", pageSize: value });
+    }
+  };
 
   return (
     <div className="images-settings">
@@ -51,39 +57,46 @@ export function ImagesToPdfSettings() {
       </div>
 
       <div className="images-settings-field">
-        <span className="label">{t.imagesToPdf.pageSizeLabel}</span>
-        <SegmentedControl
-          label={t.imagesToPdf.pageSizeLabel}
-          options={pageSizeOptions}
+        <label className="label" htmlFor="pageSize">
+          {t.imagesToPdf.pageSizeLabel}
+        </label>
+        <select
+          id="pageSize"
+          className="settings-control"
           value={imagesToPdf.pageSize}
-          onChange={(value) =>
-            dispatch({ type: "SET_IMAGES_PAGE_SIZE", pageSize: value })
-          }
+          onChange={handlePageSizeChange}
           disabled={disabled}
-        />
+        >
+          <option value="fit">{t.imagesToPdf.pageSizeFit}</option>
+          {PAPER_SIZE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
         <span className="hint">
           {imagesToPdf.pageSize === "fit"
             ? t.imagesToPdf.pageSizeFitHint
-            : t.imagesToPdf.pageSizeA4Hint}
+            : t.imagesToPdf.pageSizePaperHint}
         </span>
       </div>
 
-      {imagesToPdf.pageSize === "a4" && (
+      {imagesToPdf.pageSize !== "fit" && (
         <div className="images-settings-field">
           <span className="label">{t.imagesToPdf.orientationLabel}</span>
           <SegmentedControl
             label={t.imagesToPdf.orientationLabel}
             options={orientationOptions}
-            value={imagesToPdf.a4Orientation}
+            value={imagesToPdf.orientation}
             onChange={(value) =>
               dispatch({
-                type: "SET_IMAGES_A4_ORIENTATION",
-                a4Orientation: value,
+                type: "SET_IMAGES_ORIENTATION",
+                orientation: value,
               })
             }
             disabled={disabled}
           />
-          {imagesToPdf.a4Orientation === "auto" && (
+          {imagesToPdf.orientation === "auto" && (
             <span className="hint">{t.imagesToPdf.orientationAutoHint}</span>
           )}
         </div>

@@ -3,4 +3,4 @@
 /**
  * Page size choice for image-to-PDF conversion (design §6.2, §7.1).
  */
-export type PageSizeChoice = "fit" | "a4";
+export type PageSizeChoice = "fit" | "a3" | "a4" | "a5" | "jisB4" | "jisB5" | "letter" | "legal";

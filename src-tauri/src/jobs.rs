@@ -33,39 +33,60 @@ pub const JOB_FINISHED_EVENT: &str = "job-finished";
 
 /// Page size choice for image-to-PDF conversion (design §6.2, §7.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 pub enum PageSizeChoice {
     Fit,
+    A3,
     A4,
+    A5,
+    JisB4,
+    JisB5,
+    Letter,
+    Legal,
 }
 
 impl PageSizeChoice {
-    /// Converts this choice and an A4 orientation into a [`pdfconv_core::PageSize`] (design §7.1).
+    /// Converts this choice and an orientation into a [`pdfconv_core::PageSize`] (design §7.1).
     ///
-    /// When `self` is [`PageSizeChoice::Fit`], `a4_orientation` is ignored.
-    pub fn to_core(self, a4_orientation: A4OrientationChoice) -> pdfconv_core::PageSize {
+    /// When `self` is [`PageSizeChoice::Fit`], `orientation` is ignored.
+    pub fn to_core(self, orientation: PageOrientationChoice) -> pdfconv_core::PageSize {
+        let orientation = orientation.into();
         match self {
             Self::Fit => pdfconv_core::PageSize::Fit,
-            Self::A4 => pdfconv_core::PageSize::A4(a4_orientation.into()),
+            Self::A3 => pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::A3, orientation),
+            Self::A4 => pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::A4, orientation),
+            Self::A5 => pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::A5, orientation),
+            Self::JisB4 => {
+                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::JisB4, orientation)
+            }
+            Self::JisB5 => {
+                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::JisB5, orientation)
+            }
+            Self::Letter => {
+                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::Letter, orientation)
+            }
+            Self::Legal => {
+                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::Legal, orientation)
+            }
         }
     }
 }
 
-/// A4 orientation choice for image-to-PDF conversion (design §6.7, §7.1).
+/// Orientation choice for a paper page (design §6.7, §7.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
-pub enum A4OrientationChoice {
+pub enum PageOrientationChoice {
     Auto,
     Portrait,
     Landscape,
 }
 
-impl From<A4OrientationChoice> for pdfconv_core::layout::A4Orientation {
-    fn from(choice: A4OrientationChoice) -> Self {
+impl From<PageOrientationChoice> for pdfconv_core::layout::PageOrientation {
+    fn from(choice: PageOrientationChoice) -> Self {
         match choice {
-            A4OrientationChoice::Auto => Self::Auto,
-            A4OrientationChoice::Portrait => Self::Portrait,
-            A4OrientationChoice::Landscape => Self::Landscape,
+            PageOrientationChoice::Auto => Self::Auto,
+            PageOrientationChoice::Portrait => Self::Portrait,
+            PageOrientationChoice::Landscape => Self::Landscape,
         }
     }
 }
@@ -415,7 +436,7 @@ pub fn run_save_merged_pdf<FProg, FItem, FFin>(
     state: &AppState,
     ids: &[u64],
     page_size: PageSizeChoice,
-    a4_orientation: A4OrientationChoice,
+    orientation: PageOrientationChoice,
     dest_path: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<SaveMergedPdfResult, IpcError>
@@ -501,7 +522,7 @@ where
             .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))
             .and_then(|bytes| {
                 writer
-                    .add_page(&bytes, page_size.to_core(a4_orientation))
+                    .add_page(&bytes, page_size.to_core(orientation))
                     .map_err(IpcError::from)
             });
 
@@ -596,7 +617,7 @@ pub fn run_images_to_pdfs<FProg, FItem, FFin>(
     state: &AppState,
     ids: &[u64],
     page_size: PageSizeChoice,
-    a4_orientation: A4OrientationChoice,
+    orientation: PageOrientationChoice,
     output_dir: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<(), IpcError>
@@ -768,7 +789,7 @@ where
                         .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))?;
                     let mut writer = PdfWriter::new(&creator);
                     writer
-                        .add_page(&bytes, page_size.to_core(a4_orientation))
+                        .add_page(&bytes, page_size.to_core(orientation))
                         .map_err(IpcError::from)?;
                     writer
                         .finish()
@@ -1232,7 +1253,7 @@ pub fn start_images_to_pdfs_internal<FProg, FItem, FFin>(
     state: &AppState,
     ids: &[u64],
     page_size: PageSizeChoice,
-    a4_orientation: A4OrientationChoice,
+    orientation: PageOrientationChoice,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<(), IpcError>
 where
@@ -1306,7 +1327,7 @@ where
                 &state_clone,
                 &ids_owned,
                 page_size,
-                a4_orientation,
+                orientation,
                 &output_dir,
                 wrapped_callbacks,
             )

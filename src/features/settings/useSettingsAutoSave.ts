@@ -13,7 +13,7 @@ function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
     a.language === b.language &&
     a.imagesToPdf.output === b.imagesToPdf.output &&
     a.imagesToPdf.pageSize === b.imagesToPdf.pageSize &&
-    a.imagesToPdf.a4Orientation === b.imagesToPdf.a4Orientation &&
+    a.imagesToPdf.orientation === b.imagesToPdf.orientation &&
     a.pdfToImages.format === b.pdfToImages.format &&
     a.pdfToImages.colorMode === b.pdfToImages.colorMode &&
     a.pdfToImages.dpi === b.pdfToImages.dpi
@@ -33,19 +33,19 @@ function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
 export function useSettingsAutoSave(): void {
   const { language, imagesToPdf, pdfToImages } = useAppState();
   const preference = language.preference;
-  const { output, pageSize, a4Orientation } = imagesToPdf;
+  const { output, pageSize, orientation } = imagesToPdf;
   const { format, colorMode, dpi } = pdfToImages;
 
   const savedRef = useRef<SettingsInput>({
     language: preference,
-    imagesToPdf: { output, pageSize, a4Orientation },
+    imagesToPdf: { output, pageSize, orientation },
     pdfToImages: { format, colorMode, dpi },
   });
 
   useEffect(() => {
     const next: SettingsInput = {
       language: preference,
-      imagesToPdf: { output, pageSize, a4Orientation },
+      imagesToPdf: { output, pageSize, orientation },
       pdfToImages: { format, colorMode, dpi },
     };
     if (sameSettings(next, savedRef.current)) {
@@ -60,5 +60,5 @@ export function useSettingsAutoSave(): void {
     return () => {
       clearTimeout(timer);
     };
-  }, [preference, output, pageSize, a4Orientation, format, colorMode, dpi]);
+  }, [preference, output, pageSize, orientation, format, colorMode, dpi]);
 }

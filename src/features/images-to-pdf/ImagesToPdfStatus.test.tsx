@@ -51,7 +51,7 @@ describe("ImagesToPdfStatus", () => {
         items: [],
         output: "merge",
         pageSize: "fit",
-        a4Orientation: "auto",
+        orientation: "auto",
         outputDir: null,
       };
       expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -65,7 +65,7 @@ describe("ImagesToPdfStatus", () => {
         items: [corruptItem],
         output: "merge",
         pageSize: "fit",
-        a4Orientation: "auto",
+        orientation: "auto",
         outputDir: null,
       };
       expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -82,7 +82,7 @@ describe("ImagesToPdfStatus", () => {
           items: [validItem1],
           output: "merge",
           pageSize: "fit",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -98,7 +98,7 @@ describe("ImagesToPdfStatus", () => {
           items: [validItem1, validItem2],
           output: "merge",
           pageSize: "fit",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -114,7 +114,7 @@ describe("ImagesToPdfStatus", () => {
           items: [validItem1, corruptItem, validItem2],
           output: "merge",
           pageSize: "fit",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -132,7 +132,7 @@ describe("ImagesToPdfStatus", () => {
           items: [validItem1],
           output: "each",
           pageSize: "fit",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -146,7 +146,7 @@ describe("ImagesToPdfStatus", () => {
           items: [validItem1, validItem2],
           output: "each",
           pageSize: "fit",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -160,7 +160,7 @@ describe("ImagesToPdfStatus", () => {
           items: [validItem1, corruptItem],
           output: "each",
           pageSize: "fit",
-          a4Orientation: "auto",
+          orientation: "auto",
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(

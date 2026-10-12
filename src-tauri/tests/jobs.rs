@@ -17,8 +17,8 @@ use pdf_converter_lib::AppState;
 use pdf_converter_lib::error::ErrorCode;
 use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items};
 use pdf_converter_lib::jobs::{
-    A4OrientationChoice, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus,
-    JobProgressPayload, PageSizeChoice, RenderColorChoice, RenderFormatChoice, RunningGuard,
+    JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
+    PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice, RunningGuard,
     check_page_range_internal, list_existing_files, run_images_to_pdfs, run_pdfs_to_images,
     run_save_merged_pdf, save_atomic, start_images_to_pdfs_internal, start_pdfs_to_images_internal,
 };
@@ -187,7 +187,7 @@ fn images_to_pdfs_each_mixed_success_and_failure() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -429,7 +429,7 @@ fn cancellation_images_to_pdfs_leaves_no_temp_files() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -468,7 +468,7 @@ fn cancellation_merged_pdf_writes_no_file() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         &dest_path,
         recorder.callbacks(),
     )
@@ -589,7 +589,7 @@ fn conversion_running_rejects_operations() {
         &app_state,
         &[id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -629,7 +629,7 @@ fn conversion_running_rejects_operations() {
         &app_state,
         &[id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -664,7 +664,7 @@ fn unset_output_dir_rejects_with_invalid_params() {
         &app_state,
         &[id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -701,7 +701,7 @@ fn unknown_handle_rejects() {
         &app_state,
         &[nonexistent_id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -727,7 +727,7 @@ fn unknown_handle_rejects() {
         &app_state,
         &[nonexistent_id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -754,7 +754,7 @@ fn unknown_handle_rejects() {
         &app_state,
         &[nonexistent_id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         &temp_out.path().join("merged.pdf"),
         recorder.callbacks(),
     )
@@ -789,7 +789,7 @@ fn output_dir_that_cannot_be_listed_rejects_and_resets_is_running() {
         &app_state,
         &[id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -834,7 +834,7 @@ fn start_internal_ok_delivers_job_finished() {
         &app_state,
         &[img_id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks_recording_running(Arc::clone(&app_state.is_running)),
     )
     .expect("start_images_to_pdfs_internal should succeed");
@@ -968,7 +968,7 @@ fn cancellation_during_images_to_pdfs_leaves_unprocessed() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         temp_out.path(),
         callbacks,
     )
@@ -1025,7 +1025,7 @@ fn cancellation_during_merged_pdf_on_item_writes_no_file() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         &dest_path,
         callbacks,
     )
@@ -1130,7 +1130,7 @@ fn images_to_pdfs_each_skips_initial_error_and_does_not_claim_output_name() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -1184,7 +1184,7 @@ fn merged_pdf_skips_initial_error_without_rereading_file() {
         &app_state,
         &[id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         &dest_path,
         recorder.callbacks(),
     )
@@ -1226,7 +1226,7 @@ fn a_merged_pdf_that_was_written_reports_its_name() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         &dest_path,
         recorder.callbacks(),
     )
@@ -1294,7 +1294,7 @@ fn each_mode_pdfs_get_the_permissions_of_a_new_file() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -1330,7 +1330,7 @@ fn the_merged_pdf_gets_the_permissions_of_a_new_file() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         &dest_path,
         recorder.callbacks(),
     )
@@ -1408,7 +1408,7 @@ fn start_both(app_state: &AppState, image_id: u64, pdf_id: u64) -> (ErrorCode, E
         app_state,
         &[image_id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -1497,7 +1497,7 @@ fn only_the_missing_output_dir_is_forgotten() {
         &app_state,
         &[image_id],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -1592,7 +1592,7 @@ fn a_write_failure_stops_images_to_pdfs_and_leaves_the_rest_unprocessed() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         &missing_dir(temp_out.path()),
         recorder.callbacks(),
     )
@@ -1743,7 +1743,7 @@ fn images_that_cannot_be_decoded_do_not_stop_the_rest() {
         &app_state,
         &ids,
         PageSizeChoice::Fit,
-        A4OrientationChoice::Auto,
+        PageOrientationChoice::Auto,
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -1907,7 +1907,7 @@ fn a4_portrait_produces_portrait_pdf_from_landscape_image() {
         &app_state,
         &[id],
         PageSizeChoice::A4,
-        A4OrientationChoice::Portrait,
+        PageOrientationChoice::Portrait,
         &dest,
         recorder.callbacks(),
     )
@@ -1945,7 +1945,7 @@ fn a4_landscape_produces_landscape_pdf_from_portrait_image() {
         &app_state,
         &[id],
         PageSizeChoice::A4,
-        A4OrientationChoice::Landscape,
+        PageOrientationChoice::Landscape,
         recorder.callbacks(),
     )
     .expect("start_images_to_pdfs_internal should succeed");
@@ -1971,7 +1971,7 @@ fn a4_landscape_produces_landscape_pdf_from_portrait_image() {
 }
 
 #[test]
-fn fit_page_size_ignores_a4_orientation() {
+fn fit_page_size_ignores_orientation() {
     let app_state = state();
     let temp_in = TempDir::new().unwrap();
     let temp_out = TempDir::new().unwrap();
@@ -1988,7 +1988,7 @@ fn fit_page_size_ignores_a4_orientation() {
         &app_state,
         &[id1],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Portrait,
+        PageOrientationChoice::Portrait,
         &dest_portrait,
         recorder.callbacks(),
     )
@@ -2000,7 +2000,7 @@ fn fit_page_size_ignores_a4_orientation() {
         &app_state,
         &[id2],
         PageSizeChoice::Fit,
-        A4OrientationChoice::Landscape,
+        PageOrientationChoice::Landscape,
         &dest_landscape,
         recorder.callbacks(),
     )
@@ -2011,6 +2011,114 @@ fn fit_page_size_ignores_a4_orientation() {
     let size_p = add_pdf.added[0].first_page_size_pt.unwrap();
     let size_l = add_pdf.added[1].first_page_size_pt.unwrap();
     assert_eq!(size_p, size_l);
+}
+
+#[test]
+fn jis_b5_landscape_produces_expected_dimensions_in_each_mode() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    // Portrait fixture: shapes_150dpi_p1.png
+    let path = copy_fixture(temp_in.path(), "shapes_150dpi_p1.png", "shapes.png");
+    let add_img = add_images(&app_state, &[path]);
+    let id = add_img.added[0].id;
+
+    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+
+    let recorder = TestRecorder::new();
+    start_images_to_pdfs_internal(
+        &app_state,
+        &[id],
+        PageSizeChoice::JisB5,
+        PageOrientationChoice::Landscape,
+        recorder.callbacks(),
+    )
+    .expect("start_images_to_pdfs_internal should succeed");
+
+    let finished = recorder.wait_finished(Duration::from_secs(5));
+    assert_eq!(finished.succeeded, 1);
+    let out_path = temp_out.path().join("shapes.pdf");
+    assert!(out_path.exists());
+
+    let add_pdf = add_pdfs(&app_state, &[out_path]);
+    assert_eq!(add_pdf.added.len(), 1);
+    let size = add_pdf.added[0]
+        .first_page_size_pt
+        .expect("page size should be present");
+    // JIS B5 landscape: width = 728.50, height = 515.91
+    assert!(
+        (size.width_pt - 728.50).abs() <= 0.01,
+        "width mismatch: got {}, exp 728.50",
+        size.width_pt
+    );
+    assert!(
+        (size.height_pt - 515.91).abs() <= 0.01,
+        "height mismatch: got {}, exp 515.91",
+        size.height_pt
+    );
+}
+
+#[test]
+fn letter_auto_produces_expected_dimensions_in_merged_mode() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    // Landscape fixture: photo.jpg -> auto orientation selects landscape (792 x 612 pt)
+    let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let add_img = add_images(&app_state, &[path]);
+    let id = add_img.added[0].id;
+
+    let dest = temp_out.path().join("merged_letter.pdf");
+    let recorder = TestRecorder::new();
+    run_save_merged_pdf(
+        &app_state,
+        &[id],
+        PageSizeChoice::Letter,
+        PageOrientationChoice::Auto,
+        &dest,
+        recorder.callbacks(),
+    )
+    .expect("run_save_merged_pdf should succeed");
+
+    let add_pdf = add_pdfs(&app_state, &[dest]);
+    assert_eq!(add_pdf.added.len(), 1);
+    let size = add_pdf.added[0]
+        .first_page_size_pt
+        .expect("page size should be present");
+    assert!(
+        (size.width_pt - 792.0).abs() <= 0.01,
+        "width mismatch: got {}, exp 792.0",
+        size.width_pt
+    );
+    assert!(
+        (size.height_pt - 612.0).abs() <= 0.01,
+        "height mismatch: got {}, exp 612.0",
+        size.height_pt
+    );
+}
+
+#[test]
+fn page_size_choice_serde_roundtrip_all_eight_values() {
+    let cases = [
+        (PageSizeChoice::Fit, "\"fit\""),
+        (PageSizeChoice::A3, "\"a3\""),
+        (PageSizeChoice::A4, "\"a4\""),
+        (PageSizeChoice::A5, "\"a5\""),
+        (PageSizeChoice::JisB4, "\"jisB4\""),
+        (PageSizeChoice::JisB5, "\"jisB5\""),
+        (PageSizeChoice::Letter, "\"letter\""),
+        (PageSizeChoice::Legal, "\"legal\""),
+    ];
+
+    for (choice, expected_json) in cases {
+        let serialized = serde_json::to_string(&choice).expect("serializing PageSizeChoice");
+        assert_eq!(serialized, expected_json);
+        let deserialized: PageSizeChoice =
+            serde_json::from_str(&serialized).expect("deserializing PageSizeChoice");
+        assert_eq!(deserialized, choice);
+    }
 }
 
 #[test]

@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import {
   cancelJob,
   normalizeIpcError,
-  type A4OrientationChoice,
   type IpcError,
+  type PageOrientationChoice,
   saveMergedPdf,
   startImagesToPdfs,
   startPdfsToImages,
@@ -18,13 +18,13 @@ export interface JobRunner {
   saveMergedPdf(
     targets: JobTarget[],
     pageSize: PageSizeChoice,
-    a4Orientation: A4OrientationChoice,
+    orientation: PageOrientationChoice,
   ): Promise<void>;
   /** Starts "1 枚ずつ" for `targets` (design §6.2). */
   startImagesToPdfs(
     targets: JobTarget[],
     pageSize: PageSizeChoice,
-    a4Orientation: A4OrientationChoice,
+    orientation: PageOrientationChoice,
   ): Promise<void>;
   /** Starts PDF → images for `targets` (design §6.3). */
   startPdfsToImages(
@@ -77,9 +77,9 @@ export function useJobRunner(): JobRunner {
     }
 
     return {
-      async saveMergedPdf(targets, pageSize, a4Orientation) {
+      async saveMergedPdf(targets, pageSize, orientation) {
         const outcome = await run("imagesToPdf", targets, (ids) =>
-          saveMergedPdf(ids, pageSize, a4Orientation),
+          saveMergedPdf(ids, pageSize, orientation),
         );
         if ("error" in outcome) {
           return;
@@ -94,9 +94,9 @@ export function useJobRunner(): JobRunner {
         // image could be added). `job-finished` has already set the result,
         // and the banner and rows keep showing it.
       },
-      async startImagesToPdfs(targets, pageSize, a4Orientation) {
+      async startImagesToPdfs(targets, pageSize, orientation) {
         await run("imagesToPdf", targets, (ids) =>
-          startImagesToPdfs(ids, pageSize, a4Orientation),
+          startImagesToPdfs(ids, pageSize, orientation),
         );
       },
       async startPdfsToImages(targets, range, format, colorMode, dpi) {

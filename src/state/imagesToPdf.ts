@@ -1,10 +1,36 @@
+import type { PageSizeChoice } from "../ipc";
 import type { ImagesToPdfAction, ImagesToPdfState } from "./types";
+
+export interface PaperSizeOption {
+  readonly value: Exclude<PageSizeChoice, "fit">;
+  readonly label: string;
+}
+
+export const PAPER_SIZE_OPTIONS = [
+  { value: "a3", label: "A3 (297 × 420 mm)" },
+  { value: "a4", label: "A4 (210 × 297 mm)" },
+  { value: "a5", label: "A5 (148 × 210 mm)" },
+  { value: "jisB4", label: "B4 (257 × 364 mm)" },
+  { value: "jisB5", label: "B5 (182 × 257 mm)" },
+  { value: "letter", label: "Letter (8.5 × 11 in)" },
+  { value: "legal", label: "Legal (8.5 × 14 in)" },
+] satisfies readonly PaperSizeOption[];
+
+export function isPaperSize(
+  value: unknown,
+): value is Exclude<PageSizeChoice, "fit"> {
+  return PAPER_SIZE_OPTIONS.some((option) => option.value === value);
+}
+
+export function isPageSizeChoice(value: unknown): value is PageSizeChoice {
+  return value === "fit" || isPaperSize(value);
+}
 
 export const initialImagesToPdfState: ImagesToPdfState = {
   items: [],
   output: "merge",
   pageSize: "fit",
-  a4Orientation: "auto",
+  orientation: "auto",
   outputDir: null,
 };
 
@@ -59,13 +85,13 @@ export function imagesToPdfReducer(
         pageSize: action.pageSize,
       };
     }
-    case "SET_IMAGES_A4_ORIENTATION": {
-      if (state.a4Orientation === action.a4Orientation) {
+    case "SET_IMAGES_ORIENTATION": {
+      if (state.orientation === action.orientation) {
         return state;
       }
       return {
         ...state,
-        a4Orientation: action.a4Orientation,
+        orientation: action.orientation,
       };
     }
     case "SET_IMAGES_OUTPUT_DIR": {

@@ -223,7 +223,7 @@ export function PdfToImagesSettings() {
             </label>
             <input
               id="range"
-              className="pdf-settings-field"
+              className="settings-control"
               type="text"
               autoComplete="off"
               value={pdfToImages.rangeText}
@@ -289,7 +289,7 @@ export function PdfToImagesSettings() {
         </label>
         <select
           id="dpi"
-          className="pdf-settings-field"
+          className="settings-control"
           value={selectDpiValue}
           onChange={handleDpiSelectChange}
           disabled={busy}
@@ -314,7 +314,7 @@ export function PdfToImagesSettings() {
             <input
               type="text"
               inputMode="numeric"
-              className="pdf-settings-field pdf-custom-dpi-input"
+              className="settings-control pdf-custom-dpi-input"
               aria-label={t.pdfToImages.settings.customDpiLabel}
               value={pdfToImages.customDpiText}
               onChange={(e) =>

@@ -138,7 +138,7 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     await waitFor(() =>
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1, 2, 3], pageSize: "fit", a4Orientation: "auto" },
+        args: { ids: [1, 2, 3], pageSize: "fit", orientation: "auto" },
       }),
     );
     expect(
@@ -314,7 +314,7 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     );
     expect(calls).toContainEqual({
       cmd: "save_merged_pdf",
-      args: { ids: [1, 2, 3], pageSize: "a4", a4Orientation: "portrait" },
+      args: { ids: [1, 2, 3], pageSize: "a4", orientation: "portrait" },
     });
   });
 
