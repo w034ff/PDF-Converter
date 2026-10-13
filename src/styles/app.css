@@ -19,6 +19,14 @@ a {
   text-decoration: none;
 }
 
+/* One focus ring for every control, in the accent color, so it follows the
+   theme: WebView2's default ring is hard to see on the dark theme
+   (design §10.3). */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 a:hover {
   color: var(--color-accent-hover);
 }
@@ -131,12 +139,13 @@ a:hover {
   cursor: not-allowed;
 }
 
-/* Segmented control (.seg) */
+/* Segmented control (.seg). The end buttons round their own corners instead
+   of the control clipping them, since clipping would also hide the focus
+   ring drawn outside a button. */
 .seg {
   display: flex;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
-  overflow: hidden;
 }
 
 .seg button {
@@ -155,6 +164,20 @@ a:hover {
    one button. */
 .seg button + button {
   border-left: 1px solid var(--color-border-subtle);
+}
+
+.seg button:first-child {
+  border-radius: calc(var(--radius-md) - 1px) 0 0 calc(var(--radius-md) - 1px);
+}
+
+.seg button:last-child {
+  border-radius: 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0;
+}
+
+/* Lifted so the next button does not paint over the ring. */
+.seg button:focus-visible {
+  position: relative;
+  z-index: 1;
 }
 
 .seg button[aria-pressed="true"] {
@@ -251,6 +274,12 @@ a:hover {
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
+}
+
+/* The tabs fill the header's height, so a ring outside them is cut off at
+   the window's top edge. */
+.app-nav-tab:focus-visible {
+  outline-offset: -2px;
 }
 
 .app-nav-tab[aria-selected="true"] {
