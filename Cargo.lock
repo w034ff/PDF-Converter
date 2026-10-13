@@ -2446,6 +2446,7 @@ dependencies = [
 name = "pdfconv-core"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "image",
  "jpeg-encoder",
  "krilla",

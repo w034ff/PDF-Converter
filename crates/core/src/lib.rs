@@ -2,6 +2,7 @@
 //! PDF writing, thumbnails, page ranges and output names (design §4, §6.1, §6.4).
 
 pub mod error;
+mod jpeg_strip;
 pub mod layout;
 pub mod naming;
 pub mod page_range;
@@ -10,6 +11,7 @@ pub mod probe;
 pub mod thumbnail;
 
 pub use error::{PdfWriteError, ProbeError};
+pub use jpeg_strip::strip_jpeg_metadata;
 pub use layout::{
     MAX_PAGE_SIDE_PT, MM_PER_INCH, PAGE_MARGIN_MM, POINTS_PER_INCH, PageLayout, PageOrientation,
     PageSize, PaperSize, Rect, calculate_layout, orientation_swaps_dimensions,
