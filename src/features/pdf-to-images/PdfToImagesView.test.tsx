@@ -194,6 +194,39 @@ describe("PdfToImagesView", () => {
       });
     });
 
+    it("fades the view in when an add fills the empty list, but not when it mounts with items", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "add_pdfs") {
+          const res: AddResult<PdfItem> = {
+            added: [samplePdf1],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+          return res;
+        }
+        return undefined;
+      });
+
+      const { container, unmount } = renderView();
+      const view = container.querySelector(".pdf-view");
+      expect(view).not.toHaveClass("is-filled-from-empty");
+
+      fireEvent.click(screen.getByRole("button", { name: "PDF を追加" }));
+      await waitFor(() => {
+        expect(screen.getByText("annual-report.pdf")).toBeInTheDocument();
+      });
+      expect(container.querySelector(".pdf-view")).toHaveClass(
+        "is-filled-from-empty",
+      );
+      unmount();
+
+      const mounted = renderView((state) => {
+        state.pdfToImages.items = [samplePdf1];
+      });
+      expect(mounted.container.querySelector(".pdf-view")).not.toHaveClass(
+        "is-filled-from-empty",
+      );
+    });
+
     it("calls add_pdfs with folder when add folder is clicked", async () => {
       const calls = mockCommands((cmd) => {
         if (cmd === "add_pdfs") {

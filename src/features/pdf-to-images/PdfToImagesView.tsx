@@ -26,6 +26,7 @@ import {
   type JobState,
   type PageSelection,
 } from "../../state";
+import { useFilledFromEmpty } from "../items/useFilledFromEmpty";
 import { useThumbnail } from "../items/useThumbnail";
 import { JobSummaryBanner } from "../job/JobSummaryBanner";
 import { OutputDirError } from "../output";
@@ -349,6 +350,7 @@ export function PdfToImagesView() {
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language);
   const busy = isJobActive(job);
+  const isFilledFromEmpty = useFilledFromEmpty(pdfToImages.items.length === 0);
   const [lastSkipped, setLastSkipped] = useState<Skipped | null>(null);
   const [error, setError] = useState<IpcError | null>(null);
   const displayed = useDisplayedRange(pdfToImages);
@@ -522,7 +524,9 @@ export function PdfToImagesView() {
       : null;
 
   return (
-    <div className="pdf-view">
+    <div
+      className={`pdf-view${isFilledFromEmpty ? " is-filled-from-empty" : ""}`}
+    >
       {error !== null && (
         <ErrorDisplay
           message={formatErrorMessage(

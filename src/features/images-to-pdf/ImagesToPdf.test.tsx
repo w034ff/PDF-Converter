@@ -339,6 +339,47 @@ describe("ImagesToPdf (T11)", () => {
     expect(document.querySelector(".images-merge-summary")).toBeNull();
   });
 
+  it("fades the view in when an add fills the empty list, but not when it mounts with items", async () => {
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        const result: AddResult<ImageItem> = {
+          added: [sampleImage1],
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+        return result;
+      }
+      if (cmd === "get_thumbnail") {
+        return [137, 80, 78, 71];
+      }
+      return undefined;
+    });
+
+    const { container, unmount } = renderHarness();
+    expect(container.querySelector(".images-view")).not.toHaveClass(
+      "is-filled-from-empty",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+    await waitFor(() => {
+      expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    });
+    expect(container.querySelector(".images-view")).toHaveClass(
+      "is-filled-from-empty",
+    );
+    unmount();
+
+    const initialState = createInitialAppState("ja-JP");
+    initialState.imagesToPdf.items = [sampleImage1];
+    const mounted = render(
+      <AppStateProvider initialState={initialState}>
+        <Harness />
+      </AppStateProvider>,
+    );
+    expect(mounted.container.querySelector(".images-view")).not.toHaveClass(
+      "is-filled-from-empty",
+    );
+  });
+
   it("removes individual items and clears all items with remove_items IPC", async () => {
     const calls = mockAppIpc((cmd) => {
       if (cmd === "add_images") {

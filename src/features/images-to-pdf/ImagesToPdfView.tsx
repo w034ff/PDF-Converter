@@ -32,6 +32,7 @@ import {
   type JobRowStatus,
   type JobState,
 } from "../../state";
+import { useFilledFromEmpty } from "../items/useFilledFromEmpty";
 import { useThumbnail } from "../items/useThumbnail";
 import "./ImagesToPdf.css";
 
@@ -471,6 +472,8 @@ export function ImagesToPdfView() {
     }
   });
 
+  const isFilledFromEmpty = useFilledFromEmpty(imagesToPdf.items.length === 0);
+
   const errorDisplay = error !== null && (
     <ErrorDisplay
       message={formatErrorMessage(error.code, error.detail, language.language)}
@@ -499,7 +502,9 @@ export function ImagesToPdfView() {
   const skippedText = formatSkippedMessage(skipped, t);
 
   return (
-    <div className="images-view">
+    <div
+      className={`images-view${isFilledFromEmpty ? " is-filled-from-empty" : ""}`}
+    >
       {errorDisplay}
       <OutputDirError tab="imagesToPdf" />
 

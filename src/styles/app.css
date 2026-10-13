@@ -328,6 +328,30 @@ a:hover {
   max-width: 480px;
 }
 
+/* After "Add" closes the file dialog, the drop zone shows for the moment the
+   files take to load before the list replaces it; switching straight from one
+   to the other reads as a flicker (design §10.1). */
+.images-view.is-filled-from-empty,
+.pdf-view.is-filled-from-empty {
+  animation: list-fade-in 0.15s ease-out;
+}
+
+@keyframes list-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .images-view.is-filled-from-empty,
+  .pdf-view.is-filled-from-empty {
+    animation: none;
+  }
+}
+
 /* "About this app" dialog */
 .modal-overlay {
   position: fixed;
