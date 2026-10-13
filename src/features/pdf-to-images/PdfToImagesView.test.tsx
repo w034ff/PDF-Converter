@@ -1908,7 +1908,11 @@ describe("PdfToImagesView", () => {
       // Item is now unlocked and single grid is displayed
       const grid = document.querySelector(".pdf-single-grid");
       expect(grid).toBeInTheDocument();
-      expect(document.activeElement).toBe(grid);
+      // The focus moves in a passive effect, which can run after the dialog
+      // has already left the DOM.
+      await waitFor(() => {
+        expect(document.activeElement).toBe(grid);
+      });
     });
 
     it("handles successful unlock in batch view: closes dialog, replaces items preserving order, focuses table container", async () => {
@@ -1956,9 +1960,11 @@ describe("PdfToImagesView", () => {
         screen.queryByRole("button", { name: "パスワードを入力" }),
       ).not.toBeInTheDocument();
 
-      // Focus moved to table container
+      // Focus moved to table container (in a passive effect, as above)
       const tableContainer = document.querySelector(".pdf-table-container");
-      expect(document.activeElement).toBe(tableContainer);
+      await waitFor(() => {
+        expect(document.activeElement).toBe(tableContainer);
+      });
     });
 
     it("cancels via Cancel button or Escape: closes dialog without calling unlock_pdf, returns focus to trigger button", async () => {
