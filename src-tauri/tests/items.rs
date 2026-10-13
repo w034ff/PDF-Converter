@@ -4,17 +4,22 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{
     AddResult, ImageItem, PdfItem, Skipped, add_dropped, add_images, add_images_from_folder,
-    add_pdfs, add_pdfs_from_folder, make_thumbnail, sort_dropped,
+    add_pdfs, add_pdfs_from_folder, make_thumbnail, sort_dropped, unlock_pdf,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_core::{THUMBNAIL_SIDE, probe};
 use pdfconv_worker::WORKER_FLAG;
+
+#[path = "../../crates/core/tests/support/fixture_passwords.rs"]
+mod fixture_passwords;
+use fixture_passwords::{ENCRYPTED_CAFE_USER_PASSWORD, ENCRYPTED_USER_PASSWORD, OWNER_PASSWORD};
 
 fn library_dir() -> PathBuf {
     let os_dir = if cfg!(windows) {
@@ -543,4 +548,204 @@ fn the_table_is_shared_by_clones_of_the_state() {
     add_images(&clone, &[path]);
 
     assert_eq!(state.items.len(), 1);
+}
+
+#[test]
+fn wrong_password_returns_password_protected_and_leaves_item_unchanged() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let path = put(dir.path(), "encrypted.pdf", "encrypted.pdf");
+    let state = state();
+    let id = add_pdfs(&state, &[path]).added[0].id;
+
+    let err = unlock_pdf(&state, id, "wrong-password").expect_err("wrong password");
+    assert_eq!(err.code, ErrorCode::PasswordProtected);
+
+    let entry = state.items.get(id).expect("entry exists");
+    assert_eq!(
+        entry.error.as_ref().map(|e| e.code),
+        Some(ErrorCode::PasswordProtected)
+    );
+    assert_eq!(entry.page_count, 0);
+    assert!(entry.password.is_none());
+
+    // Can still be unlocked afterwards with the correct password
+    let res = unlock_pdf(&state, id, ENCRYPTED_USER_PASSWORD).expect("unlock succeeds");
+    assert_eq!(res.items.len(), 1);
+    assert_eq!(res.items[0].page_count, 1);
+    assert_eq!(res.items[0].error, None);
+}
+
+#[test]
+fn correct_password_populates_metadata_and_enables_thumbnail() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let path = put(dir.path(), "encrypted.pdf", "encrypted.pdf");
+    let state = state();
+    let id = add_pdfs(&state, &[path]).added[0].id;
+
+    let res = unlock_pdf(&state, id, ENCRYPTED_USER_PASSWORD).expect("unlock succeeds");
+    assert_eq!(res.items.len(), 1);
+    let item = &res.items[0];
+    assert_eq!(item.id, id);
+    assert_eq!(item.page_count, 1);
+    assert!(item.first_page_size_pt.is_some());
+    assert_eq!(item.error, None);
+
+    let entry = state.items.get(id).expect("entry exists");
+    assert_eq!(entry.page_count, 1);
+    assert_eq!(entry.error, None);
+
+    let png = make_thumbnail(&state, id, None).expect("thumbnail generated");
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+}
+
+#[test]
+fn unlock_propagates_password_to_matching_protected_items_in_id_order() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let copy1 = put(dir.path(), "encrypted.pdf", "copy1.pdf");
+    let copy2 = put(dir.path(), "encrypted.pdf", "copy2.pdf");
+    let cafe = put(dir.path(), "encrypted_cafe.pdf", "cafe.pdf");
+    let shapes = put(dir.path(), "shapes.pdf", "shapes.pdf");
+    let corrupt = put(dir.path(), "corrupt.pdf", "corrupt.pdf");
+
+    let state = state();
+    let added = add_pdfs(&state, &[copy1, copy2, cafe, shapes, corrupt]).added;
+    assert_eq!(added.len(), 5);
+
+    let id1 = added[0].id;
+    let id2 = added[1].id;
+    let id_cafe = added[2].id;
+    let id_shapes = added[3].id;
+    let id_corrupt = added[4].id;
+
+    let res = unlock_pdf(&state, id1, ENCRYPTED_USER_PASSWORD).expect("unlock succeeds");
+    assert_eq!(res.items.len(), 2);
+    assert_eq!(res.items[0].id, id1);
+    assert_eq!(res.items[1].id, id2);
+    assert_eq!(res.items[0].page_count, 1);
+    assert_eq!(res.items[1].page_count, 1);
+    assert_eq!(res.items[0].error, None);
+    assert_eq!(res.items[1].error, None);
+
+    // Other items are unaffected
+    let cafe_entry = state.items.get(id_cafe).expect("cafe exists");
+    assert_eq!(
+        cafe_entry.error.as_ref().map(|e| e.code),
+        Some(ErrorCode::PasswordProtected)
+    );
+    assert_eq!(cafe_entry.page_count, 0);
+
+    let shapes_entry = state.items.get(id_shapes).expect("shapes exists");
+    assert_eq!(shapes_entry.error, None);
+    assert_eq!(shapes_entry.page_count, 3);
+
+    let corrupt_entry = state.items.get(id_corrupt).expect("corrupt exists");
+    assert_eq!(
+        corrupt_entry.error.as_ref().map(|e| e.code),
+        Some(ErrorCode::PdfOpenFailed)
+    );
+}
+
+#[test]
+fn unlock_invalid_params_and_unknown_handle() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let enc_path = put(dir.path(), "encrypted.pdf", "encrypted.pdf");
+    let shapes_path = put(dir.path(), "shapes.pdf", "shapes.pdf");
+    let img_path = put(dir.path(), "photo.jpg", "photo.jpg");
+
+    let state = state();
+    let enc_id = add_pdfs(&state, &[enc_path]).added[0].id;
+    let shapes_id = add_pdfs(&state, &[shapes_path]).added[0].id;
+    let img_id = add_images(&state, &[img_path]).added[0].id;
+
+    // Empty password
+    let err_empty = unlock_pdf(&state, enc_id, "").expect_err("empty password rejected");
+    assert_eq!(err_empty.code, ErrorCode::InvalidParams);
+
+    // Target not PasswordProtected: shapes.pdf
+    let err_shapes =
+        unlock_pdf(&state, shapes_id, ENCRYPTED_USER_PASSWORD).expect_err("shapes rejected");
+    assert_eq!(err_shapes.code, ErrorCode::InvalidParams);
+
+    // Target not a PDF: image
+    let err_img = unlock_pdf(&state, img_id, ENCRYPTED_USER_PASSWORD).expect_err("image rejected");
+    assert_eq!(err_img.code, ErrorCode::InvalidParams);
+
+    // Unknown handle
+    let err_unknown =
+        unlock_pdf(&state, 999_999, ENCRYPTED_USER_PASSWORD).expect_err("unknown handle rejected");
+    assert_eq!(err_unknown.code, ErrorCode::UnknownHandle);
+
+    // Once unlocked, trying to unlock again gives InvalidParams
+    unlock_pdf(&state, enc_id, ENCRYPTED_USER_PASSWORD).expect("unlock succeeds");
+    let err_already =
+        unlock_pdf(&state, enc_id, ENCRYPTED_USER_PASSWORD).expect_err("already unlocked rejected");
+    assert_eq!(err_already.code, ErrorCode::InvalidParams);
+}
+
+#[test]
+fn unlock_fails_with_conversion_running() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let path = put(dir.path(), "encrypted.pdf", "encrypted.pdf");
+    let state = state();
+    let id = add_pdfs(&state, &[path]).added[0].id;
+
+    state.is_running.store(true, Ordering::SeqCst);
+    let err = unlock_pdf(&state, id, ENCRYPTED_USER_PASSWORD).expect_err("conversion running");
+    assert_eq!(err.code, ErrorCode::ConversionRunning);
+}
+
+#[test]
+fn nul_byte_password_returns_password_protected_without_crashing_worker() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let path = put(dir.path(), "encrypted.pdf", "encrypted.pdf");
+    let state = state();
+    let id = add_pdfs(&state, &[path]).added[0].id;
+
+    let err = unlock_pdf(&state, id, "fixture\0user").expect_err("nul byte rejected");
+    assert_eq!(err.code, ErrorCode::PasswordProtected);
+
+    // Worker remains usable and immediately unlocks with valid password
+    let res = unlock_pdf(&state, id, ENCRYPTED_USER_PASSWORD).expect("unlock succeeds");
+    assert_eq!(res.items.len(), 1);
+    assert_eq!(res.items[0].page_count, 1);
+}
+
+#[test]
+fn whitespace_padded_password_fails_to_unlock() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let path = put(dir.path(), "encrypted.pdf", "encrypted.pdf");
+    let state = state();
+    let id = add_pdfs(&state, &[path]).added[0].id;
+
+    let padded = format!("  {}  ", ENCRYPTED_USER_PASSWORD);
+    let err = unlock_pdf(&state, id, &padded).expect_err("padded password fails");
+    assert_eq!(err.code, ErrorCode::PasswordProtected);
+
+    let entry = state.items.get(id).expect("entry exists");
+    assert_eq!(
+        entry.error.as_ref().map(|e| e.code),
+        Some(ErrorCode::PasswordProtected)
+    );
+}
+
+#[test]
+fn owner_password_and_cafe_password_unlock() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let enc_path = put(dir.path(), "encrypted.pdf", "encrypted.pdf");
+    let cafe_path = put(dir.path(), "encrypted_cafe.pdf", "cafe.pdf");
+    let state = state();
+
+    let enc_id = add_pdfs(&state, &[enc_path]).added[0].id;
+    let cafe_id = add_pdfs(&state, &[cafe_path]).added[0].id;
+
+    // café user password unlocks only encrypted_cafe.pdf
+    let cafe_res =
+        unlock_pdf(&state, cafe_id, ENCRYPTED_CAFE_USER_PASSWORD).expect("cafe password unlocks");
+    assert_eq!(cafe_res.items.len(), 1);
+    assert_eq!(cafe_res.items[0].page_count, 1);
+
+    // Owner password unlocks encrypted.pdf (cafe is already unlocked)
+    let enc_res = unlock_pdf(&state, enc_id, OWNER_PASSWORD).expect("owner password unlocks");
+    assert_eq!(enc_res.items.len(), 1);
+    assert_eq!(enc_res.items[0].page_count, 1);
 }

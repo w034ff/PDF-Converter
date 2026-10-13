@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import appLicenseText from "../../../LICENSE?raw";
+import { ModalDialog } from "../../components/ModalDialog";
 import { formatMessage, getTranslations } from "../../i18n";
 import { getAbout, type AboutInfo } from "../../ipc/about";
 import type { ThirdPartyLicense } from "../../licenses";
@@ -7,9 +8,6 @@ import { useAppState } from "../../state";
 
 const DIALOG_TITLE_ID = "about-dialog-title";
 const THIRD_PARTY_LIST_ID = "about-third-party-licenses";
-
-const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), details > summary';
 
 type AboutLoad =
   | { state: "loading" }
@@ -36,12 +34,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
   );
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
 
   const [wasOpen, setWasOpen] = useState(isOpen);
   if (wasOpen !== isOpen) {
@@ -55,7 +48,6 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
     if (!isOpen) {
       return;
     }
-    closeButtonRef.current?.focus();
 
     let isMounted = true;
     getAbout().then(
@@ -75,51 +67,6 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab") {
-        return;
-      }
-      // The rest of the app is inert while the dialog is open, so Tab only
-      // has to wrap around inside the dialog.
-      const dialog = dialogRef.current;
-      if (dialog === null) {
-        return;
-      }
-      const focusable =
-        dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      const outside = !dialog.contains(active);
-      if (event.shiftKey && (active === first || outside)) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || outside)) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
-
   function handleToggleLicenses() {
     const next = !isExpanded;
     setIsExpanded(next);
@@ -134,139 +81,121 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
     }
   }
 
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <div
-      className="modal-overlay"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          onCloseRef.current();
-        }
-      }}
+    <ModalDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      titleId={DIALOG_TITLE_ID}
+      initialFocusRef={closeButtonRef}
     >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={DIALOG_TITLE_ID}
-        className="modal-dialog"
-      >
-        <div className="modal-header">
-          <h2 id={DIALOG_TITLE_ID} className="modal-title">
-            {t.about.title}
-          </h2>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className="icon-btn"
-            aria-label={t.about.close}
-            onClick={() => onCloseRef.current()}
+      <div className="modal-header">
+        <h2 id={DIALOG_TITLE_ID} className="modal-title">
+          {t.about.title}
+        </h2>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          className="icon-btn"
+          aria-label={t.about.close}
+          onClick={onClose}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
 
-        <div className="modal-body">
-          <div className="about-app-info">
-            <div className="about-app-name">{t.app.title}</div>
-            {about.state === "loaded" ? (
-              <>
-                <div className="about-version">
-                  {formatMessage(t.about.version, {
-                    version: about.info.version,
+      <div className="modal-body">
+        <div className="about-app-info">
+          <div className="about-app-name">{t.app.title}</div>
+          {about.state === "loaded" ? (
+            <>
+              <div className="about-version">
+                {formatMessage(t.about.version, {
+                  version: about.info.version,
+                })}
+              </div>
+              {!about.info.pdfiumReady && (
+                <div className="about-pdfium-error" role="alert">
+                  {formatMessage(t.about.pdfiumUnavailable, {
+                    error: about.info.pdfiumError ?? "",
                   })}
                 </div>
-                {!about.info.pdfiumReady && (
-                  <div className="about-pdfium-error" role="alert">
-                    {formatMessage(t.about.pdfiumUnavailable, {
-                      error: about.info.pdfiumError ?? "",
-                    })}
-                  </div>
-                )}
-              </>
-            ) : about.state === "failed" ? (
-              <div className="about-version">{t.about.loadFailed}</div>
-            ) : (
-              // Holds the line so the dialog does not shift when it loads.
-              <div className="about-version">{" "}</div>
-            )}
-          </div>
-
-          <section className="about-section">
-            <h3 className="about-section-title">{t.about.appLicense}</h3>
-            <pre className="license-box">{appLicenseText}</pre>
-          </section>
-
-          <section className="about-section">
-            <button
-              type="button"
-              className="btn btn-ghost about-toggle-btn"
-              aria-expanded={isExpanded}
-              aria-controls={isExpanded ? THIRD_PARTY_LIST_ID : undefined}
-              onClick={handleToggleLicenses}
-            >
-              {isExpanded
-                ? t.about.hideThirdPartyLicenses
-                : t.about.showThirdPartyLicenses}
-            </button>
-            {isExpanded && (
-              <div id={THIRD_PARTY_LIST_ID} className="about-licenses-list">
-                {licenses === null ? (
-                  <div className="hint">{t.about.loadingLicenses}</div>
-                ) : (
-                  licenses.map((license, licenseIndex) => (
-                    <div
-                      key={`${license.id}-${licenseIndex}`}
-                      className="license-item"
-                    >
-                      <div className="license-item-header">{license.name}</div>
-                      <ul className="license-packages">
-                        {license.packages.map((pkg, pkgIndex) => (
-                          <li
-                            key={`${pkg.ecosystem}-${pkg.name}-${pkg.version}-${pkgIndex}`}
-                          >
-                            {pkg.name} {pkg.version}
-                          </li>
-                        ))}
-                      </ul>
-                      <details className="license-details">
-                        <summary>{t.about.viewLicenseText}</summary>
-                        <pre className="license-box">{license.text}</pre>
-                      </details>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </section>
+              )}
+            </>
+          ) : about.state === "failed" ? (
+            <div className="about-version">{t.about.loadFailed}</div>
+          ) : (
+            // Holds the line so the dialog does not shift when it loads.
+            <div className="about-version">{" "}</div>
+          )}
         </div>
 
-        <div className="modal-footer">
+        <section className="about-section">
+          <h3 className="about-section-title">{t.about.appLicense}</h3>
+          <pre className="license-box">{appLicenseText}</pre>
+        </section>
+
+        <section className="about-section">
           <button
             type="button"
-            className="btn btn-ghost"
-            onClick={() => onCloseRef.current()}
+            className="btn btn-ghost about-toggle-btn"
+            aria-expanded={isExpanded}
+            aria-controls={isExpanded ? THIRD_PARTY_LIST_ID : undefined}
+            onClick={handleToggleLicenses}
           >
-            {t.about.close}
+            {isExpanded
+              ? t.about.hideThirdPartyLicenses
+              : t.about.showThirdPartyLicenses}
           </button>
-        </div>
+          {isExpanded && (
+            <div id={THIRD_PARTY_LIST_ID} className="about-licenses-list">
+              {licenses === null ? (
+                <div className="hint">{t.about.loadingLicenses}</div>
+              ) : (
+                licenses.map((license, licenseIndex) => (
+                  <div
+                    key={`${license.id}-${licenseIndex}`}
+                    className="license-item"
+                  >
+                    <div className="license-item-header">{license.name}</div>
+                    <ul className="license-packages">
+                      {license.packages.map((pkg, pkgIndex) => (
+                        <li
+                          key={`${pkg.ecosystem}-${pkg.name}-${pkg.version}-${pkgIndex}`}
+                        >
+                          {pkg.name} {pkg.version}
+                        </li>
+                      ))}
+                    </ul>
+                    <details className="license-details">
+                      <summary>{t.about.viewLicenseText}</summary>
+                      <pre className="license-box">{license.text}</pre>
+                    </details>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </section>
       </div>
-    </div>
+
+      <div className="modal-footer">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>
+          {t.about.close}
+        </button>
+      </div>
+    </ModalDialog>
   );
 }

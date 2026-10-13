@@ -180,6 +180,19 @@ pub fn remove_items(state: tauri::State<'_, AppState>, ids: Vec<u64>) -> Result<
     items::remove_items(&state, &ids)
 }
 
+/// Unlocks a password-protected PDF and auto-unlocks matching entries (design §6.8, §7.1).
+#[tauri::command]
+pub async fn unlock_pdf(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    password: String,
+) -> Result<items::UnlockResult, IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || items::unlock_pdf(&state, id, &password))
+        .await
+        .map_err(task_failed)?
+}
+
 /// Validates a page range string and counts matching pages across the specified PDF items (design §7.1).
 #[tauri::command]
 pub fn check_page_range(

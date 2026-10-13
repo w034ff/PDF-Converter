@@ -7,7 +7,7 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
     "画像を読み込めませんでした。ファイルが壊れている可能性があります",
   PdfOpenFailed:
     "PDF を読み込めませんでした。ファイルが壊れている可能性があります",
-  PasswordProtected: "パスワードで保護されているため開けません",
+  PasswordProtected: "パスワードで保護されています",
   TooLarge: "画像が大きすぎます（上限 {detail} ピクセル）",
   TooManyPages: "ページ数が多すぎます（上限 {detail} ページ）",
   RenderTooLarge:

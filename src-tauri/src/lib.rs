@@ -94,6 +94,7 @@ pub fn run() {
             commands::save_merged_pdf,
             commands::start_images_to_pdfs,
             commands::start_pdfs_to_images,
+            commands::unlock_pdf,
             commands::cancel_job,
         ])
         .on_window_event(|window, event| {

@@ -4,7 +4,9 @@
 //! and then `bodyLength` raw bytes when the header says so. Images travel as
 //! raw bytes instead of base64.
 
+use std::fmt;
 use std::io::{self, Read, Write};
+use std::ops::Deref;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -16,6 +18,88 @@ pub const MAX_HEADER_BYTES: u32 = 1024 * 1024;
 /// Upper bound on a body; a rendered page is far smaller (design §4.4 caps a
 /// page at `MAX_RENDER_PIXELS`).
 pub const MAX_BODY_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Errors when constructing a [`Password`] (design §6.8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasswordError {
+    /// The password was empty.
+    Empty,
+    /// The password contained a NUL byte (`U+0000`).
+    ContainsNul,
+}
+
+impl fmt::Display for PasswordError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "password cannot be empty"),
+            Self::ContainsNul => write!(f, "password cannot contain NUL byte"),
+        }
+    }
+}
+
+impl std::error::Error for PasswordError {}
+
+/// A validated password for opening encrypted PDFs (design §5.1, §6.8).
+///
+/// Cannot be empty and cannot contain NUL (`U+0000`). Whitespace and fullwidth
+/// characters are preserved verbatim. In JSON, it serializes and deserializes
+/// as a string. `Debug` redacts the value and `Display` is intentionally omitted
+/// so that passwords are never printed to logs or terminal output.
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct Password(String);
+
+impl Password {
+    /// Validates and constructs a [`Password`] from `s`.
+    pub fn new(s: impl Into<String>) -> Result<Self, PasswordError> {
+        let s = s.into();
+        Self::validate(&s)?;
+        Ok(Self(s))
+    }
+
+    fn validate(s: &str) -> Result<(), PasswordError> {
+        if s.is_empty() {
+            return Err(PasswordError::Empty);
+        }
+        if s.contains('\0') {
+            return Err(PasswordError::ContainsNul);
+        }
+        Ok(())
+    }
+
+    /// Borrows the password as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for Password {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for Password {
+    type Error = PasswordError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::new(s)
+    }
+}
+
+impl From<Password> for String {
+    fn from(p: Password) -> Self {
+        p.0
+    }
+}
+
+impl fmt::Debug for Password {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Password(<redacted>)")
+    }
+}
 
 /// The image format to render a PDF page to (design §4.4, §5.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,8 +136,12 @@ pub struct PageDimensions {
 pub enum Request {
     /// Loads pdfium if needed and reports whether it works.
     Hello,
-    /// Opens a PDF document at `path` (design §5.1).
-    Open { path: PathBuf },
+    /// Opens a PDF document at `path` (design §5.1, §6.8).
+    Open {
+        path: PathBuf,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        password: Option<Password>,
+    },
     /// Renders page `page` (1-based) at `dpi` in `format` and `color` (design §5.1).
     Render {
         page: u32,
@@ -304,5 +392,75 @@ mod tests {
             serde_json::from_str::<Request>(r#"{"type":"allocateForTest","mebibytes":10}"#)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn password_rejects_empty_and_nul_both_directly_and_via_serde() {
+        assert_eq!(Password::new(""), Err(PasswordError::Empty));
+        assert!(serde_json::from_str::<Password>(r#""""#).is_err());
+
+        let nul_str = "abc\0def";
+        assert_eq!(Password::new(nul_str), Err(PasswordError::ContainsNul));
+        assert!(serde_json::from_str::<Password>(r#""abc\u0000def""#).is_err());
+    }
+
+    #[test]
+    fn password_preserves_whitespace_and_fullwidth_characters() {
+        let spaced = "  secret  ";
+        let pass_spaced = Password::new(spaced).unwrap();
+        assert_eq!(pass_spaced.as_str(), spaced);
+        assert_eq!(&*pass_spaced, spaced);
+
+        let fullwidth = "パスワード　１２３";
+        let pass_fullwidth = Password::new(fullwidth).unwrap();
+        assert_eq!(pass_fullwidth.as_str(), fullwidth);
+    }
+
+    #[test]
+    fn password_debug_and_request_open_debug_redact_value() {
+        let pass = Password::new("my-secret-password-123").unwrap();
+        let pass_debug = format!("{pass:?}");
+        assert_eq!(pass_debug, "Password(<redacted>)");
+        assert!(!pass_debug.contains("my-secret"));
+
+        let req = Request::Open {
+            path: PathBuf::from("doc.pdf"),
+            password: Some(pass),
+        };
+        let req_debug = format!("{req:?}");
+        assert!(req_debug.contains("Password(<redacted>)"));
+        assert!(!req_debug.contains("my-secret"));
+    }
+
+    #[test]
+    fn password_roundtrips_in_json() {
+        let pass = Password::new("café").unwrap();
+        let serialized = serde_json::to_string(&pass).unwrap();
+        assert_eq!(serialized, r#""café""#);
+
+        let deserialized: Password = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, pass);
+        assert_eq!(deserialized.as_str(), "café");
+
+        let req = Request::Open {
+            path: PathBuf::from("doc.pdf"),
+            password: Some(pass),
+        };
+        let req_json = serde_json::to_string(&req).unwrap();
+        assert_eq!(
+            req_json,
+            r#"{"type":"open","path":"doc.pdf","password":"café"}"#
+        );
+        let deserialized_req: Request = serde_json::from_str(&req_json).unwrap();
+        assert_eq!(deserialized_req, req);
+
+        let req_no_pass = Request::Open {
+            path: PathBuf::from("doc.pdf"),
+            password: None,
+        };
+        let req_no_pass_json = serde_json::to_string(&req_no_pass).unwrap();
+        assert_eq!(req_no_pass_json, r#"{"type":"open","path":"doc.pdf"}"#);
+        let deserialized_no_pass: Request = serde_json::from_str(&req_no_pass_json).unwrap();
+        assert_eq!(deserialized_no_pass, req_no_pass);
     }
 }

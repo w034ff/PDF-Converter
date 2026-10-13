@@ -6,11 +6,21 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[path = "../../core/tests/support/fixture_passwords.rs"]
+mod fixture_passwords;
+
 use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError, WorkerProcess};
-use pdfconv_worker::protocol::{RenderColor, RenderFormat, Request, Response};
+use pdfconv_worker::protocol::{Password, RenderColor, RenderFormat, Request, Response};
 use pdfconv_worker::{RENDER_DPI_MAX, RENDER_DPI_MIN};
 
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn open_req(path: impl Into<PathBuf>) -> Request {
+    Request::Open {
+        path: path.into(),
+        password: None,
+    }
+}
 
 /// Tolerance for pixel color differences in PDF -> Image render tests (design §11.2).
 const COLOR_TOLERANCE_RENDER: i16 = 32;
@@ -134,12 +144,7 @@ fn exits_when_the_main_process_closes_stdin() {
 fn opens_shapes_pdf_and_checks_page_count_and_dimensions() {
     let mut worker = start();
     let (response, body) = worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open should succeed");
     assert!(body.is_empty());
 
@@ -167,12 +172,7 @@ fn opens_shapes_pdf_and_checks_page_count_and_dimensions() {
 fn renders_page_in_all_formats_and_color_modes() {
     let mut worker = start();
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open should succeed");
 
     for format in [RenderFormat::Png, RenderFormat::Jpeg, RenderFormat::Webp] {
@@ -241,12 +241,7 @@ fn renders_page_in_all_formats_and_color_modes() {
 fn generates_thumbnail_with_correct_dimensions_and_white_background() {
     let mut worker = start();
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open should succeed");
 
     let (resp, body) = worker
@@ -272,10 +267,11 @@ fn generates_thumbnail_with_correct_dimensions_and_white_background() {
 fn handles_encrypted_restricted_and_corrupt_pdfs() {
     let mut worker = start();
 
-    // encrypted.pdf requires user password -> PasswordProtected
+    // 1. encrypted.pdf without password -> PasswordProtected
     match worker.request(
         &Request::Open {
             path: fixtures_dir().join("encrypted.pdf"),
+            password: None,
         },
         ANSWER_TIMEOUT,
     ) {
@@ -283,33 +279,126 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
         other => panic!("expected PasswordProtected, got {other:?}"),
     }
 
-    // restricted.pdf has permission restrictions only -> opens successfully
+    // 2. encrypted.pdf with wrong password -> PasswordProtected
+    match worker.request(
+        &Request::Open {
+            path: fixtures_dir().join("encrypted.pdf"),
+            password: Some(Password::new("wrong-password").unwrap()),
+        },
+        ANSWER_TIMEOUT,
+    ) {
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+        other => panic!("expected PasswordProtected, got {other:?}"),
+    }
+
+    // 3. encrypted.pdf with whitespace padded user password -> PasswordProtected
+    match worker.request(
+        &Request::Open {
+            path: fixtures_dir().join("encrypted.pdf"),
+            password: Some(
+                Password::new(format!(" {} ", fixture_passwords::ENCRYPTED_USER_PASSWORD)).unwrap(),
+            ),
+        },
+        ANSWER_TIMEOUT,
+    ) {
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+        other => panic!("expected PasswordProtected, got {other:?}"),
+    }
+
+    // 4. encrypted.pdf with user password -> opens successfully (page_count: 1)
     let (resp, _) = worker
         .request(
             &Request::Open {
-                path: fixtures_dir().join("restricted.pdf"),
+                path: fixtures_dir().join("encrypted.pdf"),
+                password: Some(Password::new(fixture_passwords::ENCRYPTED_USER_PASSWORD).unwrap()),
             },
+            ANSWER_TIMEOUT,
+        )
+        .expect("encrypted.pdf should open with user password");
+    assert!(matches!(resp, Response::Open { page_count: 1, .. }));
+
+    // 5. encrypted.pdf with owner password -> opens successfully (page_count: 1)
+    let (resp, _) = worker
+        .request(
+            &Request::Open {
+                path: fixtures_dir().join("encrypted.pdf"),
+                password: Some(Password::new(fixture_passwords::OWNER_PASSWORD).unwrap()),
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("encrypted.pdf should open with owner password");
+    assert!(matches!(resp, Response::Open { page_count: 1, .. }));
+
+    // 6. encrypted_cafe.pdf with "cafe" (ASCII without accent) -> PasswordProtected
+    match worker.request(
+        &Request::Open {
+            path: fixtures_dir().join("encrypted_cafe.pdf"),
+            password: Some(Password::new("cafe").unwrap()),
+        },
+        ANSWER_TIMEOUT,
+    ) {
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+        other => panic!("expected PasswordProtected, got {other:?}"),
+    }
+
+    // 7. encrypted_cafe.pdf with "café" (UTF-8) -> opens successfully (page_count: 1)
+    let (resp, _) = worker
+        .request(
+            &Request::Open {
+                path: fixtures_dir().join("encrypted_cafe.pdf"),
+                password: Some(
+                    Password::new(fixture_passwords::ENCRYPTED_CAFE_USER_PASSWORD).unwrap(),
+                ),
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("encrypted_cafe.pdf should open with café");
+    assert!(matches!(resp, Response::Open { page_count: 1, .. }));
+
+    // 8. Render encrypted_cafe.pdf page 1 and check blue rectangle
+    let (resp_render, body_render) = worker
+        .request(
+            &Request::Render {
+                page: 1,
+                dpi: 150,
+                format: RenderFormat::Png,
+                color: RenderColor::Color,
+            },
+            ANSWER_TIMEOUT,
+        )
+        .expect("Render of unlocked PDF should succeed");
+    assert_eq!(resp_render, Response::Render);
+    assert!(!body_render.is_empty());
+    let img = image::load_from_memory(&body_render)
+        .expect("rendered image should decode")
+        .to_rgb8();
+    let has_blue_pixel = img.pixels().any(|p| p[0] < 80 && p[1] < 120 && p[2] > 150);
+    assert!(
+        has_blue_pixel,
+        "rendered page should contain the blue rectangle"
+    );
+
+    // 9. restricted.pdf has permission restrictions only -> opens successfully
+    let (resp, _) = worker
+        .request(
+            &open_req(fixtures_dir().join("restricted.pdf")),
             ANSWER_TIMEOUT,
         )
         .expect("restricted.pdf should open without error");
     assert!(matches!(resp, Response::Open { page_count: 1, .. }));
 
-    // corrupt.pdf is truncated -> PdfOpenFailed
+    // 10. corrupt.pdf is truncated -> PdfOpenFailed
     match worker.request(
-        &Request::Open {
-            path: fixtures_dir().join("corrupt.pdf"),
-        },
+        &open_req(fixtures_dir().join("corrupt.pdf")),
         ANSWER_TIMEOUT,
     ) {
         Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PdfOpenFailed"),
         other => panic!("expected PdfOpenFailed, got {other:?}"),
     }
 
-    // Missing file -> ReadFailed
+    // 11. Missing file -> ReadFailed
     match worker.request(
-        &Request::Open {
-            path: fixtures_dir().join("non_existent_file.pdf"),
-        },
+        &open_req(fixtures_dir().join("non_existent_file.pdf")),
         ANSWER_TIMEOUT,
     ) {
         Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "ReadFailed"),
@@ -321,12 +410,7 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
 fn rejects_thumbnail_exceeding_max_render_pixels() {
     let mut worker = start();
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open should succeed");
 
     // Thumbnail with max_side = 200_000 produces ~2.8e10 pixels (> 100_000_000 MAX_RENDER_PIXELS)
@@ -347,9 +431,7 @@ fn rejects_render_exceeding_max_render_pixels() {
     let mut worker = start();
     worker
         .request(
-            &Request::Open {
-                path: fixtures_dir().join("mixed_sizes.pdf"),
-            },
+            &open_req(fixtures_dir().join("mixed_sizes.pdf")),
             ANSWER_TIMEOUT,
         )
         .expect("Open should succeed");
@@ -400,12 +482,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
     }
 
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open should succeed");
 
     // Page 0 -> InvalidParams
@@ -530,12 +607,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
 fn quality_pdf_to_images_shapes() {
     let mut worker = start();
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open shapes.pdf should succeed");
 
     for page_num in 1..=3 {
@@ -573,12 +645,7 @@ fn quality_pdf_to_images_shapes() {
 fn quality_pdf_to_images_grayscale_and_webp() {
     let mut worker = start();
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open shapes.pdf should succeed");
 
     for page_num in 1..=3 {
@@ -687,12 +754,7 @@ fn quality_pdf_to_images_grayscale_and_webp() {
 fn performance_render_a4_150dpi() {
     let mut worker = start();
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open shapes.pdf should succeed");
 
     let start_time = Instant::now();
@@ -729,12 +791,7 @@ fn performance_render_a4_150dpi() {
 fn renders_a4_at_the_maximum_dpi() {
     let mut worker = start();
     worker
-        .request(
-            &Request::Open {
-                path: fixtures_dir().join("shapes.pdf"),
-            },
-            ANSWER_TIMEOUT,
-        )
+        .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open shapes.pdf should succeed");
 
     for format in [RenderFormat::Png, RenderFormat::Jpeg, RenderFormat::Webp] {

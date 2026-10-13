@@ -111,7 +111,7 @@ impl State {
                 },
                 Err(response) => (response, Vec::new()),
             },
-            Request::Open { path } => {
+            Request::Open { path, password } => {
                 #[cfg(feature = "test-hooks")]
                 if path.file_name().and_then(|n| n.to_str()) == Some(CRASH_ON_OPEN_FILE_NAME) {
                     std::process::abort();
@@ -121,7 +121,7 @@ impl State {
                     Ok(p) => p,
                     Err(resp) => return (resp, Vec::new()),
                 };
-                let doc = match pdfium.load_pdf_from_file(&path, None) {
+                let doc = match pdfium.load_pdf_from_file(&path, password.as_deref()) {
                     Ok(doc) => doc,
                     Err(e) => return (map_pdfium_open_error(&e), Vec::new()),
                 };

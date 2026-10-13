@@ -148,6 +148,16 @@ export const ja = {
     },
     remove: "外す",
     clearAll: "すべて外す",
+    enterPassword: "パスワードを入力",
+    passwordDialog: {
+      title: "パスワードを入力",
+      passwordLabel: "パスワード",
+      showPassword: "表示",
+      hidePassword: "隠す",
+      open: "開く",
+      cancel: "キャンセル",
+      incorrectPassword: "パスワードが違います",
+    },
     footer: {
       specifyPages: "変換するページを指定してください",
       noMatchingPages: "範囲に当てはまるページがありません",

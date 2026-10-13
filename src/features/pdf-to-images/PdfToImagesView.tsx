@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DropZone, ErrorDisplay } from "../../components";
+import { PasswordDialog } from "./PasswordDialog";
 import {
   formatErrorMessage,
   formatMessage,
@@ -260,6 +261,7 @@ interface PdfTableRowProps {
   pageSelection: PageSelection;
   rangeResult: CheckPageRangeResult | null;
   onRemove: () => void;
+  onEnterPassword: (item: PdfItem, triggerEl: HTMLElement) => void;
   disabled: boolean;
   translations: Translations;
   language: Language;
@@ -271,6 +273,7 @@ function PdfTableRow({
   pageSelection,
   rangeResult,
   onRemove,
+  onEnterPassword,
   disabled,
   translations: t,
   language,
@@ -327,6 +330,18 @@ function PdfTableRow({
         {reasonText !== null && (
           <div className="pdf-status-reason">{reasonText}</div>
         )}
+        {item.error?.code === "PasswordProtected" && (
+          <div className="pdf-status-action">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={disabled}
+              onClick={(e) => onEnterPassword(item, e.currentTarget)}
+            >
+              {t.pdfToImages.enterPassword}
+            </button>
+          </div>
+        )}
       </td>
       <td className="pdf-col-actions">
         <button
@@ -357,6 +372,31 @@ export function PdfToImagesView() {
 
   const isSingle = pdfToImages.items.length === 1;
   const singleItem = isSingle ? pdfToImages.items[0] : null;
+
+  const [passwordTargetItem, setPasswordTargetItem] = useState<PdfItem | null>(
+    null,
+  );
+  const passwordTriggerRef = useRef<HTMLElement | null>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const shouldFocusListRef = useRef(false);
+
+  useEffect(() => {
+    if (shouldFocusListRef.current) {
+      shouldFocusListRef.current = false;
+      listContainerRef.current?.focus();
+    }
+  });
+
+  function handleOpenPassword(item: PdfItem, triggerEl: HTMLElement) {
+    passwordTriggerRef.current = triggerEl;
+    setPasswordTargetItem(item);
+  }
+
+  function handleUnlockSuccess(items: PdfItem[]) {
+    shouldFocusListRef.current = true;
+    dispatch({ type: "REPLACE_PDF_ITEMS", items });
+    setPasswordTargetItem(null);
+  }
 
   const singleItemId = singleItem?.id ?? null;
   const [lastItemId, setLastItemId] = useState<number | null>(singleItemId);
@@ -644,9 +684,24 @@ export function PdfToImagesView() {
               singleItem.error.detail,
               language.language,
             )}
-          />
+          >
+            {singleItem.error.code === "PasswordProtected" && (
+              <div className="pdf-status-action">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={(e) =>
+                    handleOpenPassword(singleItem, e.currentTarget)
+                  }
+                >
+                  {t.pdfToImages.enterPassword}
+                </button>
+              </div>
+            )}
+          </ErrorDisplay>
         ) : (
-          <div className="pdf-single-grid">
+          <div ref={listContainerRef} className="pdf-single-grid" tabIndex={-1}>
             {Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).map(
               (page) => {
                 const isHighlighted = isPageSelected(page);
@@ -669,7 +724,11 @@ export function PdfToImagesView() {
           </div>
         )
       ) : (
-        <div className="pdf-table-container">
+        <div
+          ref={listContainerRef}
+          className="pdf-table-container"
+          tabIndex={-1}
+        >
           <table className="pdf-table">
             <thead>
               <tr>
@@ -695,6 +754,7 @@ export function PdfToImagesView() {
                   pageSelection={displayed.pageSelection}
                   rangeResult={displayed.rangeResult}
                   onRemove={() => void handleRemove(item.id)}
+                  onEnterPassword={handleOpenPassword}
                   disabled={busy}
                   translations={t}
                   language={language.language}
@@ -704,6 +764,14 @@ export function PdfToImagesView() {
           </table>
         </div>
       )}
+
+      <PasswordDialog
+        isOpen={passwordTargetItem !== null}
+        item={passwordTargetItem}
+        onClose={() => setPasswordTargetItem(null)}
+        onSuccess={handleUnlockSuccess}
+        triggerRef={passwordTriggerRef}
+      />
     </div>
   );
 }

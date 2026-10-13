@@ -15,7 +15,7 @@ All processing runs entirely on your computer without uploading any files to ext
 - **Sequential Numbering & No Overwriting**: Automatically resolves output name conflicts by appending sequential numbers (such as `name (1).pdf` or `name_p1 (1).png`) to ensure existing files are never overwritten.
 - **Bilingual Interface**: Full interface support for Japanese and English. Your preferred language setting is remembered across restarts.
 - **Settings Persistence**: Remembers your last-used conversion settings (page size, orientation, output format, color mode, resolution, output folder, etc.) and restores them automatically on next launch.
-- **Password-Protected PDFs**: Password-protected PDF files cannot be opened.
+- **Password-Protected PDFs**: Password-protected PDF files can be opened and converted by entering their password (either the user/open password or the owner/permissions password). Entering a password also automatically unlocks other PDFs in the list protected by the same password. Entered passwords are never saved.
 - **No Network Communication**: The application itself makes no network requests (contains no telemetry and no update checks). On Windows, the Microsoft Edge WebView2 runtime used to display the UI may connect to Microsoft services on its own; the application cannot disable this.
 
 ## Installation
