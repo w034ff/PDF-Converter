@@ -111,12 +111,22 @@ describe("design tokens and CSS rules", () => {
       "--color-accent-hover",
       "--color-success",
       "--color-error",
+      "--color-warning",
       "--color-progress-track",
     ];
 
     for (const token of expectedTokens) {
       expect(content).toContain(token);
     }
+  });
+
+  it("leaves the shared modal dialog sized by its content", () => {
+    // A small dialog (the password one) would otherwise inherit the about
+    // dialog's fixed height and show an empty area under its buttons.
+    const appCss = fs.readFileSync(path.resolve(__dirname, "app.css"), "utf-8");
+    const rule = /(?:^|\n)\.modal-dialog\s*\{([^}]*)\}/.exec(appCss);
+    expect(rule).not.toBeNull();
+    expect(rule?.[1]).not.toMatch(/(^|[\s;])height\s*:/);
   });
 
   it.each(["light", "dark"] as const)(
@@ -129,7 +139,8 @@ describe("design tokens and CSS rules", () => {
       // accent (accent-hover on hover) as text over the app and surface.
       // The focus ring draws accent on every ground the app uses.
       // A failed page's mark puts text-on-error over error. Error and
-      // success are also text, on every ground the app uses.
+      // success are also text, on every ground the app uses, and so is
+      // warning (the status word of a PDF waiting for its password).
       const pairs: [string, string][] = [
         ["--color-text-on-accent", "--color-accent"],
         ["--color-text-on-accent", "--color-accent-hover"],
@@ -145,6 +156,9 @@ describe("design tokens and CSS rules", () => {
         ["--color-success", "--color-bg-app"],
         ["--color-success", "--color-bg-surface"],
         ["--color-success", "--color-bg-subtle"],
+        ["--color-warning", "--color-bg-app"],
+        ["--color-warning", "--color-bg-surface"],
+        ["--color-warning", "--color-bg-subtle"],
       ];
 
       for (const [fg, bg] of pairs) {

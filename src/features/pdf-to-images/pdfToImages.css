@@ -293,6 +293,19 @@
   font-weight: 500;
 }
 
+/* Waiting for a password: yellow with a key, apart from the red of an
+   error (design §10.3). */
+.pdf-status-locked {
+  color: var(--color-warning);
+  font-weight: 500;
+}
+
+.pdf-status-icon {
+  stroke: var(--color-warning);
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
 .pdf-status-reason {
   font-weight: 400;
   font-size: 12px;
@@ -341,12 +354,17 @@
   outline: none;
 }
 
-.password-dialog {
-  max-width: 440px;
-  height: auto;
+/* One card without dividers (design §10.1): the header, body and footer
+   rows of the about dialog would be mostly lines around so little. Joined
+   with .modal-dialog to outweigh its max-width, since App.tsx loads app.css
+   after this file. */
+.modal-dialog.password-dialog {
+  max-width: 400px;
+  padding: 24px;
+  gap: 16px;
 }
 
-.password-dialog-header-text {
+.password-dialog-header {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -361,26 +379,62 @@
 .password-dialog-form {
   display: flex;
   flex-direction: column;
+  gap: 20px;
 }
 
 .password-dialog-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px;
+  gap: 6px;
 }
 
-.password-dialog-input-row {
+.password-dialog-field {
+  position: relative;
   display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
+/* The right padding is the toggle's width, so typed text never runs under
+   it. */
 .password-dialog-input {
   flex: 1;
+  min-width: 0;
+  padding-right: 64px;
+}
+
+.password-dialog-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.password-dialog-toggle:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+}
+
+.password-dialog-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .password-dialog-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
+}
+
+/* Asks for input rather than reports a failure, so the colour of the text,
+   not the grey of a hint nor the red of an error. */
+.pdf-footer-notice {
+  font-size: 12px;
+  color: var(--color-text-primary);
 }

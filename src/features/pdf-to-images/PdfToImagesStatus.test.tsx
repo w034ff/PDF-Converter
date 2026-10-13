@@ -46,6 +46,15 @@ const corruptPdf: PdfItem = {
   error: { code: "DecodeFailed", detail: null },
 };
 
+const lockedPdf: PdfItem = {
+  ...corruptPdf,
+  id: 98,
+  name: "locked.pdf",
+  error: { code: "PasswordProtected", detail: null },
+};
+
+const lockedPdf2: PdfItem = { ...lockedPdf, id: 99, name: "locked2.pdf" };
+
 function createBaseState(
   overrides: Partial<PdfToImagesState> = {},
 ): PdfToImagesState {
@@ -87,6 +96,23 @@ describe("PdfToImagesStatus", () => {
       );
       expect(getPdfToImagesStatusText(state, en)).toBe(
         "No PDFs can be converted. Remove the ones that couldn't be loaded.",
+      );
+    });
+
+    it("asks for the password when every unreadable PDF only needs one", () => {
+      const state = createBaseState({ items: [lockedPdf, lockedPdf2] });
+      expect(getPdfToImagesStatusText(state, ja)).toBe(
+        "パスワードを入力すると変換できます",
+      );
+      expect(getPdfToImagesStatusText(state, en)).toBe(
+        "Enter the password to convert",
+      );
+    });
+
+    it("asks to remove unreadable PDFs when a locked one sits beside a broken one", () => {
+      const state = createBaseState({ items: [lockedPdf, corruptPdf] });
+      expect(getPdfToImagesStatusText(state, ja)).toBe(
+        "変換できる PDF がありません。読み込めない PDF を外してください",
       );
     });
 
@@ -424,6 +450,23 @@ describe("PdfToImagesStatus", () => {
           "変換できる PDF がありません。読み込めない PDF を外してください",
         ),
       ).toHaveClass("error-text");
+    });
+
+    it("renders the password line in the colour of the text, not as a warning", () => {
+      const initialState = createInitialAppState("ja-JP");
+      initialState.language.activeTab = "pdfToImages";
+      initialState.pdfToImages.items = [lockedPdf];
+
+      render(
+        <AppStateProvider initialState={initialState}>
+          <PdfToImagesStatus />
+        </AppStateProvider>,
+      );
+
+      const line = screen.getByText("パスワードを入力すると変換できます");
+      expect(line).toHaveClass("pdf-footer-notice");
+      expect(line).not.toHaveClass("error-text");
+      expect(line).not.toHaveClass("hint");
     });
 
     it("keeps the empty-list line plain", () => {

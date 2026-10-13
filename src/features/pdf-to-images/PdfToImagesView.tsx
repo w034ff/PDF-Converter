@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { DropZone, ErrorDisplay } from "../../components";
+import {
+  DropZone,
+  ErrorDisplay,
+  LockIcon,
+  NoticeDisplay,
+} from "../../components";
 import { PasswordDialog } from "./PasswordDialog";
 import {
   formatErrorMessage,
@@ -186,7 +191,11 @@ function describeItemStatus(
   let statusClass = "";
   let reasonText: string | null = null;
 
-  if (item.error !== null) {
+  if (item.error?.code === "PasswordProtected") {
+    // Waiting for input, not an error: it opens once the password is in.
+    statusText = t.pdfToImages.passwordRequired;
+    statusClass = "pdf-status-locked";
+  } else if (item.error !== null) {
     statusText = t.job.loadFailed;
     statusClass = "pdf-status-failed";
     reasonText = formatErrorMessage(
@@ -325,6 +334,9 @@ function PdfTableRow({
       <td className="mono pdf-col-pages">{pagesText}</td>
       <td className="mono">{savedFilesText}</td>
       <td className={statusClass}>
+        {item.error?.code === "PasswordProtected" && (
+          <LockIcon size={13} className="pdf-status-icon" />
+        )}
         {statusText}
         {reasonText !== null && (
           <div className="pdf-status-reason">{reasonText}</div>
@@ -582,7 +594,12 @@ export function PdfToImagesView() {
         {isSingle && singleItem !== null ? (
           <>
             <span className="pdf-single-name">{singleItem.name}</span>
-            {singleItem.error !== null ? (
+            {singleItem.error?.code === "PasswordProtected" ? (
+              <span className="pdf-status-locked">
+                <LockIcon size={13} className="pdf-status-icon" />
+                {t.pdfToImages.passwordRequired}
+              </span>
+            ) : singleItem.error !== null ? (
               <span className="pdf-status-failed">{t.job.loadFailed}</span>
             ) : (
               <span className="mono">
@@ -672,7 +689,25 @@ export function PdfToImagesView() {
 
       {/* Body: Single PDF thumbnail grid OR Batch PDFs table */}
       {isSingle && singleItem !== null ? (
-        singleItem.error !== null ? (
+        singleItem.error?.code === "PasswordProtected" ? (
+          <NoticeDisplay
+            message={formatErrorMessage(
+              singleItem.error.code,
+              singleItem.error.detail,
+              language.language,
+            )}
+            action={
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy}
+                onClick={(e) => handleOpenPassword(singleItem, e.currentTarget)}
+              >
+                {t.pdfToImages.enterPassword}
+              </button>
+            }
+          />
+        ) : singleItem.error !== null ? (
           // The reason, once; the header says only that it could not be read.
           <ErrorDisplay
             message={formatErrorMessage(
@@ -680,22 +715,7 @@ export function PdfToImagesView() {
               singleItem.error.detail,
               language.language,
             )}
-          >
-            {singleItem.error.code === "PasswordProtected" && (
-              <div className="pdf-status-action">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={busy}
-                  onClick={(e) =>
-                    handleOpenPassword(singleItem, e.currentTarget)
-                  }
-                >
-                  {t.pdfToImages.enterPassword}
-                </button>
-              </div>
-            )}
-          </ErrorDisplay>
+          />
         ) : (
           <div ref={listContainerRef} className="pdf-single-grid" tabIndex={-1}>
             {Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).map(
