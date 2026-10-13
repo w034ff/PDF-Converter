@@ -14,7 +14,7 @@ use pdfconv_core::{
     IMAGE_EXTENSIONS, ImageFormat, ImageInfo, THUMBNAIL_SIDE, orientation_swaps_dimensions, probe,
     thumbnail_png,
 };
-use pdfconv_worker::protocol::{PageDimensions, Request, Response};
+use pdfconv_worker::protocol::{PageDimensions, Password, PasswordError, Request, Response};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -59,6 +59,24 @@ pub struct Entry {
     pub page_count: u32,
     /// Why the file could not be read, if it could not.
     pub error: Option<IpcError>,
+    /// Password entered by the user, if any (design §6.8).
+    pub password: Option<Password>,
+}
+
+impl Entry {
+    /// Builds the [`Request::Open`] for this entry, including its password (design §6.8).
+    pub fn open_request(&self) -> Request {
+        Request::Open {
+            path: self.path.clone(),
+            password: self.password.clone(),
+        }
+    }
+
+    /// Whether this entry is a PDF whose open failed due to a missing password (design §6.8).
+    pub fn is_password_protected(&self) -> bool {
+        self.kind == ItemKind::Pdf
+            && self.error.as_ref().map(|e| e.code) == Some(ErrorCode::PasswordProtected)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -124,6 +142,41 @@ impl ItemTable {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Updates an entry's page count, error, and password after an unlock attempt (design §6.8).
+    pub fn update_pdf_after_unlock(
+        &self,
+        id: u64,
+        page_count: u32,
+        error: Option<IpcError>,
+        password: Password,
+    ) -> bool {
+        let mut table = self.lock();
+        if let Some(entry) = table.entries.get_mut(&id) {
+            entry.page_count = page_count;
+            entry.error = error;
+            entry.password = Some(password);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Finds other candidate PDF entries that are password protected and have
+    /// no password yet, sorted by ID (design §6.8).
+    pub fn candidates_for_unlock(&self, target_id: u64) -> Vec<(u64, PathBuf)> {
+        let table = self.lock();
+        let mut candidates: Vec<(u64, PathBuf)> = table
+            .entries
+            .iter()
+            .filter(|&(id, entry)| {
+                *id != target_id && entry.is_password_protected() && entry.password.is_none()
+            })
+            .map(|(id, entry)| (*id, entry.path.clone()))
+            .collect();
+        candidates.sort_by_key(|&(id, _)| id);
+        candidates
     }
 }
 
@@ -233,6 +286,13 @@ pub struct ItemsDropped {
     pub error: Option<IpcError>,
 }
 
+/// The answer of `unlock_pdf` (design §6.8, §7.1).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockResult {
+    pub items: Vec<PdfItem>,
+}
+
 /// What a folder holds, sorted into the lists (design §6.1).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct FolderScan {
@@ -324,6 +384,7 @@ fn add_files<I>(
             canonical,
             page_count: loaded.as_ref().map_or(0, &page_count),
             error: loaded.as_ref().err().cloned(),
+            password: None,
         };
         match state.items.insert(entry) {
             Some(id) => added.push(Added {
@@ -403,12 +464,37 @@ struct PdfInfo {
     first_page_size_pt: Option<PageSizePt>,
 }
 
+fn make_pdf_item(id: u64, name: String, bytes: u64, loaded: &Result<PdfInfo, IpcError>) -> PdfItem {
+    match loaded {
+        Ok(info) => PdfItem {
+            id,
+            name,
+            page_count: info.page_count,
+            first_page_size_pt: info.first_page_size_pt,
+            bytes,
+            error: None,
+        },
+        Err(error) => PdfItem {
+            id,
+            name,
+            page_count: 0,
+            first_page_size_pt: None,
+            bytes,
+            error: Some(error.clone()),
+        },
+    }
+}
+
 /// Adds the PDF files in `paths` to the list of PDFs. Each file is opened in a
 /// worker (design §5.1), never in this process.
 pub fn add_pdfs(state: &AppState, paths: &[PathBuf]) -> AddResult<PdfItem> {
-    let (added, skipped) = add_files(state, ItemKind::Pdf, paths, load_pdf, |info| {
-        info.page_count
-    });
+    let (added, skipped) = add_files(
+        state,
+        ItemKind::Pdf,
+        paths,
+        |s, p| load_pdf(s, p, None),
+        |info| info.page_count,
+    );
     let added = added
         .into_iter()
         .map(
@@ -417,32 +503,23 @@ pub fn add_pdfs(state: &AppState, paths: &[PathBuf]) -> AddResult<PdfItem> {
                  name,
                  bytes,
                  loaded,
-             }| match loaded {
-                Ok(info) => PdfItem {
-                    id,
-                    name,
-                    page_count: info.page_count,
-                    first_page_size_pt: info.first_page_size_pt,
-                    bytes,
-                    error: None,
-                },
-                Err(error) => PdfItem {
-                    id,
-                    name,
-                    page_count: 0,
-                    first_page_size_pt: None,
-                    bytes,
-                    error: Some(error),
-                },
-            },
+             }| make_pdf_item(id, name, bytes, &loaded),
         )
         .collect();
     AddResult { added, skipped }
 }
 
-fn load_pdf(state: &AppState, path: &Path) -> Result<PdfInfo, IpcError> {
+fn load_pdf(
+    state: &AppState,
+    path: &Path,
+    password: Option<&Password>,
+) -> Result<PdfInfo, IpcError> {
     let mut worker = state.pool.acquire()?;
-    let (page_count, pages) = open_pdf(&mut worker, path)?;
+    let req = Request::Open {
+        path: path.to_path_buf(),
+        password: password.cloned(),
+    };
+    let (page_count, pages) = send_open(&mut worker, &req)?;
     close_pdf(&mut worker);
     Ok(PdfInfo {
         page_count,
@@ -453,16 +530,27 @@ fn load_pdf(state: &AppState, path: &Path) -> Result<PdfInfo, IpcError> {
     })
 }
 
-fn open_pdf(
+fn send_open(
     worker: &mut PooledWorker,
-    path: &Path,
+    req: &Request,
 ) -> Result<(u32, Vec<PageDimensions>), IpcError> {
-    match worker.send(&Request::Open {
-        path: path.to_path_buf(),
-    })? {
+    match worker.send(req)? {
         (Response::Open { page_count, pages }, _) => Ok((page_count, pages)),
         _ => Err(unexpected_response()),
     }
+}
+
+fn load_pdf_item(
+    state: &AppState,
+    id: u64,
+    path: &Path,
+    password: Option<&Password>,
+) -> (PdfItem, Result<PdfInfo, IpcError>) {
+    let loaded = load_pdf(state, path, password);
+    let name = file_name(path);
+    let bytes = std::fs::metadata(path).map_or(0, |m| m.len());
+    let item = make_pdf_item(id, name, bytes, &loaded);
+    (item, loaded)
 }
 
 /// Lets the worker release the file, which on Windows would otherwise stay
@@ -622,7 +710,7 @@ pub fn make_thumbnail(state: &AppState, id: u64, page: Option<u32>) -> Result<Ve
                 return Err(IpcError::from_code(ErrorCode::InvalidParams));
             }
             let mut worker = state.pool.acquire()?;
-            open_pdf(&mut worker, &entry.path)?;
+            send_open(&mut worker, &entry.open_request())?;
             let thumbnail = worker.send(&Request::Thumbnail {
                 page,
                 max_side: THUMBNAIL_SIDE,
@@ -636,6 +724,66 @@ pub fn make_thumbnail(state: &AppState, id: u64, page: Option<u32>) -> Result<Ve
     }
 }
 
+fn try_unlock(
+    state: &AppState,
+    id: u64,
+    path: &Path,
+    password: &Password,
+) -> Result<PdfItem, IpcError> {
+    let (item, loaded) = load_pdf_item(state, id, path, Some(password));
+    if let Err(ref err) = loaded
+        && matches!(
+            err.code,
+            ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
+        )
+    {
+        return Err(err.clone());
+    }
+    let page_count = loaded.as_ref().map_or(0, |info| info.page_count);
+    let error = loaded.as_ref().err().cloned();
+    state
+        .items
+        .update_pdf_after_unlock(id, page_count, error, password.clone());
+    Ok(item)
+}
+
+/// Unlocks a password-protected PDF and propagates the password to other
+/// password-protected entries in the table (design §6.8, §7.1).
+pub fn unlock_pdf(state: &AppState, id: u64, password: &str) -> Result<UnlockResult, IpcError> {
+    if state.is_running.load(Ordering::SeqCst) {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
+    let target = state
+        .items
+        .get(id)
+        .ok_or_else(|| IpcError::from_code(ErrorCode::UnknownHandle))?;
+
+    if !target.is_password_protected() {
+        return Err(IpcError::from_code(ErrorCode::InvalidParams));
+    }
+
+    let password = match Password::new(password) {
+        Ok(pw) => pw,
+        Err(PasswordError::Empty) => return Err(IpcError::from_code(ErrorCode::InvalidParams)),
+        Err(PasswordError::ContainsNul) => {
+            return Err(IpcError::from_code(ErrorCode::PasswordProtected));
+        }
+    };
+
+    let target_item = try_unlock(state, id, &target.path, &password)?;
+    let mut unlocked_items = vec![target_item];
+
+    for (cand_id, cand_path) in state.items.candidates_for_unlock(id) {
+        if let Ok(cand_item) = try_unlock(state, cand_id, &cand_path, &password) {
+            unlocked_items.push(cand_item);
+        }
+    }
+
+    Ok(UnlockResult {
+        items: unlocked_items,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,6 +795,7 @@ mod tests {
             canonical: PathBuf::from(canonical),
             page_count: 0,
             error: None,
+            password: None,
         }
     }
 

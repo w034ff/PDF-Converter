@@ -868,7 +868,7 @@ where
 struct PdfConversionTask {
     id: u64,
     filename: String,
-    path: PathBuf,
+    open_request: Request,
     initial_error: Option<IpcError>,
     pages: Vec<u32>,
     planned_names: Vec<String>,
@@ -932,7 +932,7 @@ where
             pages: pages.clone(),
         });
 
-        initial_tasks.push((id, filename, entry.path, entry.error, pages));
+        initial_tasks.push((id, filename, entry.open_request(), entry.error, pages));
     }
 
     let resolved_names_nested =
@@ -949,14 +949,14 @@ where
     let mut total_pages_all = 0u32;
     let mut tasks = VecDeque::new();
 
-    for ((id, filename, path, initial_error, pages), planned_names) in
+    for ((id, filename, open_request, initial_error, pages), planned_names) in
         initial_tasks.into_iter().zip(resolved_names_nested)
     {
         total_pages_all = total_pages_all.saturating_add(pages.len() as u32);
         tasks.push_back(PdfConversionTask {
             id,
             filename,
-            path,
+            open_request,
             initial_error,
             pages,
             planned_names,
@@ -1073,9 +1073,7 @@ where
                     }
                 };
 
-                let open_result = worker.send(&Request::Open {
-                    path: task.path.clone(),
-                });
+                let open_result = worker.send(&task.open_request);
 
                 if let Err(err) = open_result {
                     failed_count.fetch_add(1, Ordering::SeqCst);

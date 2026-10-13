@@ -1,4 +1,4 @@
-import type { RenderColorChoice, RenderFormatChoice } from "../ipc";
+import type { PdfItem, RenderColorChoice, RenderFormatChoice } from "../ipc";
 import type { PdfToImagesAction, PdfToImagesState } from "./types";
 
 /**
@@ -92,6 +92,30 @@ export function pdfToImagesReducer(
       return {
         ...state,
         items: [...state.items, ...action.items],
+      };
+    }
+    case "REPLACE_PDF_ITEMS": {
+      if (action.items.length === 0 || state.items.length === 0) {
+        return state;
+      }
+      const replacements = new Map<number, PdfItem>(
+        action.items.map((item) => [item.id, item]),
+      );
+      let changed = false;
+      const nextItems = state.items.map((item) => {
+        const replacement = replacements.get(item.id);
+        if (replacement !== undefined && replacement !== item) {
+          changed = true;
+          return replacement;
+        }
+        return item;
+      });
+      if (!changed) {
+        return state;
+      }
+      return {
+        ...state,
+        items: nextItems,
       };
     }
     case "REMOVE_PDF_ITEM": {

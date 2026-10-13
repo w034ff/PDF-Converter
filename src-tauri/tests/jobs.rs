@@ -15,13 +15,17 @@ use std::time::Duration;
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::error::ErrorCode;
-use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items};
+use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items, unlock_pdf};
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
     PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice, RunningGuard,
     check_page_range_internal, list_existing_files, run_images_to_pdfs, run_pdfs_to_images,
     run_save_merged_pdf, save_atomic, start_images_to_pdfs_internal, start_pdfs_to_images_internal,
 };
+
+#[path = "../../crates/core/tests/support/fixture_passwords.rs"]
+mod fixture_passwords;
+use fixture_passwords::ENCRYPTED_USER_PASSWORD;
 use pdf_converter_lib::settings::{
     OutputKind, apply_picked_dir, get_settings_internal, load_settings, restore_settings,
 };
@@ -281,6 +285,47 @@ fn pdfs_to_images_mixed_success_and_failure() {
         .collect();
     assert_eq!(failed_items.len(), 2);
 
+    assert_no_temp_files(temp_out.path());
+}
+
+#[test]
+fn unlocked_encrypted_pdf_converts_to_image() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let enc_path = copy_fixture(temp_in.path(), "encrypted.pdf", "encrypted.pdf");
+    let add_res = add_pdfs(&app_state, &[enc_path]);
+    let id = add_res.added[0].id;
+
+    let unlock_res = unlock_pdf(&app_state, id, ENCRYPTED_USER_PASSWORD).expect("unlock succeeds");
+    assert_eq!(unlock_res.items.len(), 1);
+    assert_eq!(unlock_res.items[0].page_count, 1);
+
+    let page_set = parse_page_range("1").unwrap();
+    let recorder = TestRecorder::new();
+
+    run_pdfs_to_images(
+        &app_state,
+        &[id],
+        &page_set,
+        RenderFormatChoice::Png,
+        RenderColorChoice::Color,
+        150,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .expect("run_pdfs_to_images should succeed");
+
+    let finished = recorder.finished();
+    assert_eq!(finished.succeeded, 1);
+    assert_eq!(finished.failed, 0);
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Ok);
+    assert_eq!(items[0].outputs.len(), 1);
+    assert!(temp_out.path().join(&items[0].outputs[0]).exists());
     assert_no_temp_files(temp_out.path());
 }
 

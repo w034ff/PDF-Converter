@@ -6,6 +6,7 @@ export interface ErrorDisplayProps {
   onDismiss?: () => void;
   dismissLabel?: string;
   className?: string;
+  children?: React.ReactNode;
 }
 
 /**
@@ -18,6 +19,7 @@ export function ErrorDisplay({
   onDismiss,
   dismissLabel = "閉じる",
   className = "",
+  children,
 }: ErrorDisplayProps) {
   return (
     <div
@@ -43,6 +45,7 @@ export function ErrorDisplay({
       <div className="error-display-body">
         <span className="error-display-message">{message}</span>
         {detail && <span className="mono error-display-detail">{detail}</span>}
+        {children}
       </div>
       {onDismiss && (
         <button

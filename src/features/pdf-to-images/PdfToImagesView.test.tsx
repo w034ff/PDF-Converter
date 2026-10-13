@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
@@ -413,7 +414,7 @@ describe("PdfToImagesView", () => {
 
       expect(screen.getByText("locked.pdf")).toBeInTheDocument();
       expect(
-        screen.getAllByText("パスワードで保護されているため開けません").length,
+        screen.getAllByText("パスワードで保護されています").length,
       ).toBeGreaterThanOrEqual(1);
     });
   });
@@ -479,7 +480,7 @@ describe("PdfToImagesView", () => {
       // conversion that failed
       expect(screen.getByText("✕ 読み込めません")).toBeInTheDocument();
       expect(
-        screen.getByText("パスワードで保護されているため開けません"),
+        screen.getByText("パスワードで保護されています"),
       ).toBeInTheDocument();
     });
 
@@ -1574,6 +1575,460 @@ describe("PdfToImagesView", () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1-2");
+      });
+    });
+  });
+
+  describe("password unlocking and dialog", () => {
+    const corruptPdf: PdfItem = {
+      id: 4,
+      name: "corrupt.pdf",
+      pageCount: 0,
+      firstPageSizePt: null,
+      bytes: 500,
+      error: { code: "PdfOpenFailed", detail: null },
+    };
+
+    it("shows 'Enter password' button only for PasswordProtected items in single and batch view, disabled when converting", () => {
+      mockCommands(() => undefined);
+
+      // 1. Single view with PasswordProtected: button is visible and enabled
+      const { unmount: unmount1 } = renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+      const singleBtn = screen.getByRole("button", {
+        name: "パスワードを入力",
+      });
+      expect(singleBtn).toBeInTheDocument();
+      expect(singleBtn).not.toBeDisabled();
+      unmount1();
+
+      // 2. Single view with PdfOpenFailed: button is NOT visible
+      const { unmount: unmount2 } = renderView((state) => {
+        state.pdfToImages.items = [corruptPdf];
+      });
+      expect(
+        screen.queryByRole("button", { name: "パスワードを入力" }),
+      ).not.toBeInTheDocument();
+      unmount2();
+
+      // 3. Single view while converting: button is disabled
+      const { unmount: unmount3 } = renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+        state.job.phase = "running";
+      });
+      expect(
+        screen.getByRole("button", { name: "パスワードを入力" }),
+      ).toBeDisabled();
+      unmount3();
+
+      // 4. Batch view: button visible only for errorPdf, not for samplePdf1 or corruptPdf
+      const { unmount: unmount4 } = renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, errorPdf, corruptPdf];
+      });
+      const batchBtns = screen.getAllByRole("button", {
+        name: "パスワードを入力",
+      });
+      expect(batchBtns).toHaveLength(1);
+      expect(batchBtns[0]).not.toBeDisabled();
+      unmount4();
+
+      // 5. Batch view while converting: button is disabled
+      const { unmount: unmount5 } = renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, errorPdf];
+        state.job.phase = "running";
+      });
+      expect(
+        screen.getByRole("button", { name: "パスワードを入力" }),
+      ).toBeDisabled();
+      unmount5();
+    });
+
+    it("opens password dialog on click with title, filename, autofocus, disabled open button", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      const btn = screen.getByRole("button", { name: "パスワードを入力" });
+      fireEvent.click(btn);
+
+      const dialog = screen.getByRole("dialog");
+      expect(dialog).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "パスワードを入力" }),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText("locked.pdf")).toBeInTheDocument();
+
+      const input = screen.getByLabelText("パスワード");
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute("type", "password");
+      expect(input).toHaveAttribute("autocomplete", "off");
+      expect(document.activeElement).toBe(input);
+
+      const openBtn = screen.getByRole("button", { name: "開く" });
+      expect(openBtn).toBeDisabled();
+    });
+
+    it("toggles password visibility with '表示' / '隠す' button and updates aria-pressed", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "パスワードを入力" }));
+
+      const toggleBtn = screen.getByRole("button", { name: "表示" });
+      expect(toggleBtn).toHaveAttribute("aria-pressed", "false");
+      const input = screen.getByLabelText("パスワード");
+      expect(input).toHaveAttribute("type", "password");
+
+      fireEvent.click(toggleBtn);
+      expect(toggleBtn).toHaveTextContent("隠す");
+      expect(toggleBtn).toHaveAttribute("aria-pressed", "true");
+      expect(input).toHaveAttribute("type", "text");
+
+      fireEvent.click(toggleBtn);
+      expect(toggleBtn).toHaveTextContent("表示");
+      expect(toggleBtn).toHaveAttribute("aria-pressed", "false");
+      expect(input).toHaveAttribute("type", "password");
+    });
+
+    it("submits password on Enter key or clicking Open, preserving whitespace", async () => {
+      const calls: Array<{ cmd: string; args: unknown }> = [];
+      mockCommands((cmd, args) => {
+        calls.push({ cmd, args });
+        if (cmd === "unlock_pdf") {
+          return { items: [{ ...errorPdf, error: null, pageCount: 2 }] };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "パスワードを入力" }));
+      const input = screen.getByLabelText("パスワード");
+
+      fireEvent.change(input, { target: { value: "  secret pass  " } });
+      const openBtn = screen.getByRole("button", { name: "開く" });
+      expect(openBtn).not.toBeDisabled();
+
+      fireEvent.click(openBtn);
+
+      await waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "unlock_pdf",
+          args: { id: 3, password: "  secret pass  " },
+        });
+      });
+    });
+
+    it("disables input and Open button while unlock_pdf is pending", async () => {
+      let resolveUnlock!: (val: unknown) => void;
+      const pendingPromise = new Promise((res) => {
+        resolveUnlock = res;
+      });
+
+      mockCommands((cmd) => {
+        if (cmd === "unlock_pdf") {
+          return pendingPromise;
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "パスワードを入力" }));
+      const input = screen.getByLabelText("パスワード");
+      fireEvent.change(input, { target: { value: "test" } });
+
+      const openBtn = screen.getByRole("button", { name: "開く" });
+      fireEvent.click(openBtn);
+
+      // Both input and open button should now be disabled while awaiting response
+      expect(input).toBeDisabled();
+      expect(openBtn).toBeDisabled();
+
+      resolveUnlock({ items: [{ ...errorPdf, error: null, pageCount: 1 }] });
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    it("does not close on Escape or backdrop click while unlock_pdf is pending", async () => {
+      let resolveUnlock!: (val: unknown) => void;
+      const pendingPromise = new Promise((res) => {
+        resolveUnlock = res;
+      });
+      let unlockCallCount = 0;
+
+      mockCommands((cmd) => {
+        if (cmd === "unlock_pdf") {
+          unlockCallCount += 1;
+          return pendingPromise;
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "パスワードを入力" }));
+      const input = screen.getByLabelText("パスワード");
+      fireEvent.change(input, { target: { value: "test" } });
+
+      fireEvent.click(screen.getByRole("button", { name: "開く" }));
+      expect(unlockCallCount).toBe(1);
+
+      // Pressing Escape while pending does NOT close the dialog
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      // Clicking backdrop overlay while pending does NOT close the dialog
+      const overlay = screen.getByRole("dialog").parentElement;
+      if (overlay) {
+        fireEvent.click(overlay);
+      }
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(unlockCallCount).toBe(1);
+
+      // Resolving the pending promise closes the dialog normally
+      resolveUnlock({ items: [{ ...errorPdf, error: null, pageCount: 1 }] });
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    it("handles wrong password error: keeps dialog open, shows 'パスワードが違います', selects text, clears error on edit", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "unlock_pdf") {
+          throw { code: "PasswordProtected", detail: null };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "パスワードを入力" }));
+      const input = screen.getByLabelText("パスワード");
+      if (!(input instanceof HTMLInputElement)) {
+        throw new Error("Expected HTMLInputElement");
+      }
+      fireEvent.change(input, { target: { value: "wrong" } });
+
+      const selectSpy = vi.spyOn(input, "select");
+
+      fireEvent.click(screen.getByRole("button", { name: "開く" }));
+
+      await waitFor(() => {
+        expect(screen.getByText("パスワードが違います")).toBeInTheDocument();
+      });
+
+      // Dialog is still open
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(document.activeElement).toBe(input);
+      expect(selectSpy).toHaveBeenCalled();
+
+      // Changing input clears error
+      fireEvent.change(input, { target: { value: "wrong2" } });
+      expect(
+        screen.queryByText("パスワードが違います"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("handles other errors (e.g. WorkerCrashed) by formatting with §6.6 message", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "unlock_pdf") {
+          throw { code: "WorkerCrashed", detail: null };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "パスワードを入力" }));
+      const input = screen.getByLabelText("パスワード");
+      fireEvent.change(input, { target: { value: "some" } });
+
+      fireEvent.click(screen.getByRole("button", { name: "開く" }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            "PDF の処理中に問題が起きました。ファイルが壊れている可能性があります",
+          ),
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("handles successful unlock in single view: closes dialog, replaces item, focuses single grid", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "unlock_pdf") {
+          return {
+            items: [
+              {
+                ...errorPdf,
+                error: null,
+                pageCount: 1,
+                firstPageSizePt: { widthPt: 595.28, heightPt: 841.89 },
+              },
+            ],
+          };
+        }
+        if (cmd === "get_thumbnail") {
+          return new ArrayBuffer(8);
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "パスワードを入力" }));
+      const input = screen.getByLabelText("パスワード");
+      fireEvent.change(input, { target: { value: "correct" } });
+
+      fireEvent.click(screen.getByRole("button", { name: "開く" }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+
+      // Item is now unlocked and single grid is displayed
+      const grid = document.querySelector(".pdf-single-grid");
+      expect(grid).toBeInTheDocument();
+      expect(document.activeElement).toBe(grid);
+    });
+
+    it("handles successful unlock in batch view: closes dialog, replaces items preserving order, focuses table container", async () => {
+      const errorPdf2: PdfItem = {
+        id: 4,
+        name: "locked2.pdf",
+        pageCount: 0,
+        firstPageSizePt: null,
+        bytes: 100000,
+        error: { code: "PasswordProtected", detail: null },
+      };
+
+      mockCommands((cmd) => {
+        if (cmd === "unlock_pdf") {
+          // Unlocks item 3 and also auto-unlocks item 4
+          return {
+            items: [
+              { ...errorPdf, error: null, pageCount: 2 },
+              { ...errorPdf2, error: null, pageCount: 3 },
+            ],
+          };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, errorPdf, errorPdf2];
+      });
+
+      const enterBtns = screen.getAllByRole("button", {
+        name: "パスワードを入力",
+      });
+      fireEvent.click(enterBtns[0]);
+
+      const input = screen.getByLabelText("パスワード");
+      fireEvent.change(input, { target: { value: "shared-pass" } });
+      fireEvent.click(screen.getByRole("button", { name: "開く" }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+
+      // Both items are unlocked, buttons are gone
+      expect(
+        screen.queryByRole("button", { name: "パスワードを入力" }),
+      ).not.toBeInTheDocument();
+
+      // Focus moved to table container
+      const tableContainer = document.querySelector(".pdf-table-container");
+      expect(document.activeElement).toBe(tableContainer);
+    });
+
+    it("cancels via Cancel button or Escape: closes dialog without calling unlock_pdf, returns focus to trigger button", async () => {
+      const calls: Array<{ cmd: string; args: unknown }> = [];
+      mockCommands((cmd, args) => {
+        calls.push({ cmd, args });
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      const triggerBtn = screen.getByRole("button", {
+        name: "パスワードを入力",
+      });
+      triggerBtn.focus();
+      fireEvent.click(triggerBtn);
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      const cancelBtn = screen.getByRole("button", { name: "キャンセル" });
+      fireEvent.click(cancelBtn);
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(calls.filter((c) => c.cmd === "unlock_pdf")).toHaveLength(0);
+      expect(document.activeElement).toBe(triggerBtn);
+
+      // Reopen and close via Escape
+      fireEvent.click(triggerBtn);
+      const input = screen.getByLabelText("パスワード");
+      expect(input).toHaveValue("");
+
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(triggerBtn);
+    });
+
+    it("displays English labels and error messages when language is 'en'", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "unlock_pdf") {
+          throw { code: "PasswordProtected", detail: null };
+        }
+        return undefined;
+      });
+
+      renderView((state) => {
+        state.language.language = "en";
+        state.pdfToImages.items = [errorPdf];
+      });
+
+      const enterBtn = screen.getByRole("button", { name: "Enter password" });
+      expect(enterBtn).toBeInTheDocument();
+      fireEvent.click(enterBtn);
+
+      expect(
+        screen.getByRole("heading", { name: "Enter password" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Password")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Open" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Cancel" }),
+      ).toBeInTheDocument();
+
+      const input = screen.getByLabelText("Password");
+      fireEvent.change(input, { target: { value: "wrong" } });
+      fireEvent.click(screen.getByRole("button", { name: "Open" }));
+
+      await waitFor(() => {
+        expect(screen.getByText("Incorrect password")).toBeInTheDocument();
       });
     });
   });

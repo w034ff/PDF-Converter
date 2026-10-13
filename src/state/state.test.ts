@@ -481,6 +481,19 @@ describe("state reducers", () => {
         expect(state.job.finished).toBeNull();
       });
 
+      it("drops it when REPLACE_PDF_ITEMS changes items in pdfToImages", () => {
+        const base = finishedOn("pdfToImages");
+        const unlockedPdf: PdfItem = {
+          ...samplePdfItem1,
+          pageCount: 10,
+        };
+        const state = appReducer(base, {
+          type: "REPLACE_PDF_ITEMS",
+          items: [unlockedPdf],
+        });
+        expect(state.job.finished).toBeNull();
+      });
+
       it("drops it when orientation of imagesToPdf changes", () => {
         const state = appReducer(finishedOn("imagesToPdf"), {
           type: "SET_IMAGES_ORIENTATION",
