@@ -21,10 +21,14 @@ function formatSavePages(
   return formatMessage(template, { pages, format });
 }
 
-/** The footer's line, and whether it warns rather than describes. */
+/**
+ * The footer's line, and how it reads: `hint` describes, `notice` asks for
+ * input that would make conversion possible, `warning` says nothing can be
+ * converted as things are.
+ */
 export interface PdfToImagesStatusLine {
   text: string;
-  isWarning: boolean;
+  tone: "hint" | "notice" | "warning";
 }
 
 /**
@@ -33,7 +37,9 @@ export interface PdfToImagesStatusLine {
  * shown: the range has an error, which the settings panel shows, or has not
  * been checked yet. A range that matches no page, and a list holding only
  * PDFs that could not be loaded, are warnings: both leave the start button
- * disabled, and "no PDFs selected" would contradict the rows on screen.
+ * disabled, and "no PDFs selected" would contradict the rows on screen. A
+ * list whose unreadable PDFs all wait for a password is a notice instead,
+ * since entering the password fixes it.
  */
 export function describePdfToImagesStatus(
   state: PdfToImagesState,
@@ -43,14 +49,22 @@ export function describePdfToImagesStatus(
     return null;
   }
 
-  const plain = (text: string) => ({ text, isWarning: false });
+  const plain = (text: string): PdfToImagesStatusLine => ({
+    text,
+    tone: "hint",
+  });
   if (state.items.length === 0) {
     return plain(t.footer.noPdfsSelected);
   }
   const validPdfs = state.items.filter((item) => item.error === null);
   const count = validPdfs.length;
   if (count === 0) {
-    return { text: t.footer.noReadablePdfs, isWarning: true };
+    const allLocked = state.items.every(
+      (item) => item.error?.code === "PasswordProtected",
+    );
+    return allLocked
+      ? { text: t.pdfToImages.footer.enterPasswordToConvert, tone: "notice" }
+      : { text: t.footer.noReadablePdfs, tone: "warning" };
   }
 
   const format =
@@ -80,7 +94,7 @@ export function describePdfToImagesStatus(
   }
 
   if (state.rangeResult.totalPages === 0) {
-    return { text: t.pdfToImages.footer.noMatchingPages, isWarning: true };
+    return { text: t.pdfToImages.footer.noMatchingPages, tone: "warning" };
   }
 
   return plain(formatSavePages(state.rangeResult.totalPages, count, format, t));

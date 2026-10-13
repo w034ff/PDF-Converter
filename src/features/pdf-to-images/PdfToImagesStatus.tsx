@@ -1,7 +1,16 @@
 import { getTranslations } from "../../i18n";
 import { useAppState } from "../../state";
-import { describePdfToImagesStatus } from "./pdfToImagesStatusText";
+import {
+  describePdfToImagesStatus,
+  type PdfToImagesStatusLine,
+} from "./pdfToImagesStatusText";
 import { useDisplayedRange } from "./useDisplayedRange";
+
+const TONE_CLASS = {
+  hint: "hint",
+  notice: "pdf-footer-notice",
+  warning: "error-text",
+} satisfies Record<PdfToImagesStatusLine["tone"], string>;
 
 /**
  * Bottom bar status text for PDF to Images (design §10.1, mockup `PdfSingle`).
@@ -14,9 +23,5 @@ export function PdfToImagesStatus() {
   if (status === null) {
     return null;
   }
-  return (
-    <span className={status.isWarning ? "error-text" : "hint"}>
-      {status.text}
-    </span>
-  );
+  return <span className={TONE_CLASS[status.tone]}>{status.text}</span>;
 }

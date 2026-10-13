@@ -149,6 +149,7 @@ export const ja = {
     remove: "外す",
     clearAll: "すべて外す",
     enterPassword: "パスワードを入力",
+    passwordRequired: "パスワードが必要",
     passwordDialog: {
       title: "パスワードを入力",
       passwordLabel: "パスワード",
@@ -161,6 +162,7 @@ export const ja = {
     footer: {
       specifyPages: "変換するページを指定してください",
       noMatchingPages: "範囲に当てはまるページがありません",
+      enterPasswordToConvert: "パスワードを入力すると変換できます",
       savePagesSingle: "{pages} ページを {format} で保存します",
       savePagesMultiple: "{pages} ページを {format} で保存します",
       savePagesFromPdfsSingle:

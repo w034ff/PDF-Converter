@@ -84,20 +84,18 @@ function PasswordDialogInner({
       initialFocusRef={inputRef}
       returnFocusRef={triggerRef}
     >
-      <div className="modal-header">
-        <div className="password-dialog-header-text">
-          <h2 id="password-dialog-title" className="modal-title">
-            {t.pdfToImages.passwordDialog.title}
-          </h2>
-          <div className="password-dialog-filename mono">{item.name}</div>
-        </div>
+      <div className="password-dialog-header">
+        <h2 id="password-dialog-title" className="modal-title">
+          {t.pdfToImages.passwordDialog.title}
+        </h2>
+        <div className="password-dialog-filename mono">{item.name}</div>
       </div>
       <form onSubmit={handleSubmit} className="password-dialog-form">
         <div className="password-dialog-body">
           <label htmlFor="password-dialog-input" className="label">
             {t.pdfToImages.passwordDialog.passwordLabel}
           </label>
-          <div className="password-dialog-input-row">
+          <div className="password-dialog-field">
             <input
               id="password-dialog-input"
               ref={inputRef}
@@ -110,7 +108,7 @@ function PasswordDialogInner({
             />
             <button
               type="button"
-              className="btn btn-ghost"
+              className="password-dialog-toggle"
               aria-pressed={showPassword}
               disabled={busy}
               onClick={() => setShowPassword((prev) => !prev)}
@@ -126,24 +124,22 @@ function PasswordDialogInner({
             </div>
           )}
         </div>
-        <div className="modal-footer">
-          <div className="password-dialog-actions">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={busy}
-              onClick={handleClose}
-            >
-              {t.pdfToImages.passwordDialog.cancel}
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={password === "" || busy}
-            >
-              {t.pdfToImages.passwordDialog.open}
-            </button>
-          </div>
+        <div className="password-dialog-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={busy}
+            onClick={handleClose}
+          >
+            {t.pdfToImages.passwordDialog.cancel}
+          </button>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={password === "" || busy}
+          >
+            {t.pdfToImages.passwordDialog.open}
+          </button>
         </div>
       </form>
     </ModalDialog>

@@ -86,6 +86,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
       isOpen={isOpen}
       onClose={onClose}
       titleId={DIALOG_TITLE_ID}
+      dialogClassName="modal-dialog about-dialog"
       initialFocusRef={closeButtonRef}
     >
       <div className="modal-header">

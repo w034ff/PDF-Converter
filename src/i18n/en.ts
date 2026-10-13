@@ -152,6 +152,7 @@ export const en: Translations = {
     remove: "Remove",
     clearAll: "Clear all",
     enterPassword: "Enter password",
+    passwordRequired: "Password required",
     passwordDialog: {
       title: "Enter password",
       passwordLabel: "Password",
@@ -164,6 +165,7 @@ export const en: Translations = {
     footer: {
       specifyPages: "Enter the pages to convert",
       noMatchingPages: "No pages match the range",
+      enterPasswordToConvert: "Enter the password to convert",
       savePagesSingle: "Will save 1 page as {format}",
       savePagesMultiple: "Will save {pages} pages as {format}",
       savePagesFromPdfsSingle:

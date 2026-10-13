@@ -72,6 +72,13 @@ const errorPdf: PdfItem = {
   },
 };
 
+const brokenPdf: PdfItem = {
+  ...errorPdf,
+  id: 6,
+  name: "broken.pdf",
+  error: { code: "PdfOpenFailed", detail: null },
+};
+
 interface Call {
   cmd: string;
   args: unknown;
@@ -409,13 +416,33 @@ describe("PdfToImagesView", () => {
     it("displays error reason when single PDF has an error", () => {
       mockCommands(() => undefined);
       renderView((state) => {
+        state.pdfToImages.items = [brokenPdf];
+      });
+
+      expect(screen.getByText("broken.pdf")).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "PDF を読み込めませんでした",
+      );
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("shows a single locked PDF as waiting for its password, not as an error", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
         state.pdfToImages.items = [errorPdf];
       });
 
-      expect(screen.getByText("locked.pdf")).toBeInTheDocument();
+      expect(screen.getByText("パスワードが必要")).toHaveClass(
+        "pdf-status-locked",
+      );
+      expect(screen.queryByText("✕ 読み込めません")).not.toBeInTheDocument();
+      const notice = screen.getByRole("status");
+      expect(notice).toHaveClass("notice-display");
+      expect(notice).toHaveTextContent("パスワードで保護されています");
       expect(
-        screen.getAllByText("パスワードで保護されています").length,
-      ).toBeGreaterThanOrEqual(1);
+        within(notice).getByRole("button", { name: "パスワードを入力" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
   });
 
@@ -447,7 +474,7 @@ describe("PdfToImagesView", () => {
     it("displays various job row statuses with reasons and saved counts", () => {
       mockCommands(() => undefined);
       renderView((state) => {
-        state.pdfToImages.items = [samplePdf1, samplePdf2, errorPdf];
+        state.pdfToImages.items = [samplePdf1, samplePdf2, brokenPdf];
         state.job.kind = "pdfToImages";
         state.job.targets = [
           { id: 1, name: "annual-report.pdf" },
@@ -478,9 +505,29 @@ describe("PdfToImagesView", () => {
 
       // Item 3: could not be read when added, which is told apart from a
       // conversion that failed
-      expect(screen.getByText("✕ 読み込めません")).toBeInTheDocument();
+      expect(screen.getByText("✕ 読み込めません")).toHaveClass(
+        "pdf-status-failed",
+      );
       expect(
-        screen.getByText("パスワードで保護されています"),
+        screen.getByText(/PDF を読み込めませんでした/),
+      ).toBeInTheDocument();
+    });
+
+    it("shows a locked row as needing a password, in yellow with no reason", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
+        state.pdfToImages.items = [samplePdf1, errorPdf];
+      });
+
+      const cell = screen.getByText("パスワードが必要");
+      expect(cell).toHaveClass("pdf-status-locked");
+      expect(cell.querySelector("svg.pdf-status-icon")).not.toBeNull();
+      expect(screen.queryByText("✕ 読み込めません")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("パスワードで保護されています"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(cell).getByRole("button", { name: "パスワードを入力" }),
       ).toBeInTheDocument();
     });
 
@@ -1682,6 +1729,10 @@ describe("PdfToImagesView", () => {
       expect(toggleBtn).toHaveAttribute("aria-pressed", "false");
       const input = screen.getByLabelText("パスワード");
       expect(input).toHaveAttribute("type", "password");
+      // Inside the field's frame: it shares the field's box with the input.
+      const field = input.parentElement;
+      expect(field).toHaveClass("password-dialog-field");
+      expect(field).toContainElement(toggleBtn);
 
       fireEvent.click(toggleBtn);
       expect(toggleBtn).toHaveTextContent("隠す");

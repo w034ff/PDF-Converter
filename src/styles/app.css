@@ -369,12 +369,11 @@ a:hover {
   background: var(--color-overlay-backdrop);
 }
 
-/* A fixed height keeps the dialog from jumping when the third-party list
-   opens; with the overlay's padding it fits the 640px minimum window. */
+/* Sized by its content; a dialog that must not change size says so itself
+   (.about-dialog). */
 .modal-dialog {
   width: 100%;
   max-width: 640px;
-  height: min(85vh, 720px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -383,6 +382,12 @@ a:hover {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 24px var(--color-overlay-backdrop);
+}
+
+/* A fixed height keeps the dialog from jumping when the third-party list
+   opens; with the overlay's padding it fits the 640px minimum window. */
+.about-dialog {
+  height: min(85vh, 720px);
 }
 
 .modal-header {
