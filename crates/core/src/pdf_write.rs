@@ -59,11 +59,14 @@ impl PdfWriter {
         let info = probe_reader(std::io::Cursor::new(image_bytes))?;
         let dynamic_img = decode_image_pixels(image_bytes)?;
 
-        // JPEG, PNG, and WebP are embedded with original bytes unchanged (design §4.3).
+        // JPEG has metadata stripped before embedding (design §4.3).
+        // PNG and WebP are decoded to pixels by krilla and losslessly recompressed.
         // BMP uses the RGBA pixels read by `image`.
         let img = match info.format {
-            ImageFormat::Jpeg => Image::from_jpeg(image_bytes.to_vec().into(), true)
-                .map_err(|_| ProbeError::DecodeFailed)?,
+            ImageFormat::Jpeg => {
+                let stripped = crate::jpeg_strip::strip_jpeg_metadata(image_bytes)?;
+                Image::from_jpeg(stripped.into(), true).map_err(|_| ProbeError::DecodeFailed)?
+            }
             ImageFormat::Png => Image::from_png(image_bytes.to_vec().into(), true)
                 .map_err(|_| ProbeError::DecodeFailed)?,
             ImageFormat::WebP => Image::from_webp(image_bytes.to_vec().into(), true)
@@ -174,5 +177,136 @@ mod tests {
         );
         let decode_res = decode_image_pixels(&png_bytes);
         assert_eq!(decode_res.unwrap_err(), ProbeError::DecodeFailed);
+    }
+
+    #[test]
+    fn exif_gps_jpeg_metadata_is_not_in_generated_pdf() {
+        let fixture_path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/exif_gps.jpg");
+        let raw_bytes = std::fs::read(&fixture_path).expect("reading exif_gps.jpg");
+
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        writer
+            .add_page(&raw_bytes, PageSize::Fit)
+            .expect("adding exif_gps.jpg page");
+        let pdf_bytes = writer.finish().expect("finishing PDF");
+
+        // Verify sentinels and standard metadata markers are absent in raw PDF bytes.
+        // Raw bytes search uses the null-terminated JPEG APP1 XMP header (`http://ns.adobe.com/xap/1.0/\0`)
+        // because krilla's PDF document metadata (/Creator) unconditionally includes
+        // `xmlns:xmp="http://ns.adobe.com/xap/1.0/"` in XML.
+        const RAW_FORBIDDEN_MARKERS: &[&[u8]] = &[
+            b"PDFCONV-TEST-MODEL",
+            b"PDFCONV-TEST-COMMENT",
+            b"PDFCONV-TEST-TRAILER",
+            b"PDFCONV-TEST-XMP",
+            b"PDFCONV-TEST-IPTC",
+            b"Exif\0\0",
+            b"http://ns.adobe.com/xap/1.0/\0",
+            b"Photoshop 3.0",
+        ];
+
+        for marker in RAW_FORBIDDEN_MARKERS {
+            assert!(
+                !pdf_bytes.windows(marker.len()).any(|w| w == *marker),
+                "raw PDF unexpectedly contains marker: {:?}",
+                String::from_utf8_lossy(marker)
+            );
+        }
+
+        // Decompress all FlateDecode streams using flate2 and verify markers are absent.
+        // Stream data must not contain any metadata marker, including the XMP namespace string.
+        const STREAM_FORBIDDEN_MARKERS: &[&[u8]] = &[
+            b"PDFCONV-TEST-MODEL",
+            b"PDFCONV-TEST-COMMENT",
+            b"PDFCONV-TEST-TRAILER",
+            b"PDFCONV-TEST-XMP",
+            b"PDFCONV-TEST-IPTC",
+            b"Exif\0\0",
+            b"http://ns.adobe.com/xap/1.0/",
+            b"Photoshop 3.0",
+        ];
+
+        let streams = extract_flate_streams(&pdf_bytes);
+        assert!(
+            !streams.is_empty(),
+            "PDF should contain at least one content/object stream"
+        );
+        for stream in &streams {
+            for marker in STREAM_FORBIDDEN_MARKERS {
+                assert!(
+                    !stream.windows(marker.len()).any(|w| w == *marker),
+                    "decompressed stream unexpectedly contains marker: {:?}",
+                    String::from_utf8_lossy(marker)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unparseable_jpeg_fails_with_decode_failed_and_writer_continues() {
+        let fixture_path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/exif_gps.jpg");
+        let raw_bytes = std::fs::read(&fixture_path).expect("reading exif_gps.jpg");
+
+        // Remove EOI marker from the end to create a JPEG whose segment parsing fails
+        let eoi_pos = raw_bytes
+            .windows(2)
+            .rposition(|w| w == [0xFF, 0xD9])
+            .expect("finding EOI");
+        let truncated_jpeg = &raw_bytes[..eoi_pos];
+
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        let err = writer
+            .add_page(truncated_jpeg, PageSize::Fit)
+            .expect_err("truncated JPEG must fail add_page");
+        assert_eq!(err, ProbeError::DecodeFailed);
+
+        // Document can continue and accept another valid image
+        let valid_path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/photo.jpg");
+        let valid_bytes = std::fs::read(&valid_path).expect("reading photo.jpg");
+        writer
+            .add_page(&valid_bytes, PageSize::Fit)
+            .expect("adding valid photo.jpg should succeed after failure");
+
+        let pdf = writer.finish().expect("finishing PDF");
+        assert!(!pdf.is_empty());
+    }
+
+    fn extract_flate_streams(pdf: &[u8]) -> Vec<Vec<u8>> {
+        let mut streams = Vec::new();
+        let mut pos = 0;
+        while let Some(idx) = pdf[pos..].windows(6).position(|w| w == b"stream") {
+            let stream_start = pos + idx + 6;
+            let mut data_start = stream_start;
+            if data_start < pdf.len() && pdf[data_start] == b'\r' {
+                data_start += 1;
+            }
+            if data_start < pdf.len() && pdf[data_start] == b'\n' {
+                data_start += 1;
+            }
+            if let Some(end_idx) = pdf[data_start..].windows(9).position(|w| w == b"endstream") {
+                let mut data_end = data_start + end_idx;
+                if data_end > data_start && pdf[data_end - 1] == b'\n' {
+                    data_end -= 1;
+                }
+                if data_end > data_start && pdf[data_end - 1] == b'\r' {
+                    data_end -= 1;
+                }
+                let raw = &pdf[data_start..data_end];
+                let mut decoder = flate2::read::ZlibDecoder::new(raw);
+                let mut decompressed = Vec::new();
+                if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_ok()
+                    && !decompressed.is_empty()
+                {
+                    streams.push(decompressed);
+                }
+                pos = data_start + end_idx + 9;
+            } else {
+                break;
+            }
+        }
+        streams
     }
 }

@@ -142,6 +142,7 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
             None,
         )?,
     );
+    add("exif_gps.jpg", encode_exif_gps_jpeg()?);
     add(
         "photo_cmyk.jpg",
         encode_jpeg(
@@ -304,6 +305,19 @@ fn photo_rgb(w: u32, h: u32) -> Vec<u8> {
             } else {
                 ((u32::from(r) + u32::from(g)) / 2) as u8
             };
+            out.extend_from_slice(&[r, g, b]);
+        }
+    }
+    out
+}
+
+fn exif_gps_rgb(w: u32, h: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity((w * h * 3) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let r = ramp(x, w);
+            let g = ramp(y, h);
+            let b = ((u32::from(r) + u32::from(g)) / 2) as u8;
             out.extend_from_slice(&[r, g, b]);
         }
     }
@@ -536,6 +550,236 @@ fn exif_with_orientation(orientation: u16) -> Vec<u8> {
     // No next IFD.
     tiff.extend_from_slice(&0u32.to_le_bytes());
     tiff
+}
+
+fn encode_exif_gps_jpeg() -> Result<Vec<u8>> {
+    const W: u32 = 64;
+    const H: u32 = 48;
+    let rgb = exif_gps_rgb(W, H);
+
+    // Encode base JPEG image data with jpeg_encoder (without JFIF density or EXIF)
+    let raw_jpeg = encode_jpeg(W, H, jpeg_encoder::ColorType::Rgb, &rgb, None, None)?;
+
+    // raw_jpeg starts with SOI [0xFF, 0xD8]. Skip encoder's APP0 if present to ensure exactly one JFIF.
+    let mut rest_start = 2;
+    if raw_jpeg.len() >= 4 && raw_jpeg[2] == 0xFF && raw_jpeg[3] == 0xE0 {
+        let seg_len = usize::from(u16::from_be_bytes([raw_jpeg[4], raw_jpeg[5]]));
+        rest_start += 2 + seg_len;
+    }
+
+    let eoi_pos = raw_jpeg
+        .windows(2)
+        .rposition(|w| w == [0xFF, 0xD9])
+        .ok_or("missing EOI in encoded jpeg")?;
+
+    let mut out = Vec::new();
+    // 1. SOI
+    out.extend_from_slice(&[0xFF, 0xD8]);
+
+    // 2. Custom JFIF APP0 with 1x1 RGB thumbnail (3 bytes)
+    let mut jfif_payload = Vec::new();
+    jfif_payload.extend_from_slice(b"JFIF\0");
+    jfif_payload.extend_from_slice(&[1, 2]); // version 1.2
+    jfif_payload.push(1); // units: dpi
+    jfif_payload.extend_from_slice(&96u16.to_be_bytes()); // Xdensity
+    jfif_payload.extend_from_slice(&96u16.to_be_bytes()); // Ydensity
+    jfif_payload.push(1); // Xthumbnail (1 px)
+    jfif_payload.push(1); // Ythumbnail (1 px)
+    jfif_payload.extend_from_slice(&[0xAA, 0xBB, 0xCC]); // 1x1 RGB thumbnail bytes
+    out.extend_from_slice(&[0xFF, 0xE0]);
+    let jfif_len = u16::try_from(jfif_payload.len() + 2)?;
+    out.extend_from_slice(&jfif_len.to_be_bytes());
+    out.extend_from_slice(&jfif_payload);
+
+    // 3. EXIF APP1 (TIFF with Model, DateTimeOriginal in Exif IFD, GPS in GPS IFD)
+    let exif_payload = build_exif_gps_payload();
+    out.extend_from_slice(&[0xFF, 0xE1]);
+    let exif_len = u16::try_from(exif_payload.len() + 2)?;
+    out.extend_from_slice(&exif_len.to_be_bytes());
+    out.extend_from_slice(&exif_payload);
+
+    // 4. XMP APP1
+    let xmp_xml = b"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
+<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+<rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
+<dc:description>PDFCONV-TEST-XMP-DESC</dc:description>\
+</rdf:Description>\
+</rdf:RDF>\
+</x:xmpmeta>";
+    let mut xmp_payload = Vec::new();
+    xmp_payload.extend_from_slice(b"http://ns.adobe.com/xap/1.0/\0");
+    xmp_payload.extend_from_slice(xmp_xml);
+    out.extend_from_slice(&[0xFF, 0xE1]);
+    let xmp_len = u16::try_from(xmp_payload.len() + 2)?;
+    out.extend_from_slice(&xmp_len.to_be_bytes());
+    out.extend_from_slice(&xmp_payload);
+
+    // 5. IPTC APP13 (Photoshop 3.0 8BIM record)
+    let iptc_payload = build_iptc_payload();
+    out.extend_from_slice(&[0xFF, 0xED]);
+    let iptc_len = u16::try_from(iptc_payload.len() + 2)?;
+    out.extend_from_slice(&iptc_len.to_be_bytes());
+    out.extend_from_slice(&iptc_payload);
+
+    // 6. COM (Comment)
+    let com_payload = b"PDFCONV-TEST-COMMENT";
+    out.extend_from_slice(&[0xFF, 0xFE]);
+    let com_len = u16::try_from(com_payload.len() + 2)?;
+    out.extend_from_slice(&com_len.to_be_bytes());
+    out.extend_from_slice(com_payload);
+
+    // 7. Image segments from encoder up to and including EOI
+    out.extend_from_slice(&raw_jpeg[rest_start..=eoi_pos + 1]);
+
+    // 8. Trailer after EOI
+    out.extend_from_slice(b"PDFCONV-TEST-TRAILER\n");
+
+    Ok(out)
+}
+
+fn build_exif_gps_payload() -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"Exif\0\0");
+
+    let model = b"PDFCONV-TEST-MODEL\0";
+    let date = b"2026:10:14 00:00:00\0";
+
+    let ifd0_offset = 8u32;
+    let model_offset = 50u32;
+    let exif_ifd_offset = 72u32;
+    let date_offset = 90u32;
+    let gps_ifd_offset = 112u32;
+    let lat_rationals_offset = 168u32;
+    let lon_rationals_offset = 192u32;
+
+    let mut tiff = Vec::new();
+    // Header
+    tiff.extend_from_slice(b"II");
+    tiff.extend_from_slice(&42u16.to_le_bytes());
+    tiff.extend_from_slice(&ifd0_offset.to_le_bytes());
+
+    // IFD0: 3 entries
+    tiff.extend_from_slice(&3u16.to_le_bytes());
+    // Entry 0: Model (0x0110, ASCII)
+    tiff.extend_from_slice(&0x0110u16.to_le_bytes());
+    tiff.extend_from_slice(&2u16.to_le_bytes());
+    tiff.extend_from_slice(&(model.len() as u32).to_le_bytes());
+    tiff.extend_from_slice(&model_offset.to_le_bytes());
+    // Entry 1: ExifOffset (0x8769, LONG)
+    tiff.extend_from_slice(&0x8769u16.to_le_bytes());
+    tiff.extend_from_slice(&4u16.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+    tiff.extend_from_slice(&exif_ifd_offset.to_le_bytes());
+    // Entry 2: GPSInfo (0x8825, LONG)
+    tiff.extend_from_slice(&0x8825u16.to_le_bytes());
+    tiff.extend_from_slice(&4u16.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+    tiff.extend_from_slice(&gps_ifd_offset.to_le_bytes());
+    // Next IFD
+    tiff.extend_from_slice(&0u32.to_le_bytes());
+
+    // Model data at offset 50
+    assert_eq!(tiff.len(), model_offset as usize);
+    tiff.extend_from_slice(model);
+    while tiff.len() < exif_ifd_offset as usize {
+        tiff.push(0);
+    }
+
+    // Exif IFD: 1 entry
+    assert_eq!(tiff.len(), exif_ifd_offset as usize);
+    tiff.extend_from_slice(&1u16.to_le_bytes());
+    // Entry 0: DateTimeOriginal (0x9003, ASCII)
+    tiff.extend_from_slice(&0x9003u16.to_le_bytes());
+    tiff.extend_from_slice(&2u16.to_le_bytes());
+    tiff.extend_from_slice(&(date.len() as u32).to_le_bytes());
+    tiff.extend_from_slice(&date_offset.to_le_bytes());
+    // Next IFD
+    tiff.extend_from_slice(&0u32.to_le_bytes());
+
+    // Date data at offset 90
+    assert_eq!(tiff.len(), date_offset as usize);
+    tiff.extend_from_slice(date);
+    while tiff.len() < gps_ifd_offset as usize {
+        tiff.push(0);
+    }
+
+    // GPS IFD: 4 entries
+    assert_eq!(tiff.len(), gps_ifd_offset as usize);
+    tiff.extend_from_slice(&4u16.to_le_bytes());
+    // Entry 0: GPSLatitudeRef (0x0001, ASCII)
+    tiff.extend_from_slice(&1u16.to_le_bytes());
+    tiff.extend_from_slice(&2u16.to_le_bytes());
+    tiff.extend_from_slice(&2u32.to_le_bytes());
+    tiff.extend_from_slice(&[b'N', 0, 0, 0]);
+    // Entry 1: GPSLatitude (0x0002, RATIONAL)
+    tiff.extend_from_slice(&2u16.to_le_bytes());
+    tiff.extend_from_slice(&5u16.to_le_bytes());
+    tiff.extend_from_slice(&3u32.to_le_bytes());
+    tiff.extend_from_slice(&lat_rationals_offset.to_le_bytes());
+    // Entry 2: GPSLongitudeRef (0x0003, ASCII)
+    tiff.extend_from_slice(&3u16.to_le_bytes());
+    tiff.extend_from_slice(&2u16.to_le_bytes());
+    tiff.extend_from_slice(&2u32.to_le_bytes());
+    tiff.extend_from_slice(&[b'E', 0, 0, 0]);
+    // Entry 3: GPSLongitude (0x0004, RATIONAL)
+    tiff.extend_from_slice(&4u16.to_le_bytes());
+    tiff.extend_from_slice(&5u16.to_le_bytes());
+    tiff.extend_from_slice(&3u32.to_le_bytes());
+    tiff.extend_from_slice(&lon_rationals_offset.to_le_bytes());
+    // Next IFD
+    tiff.extend_from_slice(&0u32.to_le_bytes());
+
+    // Padding to offset 168
+    while tiff.len() < lat_rationals_offset as usize {
+        tiff.push(0);
+    }
+
+    // Lat rationals (35/1, 41/1, 23/1) at 168
+    assert_eq!(tiff.len(), lat_rationals_offset as usize);
+    tiff.extend_from_slice(&35u32.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+    tiff.extend_from_slice(&41u32.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+    tiff.extend_from_slice(&23u32.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+
+    // Lon rationals (139/1, 41/1, 32/1) at 192
+    assert_eq!(tiff.len(), lon_rationals_offset as usize);
+    tiff.extend_from_slice(&139u32.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+    tiff.extend_from_slice(&41u32.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+    tiff.extend_from_slice(&32u32.to_le_bytes());
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+
+    out.extend_from_slice(&tiff);
+    out
+}
+
+fn build_iptc_payload() -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"Photoshop 3.0\0");
+
+    let caption = b"PDFCONV-TEST-IPTC-CAPTION";
+    let mut iptc_data = Vec::new();
+    iptc_data.push(0x1C); // Tag marker
+    iptc_data.push(0x02); // Record 2
+    iptc_data.push(0x78); // Dataset 120 (Caption/Abstract)
+    let caption_len = u16::try_from(caption.len()).expect("caption len fits in u16");
+    iptc_data.extend_from_slice(&caption_len.to_be_bytes());
+    iptc_data.extend_from_slice(caption);
+
+    // 8BIM resource
+    out.extend_from_slice(b"8BIM");
+    out.extend_from_slice(&0x0404u16.to_le_bytes()); // IPTC-NAA record ID
+    out.extend_from_slice(&[0x00, 0x00]); // empty name, padded
+    let size = u32::try_from(iptc_data.len()).expect("iptc len fits in u32");
+    out.extend_from_slice(&size.to_be_bytes());
+    out.extend_from_slice(&iptc_data);
+    if iptc_data.len() % 2 != 0 {
+        out.push(0);
+    }
+    out
 }
 
 fn encode_webp(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>> {

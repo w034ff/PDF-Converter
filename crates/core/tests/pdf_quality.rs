@@ -165,6 +165,7 @@ fn pdf_quality_and_conformance_suite() {
         "logo_alpha.png",
         "logo_alpha.webp",
         "photo.jpg",
+        "exif_gps.jpg",
         "rotate0.jpg",
         "flip_h.jpg",
         "rotate180.jpg",
@@ -479,24 +480,60 @@ fn pdf_quality_and_conformance_suite() {
 }
 
 #[test]
-fn jpeg_bytes_are_embedded_unchanged_including_cmyk() {
+fn jpeg_image_data_is_embedded_without_metadata_including_cmyk() {
     let fix_dir = fixtures_dir();
-    let jpegs = ["photo.jpg", "photo_cmyk.jpg", "rotate0.jpg", "flip_h.jpg"];
+    let jpegs = [
+        "photo.jpg",
+        "photo_cmyk.jpg",
+        "rotate0.jpg",
+        "flip_h.jpg",
+        "rotate180.jpg",
+        "flip_v.jpg",
+        "rotate90_flip_h.jpg",
+        "rotate90.jpg",
+        "rotate270_flip_h.jpg",
+        "rotate270.jpg",
+        "exif_gps.jpg",
+    ];
 
     for name in jpegs {
         let raw_bytes = std::fs::read(fix_dir.join(name)).unwrap();
+        let stripped_bytes = pdfconv_core::strip_jpeg_metadata(&raw_bytes).unwrap();
         let mut writer = PdfWriter::new("PDF Converter 0.1.0");
         writer.add_page(&raw_bytes, PageSize::Fit).unwrap();
         let pdf_bytes = writer.finish().unwrap();
 
-        // Verify the exact original JPEG bytes exist as a contiguous substring in the PDF
+        // Verify the stripped JPEG bytes exist as a contiguous substring in the generated PDF (design §11.2)
         let found = pdf_bytes
-            .windows(raw_bytes.len())
-            .any(|window| window == raw_bytes.as_slice());
+            .windows(stripped_bytes.len())
+            .any(|window| window == stripped_bytes.as_slice());
         assert!(
             found,
-            "original JPEG bytes of {name} were not found verbatim in the generated PDF"
+            "stripped JPEG bytes of {name} were not found verbatim in the generated PDF"
         );
+
+        // Fixtures with metadata (orientation EXIF or exif_gps.jpg) must NOT contain original bytes
+        let has_metadata =
+            name.starts_with("rotate") || name.starts_with("flip") || name == "exif_gps.jpg";
+        if has_metadata {
+            assert_ne!(
+                raw_bytes, stripped_bytes,
+                "metadata-bearing fixture {name} must have bytes stripped"
+            );
+            let original_found = pdf_bytes
+                .windows(raw_bytes.len())
+                .any(|window| window == raw_bytes.as_slice());
+            assert!(
+                !original_found,
+                "original unstripped bytes of {name} must not be present in the generated PDF"
+            );
+        } else {
+            // photo.jpg and photo_cmyk.jpg have no metadata to strip, so stripped == raw
+            assert_eq!(
+                raw_bytes, stripped_bytes,
+                "clean fixture {name} should have unchanged bytes"
+            );
+        }
     }
 }
 

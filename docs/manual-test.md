@@ -50,6 +50,7 @@ npm run manual-test:files -- <出力先フォルダ>
 リポジトリ内の `crates/core/tests/fixtures/` にあるテスト用ファイルを使用します（design §11.1）：
 - `logo_alpha.png` / `logo_alpha.webp`: 透過背景の図形（透過の保持確認用）
 - `photo.jpg`: 写真調の RGB JPEG（JPEG バイト列の無劣化保持確認用）
+- `exif_gps.jpg`: 位置情報・機種・撮影日時・XMP・IPTC・コメント・縮小画像付きの RGB JPEG（メタデータ除外確認用）
 - `photo_cmyk.jpg`: CMYK の JPEG
 - `rotate0.jpg`、`flip_h.jpg`、`rotate180.jpg`、`flip_v.jpg`、`rotate90_flip_h.jpg`、`rotate90.jpg`、`rotate270_flip_h.jpg`、`rotate270.jpg`: EXIF 向き 1〜8 の JPEG（向きの反映確認用）
 - `deep16.png`: 16 ビットの PNG
@@ -118,6 +119,14 @@ npm run manual-test:files -- <出力先フォルダ>
    - 準備の 10 ファイルがすべて一覧にある状態にする（手順 5 で外したファイルがあれば再度追加する）。
    - 空の保存先フォルダを用意し、「保存先フォルダ」の「フォルダを選ぶ」をクリックしてそのフォルダを指定する。
    - 下部バーの「変換を開始」をクリックする。
+7. **JPEG メタデータ（位置情報・機種・撮影日時など）の除外確認**:
+   - 一覧の画像をすべて外し、「画像を追加」で位置情報付きの写真（スマートフォンで撮ったもの、なければ `crates/core/tests/fixtures/exif_gps.jpg`）を追加する。
+   - 左パネルで「出力」を「1 つの PDF」、「ページの大きさ」を「画像と同じ大きさ」にする。
+   - 「PDF を保存」をクリックし、保存ダイアログでファイル名 `exif_test.pdf` を指定して保存する。
+   - ターミナルで次のコマンドを実行し、PDF のメタデータを検査する:
+     ```bash
+     exiftool -a -G1 -ee exif_test.pdf
+     ```
 
 ### 期待する結果
 - 生成された PDF をブラウザー（Chrome / Edge / Firefox）等で開いて目視確認する:
@@ -147,6 +156,7 @@ npm run manual-test:files -- <出力先フォルダ>
   - CMYK JPEG、16 ビット PNG、BMP が乱れなく正しい色で描画されている。
   - `rotate90.jpg` が回転せず正しい向きで表示されている。
   - 並べ替えた順序どおりに各ページが並んでいる。外した画像は PDF に含まれない。
+- `exiftool -a -G1 -ee exif_test.pdf` の出力に、GPS 位置情報（`GPS Latitude` / `GPS Longitude`）、カメラの機種（`Camera Model Name`）、撮影日時（`Date/Time Original`）、XMP、IPTC、コメントなどのメタデータが表示されないこと（作成ソフトとして `Creator` / `Creator Tool` に `PDF Converter <版>` のみが出力されること）。
 - 「1 枚ずつ」の変換では、指定したフォルダ内に次の 10 個の PDF ファイルが保存される（同名ステムの拡張子違いは `(1)` の連番が付与される）:
   - `alpha32.pdf`
   - `deep16.pdf`
