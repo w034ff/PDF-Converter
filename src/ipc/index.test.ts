@@ -9,7 +9,10 @@ import {
   getThumbnail,
   isErrorCode,
   isIpcError,
+  isPageSizePt,
+  isPdfItem,
   isSettings,
+  isUnlockResult,
   ITEMS_DROPPED_EVENT,
   JOB_FINISHED_EVENT,
   JOB_ITEM_EVENT,
@@ -25,6 +28,7 @@ import {
   saveSettings,
   startImagesToPdfs,
   startPdfsToImages,
+  unlockPdf,
   type AddResult,
   type ImageItem,
   type ItemsDropped,
@@ -35,6 +39,7 @@ import {
   type PdfItem,
   type Settings,
   type SettingsInput,
+  type UnlockResult,
 } from ".";
 
 const NO_SKIPS = { unsupported: 0, folders: 0, duplicates: 0 };
@@ -89,6 +94,40 @@ describe("ipc", () => {
 
       await removeItems([3, 4]);
       expect(calls).toEqual([["remove_items", { ids: [3, 4] }]]);
+    });
+
+    it("sends id and password to unlock_pdf and returns validated UnlockResult", async () => {
+      const unlockResult: UnlockResult = {
+        items: [
+          {
+            id: 1,
+            name: "encrypted.pdf",
+            pageCount: 3,
+            firstPageSizePt: { widthPt: 595.28, heightPt: 841.89 },
+            bytes: 1000,
+            error: null,
+          },
+        ],
+      };
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return unlockResult;
+      });
+
+      const res = await unlockPdf(1, "secret password");
+      expect(res).toEqual(unlockResult);
+      expect(calls).toEqual([
+        ["unlock_pdf", { id: 1, password: "secret password" }],
+      ]);
+    });
+
+    it("rejects with InvalidParams when unlock_pdf returns malformed result", async () => {
+      mockIPC(() => ({ items: "not an array" }));
+      await expect(unlockPdf(1, "pass")).rejects.toEqual({
+        code: "InvalidParams",
+        detail: "unlock_pdf returned an unexpected value",
+      });
     });
 
     it("asks get_thumbnail for the item and the page", async () => {
@@ -513,6 +552,88 @@ describe("ipc", () => {
           pdfToImages: { ...valid.pdfToImages, dpi: 150.5 },
         }),
       ).toBe(false);
+    });
+
+    describe("isPageSizePt", () => {
+      it("accepts valid PageSizePt and rejects malformed values", () => {
+        expect(isPageSizePt({ widthPt: 595.28, heightPt: 841.89 })).toBe(true);
+        expect(isPageSizePt(null)).toBe(false);
+        expect(isPageSizePt("string")).toBe(false);
+        expect(isPageSizePt({ widthPt: 100 })).toBe(false);
+        expect(isPageSizePt({ widthPt: "100", heightPt: 200 })).toBe(false);
+        expect(isPageSizePt({ widthPt: Number.NaN, heightPt: 200 })).toBe(
+          false,
+        );
+        expect(
+          isPageSizePt({ widthPt: Number.POSITIVE_INFINITY, heightPt: 200 }),
+        ).toBe(false);
+      });
+    });
+
+    describe("isPdfItem", () => {
+      const validItem: PdfItem = {
+        id: 1,
+        name: "test.pdf",
+        pageCount: 1,
+        firstPageSizePt: { widthPt: 595.28, heightPt: 841.89 },
+        bytes: 1024,
+        error: null,
+      };
+
+      it("accepts valid PdfItem with or without error and size", () => {
+        expect(isPdfItem(validItem)).toBe(true);
+        expect(
+          isPdfItem({
+            ...validItem,
+            firstPageSizePt: null,
+            error: { code: "PasswordProtected", detail: null },
+          }),
+        ).toBe(true);
+      });
+
+      it("rejects invalid PdfItem shapes", () => {
+        expect(isPdfItem(null)).toBe(false);
+        expect(isPdfItem({ ...validItem, id: "1" })).toBe(false);
+        expect(isPdfItem({ ...validItem, id: 1.5 })).toBe(false);
+        expect(isPdfItem({ ...validItem, name: 123 })).toBe(false);
+        expect(isPdfItem({ ...validItem, pageCount: "1" })).toBe(false);
+        expect(isPdfItem({ ...validItem, bytes: "1024" })).toBe(false);
+        expect(
+          isPdfItem({ ...validItem, firstPageSizePt: { widthPt: "invalid" } }),
+        ).toBe(false);
+        expect(
+          isPdfItem({
+            ...validItem,
+            error: { code: "InvalidCode", detail: null },
+          }),
+        ).toBe(false);
+      });
+    });
+
+    describe("isUnlockResult", () => {
+      it("accepts valid UnlockResult and rejects malformed values", () => {
+        expect(isUnlockResult({ items: [] })).toBe(true);
+        expect(
+          isUnlockResult({
+            items: [
+              {
+                id: 1,
+                name: "test.pdf",
+                pageCount: 1,
+                firstPageSizePt: null,
+                bytes: 1024,
+                error: null,
+              },
+            ],
+          }),
+        ).toBe(true);
+
+        expect(isUnlockResult(null)).toBe(false);
+        expect(isUnlockResult({})).toBe(false);
+        expect(isUnlockResult({ items: null })).toBe(false);
+        expect(isUnlockResult({ items: "not array" })).toBe(false);
+        expect(isUnlockResult({ items: [{ id: "bad" }] })).toBe(false);
+      });
     });
   });
 

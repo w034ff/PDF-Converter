@@ -66,9 +66,9 @@ const SHAPES_RENDER_DPI: f32 = 150.0;
 const CHECKER_CELL_PX: u32 = 25;
 const CHECKER_CELLS: u32 = 8;
 
-/// Fixture passwords only; they protect nothing.
-pub const ENCRYPTED_USER_PASSWORD: &str = "fixture-user";
-const OWNER_PASSWORD: &str = "fixture-owner";
+#[path = "../tests/support/fixture_passwords.rs"]
+mod fixture_passwords;
+
 /// `/P` with every permission bit of revision 3 set.
 const PERMISSIONS_ALL: i32 = -4;
 /// `/P` with printing, modifying, copying and annotating denied (bits 3–6 and
@@ -267,11 +267,23 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
 
     add(
         "encrypted.pdf",
-        encrypted_pdf("encrypted", ENCRYPTED_USER_PASSWORD, PERMISSIONS_ALL),
+        encrypted_pdf(
+            "encrypted",
+            &password_to_pdf_doc_encoding(fixture_passwords::ENCRYPTED_USER_PASSWORD)?,
+            PERMISSIONS_ALL,
+        )?,
+    );
+    add(
+        "encrypted_cafe.pdf",
+        encrypted_pdf(
+            "encrypted_cafe",
+            &password_to_pdf_doc_encoding(fixture_passwords::ENCRYPTED_CAFE_USER_PASSWORD)?,
+            PERMISSIONS_ALL,
+        )?,
     );
     add(
         "restricted.pdf",
-        encrypted_pdf("restricted", "", PERMISSIONS_RESTRICTED),
+        encrypted_pdf("restricted", b"", PERMISSIONS_RESTRICTED)?,
     );
 
     Ok(out)
@@ -915,17 +927,27 @@ fn in_triangle(t: &Triangle, sx: i64, sy: i64) -> bool {
 // ---------------------------------------------------------------------------
 // Encrypted PDFs
 
+/// Converts a fixture password to PDFDocEncoding bytes for revision 3 standard security handler.
+///
+/// In PDFDocEncoding (ISO 32000-1 Annex D), 'é' (U+00E9) maps to single byte 0xE9.
+fn password_to_pdf_doc_encoding(password: &str) -> Result<Vec<u8>> {
+    password
+        .chars()
+        .map(|c| match c {
+            'é' => Ok(0xE9),
+            ascii if (ascii as u32) < 128 => Ok(ascii as u8),
+            other => Err(format!("unsupported character in fixture password: {other:?}").into()),
+        })
+        .collect()
+}
+
 /// A one-page PDF with a blue rectangle, encrypted with the standard security
 /// handler (revision 3, 128-bit RC4). `label` only seeds the file identifier.
-fn encrypted_pdf(label: &str, user_password: &str, permissions: i32) -> Vec<u8> {
+fn encrypted_pdf(label: &str, user_password: &[u8], permissions: i32) -> Result<Vec<u8>> {
+    let owner_password = password_to_pdf_doc_encoding(fixture_passwords::OWNER_PASSWORD)?;
     let file_id = md5(&[b"pdfconv-fixture:", label.as_bytes()].concat());
-    let owner_entry = owner_entry(OWNER_PASSWORD.as_bytes(), user_password.as_bytes());
-    let key = file_key(
-        user_password.as_bytes(),
-        &owner_entry,
-        permissions,
-        &file_id,
-    );
+    let owner_entry = owner_entry(&owner_password, user_password);
+    let key = file_key(user_password, &owner_entry, permissions, &file_id);
     let user_entry = user_entry(&key, &file_id);
 
     const CONTENT_OBJECT: u32 = 4;
@@ -979,7 +1001,7 @@ fn encrypted_pdf(label: &str, user_password: &str, permissions: i32) -> Vec<u8> 
         )
         .as_bytes(),
     );
-    pdf
+    Ok(pdf)
 }
 
 fn padded(password: &[u8]) -> Vec<u8> {

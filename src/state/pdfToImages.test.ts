@@ -104,6 +104,56 @@ describe("pdfToImagesReducer", () => {
     expect(unchanged).toBe(cleared);
   });
 
+  it("handles REPLACE_PDF_ITEMS: replaces matching items, preserves order, ignores unknown IDs", () => {
+    const originalPdf1: PdfItem = {
+      ...samplePdf1,
+      error: { code: "PasswordProtected", detail: null },
+    };
+    const originalPdf2: PdfItem = {
+      ...samplePdf2,
+      error: { code: "PasswordProtected", detail: null },
+    };
+    const withItems = {
+      ...initialPdfToImagesState,
+      items: [originalPdf1, originalPdf2],
+    };
+
+    const updatedPdf1: PdfItem = {
+      ...samplePdf1,
+      pageCount: 5,
+      error: null,
+    };
+    const unknownPdf: PdfItem = {
+      id: 999,
+      name: "unknown.pdf",
+      pageCount: 1,
+      firstPageSizePt: null,
+      bytes: 100,
+      error: null,
+    };
+
+    const next = pdfToImagesReducer(withItems, {
+      type: "REPLACE_PDF_ITEMS",
+      items: [unknownPdf, updatedPdf1],
+    });
+
+    // Replaces item 1, leaves item 2 unchanged, ignores unknownPdf, preserves order
+    expect(next.items).toEqual([updatedPdf1, originalPdf2]);
+
+    // Returning same state reference when replacement items is empty or no changes
+    const unchanged = pdfToImagesReducer(next, {
+      type: "REPLACE_PDF_ITEMS",
+      items: [],
+    });
+    expect(unchanged).toBe(next);
+
+    const unchanged2 = pdfToImagesReducer(next, {
+      type: "REPLACE_PDF_ITEMS",
+      items: [updatedPdf1],
+    });
+    expect(unchanged2).toBe(next);
+  });
+
   it("handles SET_PAGE_SELECTION", () => {
     const next = pdfToImagesReducer(initialPdfToImagesState, {
       type: "SET_PAGE_SELECTION",

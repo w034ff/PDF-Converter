@@ -16,12 +16,14 @@ import type { OutputDirLabel } from "./generated/OutputDirLabel";
 import type { OutputKind } from "./generated/OutputKind";
 import type { PageOrientationChoice } from "./generated/PageOrientationChoice";
 import type { PageSizeChoice } from "./generated/PageSizeChoice";
+import type { PageSizePt } from "./generated/PageSizePt";
 import type { PdfItem } from "./generated/PdfItem";
 import type { RenderColorChoice } from "./generated/RenderColorChoice";
 import type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
 import type { Settings } from "./generated/Settings";
 import type { SettingsInput } from "./generated/SettingsInput";
+import type { UnlockResult } from "./generated/UnlockResult";
 
 export type { AboutInfo } from "./generated/AboutInfo";
 export type { AddResult } from "./generated/AddResult";
@@ -54,6 +56,7 @@ export type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
 export type { Settings } from "./generated/Settings";
 export type { SettingsInput } from "./generated/SettingsInput";
 export type { Skipped } from "./generated/Skipped";
+export type { UnlockResult } from "./generated/UnlockResult";
 export type { UnlistenFn };
 
 /** Name of the event Rust emits after a drop (design §7.2). */
@@ -161,6 +164,44 @@ export function isPageOrientationChoice(
   return value === "auto" || value === "portrait" || value === "landscape";
 }
 
+export function isPageSizePt(value: unknown): value is PageSizePt {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.widthPt === "number" &&
+    Number.isFinite(value.widthPt) &&
+    typeof value.heightPt === "number" &&
+    Number.isFinite(value.heightPt)
+  );
+}
+
+export function isPdfItem(value: unknown): value is PdfItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const { id, name, pageCount, firstPageSizePt, bytes, error } = value;
+  return (
+    typeof id === "number" &&
+    Number.isInteger(id) &&
+    typeof name === "string" &&
+    typeof pageCount === "number" &&
+    Number.isInteger(pageCount) &&
+    (firstPageSizePt === null || isPageSizePt(firstPageSizePt)) &&
+    typeof bytes === "number" &&
+    Number.isInteger(bytes) &&
+    (error === null || isIpcError(error))
+  );
+}
+
+export function isUnlockResult(value: unknown): value is UnlockResult {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const { items } = value;
+  return Array.isArray(items) && items.every(isPdfItem);
+}
+
 /** Whether a value has the shape of the `get_settings` answer (design §6.7). */
 export function isSettings(value: unknown): value is Settings {
   if (!isRecord(value)) {
@@ -240,6 +281,22 @@ export async function addPdfs(
 /** Removes items from Rust's table; an ID that is not in it is ignored. */
 export async function removeItems(ids: number[]): Promise<void> {
   return invokeWrapped<void>("remove_items", { ids });
+}
+
+/**
+ * Unlocks a password-protected PDF and attempts unlocking other password-protected
+ * PDFs in the table with the same password (design §6.8, §7.1).
+ * Rejects with `InvalidParams` when the answer does not have that shape.
+ */
+export async function unlockPdf(
+  id: number,
+  password: string,
+): Promise<UnlockResult> {
+  const value = await invokeWrapped<unknown>("unlock_pdf", { id, password });
+  if (!isUnlockResult(value)) {
+    throw normalizeIpcError("unlock_pdf returned an unexpected value");
+  }
+  return value;
 }
 
 /**

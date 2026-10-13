@@ -151,6 +151,16 @@ export const en: Translations = {
     },
     remove: "Remove",
     clearAll: "Clear all",
+    enterPassword: "Enter password",
+    passwordDialog: {
+      title: "Enter password",
+      passwordLabel: "Password",
+      showPassword: "Show",
+      hidePassword: "Hide",
+      open: "Open",
+      cancel: "Cancel",
+      incorrectPassword: "Incorrect password",
+    },
     footer: {
       specifyPages: "Enter the pages to convert",
       noMatchingPages: "No pages match the range",

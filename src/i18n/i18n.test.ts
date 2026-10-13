@@ -60,7 +60,7 @@ describe("i18n", () => {
         "PDF を読み込めませんでした。ファイルが壊れている可能性があります",
       );
       expect(formatErrorMessage("PasswordProtected", null, "ja")).toBe(
-        "パスワードで保護されているため開けません",
+        "パスワードで保護されています",
       );
       expect(formatErrorMessage("TooLarge", "80,000,000", "ja")).toBe(
         "画像が大きすぎます（上限 80,000,000 ピクセル）",

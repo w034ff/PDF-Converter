@@ -327,3 +327,56 @@
 .pdf-page-figure figcaption.pdf-status-muted {
   color: var(--color-text-secondary);
 }
+
+.pdf-status-action {
+  margin-top: 6px;
+}
+
+.pdf-single-grid:focus,
+.pdf-table-container:focus {
+  outline: none;
+}
+
+.password-dialog {
+  max-width: 440px;
+  height: auto;
+}
+
+.password-dialog-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.password-dialog-filename {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.password-dialog-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.password-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+.password-dialog-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.password-dialog-input {
+  flex: 1;
+}
+
+.password-dialog-actions {
+  display: flex;
+  gap: 8px;
+}

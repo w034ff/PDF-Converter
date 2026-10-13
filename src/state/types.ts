@@ -67,6 +67,7 @@ export interface PdfToImagesState {
 
 export type PdfToImagesAction =
   | { type: "ADD_PDF_ITEMS"; items: PdfItem[] }
+  | { type: "REPLACE_PDF_ITEMS"; items: PdfItem[] }
   | { type: "REMOVE_PDF_ITEM"; id: number }
   | { type: "CLEAR_PDF_ITEMS" }
   | { type: "SET_PAGE_SELECTION"; selection: PageSelection }

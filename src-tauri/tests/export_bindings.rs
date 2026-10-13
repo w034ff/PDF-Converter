@@ -6,7 +6,7 @@ use std::path::Path;
 use pdf_converter_lib::commands::{AboutInfo, AddSource};
 use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{
-    AddResult, ImageFormatName, ImageItem, ItemsDropped, PageSizePt, PdfItem, Skipped,
+    AddResult, ImageFormatName, ImageItem, ItemsDropped, PageSizePt, PdfItem, Skipped, UnlockResult,
 };
 use pdf_converter_lib::jobs::{
     CheckPageRangeResult, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
@@ -36,6 +36,7 @@ fn export_typescript_bindings() {
     Skipped::export_all(&cfg).expect("exporting Skipped");
     AddResult::<ImageItem>::export_all(&cfg).expect("exporting AddResult");
     ItemsDropped::export_all(&cfg).expect("exporting ItemsDropped");
+    UnlockResult::export_all(&cfg).expect("exporting UnlockResult");
     PageSizeChoice::export_all(&cfg).expect("exporting PageSizeChoice");
     PageOrientationChoice::export_all(&cfg).expect("exporting PageOrientationChoice");
     RenderColorChoice::export_all(&cfg).expect("exporting RenderColorChoice");

@@ -95,6 +95,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         : dropStaleResult(state, { ...state, imagesToPdf }, "imagesToPdf");
     }
     case "ADD_PDF_ITEMS":
+    case "REPLACE_PDF_ITEMS":
     case "REMOVE_PDF_ITEM":
     case "CLEAR_PDF_ITEMS":
     case "SET_PAGE_SELECTION":
