@@ -401,6 +401,14 @@
   padding-right: 64px;
 }
 
+/* WebView2 (Edge) adds its own reveal button to a password field once it
+   has text, which sits under the Show toggle. The toggle already does its
+   job, and works in every engine. */
+.password-dialog-input::-ms-reveal,
+.password-dialog-input::-ms-clear {
+  display: none;
+}
+
 .password-dialog-toggle {
   position: absolute;
   top: 50%;
