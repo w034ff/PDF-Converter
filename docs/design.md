@@ -135,7 +135,12 @@
 ### 4.3 PDF の書き出し（FR-02、FR-03）
 
 - 1 つの画像を 1 ページにする。結合では一覧の順にページを並べる。
-- JPEG は `Image::from_jpeg` で、元のバイト列をそのまま入れる（`DCTDecode`）。CMYK の JPEG もそのまま入れる。
+- JPEG は、メタデータの区切りを外したバイト列を `Image::from_jpeg` で入れる（`DCTDecode`）。画像のデータ（量子化表、ハフマン表、フレーム、スキャン）には触れないので再圧縮はなく、CMYK の JPEG もそのまま入る。krilla はファイル全体を画像のデータとして使うので、外さないと EXIF の位置情報などが PDF に残る（NFR-01）。
+  - 外すもの: APP1（EXIF、XMP）、APP13（IPTC、Photoshop）、COM、ICC 以外の APP2（MPF など）、Adobe 以外の APP14、そのほかの APPn、JFIF 以外の APP0（JFXX）、EOI より後ろのデータ（モーションフォトの動画、MPF の 2 枚目以降の画像など）。JFIF（APP0）は残し、埋め込みの縮小画像は寸法を 0 にして除く。
+  - 残すもの: JFIF の密度、ICC（APP2 の `ICC_PROFILE`）、Adobe（APP14。CMYK と YCCK の色の変換に要る）、メタデータでない区切りすべて。
+  - EXIF は向きも含めて全部外す。向きと解像度は §4.1 の `probe` が元のバイト列から読み、向きはページの変換行列で表すので、画像の中に残す必要がない。外すのは `probe` のあと。
+  - 区切りの処理は、Metadata Cleaner（同じ作者の別のアプリ、MIT）の `crates/core/src/jpeg.rs` の `parse` と `strip` を `crates/core` に写して使う（向きと解像度だけの EXIF を作り直す部分は要らないので、`strip` には残す EXIF を渡さない）。依存にしないのは、git の依存を `deny.toml` の `[sources]` で禁じていることと、Metadata Cleaner の core が PDF Converter に要らない crate（`kamadak-exif`、`serde`、`ts-rs`）を持つため。
+  - 区切りを読めない JPEG（SOI がない、長さが壊れている、EOI に届かないなど）は、`image` で画素が読めても `DecodeFailed` とし、その画像をページに加えない。外せないまま元のバイト列を入れることはしない。
 - PNG は `Image::from_png`、WebP は `Image::from_webp`。どちらも画素を変えずに可逆の圧縮で入れ、透過を保つ。16 ビットの PNG は 16 ビットのまま入れる。
 - BMP は §4.1 の RGBA を `Image::from_rgba8` で入れる。
 - EXIF の向きは、画像のデータを変えずに、ページの中の変換行列で表す。8 通りの行列はスパイクの `write-bench` に実装済みで、そのまま使う。
@@ -483,7 +488,8 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | ファイル | 内容 | 目的 |
 | --- | --- | --- |
 | `logo_alpha.png` / `.webp` | 透過背景の図形 | 透過の保持 |
-| `photo.jpg` | 色の多い RGB の JPEG | JPEG のバイト列の保持 |
+| `photo.jpg` | 色の多い RGB の JPEG | JPEG の画像のデータの保持 |
+| `exif_gps.jpg` | EXIF（位置情報・機種・撮影日時・縮小画像の寸法を持つ JFIF）、XMP、IPTC、COM、EOI より後ろのデータを持つ RGB の JPEG。区切りは `gen_fixtures` が決まったバイト列で書く。ICC は入れない（krilla が色の情報として PDF に使うので、作り物の ICC は描画を乱す。ICC を残すことは区切りの処理の単体テストで確かめる） | メタデータを外すこと（§4.3） |
 | `photo_cmyk.jpg` | CMYK の JPEG（`jpeg-encoder` で作る） | CMYK の JPEG |
 | `rotate0.jpg`、`flip_h.jpg`、`rotate180.jpg`、`flip_v.jpg`、`rotate90_flip_h.jpg`、`rotate90.jpg`、`rotate270_flip_h.jpg`、`rotate270.jpg` | EXIF の向き 1〜8 の JPEG。名前は `image::metadata::Orientation` に合わせる。向きを反映するとすべて同じ絵になる | 向きの反映 |
 | `deep16.png` | 16 ビットの PNG | 16 ビットの保持 |
@@ -507,6 +513,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 - **画像 → PDF の用紙**: 画像が拡大・縮小され、画素の途中の位置に置かれるので、縁がぼけて画素ごとの比較は成り立たない（T04 の前の試行で、photo.jpg の不一致が 9.8%）。代わりに配置と向きを確かめる。
   - 白の画素を含まないフィクスチャ（向きの 8 つ、`dpi300.png`、`dpi300.jpg`、`opaque.bmp`）を A4 で書いて描画し、白以外の画素の範囲を求める。それが §4.2 の配置の矩形の外接矩形（開始は切り捨て、終了は切り上げ）と、各辺 1 画素以内で一致すること。試行では 11 個すべてで満たした。用紙の寸法の換算は単体テストで 7 つすべてを確かめ、描画での配置の試験は A4 のほかに、インチで定める Letter と JIS の B5 でも行う。
   - 向きのフィクスチャは、4 つの色の領域の中心の色が元の画像と同じであること（差が `COLOR_TOLERANCE_RENDER` 以内）。
+- **画像 → PDF の JPEG のデータとメタデータ**: JPEG のフィクスチャ（`photo.jpg`、`photo_cmyk.jpg`、向きの JPEG、`exif_gps.jpg`）を PDF にし、§4.3 で外したあとのバイト列が PDF の中に切れ目なく入っていることを確かめる。メタデータを持つもの（向きの JPEG、`exif_gps.jpg`）は、元のバイト列が入っていないこと。`exif_gps.jpg` の PDF には、`Exif\0\0`、XMP の名前空間、IPTC、COM の文字列、EOI より後ろのデータのどれも残らないこと（圧縮されたストリームも展開して探す）。CMYK の色と向きは、上の比較と配置のテストがそのまま確かめる。
 - 画像 → PDF の品質テストは、pdfium をテストのプロセスに読み込んで描画する。`pdfium-render` は `crates/core` の dev-dependencies で、アプリのメインプロセスには入らない（§9 の検査は dev-dependencies を除く）。
 - **PDF → 画像**: `shapes.pdf` を描画し、`gen_fixtures` が同じ図形から計算した期待の画像と比べる。図形の縁のぼかし方の差を許すため、`COLOR_TOLERANCE_RENDER`（32）、`MAX_MISMATCH_RATIO_RENDER`（0.5%）とする。T02 の実測では最も悪いページで 0.12% だった（pdfium は画像を x 方向に 1 画素ずらして描く、A4 の高さが整数の画素にならない、などの 1 画素の差が図形の縁に出る）。4 倍の余裕を残しつつ、描画の劣化を見逃しにくい値にしている。
 - **PDF → 画像のグレースケールと WebP**: グレースケールは、同じページを同じ dpi のカラーで描いた画像から BT.601 の輝度（`0.299R + 0.587G + 0.114B` を四捨五入）を求め、グレーの画像と全画素で差が `COLOR_TOLERANCE_GRAY`（8）以内であること、画像が 1 チャンネルであること。U09 の前の試作では、`shapes.pdf` と写真を入れた PDF で差の最大が 3 だった（`image` の `to_luma8` は BT.709 の係数で、差が最大 28 になるので基準にしない）。WebP は、同じページを PNG で書いたものと、復号した画素が完全に一致すること（可逆）。
@@ -516,7 +523,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 
 | 対象 | 種類 | 主な内容 |
 | --- | --- | --- |
-| crates/core | 単体 | probe（形式、寸法、向き、dpi、上限）、ページの配置（画像と同じ大きさ、用紙の寸法と縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
+| crates/core | 単体 | JPEG の区切りの処理（§4.3。外すもの・残すもの、EOI より後ろ、区切りを読めない JPEG）、probe（形式、寸法、向き、dpi、上限）、ページの配置（画像と同じ大きさ、用紙の寸法と縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
 | crates/core | 品質 | §11.2 の画像 → PDF |
 | crates/worker | 品質 | §11.2 の PDF → 画像 |
 | crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード（なし・誤り・閲覧・所有者・ASCII 以外の文字）、壊れた PDF、ページ数の上限、描画の上限 |
