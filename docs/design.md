@@ -177,7 +177,7 @@
 
 | 要求 | 内容 | 応答 |
 | --- | --- | --- |
-| `Open { path }` | PDF を開く。前に開いていたものは閉じる | `{ pageCount, pages: [{ widthPt, heightPt }] }` またはエラー |
+| `Open { path, password }` | PDF を開く。`password` は `null` か、利用者が入れたパスワード（§6.8）。前に開いていたものは閉じる | `{ pageCount, pages: [{ widthPt, heightPt }] }` またはエラー |
 | `Render { page, dpi, format, color }` | 開いている PDF の 1 ページを描画して書き出す（`format` は `png` / `jpeg` / `webp`、`color` は `color` / `gray`、§4.4） | 本体に画像のバイト列 |
 | `Thumbnail { page, maxSide }` | 長い辺を `maxSide` px にして描画し、PNG にする | 本体に PNG |
 | `Close` | 開いている PDF を閉じる | `{}` |
@@ -219,7 +219,7 @@
 - 追加、フォルダの選択、「PDF を保存」のダイアログは、コマンドを呼んだウィンドウを親にして開く（`commands.rs` の `set_parent`）。親がないと、アプリのウィンドウを押したときにダイアログがその裏に隠れたまま開いていて、もう一度押すと重ねて開けるため。
 - D&D は Rust の `WindowEvent::DragDrop` で受ける。落とされたものを拡張子で分け、画像は「画像 → PDF」の一覧に、PDF は「PDF → 画像」の一覧に入れる。フォルダは中を見て同じように分ける。フロントエンドは、追加があった一覧のタブに切り替える（両方に入ったときは、表示中のタブのまま）。
 - 同じファイル（正規化したパスが同じ）がすでに一覧にあれば、追加しない。
-- 追加のときに、画像は §4.1 の `probe`、PDF はワーカーの `Open` を行う。失敗したファイルも一覧に入れ、行にエラーの理由を表示する。エラーの行は変換の対象にしない。パスワード付きの PDF も、ここで分かる。
+- 追加のときに、画像は §4.1 の `probe`、PDF はワーカーの `Open` を行う。失敗したファイルも一覧に入れ、行にエラーの理由を表示する。エラーの行は変換の対象にしない。パスワード付きの PDF も、ここで分かる（開き方は §6.8）。
 - 画像の一覧のサムネイルは、Rust が画像を縮小して PNG で返す。PDF のサムネイルはワーカーの `Thumbnail` で作る。どちらも長い辺 `THUMBNAIL_SIDE`（160 px）。サムネイルは表示されたときに 1 つずつ要求する（多数の追加で待たされないようにするため）。
 - 並べ替え（画像の一覧のみ。結合の順になる）: ドラッグ、各行の ↑↓ ボタン、行にフォーカスがあるときの Alt + ↑ / ↓。順序はフロントエンドが持ち、変換を始めるときに ID の並びとして渡す。
 - 変換中は一覧を変えられない（追加・削除・並べ替えのボタンを無効にし、D&D は `ConversionRunning` で拒む）。
@@ -292,7 +292,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | UnsupportedFormat | 非対応の形式 | 対応していない形式です / Unsupported file format |
 | DecodeFailed | 画像を読めない（壊れたファイル） | 画像を読み込めませんでした。ファイルが壊れている可能性があります / Couldn't read the image. The file may be damaged. |
 | PdfOpenFailed | PDF を開けない（壊れたファイル） | PDF を読み込めませんでした。ファイルが壊れている可能性があります / Couldn't read the PDF. The file may be damaged. |
-| PasswordProtected | パスワード付きの PDF | パスワードで保護されているため開けません / This PDF is password-protected |
+| PasswordProtected | パスワード付きの PDF。`unlock_pdf` ではパスワードの誤り | パスワードで保護されています / This PDF is password-protected（`unlock_pdf` の誤りはダイアログで別の文言を出す。§10.1） |
 | TooLarge | 画像のピクセル数が上限超過 | 画像が大きすぎます（上限 {detail} ピクセル） / Image is too large (limit: {detail} pixels) |
 | TooManyPages | PDF のページ数が上限超過 | ページ数が多すぎます（上限 {detail} ページ） / Too many pages (limit: {detail}) |
 | RenderTooLarge | 描画の大きさが上限超過 | この解像度では大きすぎて画像にできません。解像度を下げてください / Too large at this resolution. Choose a lower resolution. |
@@ -324,6 +324,17 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - 起動時、保存されたフォルダが存在すればそれを §6.5 の状態に入れ、存在しなければ未選択に戻す。
 - 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`orientation` も `pageSize` とは別に確かめる。`orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい。`colorMode` も同じく、ない設定ファイルは「カラー」になる。逆に、新しい版が書いた `a3` などの用紙、`webp`、`gray`、選択肢にない `dpi` を `v0.1.0` が読むと、その項目だけが既定値に戻り、ほかの項目は残る）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
 
+### 6.8 パスワード付きの PDF（FR-04）
+
+- 追加のときに `PasswordProtected` になった PDF は、パスワードを入れると開ける（§10.1 のダイアログ）。閲覧のパスワードと所有者のパスワードのどちらでもよい（pdfium がどちらも受け付ける）。
+- 入れたパスワードは、メインプロセスの一覧の表（`items.rs` の `Entry`）に項目ごとに持ち、その項目の `Open`（サムネイル、変換）のたびにワーカーに渡す。ワーカーは要求ごとに PDF を開き直し、どのワーカーが担当するかも決まっていないため。
+- パスワードは設定にもログにも書かず、項目を外すか、アプリを終えると捨てる。`Debug` の表示にも出さない（パスワードを持つ型は `Debug` を手で書いて値を伏せる）。メモリの消去（`zeroize` など）は行わない。画面の入力欄と IPC の文字列も同じ値を持ち、メインプロセスだけ消しても守れる範囲が変わらないため。
+- パスワードは入力のまま UTF-8 で pdfium に渡す。前後の空白を除かず、全角と半角も変えない（どれもパスワードの一部でありうるため）。pdfium は、古い方式（revision 2〜4）では UTF-8 を PDFDocEncoding に直して照合し、revision 6（AES-256）では UTF-8 のまま照合する。U11 の前の試作で、RC4・AES-128・AES-256 の「café」と、AES-256 の日本語のパスワードが、閲覧・所有者のどちらでも開けた。revision 2〜4 の PDF は、PDFDocEncoding にない文字（日本語など）をパスワードに使えない。
+- NUL（U+0000）を含むパスワードは、ワーカーに渡さずに誤り（`PasswordProtected`）として扱う。`pdfium-render` が C の文字列にできずに panic し、ワーカーが落ちるため（試作で確かめた）。
+- `unlock_pdf`（§7.1）は、まず対象の PDF をそのパスワードで `Open` する。結果が `PasswordProtected` なら誤りとしてそのまま返し、表は変えない。`WorkerCrashed`・`WorkerTimeout` も、パスワードが合っているか分からないので、表を変えずにそのエラーを返す。それ以外（成功、または `TooManyPages`・`PdfOpenFailed` などの別のエラー）は、パスワードを受け入れたとみなし、項目のページ数・最初のページの大きさ・エラーをその結果で置き換え、パスワードを持たせる。
+- 対象を受け入れたら、一覧のほかの `PasswordProtected` の項目（パスワードをまだ持たないもの）にも、同じパスワードで `Open` を試し、同じ規則で受け入れたものだけを置き換える。同じところから来た PDF（同じ銀行の明細など）は、同じパスワードのことが多いため。試すのは追加（`add_pdfs`）と同じく 1 つずつ順に行う。合わなかった項目と、試す途中でワーカーが落ちた・時間切れになった項目は何も変えず、対象の結果は返す。
+- 戻り値は置き換えた項目で、対象が先頭、ほかは ID の順。フロントエンドは ID で一覧の項目を置き換え、並びは変えない。一覧が変わったので、変換の結果は消える（§10.1）。
+
 ## 7. IPC
 
 ### 7.1 コマンド
@@ -340,12 +351,13 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `start_images_to_pdfs` | `ids, pageSize, orientation` | –（§6.2 の「1 枚ずつ」）。`orientation` は `pageSize` が用紙のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ） |
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][] }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, colorMode, dpi` | –（`dpi` が §4.4 の範囲の外なら `InvalidParams`） |
+| `unlock_pdf` | `id, password` | `{ items: PdfItem[] }`（§6.8）。パスワードの誤りは `PasswordProtected`。対象が `PasswordProtected` の PDF でない、またはパスワードが空なら `InvalidParams` |
 | `cancel_job` | – | – |
 | `get_about` | – | `{ version, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか。pdfium の版は返さず、「このアプリについて」の第三者ライセンスの一覧に出る） |
 
 - `ImageItem`: `{ id, name, width, height, format, bytes, error }`。`width` と `height` は EXIF の向きを反映した表示上の寸法（サムネイルと同じ向き）。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。失敗した項目では、`width`・`height`・`pageCount` は 0、`format`・`firstPageSizePt` は `null`。
 - どのコマンドもパスを引数に取らない。`dirLabel` は表示用で、送り返されない。
-- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items` は `ConversionRunning` で拒む。
+- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items`、`unlock_pdf` は `ConversionRunning` で拒む。
 
 ### 7.2 イベント（Rust → フロントエンド）
 
@@ -390,7 +402,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - **依存の入手経路**: 悪意のある版が公開されても、多くは数日のうちに見つかって取り下げられる。そこで、公開から 7 日たっていない版は入れない（Dependabot の `cooldown`、npm の `min-release-age`。Dependabot のセキュリティ更新は待たない）。Tauri の crate と `@tauri-apps/*` の PR が同時に出るよう、cargo と npm の日数はそろえる。npm の依存のインストール時スクリプトは実行しない（`ignore-scripts`）。Rust の `build.rs` と proc-macro はビルドのたびに実行され、止められないため、入口を絞って補う。crate は crates.io からだけ取る（`cargo-deny` の `sources`）。CI とインストーラーのビルドは `Cargo.lock` と `package-lock.json` のとおりに入れる（`--locked`、`npm ci`）。pdfium は §8.1 のとおり SHA-256 で照合する。
 - **リリースの書き込みの権限**: `release.yml` で Release を書ける権限を持つのは、下書きを作る最後のジョブだけにする。検査とビルドのジョブは外部の action と依存のビルドのコード（`build.rs`、npm のパッケージ）を実行するので、読み取りの権限だけで動かし、`actions/checkout` にもトークンを残させない（`persist-credentials: false`）。最後のジョブは GitHub CLI だけを実行し、ビルドの成果物を受け取って下書きに添付する。下書きは、検査と両 OS のビルドがすべて通ってから作る。タグは main にあるコミットに限る（main は両 OS の CI を通った PR からしか変わらないため）。
 - PDF はワーカーでだけ開く（§1、§5）。メインプロセスに pdfium を読み込まない。`crates/worker` 以外の crate が `pdfium-render` に依存していないことを、`cargo-deny` の `bans`（`wrappers` の指定）で確かめる。
-- ワーカーには、開く PDF のパスと pdfium の場所だけを渡す。ワーカーはファイルを書かない。
+- ワーカーには、開く PDF のパス、利用者が入れたパスワード（§6.8）、pdfium の場所だけを渡す。ワーカーはファイルを書かない。
 - サムネイルと描画した画像は、`blob:` URL にして `<img>` で表示する。
 - WebView2 の起動オプションの `--host-resolver-rules` は、SVG Tracer の `MAP * ~NOTFOUND` に `EXCLUDE localhost` を加える。`tauri dev` の画面は Vite（`devUrl` の `http://localhost:5173`）から読むので、`localhost` の名前解決まで失敗させると Windows で開発用の画面が開かない（`ERR_NAME_NOT_RESOLVED`）。製品版で `localhost` の名前解決が通っても、CSP が許す接続先は画面自身（`'self'`）と IPC だけなので、画面から `localhost` には接続できない。PAC や外部のサーバーへの名前解決は、これまでどおりすべて失敗する。
 
@@ -407,6 +419,8 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - 解像度の欄は、選択肢「72 dpi / 150 dpi / 300 dpi / 数値で指定…」（英語は `Custom…`。末尾の「…」は、選ぶと続けて入力が要ることを示す）。「数値で指定…」を選ぶと、すぐ下に数値の欄を出し、今の解像度を入れておく。欄は最大 4 桁の数と単位が収まる短い幅にし（上のドロップダウンに従う欄であることと、入れる値の長さを示すため）、左端はほかの部品にそろえ、単位の「dpi」は欄の枠の中の右に置く。欄は半角と全角の数字を受け付け、前後の空白（全角を含む）は無視する。§4.4 の範囲の整数でない（空、小数、範囲の外、数字以外の文字）ときは、「変換を開始」をすぐ無効にし、「{min}〜{max} の整数を入れてください」/ `Enter a whole number from {min} to {max}` を、範囲の誤り（§6.3）と同じ規則（入力が 0.6 秒止まるか欄から離れたとき）で欄の下に赤で出す。誤りの間は、下部バーの説明と「A4 の 1 ページ → … px」の行を出さず、状態と設定の `dpi` は最後の正しい値のままにする。選択肢に戻すとその値になり、欄と誤りは消える。「数値で指定…」を選んでいるかは画面だけが持ち、保存しない。起動時は、保存された `dpi` が選択肢にあればその選択肢を、なければ「数値で指定…」とその値を出す。範囲の上限と下限は Rust の `RENDER_DPI_MIN`・`RENDER_DPI_MAX` を写した定数にする（範囲の解釈（§4.5）と違い、整数を読むだけなので画面で確かめる。Rust も同じ範囲で拒む）。
 - 切り替えのボタン（`.seg`）は、ボタンの間に区切り線を引き、押せるボタンはポインターを乗せると背景を変える。選択肢が 3 つ以上あると、選んでいない 2 つが隣り合い、線がなければ 1 つのボタンに見えるため。
 - 右の一覧: 空のときはドロップ領域。画像は行の一覧（番号、サムネイル、名前、寸法、↑↓、外す）。PDF は 1 つならページのサムネイルの格子、複数なら表。
+- パスワード付きの PDF（エラーが `PasswordProtected` の項目）には、理由の文のあとに「パスワードを入力」/ `Enter password` のボタンを出す（PDF の表では理由の補足の下、1 つだけのときは `ErrorDisplay` の中）。変換中は押せない。押すとアプリ内のダイアログを開く。追加したときに自動では開かない（フォルダから多数の PDF を追加すると、ダイアログが続くため）。
+- パスワードのダイアログ: 見出し「パスワードを入力」/ `Enter password`、ファイル名、ラベル「パスワード」/ `Password` の入力欄（`type="password"`、開いたときにフォーカス）、その右に「表示」/ `Show` と「隠す」/ `Hide` を切り替えるボタン（`aria-pressed`）、「開く」/ `Open` と「キャンセル」/ `Cancel`。Enter で「開く」、Esc で取り消す。入力が空の間と問い合わせの間は「開く」を押せない。パスワードが違うときはダイアログを閉じず、入力欄の下に `.error-text` で「パスワードが違います」/ `Incorrect password` を出し、入力欄の文字を選択した状態でフォーカスを戻す（入れ直しやすくするため）。入力を変えたら誤りを消す。ほかのエラー（`WorkerCrashed` など）は同じ場所に §6.6 の文言で出す。開けたら閉じる。ボタンがなくなるので、フォーカスは PDF → 画像の一覧の領域に移す（`body` に落とさない）。入れたパスワードは、閉じたら画面の状態から捨てる（次に開いたときは空）。ほかの PDF もあわせて開いたことは、別に知らせない（行の表示が変わるため）。
 - 下部バー: 状態の説明と、実行のボタン（「PDF を保存」または「変換を開始」）。変換中は進捗バーと「キャンセル」。
 - 下部バーの左には、変換していない間、その画面で実行のボタンを押すと何が起きるかを 1 行で出す（「3 ページの PDF になります」「24 ページを PNG で保存します」など。数えるのはエラーのない項目だけ）。一覧が空なら「画像（PDF）が選ばれていません」、一覧はあるがすべて読み込めない項目なら赤で「変換できる画像（PDF）がありません。読み込めない画像（PDF）を外してください」と出す（実行のボタンは押せず、「選ばれていません」では一覧に見えている行と食い違うため）。「範囲を指定」のページ数は `check_page_range` の `totalPages` を使い、画面で範囲を数えない（§4.5）。保存するファイル名の例は出さない（名前の規則は §6.4 の `naming.rs` だけに置くため）。変換中・変換のあと・エラーのときは、その表示が優先される。変換のあとは結果を色と記号で示す（すべて成功なら緑の「✓ すべて完了しました」、失敗が 1 件でもあれば赤の「✕ 失敗があります」、キャンセルや対象のページなしだけなら記号なし）。変換を始められなかったときなど、結果より後に起きたエラーは結果より優先する。
 - 一覧の上（見出しより上）には、その画面の最後の変換の結果を `JobSummaryBanner` で出す（件数の 1 行）。両方の画面で同じ部品・同じ位置にする。0 件の分類は出さない（「成功 0 件」も出さない）。数え方は 4 つある（`formatJobSummary`）。先頭の「変換が終わりました：」「キャンセルしました：」は共通。
@@ -430,6 +444,8 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 - 下部バーは `JobFooter`。変換中は進捗とキャンセル、終わったら結果（§10.1）を出す。結果の帯は `JobSummaryBanner` で、成否の分け方（`jobOutcome`）は下部バーと共有する。古い結果を消すのは `appReducer` で、画面の状態が実際に変わった操作のときだけ行う。各画面は自分のボタン（`ImagesToPdfAction`・`PdfToImagesAction`）だけを持つ。
 
 一覧まわりで両方の画面が使うものも、共通にする。
+
+- アプリ内のダイアログ（「このアプリについて」、パスワード）は、背景、フォーカスの閉じ込め、Esc で閉じること、閉じたときのフォーカスの戻し先を 1 つの部品にまとめる。
 
 - D&D（`items-dropped`）は `useItemsDropped` が `App` で 1 回だけ受け、両方の一覧に加えてタブを切り替える（§6.1）。拒まれたとき（`ConversionRunning`）は、`App` が一覧の上にエラーを出す。
 - サムネイルは `useThumbnail(id, page?)`。要素が画面に入ってから要求し（§6.1）、`blob:` URL にして表示し（§9）、項目が変わるか消えたら解放する。
@@ -468,7 +484,8 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | `opaque.bmp` / `alpha32.bmp` | 24 ビットと 32 ビットの BMP | BMP の読み込み |
 | `dpi300.png` / `dpi300.jpg` | 解像度 300 dpi の情報付き | 「画像と同じ大きさ」のページの大きさ |
 | `shapes.pdf` | 図形と画像だけの 3 ページの PDF（krilla で作る。A4 縦、A4 横、Letter） | 描画の正しさ、ページの大きさ |
-| `encrypted.pdf` | 閲覧のパスワード付きの PDF | `PasswordProtected` |
+| `encrypted.pdf` | 閲覧のパスワード付きの PDF | `PasswordProtected`、閲覧・所有者のパスワードで開けること |
+| `encrypted_cafe.pdf` | 閲覧のパスワード `café`（PDFDocEncoding で `é` は 0xE9）の PDF | UTF-8 で渡したパスワードが照合されること（§6.8） |
 | `restricted.pdf` | 閲覧のパスワードなし、制限だけを掛けた暗号化の PDF | 開けること |
 | `corrupt.pdf` / `corrupt.png` | 途中で切れたファイル | `PdfOpenFailed` / `DecodeFailed` |
 | `mixed_sizes.pdf` | 3 ページの PDF。1 ページ目と 3 ページ目は A4、2 ページ目は 3000×3000 pt（300 dpi で描くと `MAX_RENDER_PIXELS` を超える） | 途中のページだけ失敗する PDF → 画像（`partial`） |
@@ -496,9 +513,9 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | crates/core | 単体 | probe（形式、寸法、向き、dpi、上限）、ページの配置（画像と同じ大きさ、用紙の寸法と縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
 | crates/core | 品質 | §11.2 の画像 → PDF |
 | crates/worker | 品質 | §11.2 の PDF → 画像 |
-| crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード、壊れた PDF、ページ数の上限、描画の上限 |
+| crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード（なし・誤り・閲覧・所有者・ASCII 以外の文字）、壊れた PDF、ページ数の上限、描画の上限 |
 | crates/worker | 結合 | 単独のワーカー（`pdfconv-worker`）を起動し、テスト用の要求（`test-hooks` 機能の `CrashForTest`、`HangForTest`、`AllocateForTest`）で、異常終了、時間切れ、メモリの上限のあとにメインプロセスの側が続けて動くこと、新しいワーカーが起動することを確かめる（T01） |
-| src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。設定の読み書き |
+| src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。設定の読み書き。パスワードの解除（誤り、ほかの項目への適用、パスワードを使ったサムネイルと変換） |
 | フロントエンド | 単体 | 一覧の追加・並べ替え・削除、範囲の入力と開始ボタンの有効・無効、変換中の無効化、エラーコードから文言、状態の色と記号 |
 | 全体 | 手動 | 受け入れ基準（両 OS でインストーラーから）。文字を含む実際の PDF の描画、ブラウザーでの PDF の表示。`docs/manual-test.md` |
 
