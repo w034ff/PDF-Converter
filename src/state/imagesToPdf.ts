@@ -31,6 +31,7 @@ export const initialImagesToPdfState: ImagesToPdfState = {
   output: "merge",
   pageSize: "fit",
   orientation: "auto",
+  pdfA: false,
   outputDir: null,
 };
 
@@ -92,6 +93,15 @@ export function imagesToPdfReducer(
       return {
         ...state,
         orientation: action.orientation,
+      };
+    }
+    case "SET_IMAGES_PDF_A": {
+      if (state.pdfA === action.pdfA) {
+        return state;
+      }
+      return {
+        ...state,
+        pdfA: action.pdfA,
       };
     }
     case "SET_IMAGES_OUTPUT_DIR": {

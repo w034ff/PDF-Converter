@@ -35,6 +35,7 @@ export interface ImagesToPdfState {
   output: OutputMode;
   pageSize: PageSizeChoice;
   orientation: PageOrientationChoice;
+  pdfA: boolean;
   outputDir: OutputDirLabel | null;
 }
 
@@ -45,6 +46,7 @@ export type ImagesToPdfAction =
   | { type: "SET_IMAGES_OUTPUT_MODE"; output: OutputMode }
   | { type: "SET_IMAGES_PAGE_SIZE"; pageSize: PageSizeChoice }
   | { type: "SET_IMAGES_ORIENTATION"; orientation: PageOrientationChoice }
+  | { type: "SET_IMAGES_PDF_A"; pdfA: boolean }
   | { type: "SET_IMAGES_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
   | { type: "MOVE_IMAGE_ITEM"; fromIndex: number; toIndex: number };
 

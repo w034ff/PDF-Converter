@@ -89,6 +89,7 @@ const ERROR_CODES = {
   InvalidParams: true,
   OutputDirMissing: true,
   OutputDirNotWritable: true,
+  CmykNotAllowedInPdfA: true,
 } satisfies Record<ErrorCode, true>;
 
 /** Whether a value is one of the error codes of design §6.6. */
@@ -214,6 +215,7 @@ export function isSettings(value: unknown): value is Settings {
     (imagesToPdf.output === "merge" || imagesToPdf.output === "each") &&
     isPageSizeChoice(imagesToPdf.pageSize) &&
     isPageOrientationChoice(imagesToPdf.orientation) &&
+    typeof imagesToPdf.pdfA === "boolean" &&
     isOutputDirLabel(imagesToPdf.outputDir) &&
     isRecord(pdfToImages) &&
     (pdfToImages.format === "png" ||
@@ -349,11 +351,13 @@ export async function saveMergedPdf(
   ids: number[],
   pageSize: PageSizeChoice,
   orientation: PageOrientationChoice,
+  pdfA: boolean,
 ): Promise<SaveMergedPdfResult | null> {
   return invokeWrapped<SaveMergedPdfResult | null>("save_merged_pdf", {
     ids,
     pageSize,
     orientation,
+    pdfA,
   });
 }
 
@@ -362,11 +366,13 @@ export async function startImagesToPdfs(
   ids: number[],
   pageSize: PageSizeChoice,
   orientation: PageOrientationChoice,
+  pdfA: boolean,
 ): Promise<void> {
   return invokeWrapped<void>("start_images_to_pdfs", {
     ids,
     pageSize,
     orientation,
+    pdfA,
   });
 }
 

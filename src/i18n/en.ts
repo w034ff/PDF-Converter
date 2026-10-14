@@ -188,6 +188,8 @@ export const en: Translations = {
     orientationLandscape: "Landscape",
     orientationAutoHint: "Landscape for wide images, portrait for the rest",
     orientationUnavailableHint: "Available when a paper size is chosen",
+    pdfALabel: "Archival (PDF/A)",
+    pdfAHint: "CMYK images can't be used",
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
     imageCount: "{count} image(s)",

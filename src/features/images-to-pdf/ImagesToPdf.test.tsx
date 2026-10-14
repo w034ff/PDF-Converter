@@ -462,7 +462,12 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [2, 1], pageSize: "fit", orientation: "auto" },
+        args: {
+          ids: [2, 1],
+          pageSize: "fit",
+          orientation: "auto",
+          pdfA: false,
+        },
       });
     });
   });
@@ -513,7 +518,12 @@ describe("ImagesToPdf (T11)", () => {
       // Targets only contain valid items 1 and 2, corrupt item 3 is excluded
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [1, 2], pageSize: "fit", orientation: "auto" },
+        args: {
+          ids: [1, 2],
+          pageSize: "fit",
+          orientation: "auto",
+          pdfA: false,
+        },
       });
     });
   });
@@ -575,7 +585,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit", orientation: "auto" },
+        args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: false },
       });
     });
   });
@@ -737,7 +747,7 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit", orientation: "auto" },
+        args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: false },
       });
     });
 
@@ -1966,7 +1976,12 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "save_merged_pdf",
-        args: { ids: [1], pageSize: "jisB5", orientation: "portrait" },
+        args: {
+          ids: [1],
+          pageSize: "jisB5",
+          orientation: "portrait",
+          pdfA: false,
+        },
       });
     });
   });
@@ -2017,7 +2032,12 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "letter", orientation: "landscape" },
+        args: {
+          ids: [1],
+          pageSize: "letter",
+          orientation: "landscape",
+          pdfA: false,
+        },
       });
     });
   });
@@ -2057,5 +2077,149 @@ describe("ImagesToPdf (T11)", () => {
     expect(
       screen.getByText("Landscape for wide images, portrait for the rest"),
     ).toBeInTheDocument();
+  });
+
+  describe("the PDF/A checkbox", () => {
+    const addPhoto = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "画像を追加" }));
+      await waitFor(() => {
+        expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+      });
+    };
+
+    function mockOneImage(running?: { resolve: () => void }) {
+      return mockAppIpc((cmd) => {
+        if (cmd === "add_images") {
+          return {
+            added: [sampleImage1],
+            skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+          };
+        }
+        if (cmd === "pick_output_dir") {
+          return { dirLabel: "out" };
+        }
+        if (cmd === "start_images_to_pdfs" && running) {
+          return new Promise<void>((resolve) => {
+            running.resolve = resolve;
+          });
+        }
+        if (cmd === "save_merged_pdf") {
+          return { savedName: "merged.pdf" };
+        }
+        if (cmd === "get_thumbnail") {
+          return [137, 80, 78, 71];
+        }
+        return undefined;
+      });
+    }
+
+    it("starts unchecked with no note, and shows the note only while checked", () => {
+      mockAppIpc(() => undefined);
+      renderHarness();
+
+      const box = screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" });
+      expect(box).not.toBeChecked();
+      expect(
+        screen.queryByText("CMYK の画像は使えません"),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(box);
+      expect(box).toBeChecked();
+      expect(screen.getByText("CMYK の画像は使えません")).toBeInTheDocument();
+      expect(screen.getByText("CMYK の画像は使えません")).toHaveClass("hint");
+
+      fireEvent.click(box);
+      expect(box).not.toBeChecked();
+      expect(
+        screen.queryByText("CMYK の画像は使えません"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("sits under the orientation and above the output folder", async () => {
+      mockOneImage();
+      renderHarness();
+      fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+
+      const orientation = screen.getByRole("group", { name: "向き" });
+      const box = screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" });
+      const folder = screen.getByRole("button", { name: "フォルダを選ぶ" });
+      expect(
+        orientation.compareDocumentPosition(box) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        box.compareDocumentPosition(folder) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("says it in English", () => {
+      mockAppIpc(() => undefined);
+      renderHarness("en-US");
+
+      const box = screen.getByRole("checkbox", { name: "Archival (PDF/A)" });
+      fireEvent.click(box);
+      expect(screen.getByText("CMYK images can't be used")).toBeInTheDocument();
+    });
+
+    it("sends the choice to save_merged_pdf", async () => {
+      const calls = mockOneImage();
+      renderHarness();
+      await addPhoto();
+
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
+      await waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "save_merged_pdf",
+          args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: true },
+        });
+      });
+    });
+
+    it("sends the choice to start_images_to_pdfs", async () => {
+      const calls = mockOneImage();
+      renderHarness();
+      await addPhoto();
+
+      fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+      fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+      await waitFor(() => {
+        expect(screen.getByText("out")).toBeInTheDocument();
+      });
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+      await waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "start_images_to_pdfs",
+          args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: true },
+        });
+      });
+    });
+
+    it("cannot be changed during a conversion", async () => {
+      const running = { resolve: () => {} };
+      mockOneImage(running);
+      renderHarness();
+      await addPhoto();
+
+      fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
+      fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
+      await waitFor(() => {
+        expect(screen.getByText("out")).toBeInTheDocument();
+      });
+      const box = screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" });
+      expect(box).toBeEnabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
+      expect(box).toBeDisabled();
+
+      await act(async () => {
+        running.resolve();
+      });
+    });
   });
 });

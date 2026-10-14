@@ -12,6 +12,22 @@
   gap: 8px;
 }
 
+/* The label is the click target, so the whole line toggles the box. */
+.images-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.images-settings-checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
 .images-view {
   display: flex;
   flex-direction: column;

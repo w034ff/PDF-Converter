@@ -36,6 +36,7 @@ export function createInitialAppState(
       output: settings.imagesToPdf.output,
       pageSize: settings.imagesToPdf.pageSize,
       orientation: settings.imagesToPdf.orientation,
+      pdfA: settings.imagesToPdf.pdfA,
       outputDir: settings.imagesToPdf.outputDir,
     },
     pdfToImages: {
@@ -87,6 +88,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_IMAGES_OUTPUT_MODE":
     case "SET_IMAGES_PAGE_SIZE":
     case "SET_IMAGES_ORIENTATION":
+    case "SET_IMAGES_PDF_A":
     case "SET_IMAGES_OUTPUT_DIR":
     case "MOVE_IMAGE_ITEM": {
       const imagesToPdf = imagesToPdfReducer(state.imagesToPdf, action);
