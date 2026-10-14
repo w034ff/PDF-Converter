@@ -39,7 +39,8 @@ pub enum PdfConformance {
     PdfA2b,
 }
 
-/// A UTC time as a krilla date. The zero offset keeps the time out of the viewer's time zone.
+/// A UTC time as a krilla date. A zero offset keeps the writer's local time offset, and with it
+/// a hint of where they live, out of the PDF.
 fn utc_date_time(time: UtcTime) -> DateTime {
     DateTime::new(time.year)
         .month(time.month)
