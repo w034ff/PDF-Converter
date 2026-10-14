@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use pdfconv_core::naming::{
     PdfToImageInput, resolve_image_to_pdf_names, resolve_pdf_to_image_names, split_stem_and_ext,
 };
-use pdfconv_core::{PageSet, PdfWriter, parse_page_range};
+use pdfconv_core::{PageSet, PdfConformance, PdfWriter, parse_page_range};
 use pdfconv_worker::is_render_dpi_in_range;
 use pdfconv_worker::protocol::{RenderFormat, Request, Response};
 use serde::{Deserialize, Serialize};
@@ -43,6 +43,15 @@ pub enum PageSizeChoice {
     JisB5,
     Letter,
     Legal,
+}
+
+/// The PDF standard `pdfA` of the commands and settings selects (design §6.2, §7.1).
+pub fn pdf_conformance(pdf_a: bool) -> PdfConformance {
+    if pdf_a {
+        PdfConformance::PdfA2b
+    } else {
+        PdfConformance::Standard
+    }
 }
 
 impl PageSizeChoice {
@@ -437,6 +446,7 @@ pub fn run_save_merged_pdf<FProg, FItem, FFin>(
     ids: &[u64],
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
+    conformance: PdfConformance,
     dest_path: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<SaveMergedPdfResult, IpcError>
@@ -472,7 +482,7 @@ where
     });
 
     let creator = format!("PDF Converter {}", env!("CARGO_PKG_VERSION"));
-    let mut writer = PdfWriter::new(&creator);
+    let mut writer = PdfWriter::new(&creator, conformance);
 
     let mut temp = create_output_temp(output_dir)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
@@ -618,6 +628,7 @@ pub fn run_images_to_pdfs<FProg, FItem, FFin>(
     ids: &[u64],
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
+    conformance: PdfConformance,
     output_dir: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<(), IpcError>
@@ -787,7 +798,7 @@ where
                 let pdf_bytes = (|| -> Result<Vec<u8>, IpcError> {
                     let bytes = std::fs::read(&task.path)
                         .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))?;
-                    let mut writer = PdfWriter::new(&creator);
+                    let mut writer = PdfWriter::new(&creator, conformance);
                     writer
                         .add_page(&bytes, page_size.to_core(orientation))
                         .map_err(IpcError::from)?;
@@ -1252,6 +1263,7 @@ pub fn start_images_to_pdfs_internal<FProg, FItem, FFin>(
     ids: &[u64],
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
+    conformance: PdfConformance,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<(), IpcError>
 where
@@ -1326,6 +1338,7 @@ where
                 &ids_owned,
                 page_size,
                 orientation,
+                conformance,
                 &output_dir,
                 wrapped_callbacks,
             )

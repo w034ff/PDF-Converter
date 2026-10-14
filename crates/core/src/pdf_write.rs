@@ -2,14 +2,17 @@
 
 use image::metadata::Orientation;
 use krilla::Document;
+use krilla::SerializeSettings;
+use krilla::configure::{Archival, ConfigurationBuilder};
 use krilla::geom::{Size, Transform};
 use krilla::image::Image;
-use krilla::metadata::Metadata;
+use krilla::metadata::{DateTime, Metadata};
 use krilla::page::PageSettings;
 
 use crate::error::{PdfWriteError, ProbeError};
 use crate::layout::{PageSize, calculate_layout, orientation_swaps_dimensions};
 use crate::probe::{ImageFormat, probe_reader};
+use crate::utc_time::{UtcTime, now_utc};
 
 /// Reads and verifies pixel data using `image` without decoding limits (design §4.3).
 ///
@@ -27,21 +30,61 @@ fn decode_without_limits(image_bytes: &[u8]) -> image::ImageResult<image::Dynami
     reader.decode()
 }
 
+/// The standard a [`PdfWriter`] document is written to (design §4.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PdfConformance {
+    /// An ordinary PDF.
+    Standard,
+    /// PDF/A-2b, validated by krilla when the document is finished.
+    PdfA2b,
+}
+
+/// A UTC time as a krilla date. The zero offset keeps the time out of the viewer's time zone.
+fn utc_date_time(time: UtcTime) -> DateTime {
+    DateTime::new(time.year)
+        .month(time.month)
+        .day(time.day)
+        .hour(time.hour)
+        .minute(time.minute)
+        .second(time.second)
+        .utc_offset_hour(0)
+        .utc_offset_minute(0)
+}
+
 /// Writes image pages into a PDF document using `krilla` (design §4.3).
 pub struct PdfWriter {
     doc: Document,
+    conformance: PdfConformance,
 }
 
 impl PdfWriter {
     /// Creates a new PDF document writer with the specified creator string.
     ///
     /// The document metadata will only include `/Creator`, leaving title, author,
-    /// subject, and keywords unset (design §4.3).
+    /// subject, and keywords unset (design §4.3). A PDF/A-2b document also gets the current
+    /// time in UTC as its creation date, which krilla requires for PDF/A.
+    ///
+    /// With [`PdfConformance::PdfA2b`], [`PdfWriter::finish`] fails if the document does
+    /// not meet PDF/A-2b, and [`PdfWriter::add_page`] refuses CMYK JPEG images.
     #[must_use]
-    pub fn new(creator: &str) -> Self {
-        let mut doc = Document::new();
-        doc.set_metadata(Metadata::new().creator(creator.to_string()));
-        Self { doc }
+    pub fn new(creator: &str, conformance: PdfConformance) -> Self {
+        let mut metadata = Metadata::new().creator(creator.to_string());
+        let mut doc = match conformance {
+            PdfConformance::Standard => Document::new(),
+            PdfConformance::PdfA2b => {
+                let configuration = ConfigurationBuilder::new()
+                    .with_archival_validator(Archival::A2_B)
+                    .finish()
+                    .expect("PDF/A-2b alone has no conflicting version or validator");
+                metadata = metadata.creation_date(utc_date_time(now_utc()));
+                Document::new_with(SerializeSettings {
+                    configuration,
+                    ..SerializeSettings::default()
+                })
+            }
+        };
+        doc.set_metadata(metadata);
+        Self { doc, conformance }
     }
 
     /// Adds a single image as a new page in the PDF (design §4.2, §4.3).
@@ -55,21 +98,35 @@ impl PdfWriter {
     /// Returns [`ProbeError::UnsupportedFormat`] if the image format is not supported.
     /// Returns [`ProbeError::TooLarge`] if pixel count exceeds [`crate::MAX_IMAGE_PIXELS`].
     /// Returns [`ProbeError::DecodeFailed`] if headers or pixel data are corrupted or truncated.
+    /// Returns [`ProbeError::CmykNotAllowedInPdfA`] if the document is PDF/A-2b and the image is a
+    /// CMYK JPEG.
     pub fn add_page(&mut self, image_bytes: &[u8], page_size: PageSize) -> Result<(), ProbeError> {
         let info = probe_reader(std::io::Cursor::new(image_bytes))?;
         let dynamic_img = decode_image_pixels(image_bytes)?;
+
+        // PDF/A forbids /Interpolate, and krilla fails `finish` if it is set.
+        let interpolate = self.conformance == PdfConformance::Standard;
 
         // JPEG has metadata stripped before embedding (design §4.3).
         // PNG and WebP are decoded to pixels by krilla and losslessly recompressed.
         // BMP uses the RGBA pixels read by `image`.
         let img = match info.format {
             ImageFormat::Jpeg => {
+                // krilla requires a document CMYK profile for any CMYK image in PDF/A,
+                // and none is bundled (design §4.3).
+                if self.conformance == PdfConformance::PdfA2b
+                    && crate::jpeg_strip::jpeg_component_count(image_bytes)?
+                        == Some(crate::jpeg_strip::CMYK_COMPONENT_COUNT)
+                {
+                    return Err(ProbeError::CmykNotAllowedInPdfA);
+                }
                 let stripped = crate::jpeg_strip::strip_jpeg_metadata(image_bytes)?;
-                Image::from_jpeg(stripped.into(), true).map_err(|_| ProbeError::DecodeFailed)?
+                Image::from_jpeg(stripped.into(), interpolate)
+                    .map_err(|_| ProbeError::DecodeFailed)?
             }
-            ImageFormat::Png => Image::from_png(image_bytes.to_vec().into(), true)
+            ImageFormat::Png => Image::from_png(image_bytes.to_vec().into(), interpolate)
                 .map_err(|_| ProbeError::DecodeFailed)?,
-            ImageFormat::WebP => Image::from_webp(image_bytes.to_vec().into(), true)
+            ImageFormat::WebP => Image::from_webp(image_bytes.to_vec().into(), interpolate)
                 .map_err(|_| ProbeError::DecodeFailed)?,
             ImageFormat::Bmp => {
                 let rgba = dynamic_img.to_rgba8();
@@ -185,7 +242,7 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/exif_gps.jpg");
         let raw_bytes = std::fs::read(&fixture_path).expect("reading exif_gps.jpg");
 
-        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
         writer
             .add_page(&raw_bytes, PageSize::Fit)
             .expect("adding exif_gps.jpg page");
@@ -256,7 +313,7 @@ mod tests {
             .expect("finding EOI");
         let truncated_jpeg = &raw_bytes[..eoi_pos];
 
-        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
         let err = writer
             .add_page(truncated_jpeg, PageSize::Fit)
             .expect_err("truncated JPEG must fail add_page");

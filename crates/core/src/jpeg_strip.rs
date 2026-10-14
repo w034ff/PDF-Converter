@@ -6,6 +6,12 @@ const JFIF_PREFIX: &[u8] = b"JFIF\0";
 const ICC_PREFIX: &[u8] = b"ICC_PROFILE\0";
 const ADOBE_PREFIX: &[u8] = b"Adobe";
 
+/// Offset of the component count (Nf) in an SOF payload, after the sample
+/// precision (1 byte), the height (2 bytes) and the width (2 bytes).
+const SOF_COMPONENT_COUNT_OFFSET: usize = 5;
+/// Component count of a CMYK or YCCK frame.
+pub(crate) const CMYK_COMPONENT_COUNT: u8 = 4;
+
 /// A single segment in a JPEG file.
 #[derive(Debug, Clone, Copy)]
 struct Segment<'a> {
@@ -165,6 +171,32 @@ fn strip(jpeg: &Jpeg<'_>) -> Vec<u8> {
 
     out.extend_from_slice(&[0xFF, 0xD9]); // EOI
     out
+}
+
+/// Whether `marker` starts a frame (SOF0..SOF15), excluding DHT (0xC4), JPG (0xC8) and DAC (0xCC).
+fn is_sof_marker(marker: u8) -> bool {
+    matches!(marker, 0xC0..=0xCF) && !matches!(marker, 0xC4 | 0xC8 | 0xCC)
+}
+
+/// Returns the number of components the first frame (SOF) of a JPEG declares, or `None` if the
+/// JPEG has no frame (design §4.3).
+///
+/// A count of 4 means CMYK or Adobe YCCK.
+///
+/// # Errors
+///
+/// Returns [`ProbeError::DecodeFailed`] if JPEG segment parsing fails or the frame is too short
+/// to hold a component count.
+pub(crate) fn jpeg_component_count(data: &[u8]) -> Result<Option<u8>, ProbeError> {
+    let parsed = parse(data)?;
+    let Some(sof) = parsed.segments.iter().find(|s| is_sof_marker(s.marker)) else {
+        return Ok(None);
+    };
+    sof.payload()
+        .get(SOF_COMPONENT_COUNT_OFFSET)
+        .copied()
+        .map(Some)
+        .ok_or(ProbeError::DecodeFailed)
 }
 
 /// Convenience function that parses JPEG bytes and strips metadata (design §4.3).
@@ -389,5 +421,73 @@ mod tests {
         );
         assert!(stripped.windows(icc.len()).any(|w| w == icc.as_slice()));
         assert!(stripped.windows(adobe.len()).any(|w| w == adobe.as_slice()));
+    }
+
+    /// A JPEG whose frame (marker `sof_marker`) declares `components` components.
+    fn jpeg_with_frame(sof_marker: u8, components: u8) -> Vec<u8> {
+        let mut sof_payload = vec![0x08, 0x00, 0x01, 0x00, 0x01, components];
+        for id in 1..=components {
+            sof_payload.extend_from_slice(&[id, 0x11, 0x00]);
+        }
+        let mut out = vec![0xFF, 0xD8];
+        out.extend_from_slice(&make_segment(0xDB, &[0x00; 65]));
+        out.extend_from_slice(&make_segment(sof_marker, &sof_payload));
+        out.extend_from_slice(&make_segment(0xDA, &[0x01, 0x01, 0x00, 0x00, 0x3F, 0x00]));
+        out.extend_from_slice(&[0x12, 0x34, 0xFF, 0xD9]);
+        out
+    }
+
+    #[test]
+    fn component_count_is_read_from_the_frame() {
+        for components in [1u8, 3, 4] {
+            let data = jpeg_with_frame(0xC0, components);
+            assert_eq!(jpeg_component_count(&data), Ok(Some(components)));
+        }
+    }
+
+    #[test]
+    fn component_count_is_read_from_progressive_and_arithmetic_frames() {
+        for marker in [0xC1u8, 0xC2, 0xC3, 0xC5, 0xCA, 0xCF] {
+            let data = jpeg_with_frame(marker, 4);
+            assert_eq!(
+                jpeg_component_count(&data),
+                Ok(Some(4)),
+                "marker {marker:#04x}"
+            );
+        }
+    }
+
+    #[test]
+    fn component_count_ignores_dht_jpg_and_dac_segments() {
+        // 0xC4, 0xC8 and 0xCC share the SOF range but are not frames. Their
+        // sixth payload byte would read as 4 here.
+        let mut data = vec![0xFF, 0xD8];
+        for marker in [0xC4u8, 0xC8, 0xCC] {
+            data.extend_from_slice(&make_segment(marker, &[0, 0, 0, 0, 0, 4, 0]));
+        }
+        data.extend_from_slice(&make_segment(0xDA, &[0x01, 0x01, 0x00, 0x00, 0x3F, 0x00]));
+        data.extend_from_slice(&[0x12, 0xFF, 0xD9]);
+        assert_eq!(jpeg_component_count(&data), Ok(None));
+    }
+
+    #[test]
+    fn component_count_is_none_without_a_frame() {
+        let mut data = vec![0xFF, 0xD8];
+        data.extend_from_slice(&make_segment(0xDB, &[0x00; 65]));
+        data.extend_from_slice(&make_segment(0xDA, &[0x01, 0x01, 0x00, 0x00, 0x3F, 0x00]));
+        data.extend_from_slice(&[0x12, 0xFF, 0xD9]);
+        assert_eq!(jpeg_component_count(&data), Ok(None));
+    }
+
+    #[test]
+    fn component_count_fails_on_a_frame_too_short_and_on_unparseable_data() {
+        let mut data = vec![0xFF, 0xD8];
+        data.extend_from_slice(&make_segment(0xC0, &[0x08, 0x00, 0x01, 0x00, 0x01]));
+        data.extend_from_slice(&[0xFF, 0xD9]);
+        assert_eq!(jpeg_component_count(&data), Err(ProbeError::DecodeFailed));
+        assert_eq!(
+            jpeg_component_count(&[0x00, 0x00]),
+            Err(ProbeError::DecodeFailed)
+        );
     }
 }

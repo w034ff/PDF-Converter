@@ -15,6 +15,8 @@ pub enum ProbeError {
     TooLarge,
     /// Failed to open or read the image file.
     ReadFailed,
+    /// The image is CMYK and the document is PDF/A (design §4.3).
+    CmykNotAllowedInPdfA,
 }
 
 impl ProbeError {
@@ -26,6 +28,7 @@ impl ProbeError {
             Self::DecodeFailed => "DecodeFailed",
             Self::TooLarge => "TooLarge",
             Self::ReadFailed => "ReadFailed",
+            Self::CmykNotAllowedInPdfA => "CmykNotAllowedInPdfA",
         }
     }
 
@@ -37,7 +40,10 @@ impl ProbeError {
     pub fn detail(&self) -> Option<String> {
         match self {
             Self::TooLarge => Some(format_with_commas(MAX_IMAGE_PIXELS)),
-            Self::UnsupportedFormat | Self::DecodeFailed | Self::ReadFailed => None,
+            Self::UnsupportedFormat
+            | Self::DecodeFailed
+            | Self::ReadFailed
+            | Self::CmykNotAllowedInPdfA => None,
         }
     }
 }
@@ -71,6 +77,7 @@ impl fmt::Display for ProbeError {
                 format_with_commas(MAX_IMAGE_PIXELS)
             ),
             Self::ReadFailed => write!(f, "failed to read image file"),
+            Self::CmykNotAllowedInPdfA => write!(f, "CMYK images can't be used in PDF/A"),
         }
     }
 }
@@ -130,6 +137,12 @@ mod tests {
 
         assert_eq!(ProbeError::ReadFailed.code(), "ReadFailed");
         assert_eq!(ProbeError::ReadFailed.detail(), None);
+
+        assert_eq!(
+            ProbeError::CmykNotAllowedInPdfA.code(),
+            "CmykNotAllowedInPdfA"
+        );
+        assert_eq!(ProbeError::CmykNotAllowedInPdfA.detail(), None);
     }
 
     #[test]

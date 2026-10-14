@@ -3,13 +3,13 @@
 //! Because pdfium does not support multithreaded usage within the same process,
 //! all tests that invoke pdfium run sequentially within a single `#[test]` function.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use image::Rgb;
 use pdfconv_core::probe::probe_reader;
 use pdfconv_core::{
-    POINTS_PER_INCH, PageLayout, PageOrientation, PageSize, PaperSize, PdfWriter, ProbeError,
-    calculate_layout,
+    IMAGE_EXTENSIONS, POINTS_PER_INCH, PageLayout, PageOrientation, PageSize, PaperSize,
+    PdfConformance, PdfWriter, ProbeError, calculate_layout,
 };
 use pdfium_render::prelude::*;
 
@@ -83,7 +83,7 @@ fn assert_paper_placement(
     context: &str,
 ) -> (image::RgbImage, PageLayout) {
     let info = probe_reader(std::io::Cursor::new(raw_bytes)).expect("probing fixture image");
-    let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+    let mut writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
     writer
         .add_page(raw_bytes, page_size)
         .expect("adding page to pdf");
@@ -181,8 +181,9 @@ fn pdf_quality_and_conformance_suite() {
         "dpi300.jpg",
     ];
 
-    println!("\n--- [Fit] Quality Test Results ---");
-    for name in fit_fixtures {
+    // Writes `name` as a one-page "fit" PDF, renders it at the image's own dpi, and verifies
+    // that the pixels match the source image with its EXIF orientation applied over white.
+    let assert_fit_matches_source = |name: &str, conformance: PdfConformance| {
         let path = fix_dir.join(name);
         let raw_bytes =
             std::fs::read(&path).unwrap_or_else(|e| panic!("failed to read fixture {name}: {e:?}"));
@@ -190,7 +191,7 @@ fn pdf_quality_and_conformance_suite() {
         let info = probe_reader(std::io::Cursor::new(&raw_bytes))
             .unwrap_or_else(|e| panic!("failed to probe {name}: {e:?}"));
 
-        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
         writer
             .add_page(&raw_bytes, PageSize::Fit)
             .unwrap_or_else(|e| panic!("failed to add page for {name}: {e:?}"));
@@ -220,7 +221,7 @@ fn pdf_quality_and_conformance_suite() {
         assert_eq!(
             rendered_image.dimensions(),
             expected_rgb.dimensions(),
-            "rendered dimensions mismatch for {name}: rendered={:?}, expected={:?}",
+            "rendered dimensions mismatch for {name} ({conformance:?}): rendered={:?}, expected={:?}",
             rendered_image.dimensions(),
             expected_rgb.dimensions()
         );
@@ -250,9 +251,16 @@ fn pdf_quality_and_conformance_suite() {
 
         assert!(
             mismatch_ratio <= MAX_MISMATCH_RATIO_IMAGE,
-            "{name}: mismatch ratio {mismatch_percent:.4}% exceeds limit {:.4}%",
+            "{name} ({conformance:?}): mismatch ratio {mismatch_percent:.4}% exceeds limit {:.4}%",
             MAX_MISMATCH_RATIO_IMAGE * 100.0
         );
+    };
+
+    for conformance in [PdfConformance::Standard, PdfConformance::PdfA2b] {
+        println!("\n--- [Fit, {conformance:?}] Quality Test Results ---");
+        for name in fit_fixtures {
+            assert_fit_matches_source(name, conformance);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -398,7 +406,7 @@ fn pdf_quality_and_conformance_suite() {
         (PageOrientation::Landscape, false),
         (PageOrientation::Auto, false), // photo.jpg is landscape -> landscape in Auto
     ] {
-        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
         writer
             .add_page(&landscape_bytes, PageSize::Paper(PaperSize::A4, orient))
             .unwrap();
@@ -429,7 +437,7 @@ fn pdf_quality_and_conformance_suite() {
         (PageOrientation::Landscape, false),
         (PageOrientation::Auto, true), // shapes_150dpi_p1.png is portrait -> portrait in Auto
     ] {
-        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
         writer
             .add_page(&portrait_bytes, PageSize::Paper(PaperSize::A4, orient))
             .unwrap();
@@ -459,7 +467,7 @@ fn pdf_quality_and_conformance_suite() {
     // 3. corrupt.png fails with DecodeFailed; writer can continue afterwards
     // -----------------------------------------------------------------------
     let corrupt_bytes = std::fs::read(fix_dir.join("corrupt.png")).unwrap();
-    let mut corrupt_writer = PdfWriter::new("PDF Converter 0.1.0");
+    let mut corrupt_writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
 
     let err = corrupt_writer
         .add_page(&corrupt_bytes, PageSize::Fit)
@@ -499,7 +507,7 @@ fn jpeg_image_data_is_embedded_without_metadata_including_cmyk() {
     for name in jpegs {
         let raw_bytes = std::fs::read(fix_dir.join(name)).unwrap();
         let stripped_bytes = pdfconv_core::strip_jpeg_metadata(&raw_bytes).unwrap();
-        let mut writer = PdfWriter::new("PDF Converter 0.1.0");
+        let mut writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
         writer.add_page(&raw_bytes, PageSize::Fit).unwrap();
         let pdf_bytes = writer.finish().unwrap();
 
@@ -541,7 +549,7 @@ fn jpeg_image_data_is_embedded_without_metadata_including_cmyk() {
 fn pdf_metadata_contains_only_creator_and_no_file_names() {
     let fix_dir = fixtures_dir();
     let creator = "PDF Converter 0.1.0";
-    let mut writer = PdfWriter::new(creator);
+    let mut writer = PdfWriter::new(creator, PdfConformance::Standard);
 
     let raw_bytes = std::fs::read(fix_dir.join("photo.jpg")).unwrap();
     writer.add_page(&raw_bytes, PageSize::Fit).unwrap();
@@ -586,4 +594,176 @@ fn pdf_metadata_contains_only_creator_and_no_file_names() {
             .any(|w| w == b"secret_input_path"),
         "PDF should not leak input paths"
     );
+}
+
+fn contains(haystack: &[u8], needle: &str) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle.as_bytes())
+}
+
+/// Writes `raw_bytes` as one page and returns the PDF.
+fn write_one_page(raw_bytes: &[u8], page_size: PageSize, conformance: PdfConformance) -> Vec<u8> {
+    let mut writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
+    writer
+        .add_page(raw_bytes, page_size)
+        .expect("adding the page");
+    writer.finish().expect("finishing the PDF")
+}
+
+/// The images of the fixtures folder, by file name.
+fn image_fixture_names() -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(fixtures_dir())
+        .expect("reading the fixtures folder")
+        .map(|entry| {
+            entry
+                .expect("reading a fixtures entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|name| {
+            Path::new(name)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| IMAGE_EXTENSIONS.contains(&ext))
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn pdfa_finishes_for_every_fixture_image_except_cmyk_and_corrupt() {
+    const A4_AUTO: PageSize = PageSize::Paper(PaperSize::A4, PageOrientation::Auto);
+    let mut merged = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::PdfA2b);
+    let mut written = 0;
+    let mut refused = Vec::new();
+
+    for name in image_fixture_names() {
+        let raw_bytes = std::fs::read(fixtures_dir().join(&name)).unwrap();
+        let mut as_fit = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::PdfA2b);
+        match as_fit.add_page(&raw_bytes, PageSize::Fit) {
+            Ok(()) => {}
+            Err(err @ (ProbeError::DecodeFailed | ProbeError::CmykNotAllowedInPdfA)) => {
+                refused.push((name, err));
+                continue;
+            }
+            Err(err) => panic!("{name}: unexpected error {err:?}"),
+        }
+        as_fit
+            .finish()
+            .unwrap_or_else(|e| panic!("{name}: PDF/A at image size failed to finish: {e}"));
+
+        let mut on_a4 = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::PdfA2b);
+        on_a4.add_page(&raw_bytes, A4_AUTO).unwrap();
+        on_a4
+            .finish()
+            .unwrap_or_else(|e| panic!("{name}: PDF/A on A4 failed to finish: {e}"));
+
+        merged.add_page(&raw_bytes, A4_AUTO).unwrap();
+        written += 1;
+    }
+    merged
+        .finish()
+        .unwrap_or_else(|e| panic!("merged PDF/A failed to finish: {e}"));
+
+    assert!(written > 0);
+    assert_eq!(
+        refused,
+        vec![
+            ("corrupt.png".to_owned(), ProbeError::DecodeFailed),
+            (
+                "photo_cmyk.jpg".to_owned(),
+                ProbeError::CmykNotAllowedInPdfA
+            ),
+        ]
+    );
+}
+
+#[test]
+fn only_a_standard_pdf_marks_images_as_interpolated() {
+    // One image of each format the writer hands to krilla with an `interpolate` flag.
+    for name in ["photo.jpg", "logo_alpha.png", "logo_alpha.webp"] {
+        let raw_bytes = std::fs::read(fixtures_dir().join(name)).unwrap();
+        let standard = write_one_page(&raw_bytes, PageSize::Fit, PdfConformance::Standard);
+        let pdfa = write_one_page(&raw_bytes, PageSize::Fit, PdfConformance::PdfA2b);
+        assert!(
+            contains(&standard, "/Interpolate true"),
+            "{name}: standard PDF must interpolate"
+        );
+        assert!(
+            !contains(&pdfa, "/Interpolate"),
+            "{name}: PDF/A must not have /Interpolate"
+        );
+    }
+}
+
+#[test]
+fn pdfa_identification_and_utc_creation_date_are_in_the_xmp_of_pdfa_only() {
+    let raw_bytes = std::fs::read(fixtures_dir().join("photo.jpg")).unwrap();
+    let standard = write_one_page(&raw_bytes, PageSize::Fit, PdfConformance::Standard);
+    let pdfa = String::from_utf8_lossy(&write_one_page(
+        &raw_bytes,
+        PageSize::Fit,
+        PdfConformance::PdfA2b,
+    ))
+    .into_owned();
+
+    assert!(pdfa.contains("<pdfaid:part>2</pdfaid:part>"));
+    assert!(pdfa.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
+    assert!(!contains(&standard, "pdfaid:"));
+
+    // The creation date is the time of writing in UTC, to the second.
+    let start = pdfa
+        .find("<xmp:CreateDate>")
+        .expect("PDF/A XMP must have a creation date")
+        + "<xmp:CreateDate>".len();
+    let date = &pdfa[start..pdfa[start..].find('<').unwrap() + start];
+    let (stamp, offset) = date.split_at(date.len() - "+00:00".len());
+    assert_eq!(offset, "+00:00", "creation date {date} must be UTC");
+    let fields: Vec<u32> = stamp
+        .split(['-', 'T', ':'])
+        .map(|field| field.parse().unwrap())
+        .collect();
+    assert_eq!(
+        fields.len(),
+        6,
+        "creation date {date} must go to the second"
+    );
+    assert!(
+        fields[0] >= 2026,
+        "creation date {date} must be the present"
+    );
+
+    // A standard PDF keeps only the creator, as before (design §4.3).
+    for key in ["CreateDate", "ModifyDate", "CreationDate", "ModDate"] {
+        assert!(!contains(&standard, key), "standard PDF has {key}");
+    }
+}
+
+#[test]
+fn cmyk_jpeg_is_refused_in_pdfa_without_adding_a_page_and_accepted_otherwise() {
+    let cmyk = std::fs::read(fixtures_dir().join("photo_cmyk.jpg")).unwrap();
+    let rgb = std::fs::read(fixtures_dir().join("photo.jpg")).unwrap();
+
+    let mut pdfa = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::PdfA2b);
+    assert_eq!(
+        pdfa.add_page(&cmyk, PageSize::Fit),
+        Err(ProbeError::CmykNotAllowedInPdfA)
+    );
+    // The writer keeps going and the refused image left no page behind.
+    pdfa.add_page(&rgb, PageSize::Fit).unwrap();
+    let pdf = pdfa.finish().unwrap();
+    assert!(contains(&pdf, "/Count 1"), "only the RGB page must exist");
+    let cmyk_scan = pdfconv_core::strip_jpeg_metadata(&cmyk).unwrap();
+    assert!(
+        !pdf.windows(cmyk_scan.len()).any(|w| w == cmyk_scan),
+        "the refused CMYK image must not be in the document"
+    );
+
+    let mut standard = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
+    standard.add_page(&cmyk, PageSize::Fit).unwrap();
+    standard.add_page(&rgb, PageSize::Fit).unwrap();
+    assert!(contains(&standard.finish().unwrap(), "/Count 2"));
 }

@@ -7,4 +7,4 @@ import type { PageSizeChoice } from "./PageSizeChoice";
 /**
  * The "images to PDF" part of [`Settings`].
  */
-export type ImagesToPdfSettings = { output: OutputMode, pageSize: PageSizeChoice, orientation: PageOrientationChoice, outputDir: OutputDirLabel | null, };
+export type ImagesToPdfSettings = { output: OutputMode, pageSize: PageSizeChoice, orientation: PageOrientationChoice, pdfA: boolean, outputDir: OutputDirLabel | null, };

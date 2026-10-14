@@ -6,4 +6,4 @@ import type { PageSizeChoice } from "./PageSizeChoice";
 /**
  * The "images to PDF" options the user can change (design §6.7).
  */
-export type ImagesToPdfOptions = { output: OutputMode, pageSize: PageSizeChoice, orientation: PageOrientationChoice, };
+export type ImagesToPdfOptions = { output: OutputMode, pageSize: PageSizeChoice, orientation: PageOrientationChoice, pdfA: boolean, };
