@@ -82,16 +82,30 @@ pub fn get_settings(state: tauri::State<'_, AppState>) -> Settings {
 }
 
 /// Saves the settings except the output folders (design §6.7). Nothing is
-/// saved if a value is invalid.
+/// saved if a value is invalid, and a `revision` not higher than an earlier
+/// one from the page is ignored.
+///
+/// Not `async`, so that the calls run on the main thread one after another
+/// and a change has reached memory before `RunEvent::Exit` writes it. The file
+/// is written on another thread; a failed write is not reported, because the
+/// settings still apply to this session and the next write tries again.
 #[tauri::command]
-pub async fn save_settings(
+pub fn save_settings(
     state: tauri::State<'_, AppState>,
+    revision: u64,
     settings: SettingsInput,
 ) -> Result<(), IpcError> {
-    let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || state.settings.save(&settings))
-        .await
-        .map_err(task_failed)?
+    state.settings.update(revision, &settings)?;
+    let store = Arc::clone(&state.settings);
+    tauri::async_runtime::spawn_blocking(move || {
+        let flushed = store.flush();
+        #[cfg(debug_assertions)]
+        if let Err(error) = &flushed {
+            eprintln!("[debug] save_settings: {error:?}");
+        }
+        let _ = flushed;
+    });
+    Ok(())
 }
 
 /// Asks for a folder and makes it the output folder of `kind`. Returns `None`

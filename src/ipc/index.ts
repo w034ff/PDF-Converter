@@ -242,10 +242,16 @@ export async function getSettings(): Promise<Settings> {
 
 /**
  * Saves the settings except the output folders, which only `pickOutputDir`
- * changes (design §6.7). Rejects with `InvalidParams` for a value Rust refuses.
+ * changes (design §6.7). `revision` must be higher on each call from the page:
+ * Rust ignores a call that arrives after a later one. Resolves once Rust holds
+ * the settings; the file is written afterwards and a failed write is not
+ * reported. Rejects with `InvalidParams` for a value Rust refuses.
  */
-export async function saveSettings(settings: SettingsInput): Promise<void> {
-  return invokeWrapped<void>("save_settings", { settings });
+export async function saveSettings(
+  revision: number,
+  settings: SettingsInput,
+): Promise<void> {
+  return invokeWrapped<void>("save_settings", { revision, settings });
 }
 
 /**

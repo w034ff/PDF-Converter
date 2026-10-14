@@ -5,7 +5,7 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use pdfconv_worker::{DEFAULT_RENDER_DPI, is_render_dpi_in_range};
 use serde::de::DeserializeOwned;
@@ -293,14 +293,26 @@ struct Stored {
     /// which case nothing is written.
     config_dir: Option<PathBuf>,
     file: SettingsFile,
+    /// Counts the changes to `file`, so a write can tell whether the file
+    /// already has the latest of them.
+    changes: u64,
+    /// The highest `revision` [`SettingsStore::update`] took from the current
+    /// page, so a call that arrives late cannot bring older settings back.
+    revision: u64,
 }
 
-/// The one copy of the settings in memory. Every change goes through it and
-/// rewrites the whole file while the lock is held, so two changes cannot
-/// overwrite each other with stale content.
+/// The one copy of the settings in memory, and the writes of it to the file
+/// (design §6.7).
+///
+/// A change only touches memory, under a lock held for no longer than the
+/// copy, because `save_settings` runs on the main thread. [`Self::flush`]
+/// writes the latest settings under a second lock, so writes neither overlap
+/// nor put older content over newer.
 #[derive(Debug, Default)]
 pub struct SettingsStore {
     inner: Mutex<Stored>,
+    /// The value of `changes` that the file has; held while writing.
+    written: Mutex<u64>,
 }
 
 impl SettingsStore {
@@ -319,25 +331,64 @@ impl SettingsStore {
         *self.lock() = Stored {
             config_dir: Some(config_dir),
             file,
+            ..Stored::default()
         };
+        *self.written.lock().unwrap_or_else(PoisonError::into_inner) = 0;
     }
 
-    /// Takes `input` over, folders excluded, and writes the file. Nothing
-    /// changes, in memory or on disk, if this fails.
+    /// Takes `input` over in memory, folders excluded, unless `revision` is
+    /// not higher than one already taken from this page; such a call was
+    /// overtaken by a newer one and is ignored. The file is written by a
+    /// later [`Self::flush`].
     ///
     /// # Errors
     ///
-    /// `InvalidParams` for a value [`SettingsInput::validate`] rejects,
-    /// `WriteFailed` if the file cannot be written.
-    pub fn save(&self, input: &SettingsInput) -> Result<(), IpcError> {
+    /// `InvalidParams` for a value [`SettingsInput::validate`] rejects; nothing
+    /// changes then.
+    pub fn update(&self, revision: u64, input: &SettingsInput) -> Result<(), IpcError> {
         input.validate()?;
         let mut stored = self.lock();
-        let mut next = stored.file.clone();
-        next.language = input.language;
-        next.images_to_pdf.options = input.images_to_pdf;
-        next.pdf_to_images.options = input.pdf_to_images;
-        write(stored.config_dir.as_deref(), &next)?;
-        stored.file = next;
+        if revision <= stored.revision {
+            return Ok(());
+        }
+        stored.revision = revision;
+        stored.file.language = input.language;
+        stored.file.images_to_pdf.options = input.images_to_pdf;
+        stored.file.pdf_to_images.options = input.pdf_to_images;
+        stored.changes += 1;
+        Ok(())
+    }
+
+    /// Forgets the highest `revision` taken, because a new page counts from
+    /// the start again.
+    pub fn start_page(&self) {
+        self.lock().revision = 0;
+    }
+
+    /// Writes the held settings unless the file already has them. A write
+    /// under way finishes first, so this also waits for it.
+    ///
+    /// # Errors
+    ///
+    /// `WriteFailed` if the file cannot be written. The settings stay in
+    /// memory and the next call tries again.
+    pub fn flush(&self) -> Result<(), IpcError> {
+        // A write that panicked left the file as it was; the count still says
+        // what the file has.
+        let mut written = self.written.lock().unwrap_or_else(PoisonError::into_inner);
+        let (changes, config_dir, file) = {
+            let stored = self.lock();
+            (
+                stored.changes,
+                stored.config_dir.clone(),
+                stored.file.clone(),
+            )
+        };
+        if changes == *written {
+            return Ok(());
+        }
+        write(config_dir.as_deref(), &file)?;
+        *written = changes;
         Ok(())
     }
 
@@ -362,13 +413,16 @@ impl SettingsStore {
     }
 
     fn set_output_dir(&self, kind: OutputKind, dir: Option<PathBuf>) -> Result<(), IpcError> {
-        let mut stored = self.lock();
-        let slot = match kind {
-            OutputKind::ImagesToPdf => &mut stored.file.images_to_pdf.output_dir,
-            OutputKind::PdfToImages => &mut stored.file.pdf_to_images.output_dir,
-        };
-        *slot = dir;
-        write(stored.config_dir.as_deref(), &stored.file)
+        {
+            let mut stored = self.lock();
+            let slot = match kind {
+                OutputKind::ImagesToPdf => &mut stored.file.images_to_pdf.output_dir,
+                OutputKind::PdfToImages => &mut stored.file.pdf_to_images.output_dir,
+            };
+            *slot = dir;
+            stored.changes += 1;
+        }
+        self.flush()
     }
 }
 

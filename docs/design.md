@@ -324,7 +324,10 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PNG、カラー、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
 - `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
 - `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, orientation, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
-- `save_settings` は、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にあるなどの不正な値は `InvalidParams` で拒み、何も保存しない。書き込みに失敗したら `WriteFailed` を返す。
+- `save_settings` は、`revision`（数）と、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にあるなどの不正な値は `InvalidParams` で拒み、何も保存しない。
+  - `async` でないコマンドにし、メインスレッドで受け取った順に、値をメモリの設定に入れるだけにする。ファイルは別のスレッドで、そのときの最新の値を書く（`SettingsStore::flush`）。書き込みは 1 つずつで、ファイルがすでに最新なら書かない。書き込みの失敗は返さず、設定はメモリに残して次の書き込みで再び試す（書くのは応答のあとなので返せない。FR-10 は Should）。メインスレッドはファイルの書き込みを待たない（メモリの設定のロックは写す間しか持たない）。
+  - `revision` は、画面が呼ぶたびに 1 つ増やす。Rust は、同じページからすでに受け取ったもの以下の `revision` を捨てる。WebView が要求を `fetch` の順に Rust へ渡すことは保証されておらず、入れ替わると古い値が残るため。ページの読み込みが始まると（`on_page_load` の `Started`。再読み込みを含む）、画面は 1 から数え直すので、Rust も覚えている `revision` を捨てる。
+  - アプリが終わるとき（`RunEvent::Exit`）、まだ書いていない設定があれば書く（書いている途中なら、それを待つ）。閉じるボタンや Alt+F4 のほか、Windows のログオフとシャットダウンでも来る知らせで、後者ではウィンドウに `CloseRequested` が来ない。Rust の側で受けるので、capabilities は変わらない。WebView がまだ Rust に渡していない変更は残らない。
 - `pick_output_dir` は、選ばれたフォルダを §6.5 の Rust の状態と設定に入れ、設定ファイルを書き直す。書き込みに失敗しても、選んだフォルダはそのセッションで使い、`{ dirLabel }` を返す（設定ファイルの問題で変換を始められなくならないようにするため）。
 - 起動時、保存されたフォルダが存在すればそれを §6.5 の状態に入れ、存在しなければ未選択に戻す。
 - 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`orientation` も `pageSize` とは別に確かめる。`orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい。`colorMode` も同じく、ない設定ファイルは「カラー」になる。逆に、新しい版が書いた `a3` などの用紙、`webp`、`gray`、選択肢にない `dpi` を `v0.1.0` が読むと、その項目だけが既定値に戻り、ほかの項目は残る）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
@@ -464,7 +467,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 
 - `App` は `get_settings` の応答を待ってから画面を出す。既定値で出してから保存した値に変わると、言語や切り替えボタンが一瞬ちらつくため。読めなかったときは既定値で始める。
 - 言語の状態は、表示している言語と、利用者が選んだ言語（`null` なら OS の言語に従う）を別に持つ。保存するのは後者で、一度も選んでいなければ `null` のままにする。
-- 変更は `useSettingsAutoSave` が、最後の変更から 1 秒たってから `save_settings` で 1 回にまとめて保存する。起動時の値と同じなら保存しない。保存の失敗は表示しない（FR-10 は Should で、変換の妨げにしない）。
+- 変更は `useSettingsAutoSave` が、待たずに `save_settings` で保存する（閉じる直前の変更も残すため）。`revision` は呼ぶたびに 1 つ増やす（§6.7）。起動時の値や、最後に送った値と同じなら送らない。拒まれても表示しない（FR-10 は Should で、変換の妨げにしない）。
 
 ### 10.3 テーマ
 

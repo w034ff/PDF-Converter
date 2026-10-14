@@ -220,7 +220,7 @@ describe("ipc", () => {
       expect(calls).toEqual([["get_settings", {}]]);
     });
 
-    it("sends the settings to save_settings under one argument, without folders", async () => {
+    it("sends the revision and the settings, without folders, to save_settings", async () => {
       const settings: SettingsInput = {
         language: "ja",
         imagesToPdf: {
@@ -236,8 +236,8 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await saveSettings(settings);
-      expect(calls).toEqual([["save_settings", { settings }]]);
+      await saveSettings(3, settings);
+      expect(calls).toEqual([["save_settings", { revision: 3, settings }]]);
     });
 
     it("rejects save_settings with the InvalidParams Rust returned", async () => {
@@ -246,7 +246,7 @@ describe("ipc", () => {
       });
 
       await expect(
-        saveSettings({
+        saveSettings(1, {
           language: null,
           imagesToPdf: {
             output: "merge",
@@ -264,7 +264,7 @@ describe("ipc", () => {
       });
 
       await expect(
-        saveSettings({
+        saveSettings(1, {
           language: null,
           imagesToPdf: {
             output: "merge",
