@@ -924,6 +924,37 @@ fn start_internal_ok_delivers_job_finished() {
 }
 
 #[test]
+fn starting_images_to_pdfs_passes_the_conformance_on() {
+    for (conformance, expect_pdf_a) in [
+        (PdfConformance::PdfA2b, true),
+        (PdfConformance::Standard, false),
+    ] {
+        let app_state = state();
+        let temp_in = TempDir::new().unwrap();
+        let temp_out = TempDir::new().unwrap();
+        let img_path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+        let id = add_images(&app_state, &[img_path]).added[0].id;
+        *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+
+        let recorder = TestRecorder::new();
+        start_images_to_pdfs_internal(
+            &app_state,
+            &[id],
+            PageSizeChoice::Fit,
+            PageOrientationChoice::Auto,
+            conformance,
+            recorder.callbacks(),
+        )
+        .expect("start_images_to_pdfs_internal should succeed");
+
+        let finished = recorder.wait_finished(Duration::from_secs(5));
+        assert_eq!(finished.succeeded, 1);
+        let pdf = fs::read(temp_out.path().join("photo.pdf")).expect("reading the PDF");
+        assert_eq!(is_pdf_a(&pdf), expect_pdf_a, "{conformance:?}");
+    }
+}
+
+#[test]
 fn cancellation_during_pdf_to_images_saves_early_pages_and_cleans_temp() {
     let app_state = state();
     let temp_in = TempDir::new().unwrap();
