@@ -153,7 +153,7 @@ function parseRangeToIntervals(text: string): CheckPageRangeResult {
   for (const [s, e] of intervals) {
     totalPages += e - s + 1;
   }
-  return { totalPages, intervals };
+  return { totalPages, intervals, lastPage: false };
 }
 
 function isTextArgs(args: unknown): args is { text: string } {
@@ -301,6 +301,7 @@ describe("PdfToImagesView", () => {
             [1, 1],
             [3, 3],
           ],
+          lastPage: false,
         };
       });
 
@@ -774,7 +775,7 @@ describe("PdfToImagesView", () => {
             rangeResult:
               intervals === null
                 ? null
-                : { totalPages: pdf.pageCount, intervals },
+                : { totalPages: pdf.pageCount, intervals, lastPage: false },
           },
           job: {
             ...base.job,
@@ -808,6 +809,7 @@ describe("PdfToImagesView", () => {
           state.pdfToImages.rangeResult = {
             totalPages: 2,
             intervals: [[2, 3]],
+            lastPage: false,
           };
         });
 
@@ -966,6 +968,7 @@ describe("PdfToImagesView", () => {
         intervals: [number, number][] | null,
         result: Omit<JobItemPayload, "id"> | null,
         finished: Partial<JobFinishedPayload>,
+        lastPage = false,
       ) {
         renderView((state) => {
           state.pdfToImages.items = [pdf];
@@ -975,7 +978,7 @@ describe("PdfToImagesView", () => {
           state.pdfToImages.rangeResult =
             intervals === null
               ? null
-              : { totalPages: pdf.pageCount, intervals };
+              : { totalPages: pdf.pageCount, intervals, lastPage };
           state.job.phase = "finished";
           state.job.kind = "pdfToImages";
           state.job.targets = [{ id: pdf.id, name: pdf.name }];
@@ -1033,6 +1036,21 @@ describe("PdfToImagesView", () => {
         );
         expect(banner).toHaveTextContent(
           /^キャンセルしました：3 ページ保存しました · 未処理 5 ページ$/,
+        );
+      });
+
+      it("counts the last page that `end` selected", () => {
+        mockCommands(() => undefined);
+        // "1-2, end" selects pages 1, 2 and 10; 1 saved, so 2 were not reached.
+        const banner = renderSummary(
+          samplePdf10Pages,
+          [[1, 2]],
+          { status: "cancelled", outputs: ["1"] },
+          { cancelled: true },
+          true,
+        );
+        expect(banner).toHaveTextContent(
+          /^キャンセルしました：1 ページ保存しました · 未処理 2 ページ$/,
         );
       });
 
@@ -1210,10 +1228,26 @@ describe("PdfToImagesView", () => {
     });
   });
 
+  it("counts `end` as the last page of each PDF in the table", async () => {
+    mockCommands((cmd) =>
+      cmd === "check_page_range"
+        ? { totalPages: 2, intervals: [], lastPage: true }
+        : undefined,
+    );
+    renderFeature((state) => {
+      state.pdfToImages.items = [samplePdf1, samplePdf2];
+      state.pdfToImages.pageSelection = "range";
+      state.pdfToImages.rangeText = "end";
+    });
+
+    expect(await screen.findByText("1 / 4")).toBeInTheDocument();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+  });
+
   it("shows a range that matches no page as a warning in the footer", async () => {
     mockCommands((cmd) =>
       cmd === "check_page_range"
-        ? { totalPages: 0, intervals: [[20, 30]] }
+        ? { totalPages: 0, intervals: [[20, 30]], lastPage: false }
         : undefined,
     );
     renderFeature((state) => {
@@ -1243,7 +1277,11 @@ describe("PdfToImagesView", () => {
         state.pdfToImages.items = [samplePdf1]; // 4 pages
         state.pdfToImages.pageSelection = "range";
         state.pdfToImages.rangeText = "1";
-        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+        state.pdfToImages.rangeResult = {
+          totalPages: 1,
+          intervals: [[1, 1]],
+          lastPage: false,
+        };
       });
 
       // Wait for initial check triggered on mount to finish so rangeChecking is false
@@ -1348,7 +1386,11 @@ describe("PdfToImagesView", () => {
         state.pdfToImages.items = [samplePdf10Pages];
         state.pdfToImages.pageSelection = "range";
         state.pdfToImages.rangeText = "1";
-        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+        state.pdfToImages.rangeResult = {
+          totalPages: 1,
+          intervals: [[1, 1]],
+          lastPage: false,
+        };
       });
 
       // Wait for initial check triggered on mount to finish so rangeChecking is false
@@ -1506,7 +1548,11 @@ describe("PdfToImagesView", () => {
         state.job.phase = "running";
         state.pdfToImages.pageSelection = "range";
         state.pdfToImages.rangeText = "1";
-        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+        state.pdfToImages.rangeResult = {
+          totalPages: 1,
+          intervals: [[1, 1]],
+          lastPage: false,
+        };
       });
       const btnRunning = screen.getByRole("button", { name: "2 ページ" });
       expect(btnRunning).toBeDisabled();
@@ -1539,7 +1585,11 @@ describe("PdfToImagesView", () => {
         state.pdfToImages.pageSelection = "range";
         state.pdfToImages.rangeText = "1";
         state.pdfToImages.rangeChecking = true;
-        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+        state.pdfToImages.rangeResult = {
+          totalPages: 1,
+          intervals: [[1, 1]],
+          lastPage: false,
+        };
       });
 
       const btn = screen.getByRole("button", { name: "2 ページ" });
@@ -1555,7 +1605,7 @@ describe("PdfToImagesView", () => {
       // Mock returns intervals [2, 2] regardless of text "something-arbitrary"
       mockCommands((cmd) => {
         if (cmd === "check_page_range") {
-          return { totalPages: 1, intervals: [[2, 2]] };
+          return { totalPages: 1, intervals: [[2, 2]], lastPage: false };
         }
         return undefined;
       });
@@ -1567,6 +1617,7 @@ describe("PdfToImagesView", () => {
         state.pdfToImages.rangeResult = {
           totalPages: 1,
           intervals: [[2, 2]],
+          lastPage: false,
         };
       });
 
@@ -1591,6 +1642,87 @@ describe("PdfToImagesView", () => {
       });
     });
 
+    it("marks the last page for `end` and rebuilds it as a number on click", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "check_page_range") {
+          return { totalPages: 2, intervals: [[1, 1]], lastPage: true };
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1]; // 4 pages
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "1, end";
+        state.pdfToImages.rangeResult = {
+          totalPages: 2,
+          intervals: [[1, 1]],
+          lastPage: true,
+        };
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("2 ページを PNG で保存します"),
+        ).toBeInTheDocument();
+      });
+
+      const pressed = [1, 2, 3, 4].map((page) =>
+        screen
+          .getByRole("button", { name: `${page} ページ` })
+          .getAttribute("aria-pressed"),
+      );
+      expect(pressed).toEqual(["true", "false", "false", "true"]);
+
+      fireEvent.click(screen.getByRole("button", { name: "2 ページ" }));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1-2, 4");
+      });
+    });
+
+    it("rebuilds `n-end` as numbers when a page is unselected", async () => {
+      mockCommands((cmd) => {
+        if (cmd === "check_page_range") {
+          return {
+            totalPages: 3,
+            intervals: [
+              [1, 1],
+              [3, 4294967295],
+            ],
+            lastPage: false,
+          };
+        }
+        return undefined;
+      });
+
+      renderFeature((state) => {
+        state.pdfToImages.items = [samplePdf1]; // 4 pages
+        state.pdfToImages.pageSelection = "range";
+        state.pdfToImages.rangeText = "1, 3-end";
+        state.pdfToImages.rangeResult = {
+          totalPages: 3,
+          intervals: [
+            [1, 1],
+            [3, 4294967295],
+          ],
+          lastPage: false,
+        };
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "4 ページ" }),
+        ).toHaveAttribute("aria-pressed", "true");
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "4 ページ" }));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/変換するページ/)).toHaveValue("1, 3");
+      });
+    });
+
     it("has accessible aria-label on thumbnail buttons and can be activated via Enter key", async () => {
       mockCommands((cmd, args) => {
         if (cmd === "check_page_range" && isTextArgs(args)) {
@@ -1603,7 +1735,11 @@ describe("PdfToImagesView", () => {
         state.pdfToImages.items = [samplePdf1];
         state.pdfToImages.pageSelection = "range";
         state.pdfToImages.rangeText = "1";
-        state.pdfToImages.rangeResult = { totalPages: 1, intervals: [[1, 1]] };
+        state.pdfToImages.rangeResult = {
+          totalPages: 1,
+          intervals: [[1, 1]],
+          lastPage: false,
+        };
       });
 
       // Wait for initial check to finish so rangeChecking is false

@@ -237,6 +237,7 @@ describe("pdfToImagesReducer", () => {
         [1, 3],
         [5, 5],
       ],
+      lastPage: false,
     };
     const success = pdfToImagesReducer(started, {
       type: "CHECK_RANGE_SUCCESS",

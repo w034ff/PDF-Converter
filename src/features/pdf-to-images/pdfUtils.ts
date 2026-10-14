@@ -1,5 +1,10 @@
 import { formatMessage, type Translations } from "../../i18n";
-import type { JobItemPayload, PageSizePt, Skipped } from "../../ipc";
+import type {
+  CheckPageRangeResult,
+  JobItemPayload,
+  PageSizePt,
+  Skipped,
+} from "../../ipc";
 
 const A4_SHORT_PT = 595.28;
 const A4_LONG_PT = 841.89;
@@ -211,6 +216,28 @@ export function intervalsToRangeText(
   return intervals
     .map(([start, end]) => (start === end ? `${start}` : `${start}-${end}`))
     .join(", ");
+}
+
+/**
+ * The pages a checked range selects in a PDF with `pageCount` pages, as sorted
+ * disjoint intervals within 1..pageCount. `end` alone selects each PDF's last
+ * page, which Rust cannot put in `intervals` (design §4.5), so it is added here.
+ */
+export function selectedIntervals(
+  result: CheckPageRangeResult,
+  pageCount: number,
+): Array<[number, number]> {
+  const clamped = clampIntervals(result.intervals, pageCount);
+  if (!result.lastPage || pageCount <= 0) {
+    return clamped;
+  }
+  const last = clamped.at(-1);
+  if (last === undefined || last[1] < pageCount - 1) {
+    clamped.push([pageCount, pageCount]);
+  } else {
+    last[1] = pageCount;
+  }
+  return clamped;
 }
 
 /**

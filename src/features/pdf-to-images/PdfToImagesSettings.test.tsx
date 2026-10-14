@@ -213,6 +213,7 @@ describe("PdfToImagesSettings", () => {
         [1, 3],
         [5, 5],
       ],
+      lastPage: false,
     };
     const calls = mockCommands((cmd) => {
       if (cmd === "check_page_range") {
@@ -316,7 +317,7 @@ describe("PdfToImagesSettings", () => {
   it("leaves the number of pages to the footer, not under the field", async () => {
     mockCommands((cmd) =>
       cmd === "check_page_range"
-        ? { totalPages: 4, intervals: [[1, 4]] }
+        ? { totalPages: 4, intervals: [[1, 4]], lastPage: false }
         : undefined,
     );
     const { container } = renderSettings((state) => {
@@ -416,6 +417,7 @@ describe("PdfToImagesSettings", () => {
       resolveSecond({
         totalPages: 2,
         intervals: [[2, 3]],
+        lastPage: false,
       });
     });
 
@@ -426,6 +428,7 @@ describe("PdfToImagesSettings", () => {
       resolveFirst({
         totalPages: 10,
         intervals: [[1, 10]],
+        lastPage: false,
       });
     });
 

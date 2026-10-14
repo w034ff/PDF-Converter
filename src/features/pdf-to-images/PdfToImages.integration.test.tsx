@@ -108,6 +108,7 @@ describe("PdfToImages integration workflow", () => {
         const res: CheckPageRangeResult = {
           totalPages: 2,
           intervals: [[1, 2]],
+          lastPage: false,
         };
         return res;
       }

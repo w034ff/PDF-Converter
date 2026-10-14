@@ -10,6 +10,7 @@ import {
   intervalsToRangeText,
   isPageInIntervals,
   pageOutcomes,
+  selectedIntervals,
   togglePageRangeInIntervals,
 } from "./pdfUtils";
 
@@ -158,6 +159,59 @@ describe("pdfUtils", () => {
     it("drops intervals completely outside 1..pageCount", () => {
       expect(clampIntervals([[15, 20]], 10)).toEqual([]);
       expect(clampIntervals([[-5, 0]], 10)).toEqual([]);
+    });
+  });
+
+  describe("selectedIntervals", () => {
+    const OPEN_END = 4294967295;
+
+    it("clamps the intervals to the PDF when `end` does not stand alone", () => {
+      expect(
+        selectedIntervals(
+          { totalPages: 0, intervals: [[2, OPEN_END]], lastPage: false },
+          5,
+        ),
+      ).toEqual([[2, 5]]);
+      expect(
+        selectedIntervals(
+          { totalPages: 0, intervals: [[7, 9]], lastPage: false },
+          5,
+        ),
+      ).toEqual([]);
+    });
+
+    it("adds each PDF's last page for `end` alone", () => {
+      const end = { totalPages: 0, intervals: [], lastPage: true };
+      expect(selectedIntervals(end, 5)).toEqual([[5, 5]]);
+      expect(selectedIntervals(end, 1)).toEqual([[1, 1]]);
+      expect(selectedIntervals(end, 0)).toEqual([]);
+
+      const withPages = {
+        totalPages: 0,
+        intervals: [
+          [1, 1],
+          [8, 9],
+        ] satisfies Array<[number, number]>,
+        lastPage: true,
+      };
+      expect(selectedIntervals(withPages, 5)).toEqual([
+        [1, 1],
+        [5, 5],
+      ]);
+      // Page 9 is already the last page of a 9-page PDF.
+      expect(selectedIntervals(withPages, 9)).toEqual([
+        [1, 1],
+        [8, 9],
+      ]);
+    });
+
+    it("joins the last page to an interval that reaches the page before it", () => {
+      expect(
+        selectedIntervals(
+          { totalPages: 0, intervals: [[2, 3]], lastPage: true },
+          4,
+        ),
+      ).toEqual([[2, 4]]);
     });
   });
 

@@ -43,6 +43,7 @@ import {
   formatSkippedSummary,
   intervalsToRangeText,
   isPageInIntervals,
+  selectedIntervals,
   pageOutcomes,
   togglePageRangeInIntervals,
   type PageOutcome,
@@ -302,7 +303,7 @@ function PdfTableRow({
         pagesText = `${item.pageCount} / ${item.pageCount}`;
       } else if (rangeResult !== null) {
         const count = countPagesInIntervals(
-          rangeResult.intervals,
+          selectedIntervals(rangeResult, item.pageCount),
           item.pageCount,
         );
         pagesText =
@@ -516,10 +517,10 @@ export function PdfToImagesView() {
     }
 
     const currentIntervals =
-      pdfToImages.rangeResult !== null ? pdfToImages.rangeResult.intervals : [];
-    const isCurrentlySelected =
-      pdfToImages.rangeResult !== null &&
-      isPageInIntervals(pdfToImages.rangeResult.intervals, page);
+      pdfToImages.rangeResult !== null
+        ? selectedIntervals(pdfToImages.rangeResult, pageCount)
+        : [];
+    const isCurrentlySelected = isPageInIntervals(currentIntervals, page);
     const include = !isCurrentlySelected;
 
     const nextIntervals = togglePageRangeInIntervals(
@@ -552,10 +553,13 @@ export function PdfToImagesView() {
   const showSingleResult =
     singleStatus !== null && singleItemJobStatus !== "partial";
   const singleResult = singleItem !== null ? results[singleItem.id] : undefined;
+  const singleIntervals =
+    singleItem !== null && displayed.rangeResult !== null
+      ? selectedIntervals(displayed.rangeResult, singleItem.pageCount)
+      : [];
   const isPageSelected = (page: number) =>
     displayed.pageSelection === "all" ||
-    (displayed.rangeResult !== null &&
-      isPageInIntervals(displayed.rangeResult.intervals, page));
+    isPageInIntervals(singleIntervals, page);
   const singleSelectedPages =
     singleItem !== null
       ? Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).filter(

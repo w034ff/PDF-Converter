@@ -8,5 +8,10 @@ export type CheckPageRangeResult = { totalPages: number,
  * The range as sorted, non-overlapping `[start, end]` page intervals, so
  * the screen can mark pages without parsing the text itself (design
  * §4.5, §6.3). Its length follows the text, not the pages it covers.
+ * `n-end` reaches 4294967295, which each PDF clamps to its page count.
  */
-intervals: Array<[number, number]>, };
+intervals: Array<[number, number]>, 
+/**
+ * Whether `end` stood alone, adding each PDF's last page to `intervals`.
+ */
+lastPage: boolean, };

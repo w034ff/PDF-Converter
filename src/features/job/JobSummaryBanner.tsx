@@ -5,7 +5,10 @@ import {
   type AppState,
   type JobState,
 } from "../../state";
-import { countPagesInIntervals } from "../pdf-to-images/pdfUtils";
+import {
+  countPagesInIntervals,
+  selectedIntervals,
+} from "../pdf-to-images/pdfUtils";
 import {
   formatJobSummary,
   jobOutcome,
@@ -31,7 +34,10 @@ function selectedPageCount(
   }
   return pdfToImages.rangeResult === null
     ? null
-    : countPagesInIntervals(pdfToImages.rangeResult.intervals, pageCount);
+    : countPagesInIntervals(
+        selectedIntervals(pdfToImages.rangeResult, pageCount),
+        pageCount,
+      );
 }
 
 /**

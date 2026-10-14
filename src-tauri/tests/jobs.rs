@@ -570,6 +570,72 @@ fn check_page_range_sums_valid_items_and_rejects_invalid_syntax() {
     assert_eq!(err.detail, Some("abc".to_string()));
 }
 
+#[test]
+fn check_page_range_resolves_end_per_pdf() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+
+    let shapes_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let enc_path = copy_fixture(temp_in.path(), "encrypted.pdf", "encrypted.pdf");
+    let add_res = add_pdfs(&app_state, &[shapes_path, enc_path]);
+    let shapes_id = add_res.added[0].id;
+    let enc_id = add_res.added[1].id;
+    unlock_pdf(&app_state, enc_id, ENCRYPTED_USER_PASSWORD).expect("unlock succeeds");
+    let ids = [shapes_id, enc_id];
+
+    // shapes.pdf has 3 pages and encrypted.pdf 1: `end` is page 3 of one and page 1 of the other.
+    let res = check_page_range_internal(&app_state, "end", &ids).unwrap();
+    assert_eq!(res.total_pages, 2);
+    assert!(res.intervals.is_empty());
+    assert!(res.last_page);
+
+    // `3-end` has no page in encrypted.pdf.
+    let res = check_page_range_internal(&app_state, "3-end", &ids).unwrap();
+    assert_eq!(res.total_pages, 1);
+    assert_eq!(res.intervals, vec![(3, u32::MAX)]);
+    assert!(!res.last_page);
+
+    let err = check_page_range_internal(&app_state, "end-2", &ids).unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidPageRange);
+    assert_eq!(err.detail, Some("end-2".to_string()));
+}
+
+#[test]
+fn pdfs_to_images_end_converts_the_last_page() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let shapes_path = copy_fixture(temp_in.path(), "shapes.pdf", "shapes.pdf");
+    let add_res = add_pdfs(&app_state, &[shapes_path]);
+    let ids: Vec<u64> = add_res.added.iter().map(|item| item.id).collect();
+
+    let page_set = parse_page_range("end").unwrap();
+    let recorder = TestRecorder::new();
+
+    run_pdfs_to_images(
+        &app_state,
+        &ids,
+        &page_set,
+        RenderFormatChoice::Png,
+        RenderColorChoice::Color,
+        150,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .expect("run_pdfs_to_images should succeed");
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, JobItemStatus::Ok);
+    assert_eq!(items[0].outputs.len(), 1);
+    assert!(
+        items[0].outputs[0].ends_with("p3.png"),
+        "{:?}",
+        items[0].outputs
+    );
+}
+
 #[cfg(feature = "test-hooks")]
 #[test]
 fn crash_on_open_file_name_recovers_and_continues_batch() {
