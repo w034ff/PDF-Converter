@@ -214,7 +214,7 @@ export const en: Translations = {
         "If you forget the password, no one can open these PDFs.",
       cancel: "Cancel",
       confirmMerge: "Choose where to save…",
-      confirmEach: "Start converting",
+      confirmEach: "Start conversion",
     },
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",

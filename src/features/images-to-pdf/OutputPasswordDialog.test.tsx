@@ -323,7 +323,7 @@ describe("OutputPasswordDialog", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByText("Passwords match")).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("button", { name: "Start converting" }),
+      within(dialog).getByRole("button", { name: "Start conversion" }),
     ).toBeDisabled();
     expect(
       within(dialog).getByRole("button", { name: "Show" }),
