@@ -56,6 +56,12 @@ npm run manual-test:files -- <出力先フォルダ>
 - `deep16.png`: 16 ビットの PNG
 - `opaque.bmp` / `alpha32.bmp`: 24 ビットおよび 32 ビットの BMP
 - `dpi300.png` / `dpi300.jpg`: 解像度 300 dpi の情報付き画像
+- `scan_g4.tif`: 3 ページの白黒ファクス TIFF（G4 圧縮）
+- `fax_standard.tif`: 1 ページの白黒ファクス TIFF（204×98 dpi、G4 圧縮）
+- `photo_jpeg.tif`: JPEG 圧縮（YCbCr）の写真 TIFF
+- `rgba_unassoc.tif`: 透過（非関連アルファ）付き RGB TIFF
+- `cmyk.tif`: CMYK の非対応 TIFF（`UnsupportedFormat` 確認用）
+- `corrupt_page2.tif`: 2 ページ目の圧縮データが壊れた TIFF（変換失敗・原子性確認用）
 - `shapes.pdf`: 図形と画像で構成された 3 ページの PDF（A4 縦、A4 横、Letter）
 - `encrypted.pdf`: 閲覧パスワード付き PDF
 - `encrypted_cafe.pdf`: 閲覧パスワード `café` 付き PDF
@@ -80,10 +86,11 @@ npm run manual-test:files -- <出力先フォルダ>
 - `deep16.png`
 - `opaque.bmp`、`alpha32.bmp`
 - `dpi300.png`、`dpi300.jpg`
+- `scan_g4.tif`、`fax_standard.tif`、`photo_jpeg.tif`、`rgba_unassoc.tif`、`cmyk.tif`、`corrupt_page2.tif`
 
 ### 操作
 1. アプリを起動し、上部バーの「画像 → PDF」タブを選択する。
-2. 「画像を追加」またはドラッグ＆ドロップで、上記の各画像（計 10 ファイル）を追加する。
+2. 「画像を追加」またはドラッグ＆ドロップで、上記の各画像のうち TIFF を除く各画像（計 10 ファイル）を追加する。
 3. **画像と同じ大きさ（結合）**:
    - 左パネルで「出力」を「1 つの PDF」、「ページの大きさ」を「画像と同じ大きさ」にする。
    - 「向き」の選択肢が押せず、その下に「用紙を選ぶと使えます」と表示されていることを確認する。
@@ -134,6 +141,33 @@ npm run manual-test:files -- <出力先フォルダ>
    - 「出力」を「1 枚ずつ」にし、空の保存先フォルダを指定して「変換を開始」をクリックする。
    - チェックボックスをオフにして、同じ操作で通常の PDF `normal_merged.pdf` を保存し、見た目を比べる。
    - アプリを終了して再度起動し、チェックボックスの状態を確認する（オンにした状態で終了した場合と、オフにして終了した場合の両方）。
+9. **TIFF（複数ページ、異方性解像度、非対応形式、変換エラー時の原子性）**:
+   - 一覧の画像をすべて外す。
+   - 「画像を追加」で `scan_g4.tif`、`fax_standard.tif`、`photo_jpeg.tif`、`rgba_unassoc.tif`、`cmyk.tif`、`corrupt_page2.tif` を追加する。
+   - 追加直後の一覧を確認する:
+     - `scan_g4.tif`: サムネイルが表示され、ファイル名の下に「3 ページ」と表示されることを確認する。
+     - `fax_standard.tif`: サムネイルがつぶれず（縦長に歪まず）正しい縦横比で表示され、1 ページのためページ数表示がないことを確認する。
+     - `photo_jpeg.tif`、`rgba_unassoc.tif`: サムネイルが表示され、ページ数表示がないことを確認する。
+     - `cmyk.tif`: エラーアイコンが表示され、状態欄に「対応していない形式です」と表示されることを確認する。
+     - `corrupt_page2.tif`: 1 ページ目は正常なためサムネイルと「2 ページ」が表示されることを確認する。
+   - `cmyk.tif` を「外す」ボタンで一覧から除外する。
+   - **1 つの PDF（結合と変換失敗時の原子性）**:
+     - 左パネルで「出力」を「1 つの PDF」、「ページの大きさ」を「画像と同じ大きさ」にする。
+     - 下部バーの左側に「8 ページの PDF になります」と表示されていることを確認する。
+     - 「PDF を保存」をクリックし、保存ダイアログでファイル名 `tiff_merged.pdf` を指定して保存する。
+     - 変換が進行し、進捗バーがページ単位で進んだあと、`corrupt_page2.tif` の 2 ページ目で失敗することを確認する。
+     - 一覧の上部にエラーバナーが表示され、`corrupt_page2.tif` の状態欄が「ファイルを読み込めませんでした」となることを確認する。
+     - 保存先に `tiff_merged.pdf` が残っていない（ファイルが作成されていない、または削除されている）ことを確認する。
+     - `corrupt_page2.tif` を一覧から「外す」ボタンで除外する。
+     - 下部バーの左側に「6 ページの PDF になります」と表示されることを確認する。
+     - 再度「PDF を保存」をクリックし、ファイル名 `tiff_merged.pdf` で保存する。
+     - 変換が成功し、進捗バーがページ単位で 6/6 まで進み、「変換が終わりました：6 ページの PDF を保存しました」のバナーが表示されることを確認する。
+   - **1 枚ずつ（一括変換）**:
+     - 左パネルで「出力」を「1 枚ずつ」に切り替える。
+     - 「画像を追加」で `corrupt_page2.tif` を再度追加する（一覧には `scan_g4.tif`、`fax_standard.tif`、`photo_jpeg.tif`、`rgba_unassoc.tif`、`corrupt_page2.tif` の 5 ファイル）。
+     - 空の保存先フォルダを指定して「変換を開始」をクリックする。
+     - 変換が進み、`corrupt_page2.tif` の行のみ失敗し、他の 4 ファイルは成功することを確認する。結果の帯に「成功 4 件、失敗 1 件」と表示されることを確認する。
+     - 保存先フォルダを確認し、`scan_g4.pdf`、`fax_standard.pdf`、`photo_jpeg.pdf`、`rgba_unassoc.pdf` の 4 ファイルが保存されており、`corrupt_page2.pdf` は存在しないことを確認する。
 
 ### 期待する結果
 - 生成された PDF をブラウザー（Chrome / Edge / Firefox）等で開いて目視確認する:
@@ -182,6 +216,17 @@ npm run manual-test:files -- <出力先フォルダ>
   - `photo_cmyk.jpg` の行だけが「PDF/A では CMYK の画像を使えません」で失敗する。「1 つの PDF」では残りの 2 枚で 2 ページの PDF ができ、「1 枚ずつ」では `photo.pdf` と `logo_alpha.pdf` が保存される。結果の帯は「成功 2 件、失敗 1 件」になる。
   - `pdfa_merged.pdf` を `exiftool -a -G1 -ee pdfa_merged.pdf` で調べると `[XMP-pdfaid]` の `Part` が `2`、`Conformance` が `B` で、`Creator Tool` が `PDF Converter <版>`、`[XMP-xmp] Create Date` が UTC（`+00:00`）で出る。`normal_merged.pdf` には `[XMP-pdfaid]` の項目も `Create Date` も出ない。
   - 再起動後も、終了したときのチェックボックスの状態（オン / オフ）が残っている。
+- TIFF（手順 9）:
+  - `tiff_merged.pdf`: 計 6 ページで構成され、各画像が正しい順序で配置されている:
+    - ページ 1〜3: `scan_g4.tif` の各ページ（白黒ファクスが鮮明に表示される）。
+    - ページ 4: `fax_standard.tif`（204 × 98 dpi のため、解像度に従って縦横比が保たれ、約 610 × 840 pt の A4 に近い大きさで縦につぶれず開く）。
+    - ページ 5: `photo_jpeg.tif`（YCbCr から RGB に正しく変換され、自然な色合いの写真として表示される）。
+    - ページ 6: `rgba_unassoc.tif`（非関連アルファが正しく合成され、半透明や境界が乱れず表示される）。
+  - 「1 枚ずつ」で保存された PDF:
+    - `scan_g4.pdf`: 3 ページの PDF になっている。
+    - `fax_standard.pdf`: 1 ページ、約 610 × 840 pt で縦横比がつぶれずに収まっている。
+    - `photo_jpeg.pdf`、`rgba_unassoc.pdf`: 各 1 ページの PDF で正常に表示される。
+    - `corrupt_page2.pdf`: 変換失敗のため保存先に一切残らない（中途半端な 1 ページだけの PDF も作成されない）。
 
 ---
 
