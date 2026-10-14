@@ -50,7 +50,8 @@ fn new_dir(parent: &Path, name: &str) -> PathBuf {
     dir
 }
 
-/// A file whose items all differ from the defaults, with folders that exist.
+/// A file whose items differ from the defaults, with folders that exist. `encrypt` stays off:
+/// PDF/A is on, and the two exclude each other.
 fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
     json!({
         "schemaVersion": 1,
@@ -60,6 +61,7 @@ fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
             "pageSize": "a4",
             "orientation": "portrait",
             "pdfA": true,
+            "encrypt": false,
             "outputDir": images_dir,
         },
         "pdfToImages": {
@@ -83,6 +85,7 @@ fn input() -> SettingsInput {
             page_size: PageSizeChoice::A4,
             orientation: PageOrientationChoice::Portrait,
             pdf_a: true,
+            encrypt: false,
         },
         pdf_to_images: PdfToImagesOptions {
             format: RenderFormatChoice::Jpeg,
@@ -113,6 +116,7 @@ fn the_defaults_are_those_of_the_design() {
         PageOrientationChoice::Auto
     );
     assert!(!file.images_to_pdf.options.pdf_a);
+    assert!(!file.images_to_pdf.options.encrypt);
     assert_eq!(file.images_to_pdf.output_dir, None);
     assert_eq!(file.pdf_to_images.options.format, RenderFormatChoice::Png);
     assert_eq!(
@@ -359,6 +363,133 @@ fn a_pdf_a_of_the_wrong_type_resets_only_the_pdf_a() {
             |file| file.images_to_pdf.options.pdf_a = false,
         );
     }
+}
+
+/// `customized` with `pdfA` off and `encrypt` on, as a file written after the user chose a password.
+fn customized_with_password(images_dir: &Path, pdfs_dir: &Path) -> Value {
+    let mut json = customized(images_dir, pdfs_dir);
+    json["imagesToPdf"]["pdfA"] = json!(false);
+    json["imagesToPdf"]["encrypt"] = json!(true);
+    json
+}
+
+#[test]
+fn a_file_with_encrypt_on_loads_it() {
+    let temp = TempDir::new().expect("temp dir");
+    let images_dir = new_dir(temp.path(), "images-out");
+    let pdfs_dir = new_dir(temp.path(), "pdfs-out");
+    let file = load_from(
+        temp.path(),
+        &customized_with_password(&images_dir, &pdfs_dir),
+    );
+    assert!(file.images_to_pdf.options.encrypt);
+    assert!(!file.images_to_pdf.options.pdf_a);
+}
+
+#[test]
+fn a_missing_encrypt_means_no_password() {
+    let temp = TempDir::new().expect("temp dir");
+    let images_dir = new_dir(temp.path(), "images-out");
+    let pdfs_dir = new_dir(temp.path(), "pdfs-out");
+    let mut json = customized_with_password(&images_dir, &pdfs_dir);
+    json["imagesToPdf"]
+        .as_object_mut()
+        .expect("imagesToPdf object")
+        .remove("encrypt");
+    let file = load_from(temp.path(), &json);
+    assert!(!file.images_to_pdf.options.encrypt);
+    // The other items stay.
+    assert_eq!(file.images_to_pdf.options.page_size, PageSizeChoice::A4);
+    assert_eq!(file.pdf_to_images.options.dpi, 300);
+}
+
+#[test]
+fn an_encrypt_of_the_wrong_type_resets_only_the_encrypt() {
+    for wrong in [json!("true"), json!(1), json!(null), json!([true])] {
+        let temp = TempDir::new().expect("temp dir");
+        let images_dir = new_dir(temp.path(), "images-out");
+        let pdfs_dir = new_dir(temp.path(), "pdfs-out");
+        let mut json = customized_with_password(&images_dir, &pdfs_dir);
+        json["imagesToPdf"]["encrypt"] = wrong.clone();
+        let mut expected = load_from(
+            &temp.path().join("intact"),
+            &customized_with_password(&images_dir, &pdfs_dir),
+        );
+        expected.images_to_pdf.options.encrypt = false;
+        assert_eq!(load_from(temp.path(), &json), expected, "for {wrong}");
+    }
+}
+
+#[test]
+fn a_file_with_pdf_a_and_encrypt_both_on_keeps_pdf_a_and_drops_encrypt() {
+    let temp = TempDir::new().expect("temp dir");
+    let images_dir = new_dir(temp.path(), "images-out");
+    let pdfs_dir = new_dir(temp.path(), "pdfs-out");
+    let mut json = customized(&images_dir, &pdfs_dir);
+    json["imagesToPdf"]["encrypt"] = json!(true);
+    let file = load_from(temp.path(), &json);
+    assert!(file.images_to_pdf.options.pdf_a);
+    assert!(!file.images_to_pdf.options.encrypt);
+    // The other items stay.
+    assert_eq!(file.images_to_pdf.options.page_size, PageSizeChoice::A4);
+    assert_eq!(file.pdf_to_images.options.dpi, 300);
+}
+
+#[test]
+fn save_settings_keeps_encrypt() {
+    let temp = TempDir::new().expect("temp dir");
+    let state = state();
+    restore_settings(&state, temp.path());
+    let mut with_password = input();
+    with_password.images_to_pdf.pdf_a = false;
+    with_password.images_to_pdf.encrypt = true;
+    save(&state, &with_password).expect("saving");
+    assert!(load_settings(temp.path()).images_to_pdf.options.encrypt);
+}
+
+#[test]
+fn save_settings_rejects_pdf_a_with_encrypt_and_changes_nothing() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    save(&state, &input()).expect("saving");
+    let before = fs::read(config_dir.join(SETTINGS_FILE_NAME)).expect("reading the file");
+    let held = state.settings.file();
+
+    let mut both = input();
+    both.images_to_pdf.pdf_a = true;
+    both.images_to_pdf.encrypt = true;
+    both.language = None;
+    assert_eq!(
+        save(&state, &both),
+        Err(IpcError::from_code(ErrorCode::InvalidParams))
+    );
+
+    assert_eq!(
+        fs::read(config_dir.join(SETTINGS_FILE_NAME)).expect("reading the file"),
+        before
+    );
+    assert_eq!(state.settings.file(), held);
+}
+
+#[test]
+fn settings_input_requires_encrypt() {
+    let missing_encrypt = json!({
+        "language": "ja",
+        "imagesToPdf": {
+            "output": "merge",
+            "pageSize": "a4",
+            "orientation": "auto",
+            "pdfA": false
+        },
+        "pdfToImages": {
+            "format": "png",
+            "colorMode": "color",
+            "dpi": 150
+        }
+    });
+    assert!(serde_json::from_value::<SettingsInput>(missing_encrypt).is_err());
 }
 
 #[test]
@@ -799,6 +930,7 @@ fn get_settings_has_no_path() {
                 "pageSize": "a4",
                 "orientation": "portrait",
                 "pdfA": true,
+                "encrypt": false,
                 "outputDir": { "dirLabel": "images-out" },
             },
             "pdfToImages": {
@@ -820,7 +952,7 @@ fn get_settings_of_the_defaults_has_no_folders() {
         json,
         json!({
             "language": null,
-            "imagesToPdf": { "output": "merge", "pageSize": "fit", "orientation": "auto", "pdfA": false, "outputDir": null },
+            "imagesToPdf": { "output": "merge", "pageSize": "fit", "orientation": "auto", "pdfA": false, "encrypt": false, "outputDir": null },
             "pdfToImages": { "format": "png", "colorMode": "color", "dpi": 150, "outputDir": null },
         })
     );
@@ -1023,7 +1155,8 @@ fn save_settings_rejects_missing_orientation_and_unknown_page_size() {
         "imagesToPdf": {
             "output": "merge",
             "pageSize": "a4",
-            "pdfA": false
+            "pdfA": false,
+            "encrypt": false
         },
         "pdfToImages": {
             "format": "png",
@@ -1040,7 +1173,8 @@ fn save_settings_rejects_missing_orientation_and_unknown_page_size() {
             "output": "merge",
             "pageSize": "b5",
             "orientation": "auto",
-            "pdfA": false
+            "pdfA": false,
+            "encrypt": false
         },
         "pdfToImages": {
             "format": "png",
@@ -1056,7 +1190,8 @@ fn save_settings_rejects_missing_orientation_and_unknown_page_size() {
         "imagesToPdf": {
             "output": "merge",
             "pageSize": "a4",
-            "orientation": "auto"
+            "orientation": "auto",
+            "encrypt": false
         },
         "pdfToImages": {
             "format": "png",

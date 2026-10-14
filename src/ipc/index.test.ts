@@ -203,6 +203,7 @@ describe("ipc", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: { dirLabel: "out" },
         },
         pdfToImages: {
@@ -230,6 +231,7 @@ describe("ipc", () => {
           pageSize: "a4",
           orientation: "portrait",
           pdfA: true,
+          encrypt: false,
         },
         pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
       };
@@ -256,6 +258,7 @@ describe("ipc", () => {
             pageSize: "fit",
             orientation: "auto",
             pdfA: false,
+            encrypt: false,
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 100 },
         }),
@@ -275,6 +278,7 @@ describe("ipc", () => {
             pageSize: "fit",
             orientation: "auto",
             pdfA: false,
+            encrypt: false,
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
         }),
@@ -320,23 +324,29 @@ describe("ipc", () => {
         return { savedName: "out.pdf" };
       });
 
-      const res = await saveMergedPdf([1, 2], "fit", "auto", true);
+      const res = await saveMergedPdf([1, 2], "fit", "auto", true, null);
       expect(res).toEqual({ savedName: "out.pdf" });
       expect(calls).toEqual([
         [
           "save_merged_pdf",
-          { ids: [1, 2], pageSize: "fit", orientation: "auto", pdfA: true },
+          {
+            ids: [1, 2],
+            pageSize: "fit",
+            orientation: "auto",
+            pdfA: true,
+            password: null,
+          },
         ],
       ]);
     });
 
     it("tells a cancelled dialog from a merge that wrote no PDF", async () => {
       mockIPC(() => null);
-      expect(await saveMergedPdf([1], "fit", "auto", false)).toBeNull();
+      expect(await saveMergedPdf([1], "fit", "auto", false, null)).toBeNull();
 
       clearMocks();
       mockIPC(() => ({ savedName: null }));
-      expect(await saveMergedPdf([1], "fit", "auto", false)).toEqual({
+      expect(await saveMergedPdf([1], "fit", "auto", false, null)).toEqual({
         savedName: null,
       });
     });
@@ -348,7 +358,7 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await startImagesToPdfs([1, 2], "a4", "portrait", true);
+      await startImagesToPdfs([1, 2], "a4", "portrait", true, null);
       expect(calls).toEqual([
         [
           "start_images_to_pdfs",
@@ -357,6 +367,7 @@ describe("ipc", () => {
             pageSize: "a4",
             orientation: "portrait",
             pdfA: true,
+            password: null,
           },
         ],
       ]);
@@ -429,6 +440,7 @@ describe("ipc", () => {
           pageSize: "a4",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         },
         pdfToImages: {
@@ -460,6 +472,32 @@ describe("ipc", () => {
             output: "merge",
             pageSize: "a4",
             orientation: "auto",
+            outputDir: null,
+          },
+        }),
+      ).toBe(false);
+
+      // encrypt must be a boolean, and must be there
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, encrypt: true },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, encrypt: "true" },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "a4",
+            orientation: "auto",
+            pdfA: false,
             outputDir: null,
           },
         }),

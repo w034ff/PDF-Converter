@@ -187,6 +187,34 @@ export const ja = {
     orientationUnavailableHint: "用紙を選ぶと使えます",
     pdfALabel: "長期保存用（PDF/A）",
     pdfAHint: "CMYK の画像は使えません",
+    pdfAUnavailableHint: "パスワードを付けると選べません",
+    encryptLabel: "パスワードを付ける",
+    encryptHint: "保存するときにパスワードを入れます",
+    encryptUnavailableHint: "PDF/A では選べません",
+    passwordProtected: "パスワード付き",
+    passwordDialog: {
+      title: "パスワードを付ける",
+      eachNoticeSingle:
+        "保存する {count} 個の PDF すべてに、同じパスワードを付けます。",
+      eachNoticeMultiple:
+        "保存する {count} 個の PDF すべてに、同じパスワードを付けます。",
+      passwordLabel: "パスワード",
+      confirmLabel: "もう一度入力",
+      showPassword: "表示",
+      hidePassword: "隠す",
+      conditionCharacters: "半角の英数字と記号",
+      conditionMatch: "パスワードが一致",
+      conditionMet: "満たしています",
+      conditionNotMet: "満たしていません",
+      tooLong: "{max} 文字までです",
+      forgetWarningMerge:
+        "パスワードを忘れると、この PDF はだれも開けなくなります。",
+      forgetWarningEach:
+        "パスワードを忘れると、これらの PDF はだれも開けなくなります。",
+      cancel: "キャンセル",
+      confirmMerge: "保存先を選ぶ…",
+      confirmEach: "変換を開始",
+    },
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
     imageCount: "画像 {count} 枚",

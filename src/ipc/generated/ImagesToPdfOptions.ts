@@ -6,4 +6,8 @@ import type { PageSizeChoice } from "./PageSizeChoice";
 /**
  * The "images to PDF" options the user can change (design §6.7).
  */
-export type ImagesToPdfOptions = { output: OutputMode, pageSize: PageSizeChoice, orientation: PageOrientationChoice, pdfA: boolean, };
+export type ImagesToPdfOptions = { output: OutputMode, pageSize: PageSizeChoice, orientation: PageOrientationChoice, pdfA: boolean, 
+/**
+ * Whether the PDFs get a password. The password itself is never saved (design §6.9).
+ */
+encrypt: boolean, };

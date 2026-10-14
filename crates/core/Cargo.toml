@@ -16,6 +16,11 @@ krilla = { version = "0.8.2", default-features = false, features = ["raster-imag
 # Reads every page of a TIFF; image reads only the first (design §2, §4.1.1).
 # The features are the compressions the app reads: G3, ZSTD and WebP stay out.
 tiff = { version = "0.11.3", default-features = false, features = ["deflate", "fax", "jpeg", "lzw"] }
+# Encrypts a written PDF, which krilla cannot (design §2, §4.3.1). Its defaults
+# add a clock and rayon, which the app does not use.
+lopdf = { version = "0.45.0", default-features = false }
+# The file encryption key lopdf takes from the caller comes from the OS.
+getrandom = "0.4.3"
 
 # Only examples/gen_fixtures.rs and the tests use these (design §11.1, §11.2).
 [dev-dependencies]

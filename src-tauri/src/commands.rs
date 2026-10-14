@@ -235,6 +235,7 @@ pub async fn save_merged_pdf(
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
     pdf_a: bool,
+    password: Option<String>,
 ) -> Result<Option<SaveMergedPdfResult>, IpcError> {
     if state
         .is_running
@@ -247,6 +248,10 @@ pub async fn save_merged_pdf(
 
     let state_inner = state.inner().clone();
     let running_guard = jobs::RunningGuard::new(Arc::clone(&state_inner.is_running));
+
+    // Refused before the save dialog opens, so that nothing is asked for a refused call.
+    let conformance = pdf_conformance(pdf_a);
+    let output = jobs::PdfOutput::new(conformance, jobs::output_password(conformance, password)?);
 
     let default_name = {
         let first_id = ids
@@ -309,7 +314,7 @@ pub async fn save_merged_pdf(
             &ids,
             page_size,
             orientation,
-            pdf_conformance(pdf_a),
+            &output,
             &dest_path,
             callbacks,
         )
@@ -328,6 +333,7 @@ pub async fn start_images_to_pdfs(
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
     pdf_a: bool,
+    password: Option<String>,
 ) -> Result<(), IpcError> {
     let w1 = window.clone();
     let w2 = window.clone();
@@ -351,6 +357,7 @@ pub async fn start_images_to_pdfs(
         page_size,
         orientation,
         pdf_conformance(pdf_a),
+        password,
         callbacks,
     )
 }

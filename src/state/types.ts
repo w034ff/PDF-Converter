@@ -36,6 +36,8 @@ export interface ImagesToPdfState {
   pageSize: PageSizeChoice;
   orientation: PageOrientationChoice;
   pdfA: boolean;
+  /** Whether the PDFs get a password; the password itself is never kept (design §6.9). */
+  encrypt: boolean;
   outputDir: OutputDirLabel | null;
 }
 
@@ -47,6 +49,7 @@ export type ImagesToPdfAction =
   | { type: "SET_IMAGES_PAGE_SIZE"; pageSize: PageSizeChoice }
   | { type: "SET_IMAGES_ORIENTATION"; orientation: PageOrientationChoice }
   | { type: "SET_IMAGES_PDF_A"; pdfA: boolean }
+  | { type: "SET_IMAGES_ENCRYPT"; encrypt: boolean }
   | { type: "SET_IMAGES_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
   | { type: "MOVE_IMAGE_ITEM"; fromIndex: number; toIndex: number };
 
