@@ -36,6 +36,7 @@
 | アプリ基盤 | Tauri 2 | 要件で決定済み |
 | PDF の描画 | `pdfium-render` + bblanchon/pdfium-binaries（版を固定、§8） | スパイクで決定。暗号化された PDF を開ける、速い |
 | PDF の書き出し | `krilla`（`raster-images` 機能） | スパイクで決定。JPEG を再圧縮せずに入れられる、純 Rust |
+| PDF の暗号化 | `lopdf`（既定の機能なし）、`getrandom` | krilla も pdfium も暗号化した PDF を書けないため（§4.3.1）。純 Rust で、AES-256（revision 6）を持つ |
 | 画像の読み込み | `image`（png、jpeg、webp、bmp 機能のみ） | 寸法・EXIF の向きの取得、BMP の読み込み、PDF → 画像の PNG / JPEG / WebP の書き出し |
 | TIFF の読み込み | `tiff`（deflate、fax、jpeg、lzw 機能のみ） | `image` は TIFF の最初のページしか読まないため（§4.1.1）。純 Rust で、ファクスの G4 も読める |
 | 並列処理 | `std::thread` とチャネル | ワーカーはプロセスなので、スレッドプールのライブラリは要らない |
@@ -60,6 +61,7 @@
 │   │   ├── tiff.rs           TIFF の IFD と画素の読み込み（§4.1.1）
 │   │   ├── layout.rs         ページの大きさと画像の配置（§4.2）
 │   │   ├── pdf_write.rs      krilla で PDF を書く（§4.3）
+│   │   ├── pdf_encrypt.rs    書き出す PDF の暗号化とパスワードの規則（§4.3.1）
 │   │   ├── page_range.rs     ページの範囲の解釈（§4.5）
 │   │   ├── naming.rs         出力名の決定（§6.4）
 │   │   └── error.rs
@@ -181,7 +183,21 @@
   - CMYK の JPEG（フレームの成分が 4 つ。Adobe の YCCK も含む）は、PDF/A では `CmykNotAllowedInPdfA` とし、その画像をページに加えない。krilla は、画像が ICC を持っていても、文書の CMYK プロファイル（`SerializeSettings::cmyk_profile`。出力インテントになる）がないと `finish` で失敗し、同梱するプロファイルの選択には正解がないため（ICC のない画像の色は、選んだプロファイルで変わる）。見分けるのは、上の区切りの処理が読むフレーム（SOF）の成分の数。確かめるのは `probe` と画素の確認のあとで、区切りを外す前。
   - 上の 2 つを守っていれば、`finish` が PDF/A の検証で失敗することはない。失敗したら作りの誤りなので、通常の `finish` の失敗と同じく `WriteFailed` にする（§11.2 のテストが、全フィクスチャで起きないことを確かめる）。
 - 画像のデータの誤り（`corrupt.png` など）は、krilla では文書の `finish` まで分からず、どの画像の誤りかも分からない。そのため、ページに加える前に `image` で画素を一度読み、読めなければ `DecodeFailed` としてその画像を加えない。
-- `krilla` の出力をメモリに作ってから §6.5 の方式で書き込む。結合する画像の数の上限は設けないが、§6.2 の進捗を 1 ページごとに通知する（TIFF の中のページも 1 ページずつ）。
+- `krilla` の出力をメモリに作ってから §6.5 の方式で書き込む。結合する画像の数の上限は設けないが、§6.2 の進捗を 1 ページごとに通知する（TIFF の中のページも 1 ページずつ）。パスワードを付けるときは、書き込む前に §4.3.1 の暗号化を行う。
+
+### 4.3.1 PDF の暗号化（FR-02）
+
+- krilla の `finish` が作った PDF を、`lopdf` の `Document::load_mem` で読み、krilla の出力のバイト列を捨ててから暗号化し、`save_to` でメモリに書く。暗号化した PDF を §6.5 の方式で書き込む。`lopdf` が読むのは、krilla がその場で書いた PDF だけにする（外から来た PDF は §9 のとおりワーカーの pdfium だけが読む）。
+- 方式は標準のセキュリティハンドラーの revision 6（AES-256）だけ: `EncryptionVersion::V5` に、暗号フィルター `StdCF`（`Aes256CryptFilter`）をストリームと文字列の両方に、`encrypt_metadata: true`、`Permissions::all()` を渡す。ファイルの鍵（32 バイト）は `getrandom` で OS の乱数から作る。lopdf が作るソルトと初期化ベクトルは、OS の乱数で種を入れた `rand::rng()` を使う。文書情報（作成ソフト）と XMP も暗号化され、パスワードなしでは見えない。
+- 所有者のパスワードは、閲覧のパスワードと同じにする。空にすると、空のパスワードで所有者として開けて暗号を外せてしまうため。制限を付けないので、所有者として開いても閲覧と変わらない。
+- `lopdf` 0.45 の出力に次を足す。
+  - 暗号化の辞書の `/Length 256` と、`StdCF` の `/Length 32`。lopdf はどちらも書かず、poppler 22.12（Linux の Evince・Okular などが使う）は鍵を短いものとして扱って、全ページが壊れて描かれる（U15 の前の試作。どちらか一方で直った）。qpdf と同じく両方を書く。
+  - カタログの `/Extensions <</ADBE <</BaseVersion /1.7 /ExtensionLevel 8>>>>`。krilla は PDF 1.7 で書くので、1.7 で AES-256 を使うことを宣言する（qpdf と同じ）。
+- パスワードは `OutputPassword` 型で持ち、`OutputPassword::new` だけが作る。規則は、空でないこと、すべての文字が U+0020〜U+007E（半角の英数字・記号・空白）であること、127 文字以下であること。外れたら `OutputPasswordError`（`Empty`・`InvalidCharacter`・`TooLong`）を返す。型の `Debug` は手で書いて値を伏せる（§6.8 と同じ）。
+  - 規則の理由（U15 の前の試作。pdfium・qpdf 11.3・poppler 22.12・mupdf 1.21 で確かめた）: lopdf は SASLprep（NFKC の正規化など）をしてからパスワードを掛けるが、4 つのビューアーはどれも入れた文字の UTF-8 のまま照合する。そのため、全角の英数字、全角の空白、半角カナ、ソフトハイフン、結合文字の濁点・アクセントは、同じ文字を入れても開けない。また、lopdf は 127 バイトで切り詰めずに掛けるが、qpdf・poppler・mupdf は仕様どおり切り詰めるので、128 バイト以上では開けない（pdfium だけは切り詰めずに開ける）。絵文字・タブ・制御文字は lopdf が拒む。U+0020〜U+007E の文字は SASLprep で変わらず、UTF-8 で 1 文字 1 バイトなので、どちらの食い違いも起きない。
+  - 日本語のパスワードは、試作の 4 つのビューアーでは開けたが、受け付けない（オーナー、2026-10-14）。試していないビューアーで開ける保証がなく、ビューアーのパスワードの欄では日本語の入力が使えないことがあり、付けられても開くときに入れられないおそれがあるため。
+- 暗号化の関数は `encrypt_pdf(pdf: Vec<u8>, password: &OutputPassword) -> Result<Vec<u8>, PdfWriteError>`。読み込んだあとに元のバイト列を捨てられるよう、所有権を受け取る。lopdf が krilla の出力を読めない・書けないのは作りの誤りなので、`finish` の失敗と同じく `WriteFailed` にする。PDF/A の PDF には呼ばない（PDF/A は暗号化を禁じる。§7.1 が組み合わせを拒む）。
+- 時間とメモリ（試作）: 288 MB の PDF で 0.8 秒、最大のメモリは krilla の出力を持ったままで約 2.9 倍（848 MB）。捨てれば約 2 倍になる。書き出しはメインプロセスなので、§5.3 のワーカーの上限は掛からない。
 
 ### 4.4 PDF → 画像の書き出し（FR-04）
 
@@ -269,6 +285,7 @@
 - 「1 つの PDF」: 「PDF を保存」で保存ダイアログを開く。初期ファイル名は一覧の先頭の画像の名前の拡張子を `.pdf` にしたもの。ダイアログで既存のファイルを選んだ場合は、OS のダイアログで上書きの確認が済んでいるので上書きする。Linux では、ダイアログをホームのフォルダで開く（指定しないと GTK がプロセスの作業フォルダで開き、AppImage では書き込めない読み取り専用のマウント先になるため）。Windows は OS が前回のフォルダを覚えているので指定しない。追加やフォルダを選ぶダイアログは「最近使ったもの」で開くので指定しない。
 - 「1 枚ずつ」: 保存先のフォルダを選び、「変換を開始」で一覧の画像を 1 つずつ PDF にする。複数ページの TIFF は、1 つのファイルから全ページを持つ 1 つの PDF を作る（ページごとには分けない）。出力名は §6.4。並列の数は §5.2 と同じ式（ワーカーは使わず、スレッドで行う）。
 - どちらも、進捗を `job-progress`、1 件ごとの結果を `job-item` で通知し、最後に `job-finished` を送る（§7.2）。進捗はページで数える（`total` は一覧のエラーのない項目のページ数の合計、`done` は PDF に加えたか失敗したページの数）。200 ページの TIFF が 1 件と数えられて、長い間進捗が動かないのを避けるため。`job-item` は、TIFF でもファイルに 1 つ。TIFF の途中のページが読めなかったときは、そのファイルを `failed` にし、残りのページの分も `done` に足す。キャンセルは、TIFF の中でもページの間で確かめる。
+- 「パスワードを付ける」（§10.1）がオンのときは、「PDF を保存」（1 つの PDF）・「変換を開始」（1 枚ずつ）を押すと、先にパスワードのダイアログ（§10.1）を開く。ダイアログで決めたら、1 つの PDF は保存ダイアログを、1 枚ずつは保存先のフォルダの確かめ（§6.5。未選択ならフォルダのダイアログ）を続けて行う。どちらかのダイアログを取り消したら何も始めない。パスワードは `save_merged_pdf`・`start_images_to_pdfs` の `password` で渡す（§6.9）。1 つの PDF は `finish` のあとに、1 枚ずつはファイルごとに `finish` のあとにそのスレッドで、§4.3.1 の暗号化を行う。1 枚ずつでは、その回のすべての PDF に同じパスワードを付ける（鍵とソルトはファイルごとに別）。暗号化はページの進捗に数えず、途中でキャンセルを確かめない（大きい PDF でも 1 秒ほどのため）。
 - 「長期保存用（PDF/A）」（§10.1）は、「1 つの PDF」と「1 枚ずつ」の両方に使う。PDF/A で CMYK の画像は、ほかの読めない画像と同じく `job-item` で失敗にし（`CmykNotAllowedInPdfA`）、「1 つの PDF」では残りの画像で PDF を作る。
 
 ### 6.3 PDF → 画像（FR-04、FR-05）
@@ -350,24 +367,25 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | OutputDirNotWritable | 変換を始める前に、保存先のフォルダに一時ファイルを作れない（§6.5） | 保存先のフォルダに書き込めません / Can't write to the output folder |
 
 - 「対象のページなし」はエラーではなく、`job-item` の状態 `noPages` で表す（FR-04）。
+- 書き出す PDF のパスワードの誤り（使えない文字、長すぎる、2 回の入力が違う）は、画面がダイアログの中で示す（§10.1）。IPC のエラーコードは足さない。画面と同じ規則を Rust も確かめ（§4.3.1 の `OutputPassword::new`）、届いたら `InvalidParams` で拒む。
 - ワーカーが同梱の pdfium を読み込めないとき（ワーカー内のコード `PdfiumUnavailable`）は、IPC では `WorkerCrashed` として返す。配布物が壊れている場合にしか起きず、利用者に見せる文言は同じでよいため。
 - `TooLarge`、`TooManyPages` の `detail` には、Rust が上限の定数を 3 桁区切りの文字列にして入れる（上限の数値をフロントエンドに書き写さないため）。`TooManyPages` は、PDF では `MAX_PDF_PAGES`、TIFF では `MAX_TIFF_PAGES`。
 
 ### 6.7 設定の保存（FR-07、FR-10）
 
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
-- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a3" | "a4" | "a5" | "jisB4" | "jisB5" | "letter" | "legal", orientation: "auto" | "portrait" | "landscape", pdfA: boolean, outputDir }`、`pdfToImages: { format: "png" | "jpeg" | "webp", colorMode: "color" | "gray", dpi, outputDir }`。`dpi` は §4.4 の範囲の整数。
+- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a3" | "a4" | "a5" | "jisB4" | "jisB5" | "letter" | "legal", orientation: "auto" | "portrait" | "landscape", pdfA: boolean, encrypt: boolean, outputDir }`、`pdfToImages: { format: "png" | "jpeg" | "webp", colorMode: "color" | "gray", dpi, outputDir }`。`dpi` は §4.4 の範囲の整数。
 - 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。
-- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、PNG、カラー、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
+- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、パスワードは付けない（`false`）、PNG、カラー、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
 - `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
-- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, orientation, pdfA, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
-- `save_settings` は、`revision`（数）と、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にあるなどの不正な値は `InvalidParams` で拒み、何も保存しない。
+- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, orientation, pdfA, encrypt, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
+- `save_settings` は、`revision`（数）と、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にある、`pdfA` と `encrypt` がどちらも `true` などの不正な値は `InvalidParams` で拒み、何も保存しない。`encrypt` はパスワードを付けるかどうかだけで、パスワードは保存しない（§6.9）。
   - `async` でないコマンドにし、メインスレッドで受け取った順に、値をメモリの設定に入れるだけにする。ファイルは別のスレッドで、そのときの最新の値を書く（`SettingsStore::flush`）。書き込みは 1 つずつで、ファイルがすでに最新なら書かない。書き込みの失敗は返さず、設定はメモリに残して次の書き込みで再び試す（書くのは応答のあとなので返せない。FR-10 は Should）。メインスレッドはファイルの書き込みを待たない（メモリの設定のロックは写す間しか持たない）。
   - `revision` は、画面が呼ぶたびに 1 つ増やす。Rust は、同じページからすでに受け取ったもの以下の `revision` を捨てる。WebView が要求を `fetch` の順に Rust へ渡すことは保証されておらず、入れ替わると古い値が残るため。ページの読み込みが始まると（`on_page_load` の `Started`。再読み込みを含む）、画面は 1 から数え直すので、Rust も覚えている `revision` を捨てる。
   - アプリが終わるとき（`RunEvent::Exit`）、まだ書いていない設定があれば書く（書いている途中なら、それを待つ）。閉じるボタンや Alt+F4 のほか、Windows のログオフとシャットダウンでも来る知らせで、後者ではウィンドウに `CloseRequested` が来ない。Rust の側で受けるので、capabilities は変わらない。WebView がまだ Rust に渡していない変更は残らない。
 - `pick_output_dir` は、選ばれたフォルダを §6.5 の Rust の状態と設定に入れ、設定ファイルを書き直す。書き込みに失敗しても、選んだフォルダはそのセッションで使い、`{ dirLabel }` を返す（設定ファイルの問題で変換を始められなくならないようにするため）。
 - 起動時、保存されたフォルダが存在すればそれを §6.5 の状態に入れ、存在しなければ未選択に戻す。
-- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`orientation` も `pageSize` とは別に確かめる。`orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい。`colorMode` も同じく、ない設定ファイルは「カラー」になる。`pdfA` も同じく、ない設定ファイルは通常の PDF（`false`）になる。逆に、新しい版が書いた `a3` などの用紙、`webp`、`gray`、選択肢にない `dpi` を `v0.1.0` が読むと、その項目だけが既定値に戻り、ほかの項目は残る）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
+- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`orientation` も `pageSize` とは別に確かめる。`orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい。`colorMode` も同じく、ない設定ファイルは「カラー」になる。`pdfA` も同じく、ない設定ファイルは通常の PDF（`false`）になる。`encrypt` も同じく、ない設定ファイルはパスワードなし（`false`）になる。読み込んだ `pdfA` と `encrypt` がどちらも `true` のときは（手で書き換えたときだけ起きる）、`encrypt` を `false` に戻す。逆に、新しい版が書いた `a3` などの用紙、`webp`、`gray`、選択肢にない `dpi` を `v0.1.0` が読むと、その項目だけが既定値に戻り、ほかの項目は残る）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
 
 ### 6.8 パスワード付きの PDF（FR-04）
 
@@ -379,6 +397,13 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - `unlock_pdf`（§7.1）は、まず対象の PDF をそのパスワードで `Open` する。結果が `PasswordProtected` なら誤りとしてそのまま返し、表は変えない。`WorkerCrashed`・`WorkerTimeout` も、パスワードが合っているか分からないので、表を変えずにそのエラーを返す。それ以外（成功、または `TooManyPages`・`PdfOpenFailed` などの別のエラー）は、パスワードを受け入れたとみなし、項目のページ数・最初のページの大きさ・エラーをその結果で置き換え、パスワードを持たせる。
 - 対象を受け入れたら、一覧のほかの `PasswordProtected` の項目（パスワードをまだ持たないもの）にも、同じパスワードで `Open` を試し、同じ規則で受け入れたものだけを置き換える。同じところから来た PDF（同じ銀行の明細など）は、同じパスワードのことが多いため。試すのは追加（`add_pdfs`）と同じく 1 つずつ順に行う。合わなかった項目と、試す途中でワーカーが落ちた・時間切れになった項目は何も変えず、対象の結果は返す。
 - 戻り値は置き換えた項目で、対象が先頭、ほかは ID の順。フロントエンドは ID で一覧の項目を置き換え、並びは変えない。一覧が変わったので、変換の結果は消える（§10.1）。
+
+### 6.9 書き出す PDF のパスワード（FR-02）
+
+- パスワードは、画面のダイアログ（§10.1）の状態から `save_merged_pdf`・`start_images_to_pdfs` の引数として Rust に渡り、その変換の間だけメインプロセスが `OutputPassword`（§4.3.1）として持つ。変換が終わるか、キャンセル・失敗したら捨てる。次の保存ではダイアログで入れ直す（ダイアログを閉じたら、画面の状態からも捨てる）。
+- 設定・ログ・一時ファイルには書かない。ワーカーには渡さない（書き出しはメインプロセスで行う）。メモリの消去（`zeroize` など）は §6.8 と同じ理由で行わない。
+- Rust も §4.3.1 の規則で確かめ、外れたら `InvalidParams` で拒んで何も始めない（画面が先に確かめるので、通常は起きない）。
+- パスワード付きの PDF は、このアプリの「PDF → 画像」でも §6.8 のとおり開ける。
 
 ## 7. IPC
 
@@ -392,8 +417,8 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `remove_items` | `ids` | – |
 | `get_thumbnail` | `id, page?` | PNG のバイナリ（`tauri::ipc::Response`） |
 | `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages"` | `{ dirLabel } \| null` |
-| `save_merged_pdf` | `ids, pageSize, orientation, pdfA` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
-| `start_images_to_pdfs` | `ids, pageSize, orientation, pdfA` | –（§6.2 の「1 枚ずつ」）。`orientation` は `pageSize` が用紙のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ） |
+| `save_merged_pdf` | `ids, pageSize, orientation, pdfA, password` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
+| `start_images_to_pdfs` | `ids, pageSize, orientation, pdfA, password` | –（§6.2 の「1 枚ずつ」）。`orientation` は `pageSize` が用紙のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ）。`password` は `string \| null` で、`null` ならパスワードを付けない。`pdfA` が `true` で `password` が `null` でない、または `password` が §4.3.1 の規則に合わないときは `InvalidParams`（`save_merged_pdf` も同じ。保存ダイアログを開く前に拒む） |
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][] }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, colorMode, dpi` | –（`dpi` が §4.4 の範囲の外なら `InvalidParams`） |
 | `unlock_pdf` | `id, password` | `{ items: PdfItem[] }`（§6.8）。パスワードの誤りは `PasswordProtected`。対象が `PasswordProtected` の PDF でない、またはパスワードが空なら `InvalidParams` |
@@ -449,6 +474,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - 画像（TIFF を含む）はメインプロセスで読む。読み込みは純 Rust の crate（`image`、`tiff`）だけで行い、寸法と展開の大きさに上限を置く（§4.1、§4.1.1）。C のライブラリで読む PDF と違い、壊れたファイルで異常終了するおそれが小さいため、ワーカーに分けない。
 - PDF はワーカーでだけ開く（§1、§5）。メインプロセスに pdfium を読み込まない。`crates/worker` 以外の crate が `pdfium-render` に依存していないことを、`cargo-deny` の `bans`（`wrappers` の指定）で確かめる。
 - ワーカーには、開く PDF のパス、利用者が入れたパスワード（§6.8）、pdfium の場所だけを渡す。ワーカーはファイルを書かない。
+- 書き出す PDF の暗号化（§4.3.1）はメインプロセスの `lopdf`（純 Rust）で行う。`lopdf` が読むのは krilla がその場で書いた PDF だけで、利用者が追加した PDF は読まない。書き出しのパスワードは §6.9 のとおり扱う。
 - サムネイルと描画した画像は、`blob:` URL にして `<img>` で表示する。
 - WebView2 の起動オプションの `--host-resolver-rules` は、SVG Tracer の `MAP * ~NOTFOUND` に `EXCLUDE localhost` を加える。`tauri dev` の画面は Vite（`devUrl` の `http://localhost:5173`）から読むので、`localhost` の名前解決まで失敗させると Windows で開発用の画面が開かない（`ERR_NAME_NOT_RESOLVED`）。製品版で `localhost` の名前解決が通っても、CSP が許す接続先は画面自身（`'self'`）と IPC だけなので、画面から `localhost` には接続できない。PAC や外部のサーバーへの名前解決は、これまでどおりすべて失敗する。
 
@@ -461,7 +487,21 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - アプリ名は「PDF Converter」。ウィンドウの既定の大きさは 1200×800、最小は 960×640。
 - 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像）、言語の切り替え、「このアプリについて」。
 - 左の設定パネル: 画像 → PDF は「出力」「ページの大きさ」「向き」（自動 / 縦 / 横）と、「1 枚ずつ」のときの保存先フォルダ。「向き」はいつも出し、「画像と同じ大きさ」の間は押せなくして、下に「用紙を選ぶと使えます」/ `Available when a paper size is chosen` と出す（「自動」のヒントはこの間は出さない）。選んだ値は状態と設定に残し、押せない間も選んだ選択肢を示す。用紙を選んだときだけ出すと、ドロップダウンの一覧が閉じた所に欄が現れて一覧の残像のように見え、下の欄も動くため。PDF → 画像は「ページ」「形式」（PNG / JPEG / WebP）「色」（カラー / グレースケール）「解像度」「保存先フォルダ」。ページのサムネイルは、グレースケールのときもカラーのまま出す（ページの確認と選択のためのもので、出力の見本ではないため）。
-- 画像 → PDF の「向き」の下に、チェックボックス「長期保存用（PDF/A）」/ `Archival (PDF/A)` を置く（既定はオフ）。規格の種類（2b）は画面に出さない。オンの間は、下に灰色の補足で「CMYK の画像は使えません」/ `CMYK images can't be used` と出す（変換を始めてから失敗を知るより前に気づけるように）。選んだ値は状態と設定に残す。チェックボックスは 16px の四角で、チェックの色はアクセントの色（`accent-color`）にし、文字は欄の見出し（`.label`）と同じ大きさと太さにする。切り替えのボタンにしないのは、多くの人が触らない付け足しの選択肢を、出力やページの大きさと同じ重さで見せないためと、設定パネルが長くなったときに、まとめて「詳しい設定」のような場所へ移しやすいため。将来、書き出す PDF の暗号化を入れるときは、PDF/A と同時に選べないようにする（PDF/A は暗号化を禁じる）。
+- 画像 → PDF の「向き」の下に、チェックボックス「長期保存用（PDF/A）」/ `Archival (PDF/A)` を置く（既定はオフ）。規格の種類（2b）は画面に出さない。オンの間は、下に灰色の補足で「CMYK の画像は使えません」/ `CMYK images can't be used` と出す（変換を始めてから失敗を知るより前に気づけるように）。選んだ値は状態と設定に残す。チェックボックスは 16px の四角で、チェックの色はアクセントの色（`accent-color`）にし、文字は欄の見出し（`.label`）と同じ大きさと太さにする。切り替えのボタンにしないのは、多くの人が触らない付け足しの選択肢を、出力やページの大きさと同じ重さで見せないためと、設定パネルが長くなったときに、まとめて「詳しい設定」のような場所へ移しやすいため。
+- PDF/A のすぐ下（間は 12px）に、同じ形のチェックボックス「パスワードを付ける」/ `Password-protect` を置く（既定はオフ。§6.7 の `encrypt`）。オンの間は、下に灰色の補足で「保存するときにパスワードを入れます」/ `You'll enter the password when saving` と出す。選んだ値は状態と設定に残す（パスワードは残さない。§6.9）。
+  - PDF/A と同時には選べない（PDF/A は暗号化を禁じる。§4.3.1）。片方がオンの間、もう片方は押せなくし（オフのまま。文字も薄くする）、その下に灰色の補足で理由を出す。PDF/A が押せないときは「パスワードを付けると選べません」/ `Not available with a password`、「パスワードを付ける」が押せないときは「PDF/A では選べません」/ `Not available with PDF/A`。PDF/A の「CMYK の画像は使えません」はオンの PDF/A の下にだけ出る。片方をオンにしたとき、もう片方を自動でオフにする形にしないのは、利用者が選んだものを黙って外さないため。
+  - 2 つを 1 つの選択肢（「通常 / PDF/A / パスワード付き」）にまとめる形も試したが、今の PDF/A のチェックボックスの延長のほうが変更が小さいので、こちらにした（オーナー、2026-10-14）。
+- 「パスワードを付ける」がオンの間、下部バーの予告の 1 行（「3 ページの PDF になります」「3 個の PDF を保存します」）の後ろに、「 · 」と鍵の記号と「パスワード付き」/ `Password-protected` を、補足の色（`--color-text-secondary`）で続ける。変換中・変換のあとの表示には出さない。
+- 書き出しのパスワードのダイアログ（§6.2。「PDF を保存」「変換を開始」を押したときに開く）: パスワード付きの PDF を開くダイアログ（下）と同じ 1 枚のカード（幅は最大 400px、内側の余白は 24px、区切り線なし）にする。上から順に:
+  - 見出し「パスワードを付ける」/ `Set a password`。「1 枚ずつ」だけ、その下に灰色で「保存する {count} 個の PDF すべてに、同じパスワードを付けます。」/ `All {count} PDFs will get the same password.` と出す（`{count}` は下部バーの予告と同じ数。英語は 1 のとき `The PDF will get this password.`）。ファイルごとに違うパスワードになるのかという疑問に答えるため。「1 つの PDF」では見出しの下に何も出さない（何のパスワードかは見出しとチェックボックスで分かるため）。
+  - ラベル「パスワード」/ `Password` の入力欄（`type="password"`、開いたときにフォーカス）。枠の中の右端に「表示」/「隠す」のボタン（開くダイアログと同じ形）。このボタンは下の確認の欄も一緒に切り替える。
+  - ラベル「もう一度入力」/ `Enter it again` の確認の入力欄。
+  - 条件の一覧（地は `--color-bg-subtle`、枠付き、角丸 6px、内側 12px、文字 12px）。項目は 2 つ: 「半角の英数字と記号」/ `ASCII letters, numbers and symbols` と「パスワードが一致」/ `Passwords match`。項目の記号と色は 3 つの状態で変える。まだ判断できない（最初の項目はパスワードの欄が空、2 つ目は確認の欄が空か、確認の欄がパスワードの先頭と一致していて短い）ときは灰色の ○、満たしたら緑（`--color-success`）の ✓、外れたら赤（`--color-error`）の ✕。最初の項目は、パスワードの欄に U+0020〜U+007E の外の文字が 1 つでもあれば ✕。2 つ目は、確認の欄がパスワードと一致すれば ✓、一致せず先頭の一部でもなければ ✕（打っている途中で赤にしないため）。一覧は `aria-live="polite"` にしない（1 文字ごとに読み上げられるため）。✕ の項目は入力欄の `aria-describedby` で読み上げる。
+  - パスワードの欄が 127 文字を超えたら、欄の下に `.error-text` で「127 文字までです」/ `Use 127 characters or fewer` と出す。条件の一覧には上限を出さない（ほとんどの人が届かない上限を常に見せないため）。入力欄に `maxlength` は付けない（貼り付けた文字が黙って切られ、利用者の知らないパスワードになるため）。
+  - 灰色で「パスワードを忘れると、この PDF はだれも開けなくなります。」/ `If you forget the password, no one can open the PDF.`（「1 枚ずつ」では「これらの PDF」/ `these PDFs`）。
+  - ボタンは右寄せで「キャンセル」/ `Cancel` と、主のボタン。主のボタンは、1 つの PDF では「保存先を選ぶ…」/ `Choose where to save…`、1 枚ずつでは「変換を開始」/ `Start converting`。2 つの条件を満たし 127 文字以下のときだけ押せる。
+  - 長さのおすすめ（「12 文字以上」など）は出さない（オーナー、2026-10-14）。
+  - Enter で主のボタン（押せるときだけ）、Esc で取り消す。主のボタンでダイアログを閉じて §6.2 の続き（保存ダイアログ、または保存先の確かめ）に進み、パスワードをその呼び出しに渡す。取り消したら何も始めず、フォーカスを押したボタン（下部バーの実行のボタン）に戻す。どちらで閉じても、入れたパスワードは画面の状態から捨てる（次に開いたときは空）。
 - 「ページの大きさ」はドロップダウン（解像度の欄と同じ `<select>`）で、選択肢は「画像と同じ大きさ」と §4.2 の用紙を表の順に並べる。用紙の選択肢は「A4 (210 × 297 mm)」「Letter (8.5 × 11 in)」のように縦向きの寸法を添え、日英で同じ文字列にする（B 判が JIS か ISO かを寸法で見分けられるようにするため）。用紙が 7 つあり、切り替えのボタンでは設定パネルの幅に収まらない。
 - 解像度の欄は、選択肢「72 dpi / 150 dpi / 300 dpi / 数値で指定…」（英語は `Custom…`。末尾の「…」は、選ぶと続けて入力が要ることを示す）。「数値で指定…」を選ぶと、すぐ下に数値の欄を出し、今の解像度を入れておく。欄は最大 4 桁の数と単位が収まる短い幅にし（上のドロップダウンに従う欄であることと、入れる値の長さを示すため）、左端はほかの部品にそろえ、単位の「dpi」は欄の枠の中の右に置く。欄は半角と全角の数字を受け付け、前後の空白（全角を含む）は無視する。§4.4 の範囲の整数でない（空、小数、範囲の外、数字以外の文字）ときは、「変換を開始」をすぐ無効にし、「{min}〜{max} の整数を入れてください」/ `Enter a whole number from {min} to {max}` を、範囲の誤り（§6.3）と同じ規則（入力が 0.6 秒止まるか欄から離れたとき）で欄の下に赤で出す。誤りの間は、下部バーの説明と「A4 の 1 ページ → … px」の行を出さず、状態と設定の `dpi` は最後の正しい値のままにする。選択肢に戻すとその値になり、欄と誤りは消える。「数値で指定…」を選んでいるかは画面だけが持ち、保存しない。起動時は、保存された `dpi` が選択肢にあればその選択肢を、なければ「数値で指定…」とその値を出す。範囲の上限と下限は Rust の `RENDER_DPI_MIN`・`RENDER_DPI_MAX` を写した定数にする（範囲の解釈（§4.5）と違い、整数を読むだけなので画面で確かめる。Rust も同じ範囲で拒む）。
 - 切り替えのボタン（`.seg`）は、ボタンの間に区切り線を引き、押せるボタンはポインターを乗せると背景を変える。選択肢が 3 つ以上あると、選んでいない 2 つが隣り合い、線がなければ 1 つのボタンに見えるため。
@@ -558,6 +598,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | `too_many_pages.tif` | 1×1 画素の `MAX_TIFF_PAGES` + 1 ページ | `TooManyPages` |
 | `shapes_150dpi_p1.png`〜`p3.png` | `shapes.pdf` の各ページを 150 dpi で描いたときの期待の画像（`gen_fixtures` が同じ図形から計算する） | §11.2 の PDF → 画像の比較 |
 
+- 書き出す PDF の暗号化（§4.3.1）のテストは、フィクスチャをコミットしない。暗号化は乱数を使い、毎回違うバイト列になるため。テストの中で §11.1 の画像から PDF を作って暗号化する。
 - 暗号化された PDF は、標準のセキュリティハンドラー（revision 3、128 ビットの RC4）を `gen_fixtures` に自前で書いて作る。`lopdf` の暗号化は乱数を使うので、生成し直すと同じファイルにならないため（T02 で決定）。
 - TIFF は、`gen_fixtures` に小さな TIFF の書き手を自前で書いて作る（`tiff` の書き出しは G4 と JPEG の圧縮を持たず、読まない種類（G3、CMYK など）や壊れたファイルも作る必要があるため）。G4 の圧縮は `fax` の符号化を使う。
 - `crates/core/tests/fixtures.rs` が、生成し直したバイト列とコミット済みのファイルを比べる。生成プログラムとフィクスチャがずれないようにするため。
@@ -578,6 +619,8 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 - 出力した PDF が一般的なビューアーで開けること（NFR-03）は、手動の確認でブラウザー内蔵のビューアーで開いて確かめる。
 
 - **PDF/A**: §11.1 の画像のうち CMYK の JPEG と読まない種類・壊れた TIFF を除くものを、PDF/A で「画像と同じ大きさ」と A4 にし、`finish` が成功することと、上の画像 → PDF の比較に通常の PDF と同じ基準で合格することを確かめる。通常の PDF には `/Interpolate true` があり、PDF/A にはないこと。CMYK の JPEG は PDF/A で `CmykNotAllowedInPdfA` になり、「1 つの PDF」ではほかの画像のページが作られること。通常の PDF では CMYK の JPEG も今までどおり入ること。
+- **パスワード付きの PDF**: §11.1 の画像のうち読める画像を「画像と同じ大きさ」と A4 で結合し、通常の PDF と、同じ PDF を §4.3.1 で暗号化したものを作る。pdfium で、パスワードなしと違うパスワードでは `PasswordError` になり、正しいパスワードでは全ページの描画が通常の PDF の描画と画素まで一致すること（試作では 21 ページすべてで一致）。暗号化の辞書が `/V 5`・`/R 6`・`/Length 256`、`StdCF` が `/CFM /AESV3`・`/Length 32` で、カタログに §4.3.1 の `/Extensions` があること。暗号化した PDF のバイト列に、作成ソフトの文字（`PDF Converter`）がそのまま現れないこと。同じ PDF を同じパスワードで 2 回暗号化すると、違うバイト列になること（鍵とソルトが毎回作られること）。
+- **パスワード付きの PDF の互換（CI）**: pdfium 以外のビューアーでも開けることを、CI（Ubuntu）で qpdf・poppler（`pdftoppm`）・mupdf（`mutool`）を `apt` で入れて確かめる（U15 の前の試作で、lopdf の出力のままでは poppler だけが全ページを壊して描いた。lopdf の更新でこの種の食い違いが戻らないようにするため）。`crates/core` の例 `write_encrypted_samples`（`cargo run -p pdfconv-core --example write_encrypted_samples -- <フォルダ>`）が、上の画像の結合の PDF を、通常のものと、決まったパスワード（ASCII の記号と空白を含むもの）で暗号化したものの 2 つ書く。CI は、`qpdf --check` がパスワード付きで合格し、パスワードなしでは失敗すること、`pdftoppm` と `mutool draw` がパスワード付きで全ページを描け、通常の PDF の描画と同じ画像になることを確かめる。
 - **PDF/A の検証（CI）**: krilla の検証は自己申告なので、外部の検証ツール veraPDF でも確かめる。`crates/core` の例 `write_pdfa_samples`（`cargo run -p pdfconv-core --example write_pdfa_samples -- <フォルダ>`）が、上の画像を 1 枚ずつ「画像と同じ大きさ」と A4 で、加えて全部を結合した 1 つを PDF/A で書く。CI（Ubuntu）がそのフォルダを veraPDF の Docker イメージ（`verapdf/cli`。veraPDF の開発元が公開している）で `-f 2b` で検証し、1 つでも不合格なら失敗にする（veraPDF の終了コードが 1 になる）。
   - イメージは版のタグでなく digest で固定する（初めは 1.30.2 の `sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb`）。更新は手で行い、公開から 7 日たった版にする（§9 の依存の入手経路）。
   - コンテナはネットワークを切り（`--network none`）、フォルダは読み取り専用で渡す。
@@ -588,13 +631,14 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | 対象 | 種類 | 主な内容 |
 | --- | --- | --- |
 | crates/core | 単体 | JPEG の区切りの処理（§4.3。外すもの・残すもの、EOI より後ろ、区切りを読めない JPEG）、probe（形式、寸法、向き、横と縦の dpi、上限。TIFF は読む種類と読まない種類、ページ数、ページごとの上限、IFD の輪）、TIFF の画素の広げ方（ビット、`WhiteIsZero`（`tiff` の反転に重ねない）、YCbCr から RGB、透過の割り戻し、16 ビットのバイト順）、ページの配置（画像と同じ大きさ、用紙の寸法と縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
-| crates/core | 品質 | §11.2 の画像 → PDF（PDF/A を含む） |
+| crates/core | 単体 | 書き出す PDF のパスワードの規則（§4.3.1。空、U+001F・U+007F・全角の英数字・全角の空白・日本語は `InvalidCharacter`、空白と記号は受け付ける、127 文字は受け付け 128 文字は `TooLong`）、`OutputPassword` の `Debug` に値が出ないこと |
+| crates/core | 品質 | §11.2 の画像 → PDF（PDF/A とパスワード付きを含む） |
 | crates/worker | 品質 | §11.2 の PDF → 画像 |
 | crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード（なし・誤り・閲覧・所有者・ASCII 以外の文字）、壊れた PDF、ページ数の上限、描画の上限 |
 | crates/worker | 結合 | 単独のワーカー（`pdfconv-worker`）を起動し、テスト用の要求（`test-hooks` 機能の `CrashForTest`、`HangForTest`、`AllocateForTest`）で、異常終了、時間切れ、メモリの上限のあとにメインプロセスの側が続けて動くこと、新しいワーカーが起動することを確かめる（T01） |
-| src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。画像 → PDF の TIFF: 進捗がページで数えられること、途中のページが読めない TIFF は「1 つの PDF」でそのページも前のページも入らず、「1 枚ずつ」で PDF を残さないこと、TIFF の途中のキャンセル。設定の読み書き。パスワードの解除（誤り、ほかの項目への適用、パスワードを使ったサムネイルと変換） |
-| フロントエンド | 単体 | 一覧の追加・並べ替え・削除、TIFF の行のページ数、下部バーと結果の帯のページ数（`pageCount` の合計）、範囲の入力と開始ボタンの有効・無効、変換中の無効化、エラーコードから文言、状態の色と記号 |
-| 全体 | 手動 | 受け入れ基準（両 OS でインストーラーから）。文字を含む実際の PDF の描画、ブラウザーでの PDF の表示。`docs/manual-test.md` |
+| src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。画像 → PDF の TIFF: 進捗がページで数えられること、途中のページが読めない TIFF は「1 つの PDF」でそのページも前のページも入らず、「1 枚ずつ」で PDF を残さないこと、TIFF の途中のキャンセル。設定の読み書き（`pdfA` と `encrypt` がどちらも `true` の設定ファイルと `save_settings`）。パスワードの解除（誤り、ほかの項目への適用、パスワードを使ったサムネイルと変換）。書き出す PDF のパスワード（「1 つの PDF」と「1 枚ずつ」で暗号化されること、`pdfA` と一緒・規則に合わないパスワードの `InvalidParams`） |
+| フロントエンド | 単体 | 一覧の追加・並べ替え・削除、TIFF の行のページ数、下部バーと結果の帯のページ数（`pageCount` の合計）、範囲の入力と開始ボタンの有効・無効、変換中の無効化、エラーコードから文言、状態の色と記号。PDF/A と「パスワードを付ける」の片方がオンのときもう片方が押せないこと、書き出しのパスワードのダイアログ（条件の 3 つの状態、127 文字と 128 文字、主のボタンの有効・無効、表示の切り替えが両方の欄に効くこと、取り消しで何も始まらず、閉じたらパスワードが残らないこと、`save_merged_pdf`・`start_images_to_pdfs` に渡す `password`） |
+| 全体 | 手動 | 受け入れ基準（両 OS でインストーラーから）。文字を含む実際の PDF の描画、ブラウザーでの PDF の表示。パスワード付きの PDF を Edge と Adobe Acrobat Reader（Windows）、Evince（Linux）で開くこと。`docs/manual-test.md` |
 
 - 一括変換の中で特定の PDF だけでワーカーが落ちる状況は、`test-hooks` 機能のときだけ、ワーカーが名前 `CRASH_ON_OPEN_FILE_NAME`（`crash-on-open-for-test.pdf`）の PDF の `Open` で異常終了することで作る（T08）。機能を付けないビルドには含まれない。
 - 性能（NFR-02）: `shapes.pdf` の A4 のページを 150 dpi で描画する時間を `--release` のテストで測る。CI では 3 秒を超えたら失敗とし、1 秒以内は基準環境（開発者の PC）で手動確認する。
