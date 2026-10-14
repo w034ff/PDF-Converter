@@ -262,8 +262,11 @@ pub struct CheckPageRangeResult {
     /// The range as sorted, non-overlapping `[start, end]` page intervals, so
     /// the screen can mark pages without parsing the text itself (design
     /// §4.5, §6.3). Its length follows the text, not the pages it covers.
+    /// `n-end` reaches 4294967295, which each PDF clamps to its page count.
     #[ts(type = "Array<[number, number]>")]
     pub intervals: Vec<(u32, u32)>,
+    /// Whether `end` stood alone, adding each PDF's last page to `intervals`.
+    pub last_page: bool,
 }
 
 /// Result returned once a merge has run (design §7.1).
@@ -487,6 +490,7 @@ pub fn check_page_range_internal(
     Ok(CheckPageRangeResult {
         total_pages,
         intervals: page_set.intervals().to_vec(),
+        last_page: page_set.last_page(),
     })
 }
 

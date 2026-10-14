@@ -179,6 +179,7 @@ describe("ipc", () => {
             [1, 3],
             [5, 5],
           ],
+          lastPage: false,
         };
       });
 
@@ -189,6 +190,7 @@ describe("ipc", () => {
           [1, 3],
           [5, 5],
         ],
+        lastPage: false,
       });
       expect(calls).toEqual([
         ["check_page_range", { text: "1-3, 5", ids: [1, 2] }],

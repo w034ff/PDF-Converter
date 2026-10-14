@@ -595,7 +595,7 @@ describe("state reducers", () => {
       it("keeps it for the answer of a range check", () => {
         const state = appReducer(finishedOn("pdfToImages"), {
           type: "CHECK_RANGE_SUCCESS",
-          result: { totalPages: 1, intervals: [[1, 1]] },
+          result: { totalPages: 1, intervals: [[1, 1]], lastPage: false },
         });
         expect(state.job.finished).toEqual(finished);
       });

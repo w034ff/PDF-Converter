@@ -365,6 +365,7 @@ describe("PdfToImagesAction", () => {
         state.pdfToImages.rangeResult = {
           totalPages,
           intervals: [[999, 999]],
+          lastPage: false,
         };
       });
     }
@@ -390,7 +391,11 @@ describe("PdfToImagesAction", () => {
       state.pdfToImages.items = [samplePdf1];
       state.pdfToImages.outputDir = { dirLabel: "output" };
       state.pdfToImages.pageSelection = "all";
-      state.pdfToImages.rangeResult = { totalPages: 0, intervals: [] };
+      state.pdfToImages.rangeResult = {
+        totalPages: 0,
+        intervals: [],
+        lastPage: false,
+      };
     });
     expect(startButton()).toBeEnabled();
   });
@@ -444,6 +449,7 @@ describe("PdfToImagesAction", () => {
           [1, 3],
           [5, 5],
         ],
+        lastPage: false,
       };
       state.pdfToImages.format = "jpeg";
       state.pdfToImages.dpi = 300;

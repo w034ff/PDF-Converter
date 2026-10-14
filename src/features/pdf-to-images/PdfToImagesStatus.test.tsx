@@ -261,6 +261,7 @@ describe("PdfToImagesStatus", () => {
         const rangeResult: CheckPageRangeResult = {
           totalPages: 0,
           intervals: [],
+          lastPage: false,
         };
         const state = createBaseState({
           pageSelection: "range",
@@ -280,6 +281,7 @@ describe("PdfToImagesStatus", () => {
         const rangeResult: CheckPageRangeResult = {
           totalPages: 42,
           intervals: [[1, 3]],
+          lastPage: false,
         };
         const state = createBaseState({
           pageSelection: "range",
@@ -298,6 +300,7 @@ describe("PdfToImagesStatus", () => {
         const rangeResult: CheckPageRangeResult = {
           totalPages: 1,
           intervals: [[1, 1]],
+          lastPage: false,
         };
         const state = createBaseState({
           pageSelection: "range",
@@ -316,6 +319,7 @@ describe("PdfToImagesStatus", () => {
         const rangeResult: CheckPageRangeResult = {
           totalPages: 10,
           intervals: [[1, 5]],
+          lastPage: false,
         };
         const state = createBaseState({
           items: [validPdf1, validPdf2, corruptPdf], // 2 valid PDFs
@@ -335,6 +339,7 @@ describe("PdfToImagesStatus", () => {
         const prevResult: CheckPageRangeResult = {
           totalPages: 7,
           intervals: [[1, 7]],
+          lastPage: false,
         };
         const state = createBaseState({
           pageSelection: "range",

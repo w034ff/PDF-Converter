@@ -21,6 +21,9 @@ impl fmt::Display for ParsePageRangeError {
 
 impl std::error::Error for ParsePageRangeError {}
 
+/// The word that stands for a PDF's last page in a range (design §4.5).
+const LAST_PAGE_KEYWORD: &str = "end";
+
 /// A normalized set of 1-based page intervals (design §4.5).
 ///
 /// Intervals are kept as `(start, end)` pairs (inclusive) rather than expanding
@@ -29,7 +32,11 @@ impl std::error::Error for ParsePageRangeError {}
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PageSet {
     /// Sorted, disjoint, non-adjacent intervals `(start, end)` where `1 <= start <= end`.
+    /// `n-end` is `(n, u32::MAX)`, which every PDF clamps to its own last page.
     intervals: Vec<(u32, u32)>,
+    /// Whether `end` stood alone, selecting each PDF's last page. Its number
+    /// differs per PDF, so it cannot be an interval.
+    last_page: bool,
 }
 
 impl PageSet {
@@ -39,10 +46,28 @@ impl PageSet {
         &self.intervals
     }
 
-    /// Returns `true` if the set contains no page intervals.
+    /// Returns `true` if the range named each PDF's last page with `end` alone.
+    /// The page is not in [`Self::intervals`].
+    #[must_use]
+    pub fn last_page(&self) -> bool {
+        self.last_page
+    }
+
+    /// Returns `true` if the set selects no page in any PDF.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.intervals.is_empty()
+        self.intervals.is_empty() && !self.last_page
+    }
+
+    /// Whether the last page of a PDF with `page_count` pages must be added
+    /// to what the intervals select there.
+    fn adds_last_page(&self, page_count: u32) -> bool {
+        self.last_page
+            && page_count > 0
+            && !self
+                .intervals
+                .iter()
+                .any(|&(start, end)| start <= page_count && page_count <= end)
     }
 
     /// Returns the number of selected pages that fall within `page_count` (1-based, inclusive).
@@ -61,6 +86,9 @@ impl PageSet {
             let bounded_end = end.min(page_count);
             let count = bounded_end - start + 1;
             total = total.saturating_add(count);
+        }
+        if self.adds_last_page(page_count) {
+            total = total.saturating_add(1);
         }
         total
     }
@@ -83,6 +111,10 @@ impl PageSet {
             for page in start..=bounded_end {
                 result.push(page);
             }
+        }
+        // The last page is above every page pushed so far, so the order holds.
+        if self.adds_last_page(page_count) {
+            result.push(page_count);
         }
         result
     }
@@ -113,6 +145,22 @@ fn parse_page_number(s: &str) -> Option<u32> {
     Some(val)
 }
 
+/// One side of a range element: a page number or `end`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bound {
+    Page(u32),
+    LastPage,
+}
+
+/// Parses a page number or the lowercase [`LAST_PAGE_KEYWORD`].
+fn parse_bound(s: &str) -> Option<Bound> {
+    if s.trim() == LAST_PAGE_KEYWORD {
+        Some(Bound::LastPage)
+    } else {
+        parse_page_number(s).map(Bound::Page)
+    }
+}
+
 /// Checks whether a character is an element separator (`,` or fullwidth `，` / `、`).
 fn is_element_separator(c: char) -> bool {
     c == ',' || c == '\u{FF0C}' || c == '\u{3001}'
@@ -125,7 +173,9 @@ fn is_range_separator(c: char) -> bool {
 
 /// Parses a page range string into a normalized [`PageSet`] (design §4.5).
 ///
-/// Elements can be single page numbers (`n`) or ranges (`a-b`).
+/// Elements can be single page numbers (`n`) or ranges (`a-b`). `end` (lowercase
+/// only) stands for each PDF's last page: alone, as the end of a range (`a-end`),
+/// or as both sides (`end-end`).
 /// Separators may be halfwidth or fullwidth commas / Japanese commas.
 /// Range dashes may be halfwidth or fullwidth hyphens or wave dashes.
 /// Surrounding whitespace (including fullwidth space) around elements and dashes is ignored.
@@ -136,7 +186,8 @@ fn is_range_separator(c: char) -> bool {
 /// - The input or any comma-separated element is empty.
 /// - Any number contains characters other than halfwidth `0`-`9` or fullwidth `０`-`９` (e.g. `+`, letters).
 /// - Any number is `0` or overflows `u32`.
-/// - In a range `a-b`, `a > b`.
+/// - In a range `a-b`, `a > b`, or `a` is `end` and `b` is a number. Other
+///   tools read `end-1` as the pages in reverse order, which this set cannot hold.
 /// - An element contains multiple range dashes or trailing/leading dashes.
 pub fn parse_page_range(text: &str) -> Result<PageSet, ParsePageRangeError> {
     let trimmed = text.trim();
@@ -147,6 +198,7 @@ pub fn parse_page_range(text: &str) -> Result<PageSet, ParsePageRangeError> {
     }
 
     let mut raw_intervals = Vec::new();
+    let mut last_page = false;
 
     for raw_part in text.split(is_element_separator) {
         let part = raw_part.trim();
@@ -171,29 +223,30 @@ pub fn parse_page_range(text: &str) -> Result<PageSet, ParsePageRangeError> {
             let start_str = part[..dash_idx].trim();
             let end_str = part[dash_idx + dash_char.len_utf8()..].trim();
 
-            let (Some(start), Some(end)) =
-                (parse_page_number(start_str), parse_page_number(end_str))
-            else {
-                return Err(ParsePageRangeError {
-                    detail: part.to_string(),
-                });
-            };
-
-            if start > end {
-                return Err(ParsePageRangeError {
-                    detail: part.to_string(),
-                });
+            match (parse_bound(start_str), parse_bound(end_str)) {
+                (Some(Bound::Page(start)), Some(Bound::Page(end))) if start <= end => {
+                    raw_intervals.push((start, end));
+                }
+                (Some(Bound::Page(start)), Some(Bound::LastPage)) => {
+                    raw_intervals.push((start, u32::MAX));
+                }
+                (Some(Bound::LastPage), Some(Bound::LastPage)) => last_page = true,
+                _ => {
+                    return Err(ParsePageRangeError {
+                        detail: part.to_string(),
+                    });
+                }
             }
-
-            raw_intervals.push((start, end));
         } else {
-            let Some(page) = parse_page_number(part) else {
-                return Err(ParsePageRangeError {
-                    detail: part.to_string(),
-                });
-            };
-
-            raw_intervals.push((page, page));
+            match parse_bound(part) {
+                Some(Bound::Page(page)) => raw_intervals.push((page, page)),
+                Some(Bound::LastPage) => last_page = true,
+                None => {
+                    return Err(ParsePageRangeError {
+                        detail: part.to_string(),
+                    });
+                }
+            }
         }
     }
 
@@ -215,7 +268,10 @@ pub fn parse_page_range(text: &str) -> Result<PageSet, ParsePageRangeError> {
         }
     }
 
-    Ok(PageSet { intervals })
+    Ok(PageSet {
+        intervals,
+        last_page,
+    })
 }
 
 #[cfg(test)]
@@ -402,6 +458,88 @@ mod tests {
         assert_eq!(set.count_within(8), 6);
         assert_eq!(set.pages_within(20), vec![1, 2, 3, 4, 5, 8, 12]);
         assert_eq!(set.count_within(20), 7);
+    }
+
+    #[test]
+    fn end_alone_selects_each_pdfs_last_page() {
+        let set = parse_page_range("end").expect("valid range");
+        assert_eq!(set.intervals(), &[] as &[(u32, u32)]);
+        assert!(set.last_page());
+        assert!(!set.is_empty());
+        assert_eq!(set.pages_within(1), vec![1]);
+        assert_eq!(set.pages_within(7), vec![7]);
+        assert_eq!(set.count_within(7), 1);
+        assert_eq!(set.pages_within(0), Vec::<u32>::new());
+        assert_eq!(set.count_within(0), 0);
+
+        let both_sides = parse_page_range(" end - end ").expect("valid range");
+        assert_eq!(both_sides, set);
+    }
+
+    #[test]
+    fn end_after_a_number_runs_to_each_pdfs_last_page() {
+        let set = parse_page_range("5-end").expect("valid range");
+        assert_eq!(set.intervals(), &[(5, u32::MAX)]);
+        assert!(!set.last_page());
+        assert_eq!(set.pages_within(7), vec![5, 6, 7]);
+        assert_eq!(set.count_within(7), 3);
+        assert_eq!(set.pages_within(5), vec![5]);
+        assert_eq!(set.pages_within(4), Vec::<u32>::new());
+        assert_eq!(set.count_within(4), 0);
+
+        let fullwidth_dash = parse_page_range("５〜end").expect("valid range");
+        assert_eq!(fullwidth_dash, set);
+    }
+
+    #[test]
+    fn end_alone_adds_the_last_page_once() {
+        let set = parse_page_range("1, end").expect("valid range");
+        assert_eq!(set.intervals(), &[(1, 1)]);
+        assert!(set.last_page());
+        assert_eq!(set.pages_within(4), vec![1, 4]);
+        assert_eq!(set.count_within(4), 2);
+        // In a one-page PDF, page 1 is the last page.
+        assert_eq!(set.pages_within(1), vec![1]);
+        assert_eq!(set.count_within(1), 1);
+
+        let covered = parse_page_range("end, 2-3").expect("valid range");
+        assert_eq!(covered.pages_within(3), vec![2, 3]);
+        assert_eq!(covered.count_within(3), 2);
+        assert_eq!(covered.pages_within(5), vec![2, 3, 5]);
+        assert_eq!(covered.count_within(5), 3);
+
+        let open_end = parse_page_range("end, 3-end").expect("valid range");
+        assert_eq!(open_end.pages_within(4), vec![3, 4]);
+        assert_eq!(open_end.count_within(4), 2);
+        assert_eq!(open_end.pages_within(2), vec![2]);
+        assert_eq!(open_end.count_within(2), 1);
+    }
+
+    #[test]
+    fn rejects_end_before_a_number_and_other_spellings() {
+        for text in [
+            "end-3",
+            "end-1",
+            "END",
+            "End",
+            "ｅｎｄ",
+            "end-",
+            "-end",
+            "1-end-2",
+            "en",
+            "ends",
+        ] {
+            let err = parse_page_range(text).unwrap_err();
+            assert_eq!(err.detail, text, "{text}");
+        }
+        let err = parse_page_range("1, END").unwrap_err();
+        assert_eq!(err.detail, "END");
+    }
+
+    #[test]
+    fn empty_set_has_no_last_page() {
+        assert!(PageSet::default().is_empty());
+        assert!(!parse_page_range("2").expect("valid range").is_empty());
     }
 
     #[test]
