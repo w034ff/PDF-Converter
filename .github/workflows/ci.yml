@@ -104,7 +104,11 @@ jobs:
 
       - name: Install PDF tools for the compatibility check
         if: runner.os == 'Linux'
-        run: sudo apt-get install -y qpdf poppler-utils mupdf-tools
+        # The runner's package lists can be older than the archive, and an
+        # install from a stale list fails when a version has been replaced.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qpdf poppler-utils mupdf-tools
 
       - name: Open password-protected samples with qpdf, poppler and mupdf
         if: runner.os == 'Linux'
