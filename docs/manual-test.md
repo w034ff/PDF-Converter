@@ -127,6 +127,13 @@ npm run manual-test:files -- <出力先フォルダ>
      ```bash
      exiftool -a -G1 -ee exif_test.pdf
      ```
+8. **長期保存用（PDF/A）**:
+   - 一覧の画像をすべて外し、`photo.jpg`、`logo_alpha.png`、`photo_cmyk.jpg` を追加する。
+   - 左パネルの「向き」の下にあるチェックボックス「長期保存用（PDF/A）」をオンにする。下に灰色の補足「CMYK の画像は使えません」が出ることを確認する。
+   - 「出力」を「1 つの PDF」にして「PDF を保存」をクリックし、ファイル名 `pdfa_merged.pdf` で保存する。
+   - 「出力」を「1 枚ずつ」にし、空の保存先フォルダを指定して「変換を開始」をクリックする。
+   - チェックボックスをオフにして、同じ操作で通常の PDF `normal_merged.pdf` を保存し、見た目を比べる。
+   - アプリを終了して再度起動し、チェックボックスの状態を確認する（オンにした状態で終了した場合と、オフにして終了した場合の両方）。
 
 ### 期待する結果
 - 生成された PDF をブラウザー（Chrome / Edge / Firefox）等で開いて目視確認する:
@@ -169,6 +176,12 @@ npm run manual-test:files -- <出力先フォルダ>
   - `photo_cmyk.pdf`
   - `rotate90.pdf`
 - 変換完了時、一覧の上に「変換が終わりました：成功 10 件」のバナーが表示され、下部バーに「✓ すべて完了しました」と表示される。
+- PDF/A（手順 8）:
+  - `pdfa_merged.pdf` と「1 枚ずつ」で保存した PDF がブラウザー（Chrome / Edge / Firefox）で開け、`normal_merged.pdf` と見た目（色、位置、透過）が変わらない。
+  - 「CMYK の画像は使えません」の補足は、チェックボックスがオンの間だけ表示される。変換中はチェックボックスを押せない。
+  - `photo_cmyk.jpg` の行だけが「PDF/A では CMYK の画像を使えません」で失敗する。「1 つの PDF」では残りの 2 枚で 2 ページの PDF ができ、「1 枚ずつ」では `photo.pdf` と `logo_alpha.pdf` が保存される。結果の帯は「成功 2 件、失敗 1 件」になる。
+  - `pdfa_merged.pdf` を `exiftool -a -G1 -ee pdfa_merged.pdf` で調べると `[XMP-pdfaid]` の `Part` が `2`、`Conformance` が `B` で、`Creator Tool` が `PDF Converter <版>`、`[XMP-xmp] Create Date` が UTC（`+00:00`）で出る。`normal_merged.pdf` には `[XMP-pdfaid]` の項目も `Create Date` も出ない。
+  - 再起動後も、終了したときのチェックボックスの状態（オン / オフ）が残っている。
 
 ---
 
