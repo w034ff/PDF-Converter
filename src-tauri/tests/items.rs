@@ -10,8 +10,9 @@ use std::time::Duration;
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{
-    AddResult, ImageItem, PdfItem, Skipped, add_dropped, add_images, add_images_from_folder,
-    add_pdfs, add_pdfs_from_folder, make_thumbnail, sort_dropped, unlock_pdf,
+    AddResult, ImageFormatName, ImageItem, PdfItem, Skipped, add_dropped, add_images,
+    add_images_from_folder, add_pdfs, add_pdfs_from_folder, make_thumbnail, sort_dropped,
+    unlock_pdf,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_core::{THUMBNAIL_SIDE, probe};
@@ -748,4 +749,68 @@ fn owner_password_and_cafe_password_unlock() {
     let enc_res = unlock_pdf(&state, enc_id, OWNER_PASSWORD).expect("owner password unlocks");
     assert_eq!(enc_res.items.len(), 1);
     assert_eq!(enc_res.items[0].page_count, 1);
+}
+
+#[test]
+fn tiff_items_report_format_and_page_count() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let g4_path = put(dir.path(), "scan_g4.tif", "scan.tif");
+    let corrupt_path = put(dir.path(), "corrupt_page2.tif", "corrupt.tiff");
+    let state = state();
+
+    let result = add_images(&state, &[g4_path, corrupt_path]);
+    assert_eq!(result.added.len(), 2);
+
+    let item0 = &result.added[0];
+    assert_eq!(item0.name, "scan.tif");
+    assert_eq!(item0.format, Some(ImageFormatName::Tiff));
+    assert_eq!(item0.page_count, 3);
+    assert_eq!(item0.error, None);
+
+    let json0 = serde_json::to_value(item0).expect("serializing scan.tif");
+    assert_eq!(json0["format"], "tiff");
+    assert_eq!(json0["pageCount"], 3);
+
+    let item1 = &result.added[1];
+    assert_eq!(item1.name, "corrupt.tiff");
+    assert_eq!(item1.format, Some(ImageFormatName::Tiff));
+    assert_eq!(item1.page_count, 2);
+    assert_eq!(item1.error, None);
+
+    let json1 = serde_json::to_value(item1).expect("serializing corrupt.tiff");
+    assert_eq!(json1["format"], "tiff");
+    assert_eq!(json1["pageCount"], 2);
+}
+
+#[test]
+fn tiff_error_items_detail_and_codes() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let too_many = put(dir.path(), "too_many_pages.tif", "too_many.tif");
+    let too_large = put(dir.path(), "too_large_page2.tif", "too_large.tif");
+    let cmyk = put(dir.path(), "cmyk.tif", "cmyk.tif");
+    let palette = put(dir.path(), "palette.tif", "palette.tif");
+    let state = state();
+
+    let result = add_images(&state, &[too_many, too_large, cmyk, palette]);
+    assert_eq!(result.added.len(), 4);
+
+    let err_many = result.added[0]
+        .error
+        .as_ref()
+        .expect("too many pages error");
+    assert_eq!(err_many.code, ErrorCode::TooManyPages);
+    assert_eq!(err_many.detail.as_deref(), Some("1,000"));
+    assert_eq!(result.added[0].page_count, 0);
+
+    let err_large = result.added[1].error.as_ref().expect("too large error");
+    assert_eq!(err_large.code, ErrorCode::TooLarge);
+    assert_eq!(result.added[1].page_count, 0);
+
+    let err_cmyk = result.added[2].error.as_ref().expect("cmyk error");
+    assert_eq!(err_cmyk.code, ErrorCode::UnsupportedFormat);
+    assert_eq!(result.added[2].page_count, 0);
+
+    let err_palette = result.added[3].error.as_ref().expect("palette error");
+    assert_eq!(err_palette.code, ErrorCode::UnsupportedFormat);
+    assert_eq!(result.added[3].page_count, 0);
 }

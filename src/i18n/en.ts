@@ -193,6 +193,7 @@ export const en: Translations = {
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
     imageCount: "{count} image(s)",
+    pageCount: "{count} pages",
     skipped: "({count} skipped: {reasons})",
     skippedFolders: "subfolders",
     skippedUnsupported: "unsupported formats",

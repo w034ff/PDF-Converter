@@ -287,6 +287,544 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
         encrypted_pdf("restricted", b"", PERMISSIONS_RESTRICTED)?,
     );
 
+    let aniso_picture = dpi_rgb(300, 150);
+    add(
+        "dpi_aniso.png",
+        encode_png_aniso(
+            300,
+            150,
+            png::ColorType::Rgb,
+            png::BitDepth::Eight,
+            &aniso_picture,
+            300,
+            150,
+        )?,
+    );
+
+    // TIFF fixtures (design §11.1)
+    let strip1 = encode_g4(100, 160, |x, y| scan_g4_is_black(1, x, y));
+    let p1 = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(100)),
+            (257, TiffValue::Long(160)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(4)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(160)),
+            (282, TiffValue::Rational(300, 1)),
+            (283, TiffValue::Rational(300, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: strip1,
+    };
+    let strip2 = encode_g4(160, 100, |x, y| scan_g4_is_black(2, x, y));
+    let p2 = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(160)),
+            (257, TiffValue::Long(100)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(4)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(100)),
+            (282, TiffValue::Rational(300, 1)),
+            (283, TiffValue::Rational(300, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: strip2,
+    };
+    let strip3 = encode_g4(100, 160, |x, y| scan_g4_is_black(3, x, y));
+    let p3 = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(100)),
+            (257, TiffValue::Long(160)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(4)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(160)),
+            (282, TiffValue::Rational(300, 1)),
+            (283, TiffValue::Rational(300, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: strip3,
+    };
+    add("scan_g4.tif", build_tiff(Endian::Little, &[p1, p2, p3]));
+
+    let fax_strip = encode_g4(1728, 1143, fax_standard_is_black);
+    let fax_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(1728)),
+            (257, TiffValue::Long(1143)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(4)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(1143)),
+            (282, TiffValue::Rational(204, 1)),
+            (283, TiffValue::Rational(98, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: fax_strip,
+    };
+    add("fax_standard.tif", build_tiff(Endian::Little, &[fax_page]));
+
+    let mut gray_data = Vec::with_capacity(160 * 120);
+    for y in 0..120 {
+        for x in 0..160 {
+            gray_data.push(((x * 255 / 160 + y * 255 / 120) / 2) as u8);
+        }
+    }
+    let gray_lzw_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(160)),
+            (257, TiffValue::Long(120)),
+            (258, TiffValue::Short(8)),
+            (259, TiffValue::Short(5)),
+            (262, TiffValue::Short(1)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(120)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: encode_lzw(&gray_data),
+    };
+    add("gray_lzw.tif", build_tiff(Endian::Little, &[gray_lzw_page]));
+
+    let mut gray16_data = Vec::with_capacity(64 * 64 * 2);
+    for y in 0..64 {
+        for x in 0..64 {
+            let val = ((x * 65535 / 64 + y * 65535 / 64) / 2) as u16;
+            gray16_data.extend_from_slice(&val.to_be_bytes());
+        }
+    }
+    let gray16_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(64)),
+            (257, TiffValue::Long(64)),
+            (258, TiffValue::Short(16)),
+            (259, TiffValue::Short(8)),
+            (262, TiffValue::Short(1)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(64)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: encode_deflate(&gray16_data),
+    };
+    add(
+        "gray16_deflate.tif",
+        build_tiff(Endian::Big, &[gray16_page]),
+    );
+
+    let mut gray4_data = Vec::with_capacity(64 * 32);
+    for _y in 0..64 {
+        for x in 0..32 {
+            let v0 = (2 * x * 15 / 64) as u8;
+            let v1 = ((2 * x + 1) * 15 / 64) as u8;
+            gray4_data.push((v0 << 4) | (v1 & 0x0F));
+        }
+    }
+    let gray4_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(64)),
+            (257, TiffValue::Long(64)),
+            (258, TiffValue::Short(4)),
+            (259, TiffValue::Short(32773)),
+            (262, TiffValue::Short(1)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(64)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: encode_packbits(&gray4_data),
+    };
+    add(
+        "gray4_packbits.tif",
+        build_tiff(Endian::Little, &[gray4_page]),
+    );
+
+    let mut rgb_data = Vec::with_capacity(160 * 120 * 3);
+    for y in 0..120 {
+        for x in 0..160 {
+            rgb_data.push((x * 255 / 160) as u8);
+            rgb_data.push((y * 255 / 120) as u8);
+            rgb_data.push(((x + y) * 255 / 280) as u8);
+        }
+    }
+    let rgb_lzw_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(160)),
+            (257, TiffValue::Long(120)),
+            (258, TiffValue::Shorts(vec![8, 8, 8])),
+            (259, TiffValue::Short(5)),
+            (262, TiffValue::Short(2)),
+            (277, TiffValue::Short(3)),
+            (278, TiffValue::Long(120)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: encode_lzw(&rgb_data),
+    };
+    add("rgb_lzw.tif", build_tiff(Endian::Little, &[rgb_lzw_page]));
+
+    let mut rgb16_data = Vec::with_capacity(48 * 48 * 6);
+    for y in 0..48 {
+        for x in 0..48 {
+            let r = (x * 65535 / 48) as u16;
+            let g = (y * 65535 / 48) as u16;
+            let b = ((x + y) * 65535 / 96) as u16;
+            rgb16_data.extend_from_slice(&r.to_le_bytes());
+            rgb16_data.extend_from_slice(&g.to_le_bytes());
+            rgb16_data.extend_from_slice(&b.to_le_bytes());
+        }
+    }
+    let rgb16_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(48)),
+            (257, TiffValue::Long(48)),
+            (258, TiffValue::Shorts(vec![16, 16, 16])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(2)),
+            (277, TiffValue::Short(3)),
+            (278, TiffValue::Long(48)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: rgb16_data,
+    };
+    add("rgb16.tif", build_tiff(Endian::Little, &[rgb16_page]));
+
+    let mut rgba_unassoc_data = Vec::with_capacity(64 * 64 * 4);
+    for _y in 0..64 {
+        for x in 0..64 {
+            let a = (x * 255 / 64) as u8;
+            rgba_unassoc_data.extend_from_slice(&[220, 40, 80, a]);
+        }
+    }
+    let rgba_unassoc_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(64)),
+            (257, TiffValue::Long(64)),
+            (258, TiffValue::Shorts(vec![8, 8, 8, 8])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(2)),
+            (277, TiffValue::Short(4)),
+            (278, TiffValue::Long(64)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+            (338, TiffValue::Short(2)),
+        ],
+        strip_data: rgba_unassoc_data,
+    };
+    add(
+        "rgba_unassoc.tif",
+        build_tiff(Endian::Little, &[rgba_unassoc_page]),
+    );
+
+    let mut rgba_assoc_data = Vec::with_capacity(64 * 64 * 4);
+    for _y in 0..64 {
+        for x in 0..64 {
+            let a = (x * 255 / 64) as u32;
+            let r = ((40 * a + 127) / 255) as u8;
+            let g = ((180 * a + 127) / 255) as u8;
+            let b = ((90 * a + 127) / 255) as u8;
+            rgba_assoc_data.extend_from_slice(&[r, g, b, a as u8]);
+        }
+    }
+    let rgba_assoc_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(64)),
+            (257, TiffValue::Long(64)),
+            (258, TiffValue::Shorts(vec![8, 8, 8, 8])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(2)),
+            (277, TiffValue::Short(4)),
+            (278, TiffValue::Long(64)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+            (338, TiffValue::Short(1)),
+        ],
+        strip_data: rgba_assoc_data,
+    };
+    add(
+        "rgba_assoc.tif",
+        build_tiff(Endian::Little, &[rgba_assoc_page]),
+    );
+
+    let mut gray_alpha_data = Vec::with_capacity(64 * 64 * 2);
+    for y in 0..64 {
+        for x in 0..64 {
+            let g = (y * 255 / 64) as u8;
+            let a = (x * 255 / 64) as u8;
+            gray_alpha_data.extend_from_slice(&[g, a]);
+        }
+    }
+    let gray_alpha_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(64)),
+            (257, TiffValue::Long(64)),
+            (258, TiffValue::Shorts(vec![8, 8])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(1)),
+            (277, TiffValue::Short(2)),
+            (278, TiffValue::Long(64)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+            (338, TiffValue::Short(2)),
+        ],
+        strip_data: gray_alpha_data,
+    };
+    add(
+        "gray_alpha.tif",
+        build_tiff(Endian::Little, &[gray_alpha_page]),
+    );
+
+    let photo_jpeg_strip = encode_jpeg(
+        160,
+        120,
+        jpeg_encoder::ColorType::Rgb,
+        &photo_rgb(160, 120),
+        None,
+        None,
+    )?;
+    let photo_jpeg_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(160)),
+            (257, TiffValue::Long(120)),
+            (258, TiffValue::Shorts(vec![8, 8, 8])),
+            (259, TiffValue::Short(7)),
+            (262, TiffValue::Short(6)),
+            (277, TiffValue::Short(3)),
+            (278, TiffValue::Long(120)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: photo_jpeg_strip,
+    };
+    add(
+        "photo_jpeg.tif",
+        build_tiff(Endian::Little, &[photo_jpeg_page]),
+    );
+
+    let (rot_w, rot_h, rot_stored) = stored_for_orientation(160, 96, &orientation_rgb(160, 96), 6);
+    let rotate90_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(rot_w)),
+            (257, TiffValue::Long(rot_h)),
+            (258, TiffValue::Shorts(vec![8, 8, 8])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(2)),
+            (274, TiffValue::Short(6)),
+            (277, TiffValue::Short(3)),
+            (278, TiffValue::Long(rot_h)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: rot_stored,
+    };
+    add("rotate90.tif", build_tiff(Endian::Little, &[rotate90_page]));
+
+    let meta_rgb = [40, 80, 200].repeat(64 * 64);
+    let meta_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(64)),
+            (257, TiffValue::Long(64)),
+            (258, TiffValue::Shorts(vec![8, 8, 8])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(2)),
+            (270, TiffValue::Ascii(TIFF_DESC_SECRET.to_string())),
+            (277, TiffValue::Short(3)),
+            (278, TiffValue::Long(64)),
+            (282, TiffValue::Rational(150, 1)),
+            (283, TiffValue::Rational(150, 1)),
+            (296, TiffValue::Short(2)),
+            (305, TiffValue::Ascii(TIFF_SOFTWARE_SECRET.to_string())),
+            (306, TiffValue::Ascii("2026:10:14 12:00:00".to_string())),
+            (315, TiffValue::Ascii(TIFF_ARTIST_SECRET.to_string())),
+            (
+                700,
+                TiffValue::Bytes(format!("<x:xmpmeta>{TIFF_XMP_SECRET}</x:xmpmeta>").into_bytes()),
+            ),
+        ],
+        strip_data: meta_rgb,
+    };
+    add("metadata.tif", build_tiff(Endian::Little, &[meta_page]));
+
+    let cmyk_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(16)),
+            (257, TiffValue::Long(16)),
+            (258, TiffValue::Shorts(vec![8, 8, 8, 8])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(5)),
+            (277, TiffValue::Short(4)),
+            (278, TiffValue::Long(16)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: vec![0; 16 * 16 * 4],
+    };
+    add("cmyk.tif", build_tiff(Endian::Little, &[cmyk_page]));
+
+    let g3_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(16)),
+            (257, TiffValue::Long(16)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(3)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(16)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: vec![0; 32],
+    };
+    add("fax_g3.tif", build_tiff(Endian::Little, &[g3_page]));
+
+    let planar_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(16)),
+            (257, TiffValue::Long(16)),
+            (258, TiffValue::Shorts(vec![8, 8, 8])),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(2)),
+            (273, TiffValue::Longs(vec![8, 264, 520])),
+            (277, TiffValue::Short(3)),
+            (278, TiffValue::Long(16)),
+            (279, TiffValue::Longs(vec![256, 256, 256])),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (284, TiffValue::Short(2)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: vec![0; 16 * 16 * 3],
+    };
+    add("planar.tif", build_tiff(Endian::Little, &[planar_page]));
+
+    let palette_page = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(16)),
+            (257, TiffValue::Long(16)),
+            (258, TiffValue::Short(8)),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(3)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(16)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+            (320, TiffValue::Shorts(vec![0u16; 768])),
+        ],
+        strip_data: vec![0; 16 * 16],
+    };
+    add("palette.tif", build_tiff(Endian::Little, &[palette_page]));
+
+    let valid_p1_strip = encode_g4(32, 32, |x, y| x == y);
+    let cp1 = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(32)),
+            (257, TiffValue::Long(32)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(4)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(32)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: valid_p1_strip,
+    };
+    let cp2 = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(32)),
+            (257, TiffValue::Long(32)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(4)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(32)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: vec![0x00, 0x01],
+    };
+    add("corrupt_page2.tif", build_tiff(Endian::Little, &[cp1, cp2]));
+
+    let tp1_strip = encode_g4(32, 32, |x, y| x == y);
+    let tp1 = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(32)),
+            (257, TiffValue::Long(32)),
+            (258, TiffValue::Short(1)),
+            (259, TiffValue::Short(4)),
+            (262, TiffValue::Short(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(32)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: tp1_strip,
+    };
+    let tp2 = TiffPageBuilder {
+        entries: vec![
+            (256, TiffValue::Long(10_000)),
+            (257, TiffValue::Long(10_000)),
+            (258, TiffValue::Short(8)),
+            (259, TiffValue::Short(1)),
+            (262, TiffValue::Short(1)),
+            (273, TiffValue::Long(0)),
+            (277, TiffValue::Short(1)),
+            (278, TiffValue::Long(10_000)),
+            (279, TiffValue::Long(0)),
+            (282, TiffValue::Rational(72, 1)),
+            (283, TiffValue::Rational(72, 1)),
+            (296, TiffValue::Short(2)),
+        ],
+        strip_data: vec![],
+    };
+    add(
+        "too_large_page2.tif",
+        build_tiff(Endian::Little, &[tp1, tp2]),
+    );
+
+    let mut tmp_pages = Vec::with_capacity(1001);
+    for _ in 0..1001 {
+        tmp_pages.push(TiffPageBuilder {
+            entries: vec![
+                (256, TiffValue::Long(1)),
+                (257, TiffValue::Long(1)),
+                (258, TiffValue::Short(8)),
+                (259, TiffValue::Short(1)),
+                (262, TiffValue::Short(1)),
+                (277, TiffValue::Short(1)),
+                (278, TiffValue::Long(1)),
+                (282, TiffValue::Rational(72, 1)),
+                (283, TiffValue::Rational(72, 1)),
+                (296, TiffValue::Short(2)),
+            ],
+            strip_data: vec![0],
+        });
+    }
+    add("too_many_pages.tif", build_tiff(Endian::Little, &tmp_pages));
+
     Ok(out)
 }
 
@@ -507,6 +1045,30 @@ fn encode_png(
             unit: png::Unit::Meter,
         }));
     }
+    encoder.write_header()?.write_image_data(data)?;
+    Ok(out)
+}
+
+fn encode_png_aniso(
+    w: u32,
+    h: u32,
+    color: png::ColorType,
+    depth: png::BitDepth,
+    data: &[u8],
+    dpi_x: u16,
+    dpi_y: u16,
+) -> Result<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, w, h);
+    encoder.set_color(color);
+    encoder.set_depth(depth);
+    let ppm_x = (u32::from(dpi_x) * 1_000_000 + MICROMETERS_PER_INCH / 2) / MICROMETERS_PER_INCH;
+    let ppm_y = (u32::from(dpi_y) * 1_000_000 + MICROMETERS_PER_INCH / 2) / MICROMETERS_PER_INCH;
+    encoder.set_pixel_dims(Some(png::PixelDimensions {
+        xppu: ppm_x,
+        yppu: ppm_y,
+        unit: png::Unit::Meter,
+    }));
     encoder.write_header()?.write_image_data(data)?;
     Ok(out)
 }
@@ -1331,4 +1893,373 @@ fn md5(data: &[u8]) -> [u8; 16] {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect()
+}
+
+// ---------------------------------------------------------------------------
+// TIFF Builder & Fixtures (design §11.1)
+
+pub const TIFF_DESC_SECRET: &str = "PDFCONV-UNIQUE-TIFF-IMAGE-DESC-7731";
+pub const TIFF_ARTIST_SECRET: &str = "PDFCONV-UNIQUE-TIFF-ARTIST-8842";
+pub const TIFF_SOFTWARE_SECRET: &str = "PDFCONV-UNIQUE-TIFF-SOFTWARE-9953";
+pub const TIFF_XMP_SECRET: &str = "PDFCONV-UNIQUE-TIFF-XMP-6624";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Endian {
+    Little,
+    Big,
+}
+
+#[derive(Clone)]
+pub enum TiffValue {
+    Byte(u8),
+    Bytes(Vec<u8>),
+    Ascii(String),
+    Short(u16),
+    Shorts(Vec<u16>),
+    Long(u32),
+    Longs(Vec<u32>),
+    Rational(u32, u32),
+}
+
+impl TiffValue {
+    fn serialize(&self, endian: Endian) -> (u16, u32, Vec<u8>) {
+        let to_u16 = |v: u16| match endian {
+            Endian::Little => v.to_le_bytes(),
+            Endian::Big => v.to_be_bytes(),
+        };
+        let to_u32 = |v: u32| match endian {
+            Endian::Little => v.to_le_bytes(),
+            Endian::Big => v.to_be_bytes(),
+        };
+
+        match self {
+            TiffValue::Byte(b) => (1, 1, vec![*b]),
+            TiffValue::Bytes(v) => (1, v.len() as u32, v.clone()),
+            TiffValue::Ascii(s) => {
+                let mut bytes = s.as_bytes().to_vec();
+                bytes.push(0);
+                (2, bytes.len() as u32, bytes)
+            }
+            TiffValue::Short(v) => (3, 1, to_u16(*v).to_vec()),
+            TiffValue::Shorts(v) => (
+                3,
+                v.len() as u32,
+                v.iter().flat_map(|&n| to_u16(n)).collect(),
+            ),
+            TiffValue::Long(v) => (4, 1, to_u32(*v).to_vec()),
+            TiffValue::Longs(v) => (
+                4,
+                v.len() as u32,
+                v.iter().flat_map(|&n| to_u32(n)).collect(),
+            ),
+            TiffValue::Rational(num, denom) => {
+                let mut bytes = Vec::with_capacity(8);
+                bytes.extend_from_slice(&to_u32(*num));
+                bytes.extend_from_slice(&to_u32(*denom));
+                (5, 1, bytes)
+            }
+        }
+    }
+}
+
+pub struct TiffPageBuilder {
+    pub entries: Vec<(u16, TiffValue)>,
+    pub strip_data: Vec<u8>,
+}
+
+pub fn build_tiff(endian: Endian, pages: &[TiffPageBuilder]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let to_u16 = |v: u16| match endian {
+        Endian::Little => v.to_le_bytes(),
+        Endian::Big => v.to_be_bytes(),
+    };
+    let to_u32 = |v: u32| match endian {
+        Endian::Little => v.to_le_bytes(),
+        Endian::Big => v.to_be_bytes(),
+    };
+
+    match endian {
+        Endian::Little => out.extend_from_slice(&[0x49, 0x49, 0x2A, 0x00]),
+        Endian::Big => out.extend_from_slice(&[0x4D, 0x4D, 0x00, 0x2A]),
+    }
+    out.extend_from_slice(&[0; 4]); // Placeholder for IFD 0 offset
+
+    let mut next_ifd_ptr_pos: Option<usize> = Some(4);
+
+    for page in pages {
+        let strip_offset = out.len() as u32;
+        out.extend_from_slice(&page.strip_data);
+        if out.len() % 2 != 0 {
+            out.push(0);
+        }
+
+        let mut entries = page.entries.clone();
+        if !entries.iter().any(|e| e.0 == 273) {
+            entries.push((273, TiffValue::Long(strip_offset)));
+        }
+        if !entries.iter().any(|e| e.0 == 279) {
+            entries.push((279, TiffValue::Long(page.strip_data.len() as u32)));
+        }
+
+        entries.sort_by_key(|e| e.0);
+
+        let mut ifd_entries_data = Vec::new();
+        for (tag, val) in entries {
+            let (typ, count, raw_bytes) = val.serialize(endian);
+            if raw_bytes.len() <= 4 {
+                let mut inline = [0u8; 4];
+                inline[..raw_bytes.len()].copy_from_slice(&raw_bytes);
+                ifd_entries_data.push((tag, typ, count, inline));
+            } else {
+                if out.len() % 2 != 0 {
+                    out.push(0);
+                }
+                let data_offset = out.len() as u32;
+                out.extend_from_slice(&raw_bytes);
+                ifd_entries_data.push((tag, typ, count, to_u32(data_offset)));
+            }
+        }
+
+        if out.len() % 2 != 0 {
+            out.push(0);
+        }
+        let ifd_offset = out.len() as u32;
+
+        if let Some(pos) = next_ifd_ptr_pos {
+            out[pos..pos + 4].copy_from_slice(&to_u32(ifd_offset));
+        }
+
+        out.extend_from_slice(&to_u16(ifd_entries_data.len() as u16));
+        for (tag, typ, count, val_or_offset) in ifd_entries_data {
+            out.extend_from_slice(&to_u16(tag));
+            out.extend_from_slice(&to_u16(typ));
+            out.extend_from_slice(&to_u32(count));
+            out.extend_from_slice(&val_or_offset);
+        }
+
+        let cur_ptr_pos = out.len();
+        out.extend_from_slice(&[0; 4]);
+        next_ifd_ptr_pos = Some(cur_ptr_pos);
+    }
+
+    out
+}
+
+fn encode_g4(width: u32, height: u32, is_black: impl Fn(u32, u32) -> bool) -> Vec<u8> {
+    let writer = fax::VecWriter::new();
+    let mut encoder = fax::encoder::Encoder::new(writer);
+    for y in 0..height {
+        let line = (0..width).map(|x| {
+            if is_black(x, y) {
+                fax::Color::Black
+            } else {
+                fax::Color::White
+            }
+        });
+        encoder
+            .encode_line(line, width as u16)
+            .expect("encode g4 line");
+    }
+    encoder.finish().expect("finish g4").finish()
+}
+
+fn encode_lzw(bytes: &[u8]) -> Vec<u8> {
+    let mut encoder = weezl::encode::Encoder::with_tiff_size_switch(weezl::BitOrder::Msb, 8);
+    encoder.encode(bytes).expect("encode lzw")
+}
+
+fn encode_deflate(bytes: &[u8]) -> Vec<u8> {
+    use flate2::Compression;
+    use flate2::write::ZlibEncoder;
+    use std::io::Write;
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(bytes).expect("deflate write");
+    encoder.finish().expect("deflate finish")
+}
+
+fn encode_packbits(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for chunk in bytes.chunks(128) {
+        out.push((chunk.len() - 1) as u8);
+        out.extend_from_slice(chunk);
+    }
+    out
+}
+
+pub fn scan_g4_is_black(page: usize, x: u32, y: u32) -> bool {
+    match page {
+        1 => (25..75).contains(&x) && (40..120).contains(&y),
+        2 => {
+            ((20..140).contains(&x) && (40..60).contains(&y))
+                || ((70..90).contains(&x) && (20..80).contains(&y))
+        }
+        3 if (30..130).contains(&y) => {
+            let half_w = (y - 30) * 30 / 100;
+            x >= 50 - half_w && x < 50 + half_w
+        }
+        _ => false,
+    }
+}
+
+pub fn scan_g4_expected(page: usize) -> image::RgbImage {
+    let (w, h) = if page == 2 { (160, 100) } else { (100, 160) };
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let color = if scan_g4_is_black(page, x, y) {
+                image::Rgb([0, 0, 0])
+            } else {
+                image::Rgb([255, 255, 255])
+            };
+            img.put_pixel(x, y, color);
+        }
+    }
+    img
+}
+
+pub fn fax_standard_is_black(x: u32, y: u32) -> bool {
+    ((64..1664).contains(&x) && (64..1079).contains(&y))
+        && (!(72..1656).contains(&x) || !(72..1071).contains(&y))
+}
+
+pub fn fax_standard_expected() -> image::RgbImage {
+    let (w, h) = (1728, 1143);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let color = if fax_standard_is_black(x, y) {
+                image::Rgb([0, 0, 0])
+            } else {
+                image::Rgb([255, 255, 255])
+            };
+            img.put_pixel(x, y, color);
+        }
+    }
+    img
+}
+
+pub fn gray_lzw_expected() -> image::RgbImage {
+    let (w, h) = (160, 120);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let g = ((x * 255 / w + y * 255 / h) / 2) as u8;
+            img.put_pixel(x, y, image::Rgb([g, g, g]));
+        }
+    }
+    img
+}
+
+pub fn gray16_deflate_expected() -> image::RgbImage {
+    let (w, h) = (64, 64);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let val_u16 = ((x * 65535 / w + y * 65535 / h) / 2) as u16;
+            let g8 = (val_u16 >> 8) as u8;
+            img.put_pixel(x, y, image::Rgb([g8, g8, g8]));
+        }
+    }
+    img
+}
+
+pub fn gray4_packbits_expected() -> image::RgbImage {
+    let (w, h) = (64, 64);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let v4 = (x * 15 / w) as u8;
+            let g8 = v4 * 17;
+            img.put_pixel(x, y, image::Rgb([g8, g8, g8]));
+        }
+    }
+    img
+}
+
+pub fn rgb_lzw_expected() -> image::RgbImage {
+    let (w, h) = (160, 120);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let r = (x * 255 / w) as u8;
+            let g = (y * 255 / h) as u8;
+            let b = ((x + y) * 255 / (w + h)) as u8;
+            img.put_pixel(x, y, image::Rgb([r, g, b]));
+        }
+    }
+    img
+}
+
+pub fn rgb16_expected() -> image::RgbImage {
+    let (w, h) = (48, 48);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let r16 = (x * 65535 / w) as u16;
+            let g16 = (y * 65535 / h) as u16;
+            let b16 = ((x + y) * 65535 / (w + h)) as u16;
+            img.put_pixel(
+                x,
+                y,
+                image::Rgb([(r16 >> 8) as u8, (g16 >> 8) as u8, (b16 >> 8) as u8]),
+            );
+        }
+    }
+    img
+}
+
+pub fn rgba_unassoc_expected() -> image::RgbImage {
+    let (w, h) = (64, 64);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let r = 220u32;
+            let g = 40u32;
+            let b = 80u32;
+            let a = x * 255 / w;
+            let cr = ((r * a + 255 * (255 - a) + 127) / 255) as u8;
+            let cg = ((g * a + 255 * (255 - a) + 127) / 255) as u8;
+            let cb = ((b * a + 255 * (255 - a) + 127) / 255) as u8;
+            img.put_pixel(x, y, image::Rgb([cr, cg, cb]));
+        }
+    }
+    img
+}
+
+pub fn rgba_assoc_expected() -> image::RgbImage {
+    let (w, h) = (64, 64);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let orig_r = 40u32;
+            let orig_g = 180u32;
+            let orig_b = 90u32;
+            let a = x * 255 / w;
+            let cr = ((orig_r * a + 255 * (255 - a) + 127) / 255) as u8;
+            let cg = ((orig_g * a + 255 * (255 - a) + 127) / 255) as u8;
+            let cb = ((orig_b * a + 255 * (255 - a) + 127) / 255) as u8;
+            img.put_pixel(x, y, image::Rgb([cr, cg, cb]));
+        }
+    }
+    img
+}
+
+pub fn gray_alpha_expected() -> image::RgbImage {
+    let (w, h) = (64, 64);
+    let mut img = image::RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let g = y * 255 / h;
+            let a = x * 255 / w;
+            let cg = ((g * a + 255 * (255 - a) + 127) / 255) as u8;
+            img.put_pixel(x, y, image::Rgb([cg, cg, cg]));
+        }
+    }
+    img
+}
+
+pub fn dpi_aniso_expected() -> image::RgbImage {
+    let (w, h) = (300, 150);
+    let data = dpi_rgb(w, h);
+    image::RgbImage::from_raw(w, h, data).expect("dpi_aniso raw image")
 }

@@ -16,6 +16,7 @@ const validItem1: ImageItem = {
   width: 100,
   height: 100,
   format: "jpeg",
+  pageCount: 1,
   bytes: 1000,
   error: null,
 };
@@ -26,6 +27,7 @@ const validItem2: ImageItem = {
   width: 200,
   height: 200,
   format: "png",
+  pageCount: 1,
   bytes: 2000,
   error: null,
 };
@@ -36,8 +38,20 @@ const corruptItem: ImageItem = {
   width: 0,
   height: 0,
   format: null,
+  pageCount: 0,
   bytes: 10,
   error: { code: "DecodeFailed", detail: null },
+};
+
+const multiPageTiffItem: ImageItem = {
+  id: 4,
+  name: "scan.tif",
+  width: 1728,
+  height: 1143,
+  format: "tiff",
+  pageCount: 3,
+  bytes: 3000,
+  error: null,
 };
 
 describe("ImagesToPdfStatus", () => {
@@ -127,6 +141,23 @@ describe("ImagesToPdfStatus", () => {
         );
         expect(getImagesToPdfStatusText(state, en)).toBe(
           "Will create a 2-page PDF",
+        );
+      });
+
+      it("sums pageCount across multi-page TIFF items", () => {
+        const state: ImagesToPdfState = {
+          items: [validItem1, multiPageTiffItem],
+          output: "merge",
+          pageSize: "fit",
+          orientation: "auto",
+          pdfA: false,
+          outputDir: null,
+        };
+        expect(getImagesToPdfStatusText(state, ja)).toBe(
+          "4 ページの PDF になります",
+        );
+        expect(getImagesToPdfStatusText(state, en)).toBe(
+          "Will create a 4-page PDF",
         );
       });
     });

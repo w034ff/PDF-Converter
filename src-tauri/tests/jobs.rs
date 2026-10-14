@@ -139,6 +139,10 @@ impl TestRecorder {
         self.items.lock().unwrap().clone()
     }
 
+    fn progress(&self) -> Vec<JobProgressPayload> {
+        self.progress.lock().unwrap().clone()
+    }
+
     fn finished(&self) -> JobFinishedPayload {
         self.finished
             .lock()
@@ -2597,4 +2601,155 @@ fn start_pdfs_to_images_out_of_range_dpi_resets_is_running() {
     let finished = recorder.wait_finished(Duration::from_secs(5));
     assert_eq!(finished.succeeded, 1);
     assert!(!app_state.is_running.load(Ordering::SeqCst));
+}
+
+#[test]
+fn merged_pdf_progress_counts_pages_and_corrupt_tiff_page2_reaches_total() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let valid_path = copy_fixture(temp_in.path(), "photo_jpeg.tif", "photo.tif");
+    let corrupt_path = copy_fixture(temp_in.path(), "corrupt_page2.tif", "corrupt.tif");
+
+    let add_res = add_images(&app_state, &[valid_path, corrupt_path]);
+    assert_eq!(add_res.added.len(), 2);
+    assert_eq!(add_res.added[0].page_count, 1);
+    assert_eq!(add_res.added[1].page_count, 2);
+
+    let ids: Vec<u64> = add_res.added.iter().map(|item| item.id).collect();
+    let dest_pdf = temp_out.path().join("merged.pdf");
+
+    let recorder = TestRecorder::new();
+    let res = run_save_merged_pdf(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        PdfConformance::Standard,
+        &dest_pdf,
+        recorder.callbacks(),
+    )
+    .expect("merge should complete");
+
+    assert_eq!(res.saved_name, Some("merged.pdf".to_string()));
+    assert!(dest_pdf.exists());
+
+    let finished = recorder.finished();
+    assert_eq!(finished.succeeded, 1);
+    assert_eq!(finished.failed, 1);
+    assert_eq!(finished.unprocessed, 0);
+    assert!(!finished.cancelled);
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].status, JobItemStatus::Ok);
+    assert_eq!(items[1].status, JobItemStatus::Failed);
+    assert_eq!(
+        items[1].error.as_ref().map(|e| e.code),
+        Some(ErrorCode::DecodeFailed)
+    );
+
+    let progress = recorder.progress();
+    assert!(!progress.is_empty());
+    let last = progress.last().unwrap();
+    // Total pages is 1 + 2 = 3. Done must reach total 3 even though corrupt_page2 failed at page 2.
+    assert_eq!(last.total, 3);
+    assert_eq!(last.done, 3);
+}
+
+#[test]
+fn images_to_pdfs_progress_counts_pages_and_corrupt_tiff_leaves_no_file() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let valid_path = copy_fixture(temp_in.path(), "scan_g4.tif", "scan.tif");
+    let corrupt_path = copy_fixture(temp_in.path(), "corrupt_page2.tif", "corrupt.tif");
+
+    let add_res = add_images(&app_state, &[valid_path, corrupt_path]);
+    assert_eq!(add_res.added.len(), 2);
+    let ids: Vec<u64> = add_res.added.iter().map(|item| item.id).collect();
+
+    let recorder = TestRecorder::new();
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        PdfConformance::Standard,
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .expect("run_images_to_pdfs should complete");
+
+    let finished = recorder.finished();
+    assert_eq!(finished.succeeded, 1);
+    assert_eq!(finished.failed, 1);
+    assert_eq!(finished.unprocessed, 0);
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 2);
+
+    // scan.pdf exists, but corrupt.pdf must not exist and no temporary files must remain
+    assert!(temp_out.path().join("scan.pdf").exists());
+    assert!(!temp_out.path().join("corrupt.pdf").exists());
+    assert_no_temp_files(temp_out.path());
+
+    let progress = recorder.progress();
+    let last = progress.last().unwrap();
+    assert_eq!(last.total, 5);
+    assert_eq!(last.done, 5);
+}
+
+#[test]
+fn cancellation_during_tiff_merged_pdf_writes_no_file() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+
+    let path = copy_fixture(temp_in.path(), "scan_g4.tif", "scan.tif");
+    let add_res = add_images(&app_state, &[path]);
+    let ids = vec![add_res.added[0].id];
+    let dest_pdf = temp_out.path().join("merged.pdf");
+
+    let cancel_flag = Arc::clone(&app_state.cancel_flag);
+    let p = Arc::new(Mutex::new(Vec::new()));
+    let i = Arc::new(Mutex::new(Vec::new()));
+    let f = Arc::new(Mutex::new(None));
+
+    let p_clone = Arc::clone(&p);
+    let i_clone = Arc::clone(&i);
+    let f_clone = Arc::clone(&f);
+    let flag_clone = Arc::clone(&cancel_flag);
+
+    let callbacks = JobCallbacks {
+        on_progress: move |prog: JobProgressPayload| {
+            if prog.current.is_some() {
+                flag_clone.store(true, Ordering::SeqCst);
+            }
+            p_clone.lock().unwrap().push(prog);
+        },
+        on_item: move |item| i_clone.lock().unwrap().push(item),
+        on_finished: move |fin| *f_clone.lock().unwrap() = Some(fin),
+    };
+
+    let res = run_save_merged_pdf(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        PdfConformance::Standard,
+        &dest_pdf,
+        callbacks,
+    )
+    .expect("run_save_merged_pdf should handle cancellation");
+
+    assert_eq!(res.saved_name, None);
+    assert!(!dest_pdf.exists());
+    assert_no_temp_files(temp_out.path());
+
+    let finished = f.lock().unwrap().clone().expect("finished event");
+    assert!(finished.cancelled);
+    assert_eq!(finished.succeeded, 0);
 }

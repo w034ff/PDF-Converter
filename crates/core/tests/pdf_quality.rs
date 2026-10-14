@@ -13,6 +13,10 @@ use pdfconv_core::{
 };
 use pdfium_render::prelude::*;
 
+#[allow(dead_code)]
+#[path = "../examples/gen_fixtures.rs"]
+mod gen_fixtures;
+
 /// Tolerance for pixel value differences when comparing rendered image with original (design §11.2).
 const COLOR_TOLERANCE_IMAGE: u8 = 8;
 
@@ -71,6 +75,81 @@ fn composite_over_white(rgba: &image::RgbaImage) -> image::RgbImage {
         rgb.put_pixel(x, y, Rgb([r, g, b]));
     }
     rgb
+}
+
+/// Compares two images with a tolerance per pixel and a maximum mismatch ratio.
+fn assert_images_match(
+    context: &str,
+    actual: &image::RgbImage,
+    expected: &image::RgbImage,
+    tolerance: u8,
+    max_mismatch_ratio: f64,
+) {
+    assert_eq!(
+        actual.dimensions(),
+        expected.dimensions(),
+        "{context}: dimensions mismatch: actual={:?}, expected={:?}",
+        actual.dimensions(),
+        expected.dimensions()
+    );
+    let mut mismatch_count = 0usize;
+    let mut max_diff = 0u8;
+    let total_pixels = (actual.width() * actual.height()) as usize;
+    for (p_act, p_exp) in actual.pixels().zip(expected.pixels()) {
+        let dr = (p_act[0] as i16 - p_exp[0] as i16).unsigned_abs() as u8;
+        let dg = (p_act[1] as i16 - p_exp[1] as i16).unsigned_abs() as u8;
+        let db = (p_act[2] as i16 - p_exp[2] as i16).unsigned_abs() as u8;
+        let diff = dr.max(dg).max(db);
+        if diff > max_diff {
+            max_diff = diff;
+        }
+        if diff > tolerance {
+            mismatch_count += 1;
+        }
+    }
+    let mismatch_ratio = mismatch_count as f64 / total_pixels as f64;
+    assert!(
+        mismatch_ratio <= max_mismatch_ratio,
+        "{context}: mismatch ratio {:.4}% exceeds limit {:.4}%, max_diff={max_diff}",
+        mismatch_ratio * 100.0,
+        max_mismatch_ratio * 100.0
+    );
+}
+
+fn extract_flate_streams(pdf: &[u8]) -> Vec<Vec<u8>> {
+    let mut streams = Vec::new();
+    let mut pos = 0;
+    while let Some(idx) = pdf[pos..].windows(6).position(|w| w == b"stream") {
+        let stream_start = pos + idx + 6;
+        let mut data_start = stream_start;
+        if data_start < pdf.len() && pdf[data_start] == b'\r' {
+            data_start += 1;
+        }
+        if data_start < pdf.len() && pdf[data_start] == b'\n' {
+            data_start += 1;
+        }
+        if let Some(end_idx) = pdf[data_start..].windows(9).position(|w| w == b"endstream") {
+            let mut data_end = data_start + end_idx;
+            if data_end > data_start && pdf[data_end - 1] == b'\n' {
+                data_end -= 1;
+            }
+            if data_end > data_start && pdf[data_end - 1] == b'\r' {
+                data_end -= 1;
+            }
+            let raw = &pdf[data_start..data_end];
+            let mut decoder = flate2::read::ZlibDecoder::new(raw);
+            let mut decompressed = Vec::new();
+            if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_ok()
+                && !decompressed.is_empty()
+            {
+                streams.push(decompressed);
+            }
+            pos = data_start + end_idx + 9;
+        } else {
+            break;
+        }
+    }
+    streams
 }
 
 /// Writes a single-page PDF with `page_size`, renders it at `scale`, and verifies that
@@ -208,7 +287,7 @@ fn pdf_quality_and_conformance_suite() {
             .unwrap_or_else(|e| panic!("failed to get page 0 for {name}: {e:?}"));
 
         // Render at native image DPI
-        let scale = info.dpi as f32 / POINTS_PER_INCH;
+        let scale = info.dpi_x as f32 / POINTS_PER_INCH;
         let render_config = PdfRenderConfig::new().scale_page_by_factor(scale);
         let rendered_image = render_page_to_rgb(&page, &render_config);
 
@@ -264,6 +343,187 @@ fn pdf_quality_and_conformance_suite() {
     }
 
     // -----------------------------------------------------------------------
+    // 1b. TIFF and anisotropic image quality tests (design §11.2)
+    // -----------------------------------------------------------------------
+    for conformance in [PdfConformance::Standard, PdfConformance::PdfA2b] {
+        println!("\n--- [TIFF Quality, {conformance:?}] ---");
+
+        // scan_g4.tif: 3 pages, sequentially verified against expected
+        let scan_g4_bytes = std::fs::read(fix_dir.join("scan_g4.tif")).unwrap();
+        let mut g4_writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
+        g4_writer.add_page(&scan_g4_bytes, PageSize::Fit).unwrap();
+        let g4_pdf = g4_writer.finish().unwrap();
+        let g4_doc = pdfium.load_pdf_from_byte_slice(&g4_pdf, None).unwrap();
+        assert_eq!(g4_doc.pages().len(), 3, "scan_g4 must have 3 pages");
+
+        for (p_idx, exp_img) in [
+            (0, gen_fixtures::scan_g4_expected(1)),
+            (1, gen_fixtures::scan_g4_expected(2)),
+            (2, gen_fixtures::scan_g4_expected(3)),
+        ] {
+            let p = g4_doc.pages().get(p_idx).unwrap();
+            let rendered = render_page_to_rgb(
+                &p,
+                &PdfRenderConfig::new().scale_page_by_factor(300.0 / POINTS_PER_INCH),
+            );
+            assert_images_match(
+                &format!("scan_g4 page {p_idx} ({conformance:?})"),
+                &rendered,
+                &exp_img,
+                COLOR_TOLERANCE_IMAGE,
+                MAX_MISMATCH_RATIO_IMAGE,
+            );
+        }
+
+        // fax_standard.tif: 1 page, 204x98 dpi, ~610x840 pt (design §11.2)
+        let fax_bytes = std::fs::read(fix_dir.join("fax_standard.tif")).unwrap();
+        let mut fax_writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
+        fax_writer.add_page(&fax_bytes, PageSize::Fit).unwrap();
+        let fax_pdf = fax_writer.finish().unwrap();
+        let fax_doc = pdfium.load_pdf_from_byte_slice(&fax_pdf, None).unwrap();
+        let fax_page = fax_doc.pages().get(0).unwrap();
+        assert!(
+            (fax_page.width().value - 610.0).abs() < 1.0,
+            "fax width pt ~ 610"
+        );
+        assert!(
+            (fax_page.height().value - 839.8).abs() < 1.0,
+            "fax height pt ~ 840"
+        );
+        let fax_rendered = render_page_to_rgb(
+            &fax_page,
+            &PdfRenderConfig::new().set_target_size(1728, 1143),
+        );
+        assert_images_match(
+            &format!("fax_standard ({conformance:?})"),
+            &fax_rendered,
+            &gen_fixtures::fax_standard_expected(),
+            COLOR_TOLERANCE_IMAGE,
+            MAX_MISMATCH_RATIO_IMAGE,
+        );
+
+        // dpi_aniso.png: 300x150 px at 300x150 dpi -> 72x72 pt
+        let aniso_bytes = std::fs::read(fix_dir.join("dpi_aniso.png")).unwrap();
+        let mut aniso_writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
+        aniso_writer.add_page(&aniso_bytes, PageSize::Fit).unwrap();
+        let aniso_pdf = aniso_writer.finish().unwrap();
+        let aniso_doc = pdfium.load_pdf_from_byte_slice(&aniso_pdf, None).unwrap();
+        let aniso_page = aniso_doc.pages().get(0).unwrap();
+        assert!(
+            (aniso_page.width().value - 72.0).abs() < 0.1,
+            "aniso width pt 72"
+        );
+        assert!(
+            (aniso_page.height().value - 72.0).abs() < 0.1,
+            "aniso height pt 72"
+        );
+        let aniso_rendered = render_page_to_rgb(
+            &aniso_page,
+            &PdfRenderConfig::new().set_target_size(300, 150),
+        );
+        assert_images_match(
+            &format!("dpi_aniso ({conformance:?})"),
+            &aniso_rendered,
+            &gen_fixtures::dpi_aniso_expected(),
+            COLOR_TOLERANCE_IMAGE,
+            MAX_MISMATCH_RATIO_IMAGE,
+        );
+
+        // Single-page TIFFs tested against expected images
+        let single_page_tiffs = [
+            ("gray_lzw.tif", gen_fixtures::gray_lzw_expected()),
+            (
+                "gray16_deflate.tif",
+                gen_fixtures::gray16_deflate_expected(),
+            ),
+            (
+                "gray4_packbits.tif",
+                gen_fixtures::gray4_packbits_expected(),
+            ),
+            ("rgb_lzw.tif", gen_fixtures::rgb_lzw_expected()),
+            ("rgb16.tif", gen_fixtures::rgb16_expected()),
+            ("rgba_unassoc.tif", gen_fixtures::rgba_unassoc_expected()),
+            ("rgba_assoc.tif", gen_fixtures::rgba_assoc_expected()),
+            ("gray_alpha.tif", gen_fixtures::gray_alpha_expected()),
+        ];
+        for (name, expected) in single_page_tiffs {
+            let bytes = std::fs::read(fix_dir.join(name)).unwrap();
+            let mut writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
+            writer.add_page(&bytes, PageSize::Fit).unwrap();
+            let pdf = writer.finish().unwrap();
+            let doc = pdfium.load_pdf_from_byte_slice(&pdf, None).unwrap();
+            let page = doc.pages().get(0).unwrap();
+            let rendered = render_page_to_rgb(
+                &page,
+                &PdfRenderConfig::new().scale_page_by_factor(150.0 / POINTS_PER_INCH),
+            );
+            assert_images_match(
+                &format!("{name} ({conformance:?})"),
+                &rendered,
+                &expected,
+                COLOR_TOLERANCE_IMAGE,
+                MAX_MISMATCH_RATIO_IMAGE,
+            );
+        }
+
+        // photo_jpeg.tif: verified against image crate decode of embedded JPEG strip (design §11.2)
+        let pj_bytes = std::fs::read(fix_dir.join("photo_jpeg.tif")).unwrap();
+        let mut pj_writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
+        pj_writer.add_page(&pj_bytes, PageSize::Fit).unwrap();
+        let pj_pdf = pj_writer.finish().unwrap();
+        let pj_doc = pdfium.load_pdf_from_byte_slice(&pj_pdf, None).unwrap();
+        let pj_page = pj_doc.pages().get(0).unwrap();
+        let pj_rendered = render_page_to_rgb(
+            &pj_page,
+            &PdfRenderConfig::new().scale_page_by_factor(72.0 / POINTS_PER_INCH),
+        );
+        let soi = pj_bytes.windows(2).position(|w| w == [0xFF, 0xD8]).unwrap();
+        let eoi = pj_bytes
+            .windows(2)
+            .rposition(|w| w == [0xFF, 0xD9])
+            .unwrap();
+        let pj_expected = image::load_from_memory(&pj_bytes[soi..=eoi + 1])
+            .unwrap()
+            .to_rgb8();
+        assert_images_match(
+            &format!("photo_jpeg.tif ({conformance:?})"),
+            &pj_rendered,
+            &pj_expected,
+            COLOR_TOLERANCE_IMAGE,
+            MAX_MISMATCH_RATIO_IMAGE,
+        );
+
+        // rotate90.tif: orientation 6 applied, displays as 160x96 with quadrant colors
+        let rot_bytes = std::fs::read(fix_dir.join("rotate90.tif")).unwrap();
+        let mut rot_writer = PdfWriter::new("PDF Converter 0.1.0", conformance);
+        rot_writer.add_page(&rot_bytes, PageSize::Fit).unwrap();
+        let rot_pdf = rot_writer.finish().unwrap();
+        let rot_doc = pdfium.load_pdf_from_byte_slice(&rot_pdf, None).unwrap();
+        let rot_page = rot_doc.pages().get(0).unwrap();
+        let rot_rendered = render_page_to_rgb(
+            &rot_page,
+            &PdfRenderConfig::new().scale_page_by_factor(150.0 / POINTS_PER_INCH),
+        );
+        assert_eq!(rot_rendered.dimensions(), (160, 96), "rotate90 dimensions");
+        let quadrants = [
+            ((40, 24), [220u8, 40, 40], "top-left (red)"),
+            ((120, 24), [40, 170, 90], "top-right (green)"),
+            ((40, 72), [40, 80, 200], "bottom-left (blue)"),
+            ((120, 72), [250, 210, 0], "bottom-right (yellow)"),
+        ];
+        for ((px, py), exp_col, label) in quadrants {
+            let act = rot_rendered.get_pixel(px, py).0;
+            for c in 0..3 {
+                let diff = (act[c] as i16 - exp_col[c] as i16).unsigned_abs() as u8;
+                assert!(
+                    diff <= COLOR_TOLERANCE_RENDER,
+                    "rotate90.tif {label} channel {c}: act={act:?}, exp={exp_col:?}, diff={diff}"
+                );
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // 2. A4 placement and orientation test (11 white-pixel-free fixtures)
     // -----------------------------------------------------------------------
     let a4_fixtures = [
@@ -275,6 +535,7 @@ fn pdf_quality_and_conformance_suite() {
         "rotate90.jpg",
         "rotate270_flip_h.jpg",
         "rotate270.jpg",
+        "rotate90.tif",
         "dpi300.png",
         "dpi300.jpg",
         "opaque.bmp",
@@ -485,6 +746,58 @@ fn pdf_quality_and_conformance_suite() {
         .load_pdf_from_byte_slice(&recovered_pdf, None)
         .expect("should load recovered PDF");
     assert_eq!(recovered_doc.pages().len(), 1);
+
+    // -----------------------------------------------------------------------
+    // 3b. corrupt_page2.tif fails with DecodeFailed; writer can continue afterwards (design §11.2)
+    // -----------------------------------------------------------------------
+    let corrupt_t_bytes = std::fs::read(fix_dir.join("corrupt_page2.tif")).unwrap();
+    let mut corrupt_t_writer = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::Standard);
+
+    let err = corrupt_t_writer
+        .add_page(&corrupt_t_bytes, PageSize::Fit)
+        .unwrap_err();
+    assert_eq!(err, ProbeError::DecodeFailed);
+
+    corrupt_t_writer
+        .add_page(&valid_bytes, PageSize::Fit)
+        .expect("should add valid page after corrupt TIFF page failure");
+
+    let recovered_t_pdf = corrupt_t_writer.finish().expect("should finish PDF");
+    let recovered_t_doc = pdfium
+        .load_pdf_from_byte_slice(&recovered_t_pdf, None)
+        .expect("should load recovered PDF");
+    assert_eq!(recovered_t_doc.pages().len(), 1);
+}
+
+#[test]
+fn tiff_metadata_tags_do_not_appear_in_generated_pdf() {
+    let fix_dir = fixtures_dir();
+    let raw_bytes = std::fs::read(fix_dir.join("metadata.tif")).unwrap();
+    let pdf = write_one_page(&raw_bytes, PageSize::Fit, PdfConformance::Standard);
+
+    let secrets = [
+        gen_fixtures::TIFF_DESC_SECRET.as_bytes(),
+        gen_fixtures::TIFF_ARTIST_SECRET.as_bytes(),
+        gen_fixtures::TIFF_SOFTWARE_SECRET.as_bytes(),
+        gen_fixtures::TIFF_XMP_SECRET.as_bytes(),
+    ];
+
+    let flate_streams = extract_flate_streams(&pdf);
+
+    for secret in secrets {
+        assert!(
+            !pdf.windows(secret.len()).any(|w| w == secret),
+            "secret {:?} found in raw PDF",
+            String::from_utf8_lossy(secret)
+        );
+        for stream in &flate_streams {
+            assert!(
+                !stream.windows(secret.len()).any(|w| w == secret),
+                "secret {:?} found in decompressed stream",
+                String::from_utf8_lossy(secret)
+            );
+        }
+    }
 }
 
 #[test]
@@ -645,7 +958,13 @@ fn pdfa_finishes_for_every_fixture_image_except_cmyk_and_corrupt() {
         let mut as_fit = PdfWriter::new("PDF Converter 0.1.0", PdfConformance::PdfA2b);
         match as_fit.add_page(&raw_bytes, PageSize::Fit) {
             Ok(()) => {}
-            Err(err @ (ProbeError::DecodeFailed | ProbeError::CmykNotAllowedInPdfA)) => {
+            Err(
+                err @ (ProbeError::DecodeFailed
+                | ProbeError::CmykNotAllowedInPdfA
+                | ProbeError::UnsupportedFormat
+                | ProbeError::TooLarge
+                | ProbeError::TooManyPages),
+            ) => {
                 refused.push((name, err));
                 continue;
             }
@@ -672,11 +991,18 @@ fn pdfa_finishes_for_every_fixture_image_except_cmyk_and_corrupt() {
     assert_eq!(
         refused,
         vec![
+            ("cmyk.tif".to_owned(), ProbeError::UnsupportedFormat),
             ("corrupt.png".to_owned(), ProbeError::DecodeFailed),
+            ("corrupt_page2.tif".to_owned(), ProbeError::DecodeFailed),
+            ("fax_g3.tif".to_owned(), ProbeError::UnsupportedFormat),
+            ("palette.tif".to_owned(), ProbeError::UnsupportedFormat),
             (
                 "photo_cmyk.jpg".to_owned(),
                 ProbeError::CmykNotAllowedInPdfA
             ),
+            ("planar.tif".to_owned(), ProbeError::UnsupportedFormat),
+            ("too_large_page2.tif".to_owned(), ProbeError::TooLarge),
+            ("too_many_pages.tif".to_owned(), ProbeError::TooManyPages),
         ]
     );
 }
@@ -684,7 +1010,12 @@ fn pdfa_finishes_for_every_fixture_image_except_cmyk_and_corrupt() {
 #[test]
 fn only_a_standard_pdf_marks_images_as_interpolated() {
     // One image of each format the writer hands to krilla with an `interpolate` flag.
-    for name in ["photo.jpg", "logo_alpha.png", "logo_alpha.webp"] {
+    for name in [
+        "photo.jpg",
+        "logo_alpha.png",
+        "logo_alpha.webp",
+        "rgb_lzw.tif",
+    ] {
         let raw_bytes = std::fs::read(fixtures_dir().join(name)).unwrap();
         let standard = write_one_page(&raw_bytes, PageSize::Fit, PdfConformance::Standard);
         let pdfa = write_one_page(&raw_bytes, PageSize::Fit, PdfConformance::PdfA2b);

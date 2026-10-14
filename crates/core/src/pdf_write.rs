@@ -11,7 +11,7 @@ use krilla::page::PageSettings;
 
 use crate::error::{PdfWriteError, ProbeError};
 use crate::layout::{PageSize, calculate_layout, orientation_swaps_dimensions};
-use crate::probe::{ImageFormat, probe_reader};
+use crate::probe::{ImageFormat, ImageInfo, probe_reader};
 use crate::utc_time::{UtcTime, now_utc};
 
 /// Reads and verifies pixel data using `image` without decoding limits (design §4.3).
@@ -58,6 +58,18 @@ pub struct PdfWriter {
     conformance: PdfConformance,
 }
 
+/// Result of adding an image to a [`PdfWriter`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddImageResult {
+    /// The image was successfully added to the document.
+    Ok {
+        /// Number of pages added to the PDF.
+        pages_added: u32,
+    },
+    /// Conversion was cancelled; no pages were added.
+    Cancelled,
+}
+
 impl PdfWriter {
     /// Creates a new PDF document writer with the specified creator string.
     ///
@@ -102,19 +114,63 @@ impl PdfWriter {
     /// Returns [`ProbeError::CmykNotAllowedInPdfA`] if the document is PDF/A-2b and the image is a
     /// CMYK JPEG.
     pub fn add_page(&mut self, image_bytes: &[u8], page_size: PageSize) -> Result<(), ProbeError> {
-        let info = probe_reader(std::io::Cursor::new(image_bytes))?;
-        let dynamic_img = decode_image_pixels(image_bytes)?;
+        match self.add_image(image_bytes, page_size, |_, _| {}, || false)? {
+            AddImageResult::Ok { .. } | AddImageResult::Cancelled => Ok(()),
+        }
+    }
 
-        // PDF/A forbids /Interpolate, and krilla fails `finish` if it is set.
+    /// Adds an image (or all pages of a multi-page TIFF) to the PDF document.
+    ///
+    /// For multi-page TIFF images, all pages are decoded into krilla images first before
+    /// committing to the document. If any page fails decoding, no pages are added to the document.
+    ///
+    /// Invokes `on_page(page_idx, total_pages)` as each page is decoded.
+    /// Periodically queries `should_cancel()` and cancels immediately without adding pages if true.
+    pub fn add_image<FProg, FCancel>(
+        &mut self,
+        image_bytes: &[u8],
+        page_size: PageSize,
+        mut on_page: FProg,
+        should_cancel: FCancel,
+    ) -> Result<AddImageResult, ProbeError>
+    where
+        FProg: FnMut(u32, u32),
+        FCancel: Fn() -> bool,
+    {
+        if should_cancel() {
+            return Ok(AddImageResult::Cancelled);
+        }
+
+        let info = probe_reader(std::io::Cursor::new(image_bytes))?;
+
+        if should_cancel() {
+            return Ok(AddImageResult::Cancelled);
+        }
+
         let interpolate = self.conformance == PdfConformance::Standard;
 
-        // JPEG has metadata stripped before embedding (design §4.3).
-        // PNG and WebP are decoded to pixels by krilla and losslessly recompressed.
-        // BMP uses the RGBA pixels read by `image`.
+        if info.format == ImageFormat::Tiff {
+            let pages = match crate::tiff::decode_tiff_pages(
+                &mut std::io::Cursor::new(image_bytes),
+                interpolate,
+                &mut on_page,
+                &should_cancel,
+            )? {
+                Ok(pages) => pages,
+                Err(()) => return Ok(AddImageResult::Cancelled),
+            };
+
+            let count = pages.len() as u32;
+            for (img, page_info) in pages {
+                self.commit_page(img, &page_info, page_size)?;
+            }
+            return Ok(AddImageResult::Ok { pages_added: count });
+        }
+
+        let dynamic_img = decode_image_pixels(image_bytes)?;
+
         let img = match info.format {
             ImageFormat::Jpeg => {
-                // krilla requires a document CMYK profile for any CMYK image in PDF/A,
-                // and none is bundled (design §4.3).
                 if self.conformance == PdfConformance::PdfA2b
                     && crate::jpeg_strip::jpeg_component_count(image_bytes)?
                         == Some(crate::jpeg_strip::CMYK_COMPONENT_COUNT)
@@ -133,9 +189,21 @@ impl PdfWriter {
                 let rgba = dynamic_img.to_rgba8();
                 Image::from_rgba8(rgba.into_raw(), info.width, info.height)
             }
+            ImageFormat::Tiff => unreachable!(),
         };
 
-        let layout = calculate_layout(&info, page_size);
+        self.commit_page(img, &info, page_size)?;
+        on_page(0, 1);
+        Ok(AddImageResult::Ok { pages_added: 1 })
+    }
+
+    fn commit_page(
+        &mut self,
+        img: Image,
+        info: &ImageInfo,
+        page_size: PageSize,
+    ) -> Result<(), ProbeError> {
+        let layout = calculate_layout(info, page_size);
 
         let (iw, ih) = (info.width as f32, info.height as f32);
         let swaps = orientation_swaps_dimensions(info.orientation);

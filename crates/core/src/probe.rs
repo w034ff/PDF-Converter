@@ -9,7 +9,7 @@ use image::metadata::Orientation;
 use crate::error::ProbeError;
 
 /// Supported file extensions for input images (design §4.1).
-pub const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp"];
+pub const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"];
 
 /// Maximum total pixels allowed for an input image (design §4.1).
 ///
@@ -32,6 +32,7 @@ pub enum ImageFormat {
     Jpeg,
     WebP,
     Bmp,
+    Tiff,
 }
 
 /// Metadata obtained by probing an image header without decoding pixels (design §4.1).
@@ -45,8 +46,12 @@ pub struct ImageInfo {
     pub height: u32,
     /// EXIF orientation tag, or [`Orientation::NoTransforms`] if absent or unoriented.
     pub orientation: Orientation,
-    /// Image resolution in dpi, or [`DEFAULT_DPI`] if absent, invalid or out of range.
-    pub dpi: u32,
+    /// Horizontal image resolution in dpi, or [`DEFAULT_DPI`] if absent, invalid or out of range.
+    pub dpi_x: u32,
+    /// Vertical image resolution in dpi, or [`DEFAULT_DPI`] if absent, invalid or out of range.
+    pub dpi_y: u32,
+    /// Number of pages in the image file (1 for non-TIFF images) (design §4.1).
+    pub page_count: u32,
 }
 
 /// Maximum number of header bytes peeked for extracting JPEG density segments.
@@ -58,9 +63,10 @@ const HEADER_PEEK_BYTES: usize = 64 * 1024;
 /// # Errors
 ///
 /// Returns [`ProbeError::ReadFailed`] if the file cannot be opened or read.
-/// Returns [`ProbeError::UnsupportedFormat`] if the format is not PNG, JPEG, WebP, or BMP.
+/// Returns [`ProbeError::UnsupportedFormat`] if the format is not supported.
 /// Returns [`ProbeError::DecodeFailed`] if the header is corrupt or truncated.
 /// Returns [`ProbeError::TooLarge`] if total pixels exceed [`MAX_IMAGE_PIXELS`].
+/// Returns [`ProbeError::TooManyPages`] if a multi-page TIFF exceeds [`crate::MAX_TIFF_PAGES`].
 pub fn probe(path: &Path) -> Result<ImageInfo, ProbeError> {
     let file = std::fs::File::open(path).map_err(|_| ProbeError::ReadFailed)?;
     let reader = std::io::BufReader::new(file);
@@ -71,9 +77,10 @@ pub fn probe(path: &Path) -> Result<ImageInfo, ProbeError> {
 ///
 /// # Errors
 ///
-/// Returns [`ProbeError::UnsupportedFormat`] if the format is not PNG, JPEG, WebP, or BMP.
+/// Returns [`ProbeError::UnsupportedFormat`] if the format is not supported.
 /// Returns [`ProbeError::DecodeFailed`] if the header is corrupt or truncated.
 /// Returns [`ProbeError::TooLarge`] if total pixels exceed [`MAX_IMAGE_PIXELS`].
+/// Returns [`ProbeError::TooManyPages`] if a multi-page TIFF exceeds [`crate::MAX_TIFF_PAGES`].
 /// Returns [`ProbeError::ReadFailed`] if a seek or read error occurs on the reader.
 pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, ProbeError> {
     let mut magic_buf = [0u8; 16];
@@ -82,6 +89,17 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
         .map_err(|_| ProbeError::ReadFailed)?;
     if n == 0 {
         return Err(ProbeError::UnsupportedFormat);
+    }
+
+    // Classic TIFF (II*\0 or MM\0*) and BigTIFF (II+\0 or MM\0+) (design §4.1.1).
+    let is_tiff = magic_buf[..n].starts_with(b"II*\0")
+        || magic_buf[..n].starts_with(b"MM\0*")
+        || magic_buf[..n].starts_with(b"II+\0")
+        || magic_buf[..n].starts_with(b"MM\0+");
+
+    if is_tiff {
+        reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
+        return crate::tiff::probe_tiff(&mut reader);
     }
 
     let (format, image_crate_fmt) = match image::guess_format(&magic_buf[..n]) {
@@ -134,12 +152,16 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
                 .map_err(|_| ProbeError::ReadFailed)?;
             parse_bmp_dpi(&bmp_header[..count])
         }
-        ImageFormat::WebP => None,
+        ImageFormat::WebP | ImageFormat::Tiff => None,
     };
 
-    let dpi = match raw_dpi {
-        Some(d) if (MIN_DPI..=MAX_DPI).contains(&d) => d,
-        _ => DEFAULT_DPI,
+    let (dpi_x, dpi_y) = match raw_dpi {
+        Some((dx, dy))
+            if (MIN_DPI..=MAX_DPI).contains(&dx) && (MIN_DPI..=MAX_DPI).contains(&dy) =>
+        {
+            (dx, dy)
+        }
+        _ => (DEFAULT_DPI, DEFAULT_DPI),
     };
 
     Ok(ImageInfo {
@@ -147,12 +169,14 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
         width,
         height,
         orientation,
-        dpi,
+        dpi_x,
+        dpi_y,
+        page_count: 1,
     })
 }
 
 /// Scans PNG chunks from `reader` by seeking over chunk data to locate `pHYs` before `IDAT`.
-fn find_png_phys_dpi<R: Read + Seek>(reader: &mut R) -> Option<u32> {
+fn find_png_phys_dpi<R: Read + Seek>(reader: &mut R) -> Option<(u32, u32)> {
     reader.rewind().ok()?;
     let mut magic = [0u8; 8];
     reader.read_exact(&mut magic).ok()?;
@@ -171,10 +195,14 @@ fn find_png_phys_dpi<R: Read + Seek>(reader: &mut R) -> Option<u32> {
                 let mut phys_data = [0u8; 9];
                 reader.read_exact(&mut phys_data).ok()?;
                 let ppu_x = u32::from_be_bytes(phys_data.get(0..4)?.try_into().ok()?);
+                let ppu_y = u32::from_be_bytes(phys_data.get(4..8)?.try_into().ok()?);
                 let unit = *phys_data.get(8)?;
-                if unit == 1 && ppu_x > 0 {
-                    let dpi = (f64::from(ppu_x) * 0.0254).round() as u32;
-                    return if dpi > 0 { Some(dpi) } else { None };
+                if unit == 1 && ppu_x > 0 && ppu_y > 0 {
+                    let dpi_x = (f64::from(ppu_x) * 0.0254).round() as u32;
+                    let dpi_y = (f64::from(ppu_y) * 0.0254).round() as u32;
+                    if dpi_x > 0 && dpi_y > 0 {
+                        return Some((dpi_x, dpi_y));
+                    }
                 }
             }
             return None;
@@ -191,11 +219,11 @@ fn find_png_phys_dpi<R: Read + Seek>(reader: &mut R) -> Option<u32> {
 }
 
 #[cfg(test)]
-fn parse_png_dpi(bytes: &[u8]) -> Option<u32> {
+fn parse_png_dpi(bytes: &[u8]) -> Option<(u32, u32)> {
     find_png_phys_dpi(&mut std::io::Cursor::new(bytes))
 }
 
-fn parse_jfif_dpi(bytes: &[u8]) -> Option<u32> {
+fn parse_jfif_dpi(bytes: &[u8]) -> Option<(u32, u32)> {
     if bytes.len() < 4 || !bytes.starts_with(&[0xFF, 0xD8]) {
         return None;
     }
@@ -236,13 +264,19 @@ fn parse_jfif_dpi(bytes: &[u8]) -> Option<u32> {
             if payload.starts_with(JFIF_TAG) {
                 let unit = *payload.get(7)?;
                 let x_density_bytes: [u8; 2] = payload.get(8..10)?.try_into().ok()?;
+                let y_density_bytes: [u8; 2] = payload.get(10..12)?.try_into().ok()?;
                 let x_density = u16::from_be_bytes(x_density_bytes);
-                if x_density > 0 {
+                let y_density = u16::from_be_bytes(y_density_bytes);
+                if x_density > 0 && y_density > 0 {
                     match unit {
-                        1 => return Some(u32::from(x_density)),
+                        1 => return Some((u32::from(x_density), u32::from(y_density))),
                         2 => {
-                            let dpi = (f64::from(x_density) * 2.54).round() as u32;
-                            return if dpi > 0 { Some(dpi) } else { None };
+                            let dpi_x = (f64::from(x_density) * 2.54).round() as u32;
+                            let dpi_y = (f64::from(y_density) * 2.54).round() as u32;
+                            if dpi_x > 0 && dpi_y > 0 {
+                                return Some((dpi_x, dpi_y));
+                            }
+                            return None;
                         }
                         _ => return None,
                     }
@@ -254,7 +288,7 @@ fn parse_jfif_dpi(bytes: &[u8]) -> Option<u32> {
     None
 }
 
-fn parse_exif_dpi(tiff: &[u8]) -> Option<u32> {
+fn parse_exif_dpi(tiff: &[u8]) -> Option<(u32, u32)> {
     if tiff.len() < 8 {
         return None;
     }
@@ -273,9 +307,11 @@ fn parse_exif_dpi(tiff: &[u8]) -> Option<u32> {
     }
     let num_entries = read_u16(tiff, ifd_offset, is_le)? as usize;
     let mut x_res: Option<(u32, u32)> = None;
+    let mut y_res: Option<(u32, u32)> = None;
     let mut res_unit: Option<u16> = None;
 
     const TAG_X_RESOLUTION: u16 = 0x011A;
+    const TAG_Y_RESOLUTION: u16 = 0x011B;
     const TAG_RESOLUTION_UNIT: u16 = 0x0128;
     const TYPE_SHORT: u16 = 3;
     const TYPE_RATIONAL: u16 = 5;
@@ -296,32 +332,51 @@ fn parse_exif_dpi(tiff: &[u8]) -> Option<u32> {
                 let den = read_u32(tiff, val_offset + 4, is_le)?;
                 x_res = Some((num, den));
             }
+        } else if tag == TAG_Y_RESOLUTION && field_type == TYPE_RATIONAL && count >= 1 {
+            let val_offset = read_u32(tiff, entry_offset + 8, is_le)? as usize;
+            if val_offset.checked_add(8)? <= tiff.len() {
+                let num = read_u32(tiff, val_offset, is_le)?;
+                let den = read_u32(tiff, val_offset + 4, is_le)?;
+                y_res = Some((num, den));
+            }
         } else if tag == TAG_RESOLUTION_UNIT && field_type == TYPE_SHORT && count >= 1 {
             let unit = read_u16(tiff, entry_offset + 8, is_le)?;
             res_unit = Some(unit);
         }
     }
 
-    let (num, den) = x_res?;
-    if den == 0 {
+    let (x_num, x_den) = x_res?;
+    let (y_num, y_den) = y_res?;
+    if x_den == 0 || y_den == 0 {
         return None;
     }
     let unit = res_unit.unwrap_or(2);
     match unit {
         2 => {
-            let dpi = (f64::from(num) / f64::from(den)).round() as u32;
-            if dpi > 0 { Some(dpi) } else { None }
+            let dpi_x = (f64::from(x_num) / f64::from(x_den)).round() as u32;
+            let dpi_y = (f64::from(y_num) / f64::from(y_den)).round() as u32;
+            if dpi_x > 0 && dpi_y > 0 {
+                Some((dpi_x, dpi_y))
+            } else {
+                None
+            }
         }
         3 => {
-            let dpcm = f64::from(num) / f64::from(den);
-            let dpi = (dpcm * 2.54).round() as u32;
-            if dpi > 0 { Some(dpi) } else { None }
+            let dpcm_x = f64::from(x_num) / f64::from(x_den);
+            let dpcm_y = f64::from(y_num) / f64::from(y_den);
+            let dpi_x = (dpcm_x * 2.54).round() as u32;
+            let dpi_y = (dpcm_y * 2.54).round() as u32;
+            if dpi_x > 0 && dpi_y > 0 {
+                Some((dpi_x, dpi_y))
+            } else {
+                None
+            }
         }
         _ => None,
     }
 }
 
-fn parse_bmp_dpi(bytes: &[u8]) -> Option<u32> {
+fn parse_bmp_dpi(bytes: &[u8]) -> Option<(u32, u32)> {
     if !bytes.starts_with(b"BM") {
         return None;
     }
@@ -332,11 +387,18 @@ fn parse_bmp_dpi(bytes: &[u8]) -> Option<u32> {
     }
     let xpels_bytes: [u8; 4] = bytes.get(38..42)?.try_into().ok()?;
     let xpels_per_meter = i32::from_le_bytes(xpels_bytes);
-    if xpels_per_meter <= 0 {
+    let ypels_bytes: [u8; 4] = bytes.get(42..46)?.try_into().ok()?;
+    let ypels_per_meter = i32::from_le_bytes(ypels_bytes);
+    if xpels_per_meter <= 0 || ypels_per_meter <= 0 {
         return None;
     }
-    let dpi = (f64::from(xpels_per_meter) * 0.0254).round() as u32;
-    if dpi > 0 { Some(dpi) } else { None }
+    let dpi_x = (f64::from(xpels_per_meter) * 0.0254).round() as u32;
+    let dpi_y = (f64::from(ypels_per_meter) * 0.0254).round() as u32;
+    if dpi_x > 0 && dpi_y > 0 {
+        Some((dpi_x, dpi_y))
+    } else {
+        None
+    }
 }
 
 fn read_u16(bytes: &[u8], offset: usize, is_le: bool) -> Option<u16> {
@@ -519,7 +581,9 @@ mod tests {
                 info.orientation, orientation,
                 "orientation mismatch for {name}"
             );
-            assert_eq!(info.dpi, dpi, "dpi mismatch for {name}");
+            assert_eq!(info.dpi_x, dpi, "dpi_x mismatch for {name}");
+            assert_eq!(info.dpi_y, dpi, "dpi_y mismatch for {name}");
+            assert_eq!(info.page_count, 1, "page_count mismatch for {name}");
         }
     }
 
@@ -531,7 +595,9 @@ mod tests {
         assert_eq!(info.width, 256);
         assert_eq!(info.height, 256);
         assert_eq!(info.orientation, Orientation::NoTransforms);
-        assert_eq!(info.dpi, 96);
+        assert_eq!(info.dpi_x, 96);
+        assert_eq!(info.dpi_y, 96);
+        assert_eq!(info.page_count, 1);
     }
 
     #[test]
@@ -557,9 +623,9 @@ mod tests {
             ProbeError::UnsupportedFormat
         );
 
-        let tiff_header = b"II*\0\x08\x00\x00\x00";
+        let avif_header = b"\0\0\0\x20ftypavif\0\0\0\0mif1";
         assert_eq!(
-            probe_reader(Cursor::new(tiff_header)).unwrap_err(),
+            probe_reader(Cursor::new(avif_header)).unwrap_err(),
             ProbeError::UnsupportedFormat
         );
     }
@@ -589,16 +655,16 @@ mod tests {
 
     #[test]
     fn parse_png_phys_density() {
-        let mut png = make_png_with_phys(11811, 1);
-        assert_eq!(parse_png_dpi(&png), Some(300));
+        let mut png = make_png_with_phys(11811, 11811, 1);
+        assert_eq!(parse_png_dpi(&png), Some((300, 300)));
 
-        png = make_png_with_phys(11811, 0);
+        png = make_png_with_phys(11811, 11811, 0);
         assert_eq!(parse_png_dpi(&png), None);
 
-        png = make_png_with_phys(11811, 2);
+        png = make_png_with_phys(11811, 11811, 2);
         assert_eq!(parse_png_dpi(&png), None);
 
-        png = make_png_with_phys(0, 1);
+        png = make_png_with_phys(0, 0, 1);
         assert_eq!(parse_png_dpi(&png), None);
     }
 
@@ -651,21 +717,25 @@ mod tests {
         png.extend_from_slice(&iend_crc.to_be_bytes());
 
         let probed = probe_reader(Cursor::new(png)).expect("probe png with 70 KiB chunk");
-        assert_eq!(probed.dpi, 300);
+        assert_eq!(probed.dpi_x, 300);
+        assert_eq!(probed.dpi_y, 300);
     }
 
     #[test]
     fn parse_jfif_density() {
-        let mut jfif = make_jpeg_with_jfif(300, 1);
-        assert_eq!(parse_jfif_dpi(&jfif), Some(300));
+        let mut jfif = make_jpeg_with_jfif(300, 300, 1);
+        assert_eq!(parse_jfif_dpi(&jfif), Some((300, 300)));
 
-        jfif = make_jpeg_with_jfif(118, 2);
-        assert_eq!(parse_jfif_dpi(&jfif), Some(300));
+        jfif = make_jpeg_with_jfif(118, 118, 2);
+        assert_eq!(parse_jfif_dpi(&jfif), Some((300, 300)));
 
-        jfif = make_jpeg_with_jfif(300, 0);
+        let jfif_aniso = make_jpeg_with_jfif(300, 150, 1);
+        assert_eq!(parse_jfif_dpi(&jfif_aniso), Some((300, 150)));
+
+        jfif = make_jpeg_with_jfif(300, 300, 0);
         assert_eq!(parse_jfif_dpi(&jfif), None);
 
-        jfif = make_jpeg_with_jfif(0, 1);
+        jfif = make_jpeg_with_jfif(0, 300, 1);
         assert_eq!(parse_jfif_dpi(&jfif), None);
     }
 
@@ -689,32 +759,37 @@ mod tests {
         // JFIF (300 dpi, unit 1) and EXIF (72 dpi) -> 300 dpi
         let jpeg_jfif_wins = make_jpeg_with_jfif_and_exif(300, 1, 72);
         let probed = probe_reader(Cursor::new(jpeg_jfif_wins)).expect("probe jpeg");
-        assert_eq!(probed.dpi, 300);
+        assert_eq!(probed.dpi_x, 300);
+        assert_eq!(probed.dpi_y, 300);
 
         // JFIF (unit 0, aspect ratio) and EXIF (300 dpi) -> falls back to EXIF 300 dpi
         let jpeg_exif_fallback = make_jpeg_with_jfif_and_exif(300, 0, 300);
         let probed = probe_reader(Cursor::new(jpeg_exif_fallback)).expect("probe jpeg");
-        assert_eq!(probed.dpi, 300);
+        assert_eq!(probed.dpi_x, 300);
+        assert_eq!(probed.dpi_y, 300);
     }
 
     #[test]
     fn parse_exif_density() {
-        let tiff_le_inch = make_exif_tiff((300, 1), Some(2), true);
-        assert_eq!(parse_exif_dpi(&tiff_le_inch), Some(300));
+        let tiff_le_inch = make_exif_tiff((300, 1), (300, 1), Some(2), true);
+        assert_eq!(parse_exif_dpi(&tiff_le_inch), Some((300, 300)));
 
-        let tiff_be_inch = make_exif_tiff((300, 1), Some(2), false);
-        assert_eq!(parse_exif_dpi(&tiff_be_inch), Some(300));
+        let tiff_be_inch = make_exif_tiff((300, 1), (300, 1), Some(2), false);
+        assert_eq!(parse_exif_dpi(&tiff_be_inch), Some((300, 300)));
 
-        let tiff_cm = make_exif_tiff((118, 1), Some(3), true);
-        assert_eq!(parse_exif_dpi(&tiff_cm), Some(300));
+        let tiff_cm = make_exif_tiff((118, 1), (118, 1), Some(3), true);
+        assert_eq!(parse_exif_dpi(&tiff_cm), Some((300, 300)));
 
-        let tiff_no_unit = make_exif_tiff((150, 1), None, true);
-        assert_eq!(parse_exif_dpi(&tiff_no_unit), Some(150));
+        let tiff_aniso = make_exif_tiff((300, 1), (150, 1), Some(2), true);
+        assert_eq!(parse_exif_dpi(&tiff_aniso), Some((300, 150)));
 
-        let tiff_unit_1 = make_exif_tiff((300, 1), Some(1), true);
+        let tiff_no_unit = make_exif_tiff((150, 1), (150, 1), None, true);
+        assert_eq!(parse_exif_dpi(&tiff_no_unit), Some((150, 150)));
+
+        let tiff_unit_1 = make_exif_tiff((300, 1), (300, 1), Some(1), true);
         assert_eq!(parse_exif_dpi(&tiff_unit_1), None);
 
-        let tiff_zero_den = make_exif_tiff((300, 0), Some(2), true);
+        let tiff_zero_den = make_exif_tiff((300, 0), (300, 1), Some(2), true);
         assert_eq!(parse_exif_dpi(&tiff_zero_den), None);
     }
 
@@ -725,7 +800,11 @@ mod tests {
 
         let ppm: i32 = 11811;
         header[38..42].copy_from_slice(&ppm.to_le_bytes());
-        assert_eq!(parse_bmp_dpi(&header), Some(300));
+        header[42..46].copy_from_slice(&ppm.to_le_bytes());
+        assert_eq!(parse_bmp_dpi(&header), Some((300, 300)));
+
+        header[42..46].copy_from_slice(&(5906i32).to_le_bytes());
+        assert_eq!(parse_bmp_dpi(&header), Some((300, 150)));
 
         header[38..42].copy_from_slice(&0i32.to_le_bytes());
         assert_eq!(parse_bmp_dpi(&header), None);
@@ -736,34 +815,63 @@ mod tests {
 
     #[test]
     fn dpi_range_boundaries_and_fallback_to_default() {
-        let png_35 = make_png_with_phys(1378, 1);
-        assert_eq!(parse_png_dpi(&png_35), Some(35));
-        let info_35 = probe_reader(Cursor::new(make_complete_png(1378))).unwrap();
-        assert_eq!(info_35.dpi, DEFAULT_DPI);
+        let png_35 = make_png_with_phys(1378, 1378, 1);
+        assert_eq!(parse_png_dpi(&png_35), Some((35, 35)));
+        let info_35 = probe_reader(Cursor::new(make_complete_png(1378, 1378))).unwrap();
+        assert_eq!(info_35.dpi_x, DEFAULT_DPI);
+        assert_eq!(info_35.dpi_y, DEFAULT_DPI);
 
-        let png_36 = make_png_with_phys(1417, 1);
-        assert_eq!(parse_png_dpi(&png_36), Some(36));
-        let info_36 = probe_reader(Cursor::new(make_complete_png(1417))).unwrap();
-        assert_eq!(info_36.dpi, 36);
+        let png_36 = make_png_with_phys(1417, 1417, 1);
+        assert_eq!(parse_png_dpi(&png_36), Some((36, 36)));
+        let info_36 = probe_reader(Cursor::new(make_complete_png(1417, 1417))).unwrap();
+        assert_eq!(info_36.dpi_x, 36);
+        assert_eq!(info_36.dpi_y, 36);
 
-        let png_2400 = make_png_with_phys(94488, 1);
-        assert_eq!(parse_png_dpi(&png_2400), Some(2400));
-        let info_2400 = probe_reader(Cursor::new(make_complete_png(94488))).unwrap();
-        assert_eq!(info_2400.dpi, 2400);
+        let png_2400 = make_png_with_phys(94488, 94488, 1);
+        assert_eq!(parse_png_dpi(&png_2400), Some((2400, 2400)));
+        let info_2400 = probe_reader(Cursor::new(make_complete_png(94488, 94488))).unwrap();
+        assert_eq!(info_2400.dpi_x, 2400);
+        assert_eq!(info_2400.dpi_y, 2400);
 
-        let png_2401 = make_png_with_phys(94528, 1);
-        assert_eq!(parse_png_dpi(&png_2401), Some(2401));
-        let info_2401 = probe_reader(Cursor::new(make_complete_png(94528))).unwrap();
-        assert_eq!(info_2401.dpi, DEFAULT_DPI);
+        let png_2401 = make_png_with_phys(94528, 94528, 1);
+        assert_eq!(parse_png_dpi(&png_2401), Some((2401, 2401)));
+        let info_2401 = probe_reader(Cursor::new(make_complete_png(94528, 94528))).unwrap();
+        assert_eq!(info_2401.dpi_x, DEFAULT_DPI);
+        assert_eq!(info_2401.dpi_y, DEFAULT_DPI);
+
+        // One axis valid (300 dpi), other axis below MIN_DPI (20 dpi < 36):
+        // Both axes must fall back to DEFAULT_DPI (design §4.1).
+        let png_aniso_bad = probe_reader(Cursor::new(make_complete_png(11811, 787))).unwrap();
+        assert_eq!(png_aniso_bad.dpi_x, DEFAULT_DPI);
+        assert_eq!(png_aniso_bad.dpi_y, DEFAULT_DPI);
+
+        let jpeg_path = Path::new(FIXTURES_DIR).join("dpi300.jpg");
+        let mut jpeg_data = std::fs::read(jpeg_path).unwrap();
+        let bad_y: u16 = 2500; // > 2400
+        jpeg_data[16..18].copy_from_slice(&bad_y.to_be_bytes());
+        let jpeg_aniso_bad = probe_reader(Cursor::new(jpeg_data)).unwrap();
+        assert_eq!(jpeg_aniso_bad.dpi_x, DEFAULT_DPI);
+        assert_eq!(jpeg_aniso_bad.dpi_y, DEFAULT_DPI);
+
+        let bmp_path = Path::new(FIXTURES_DIR).join("opaque.bmp");
+        let mut bmp_data = std::fs::read(bmp_path).unwrap();
+        let ppm_x: i32 = 787; // ~20 dpi (< 36)
+        let ppm_y: i32 = 11811; // 300 dpi
+        bmp_data[38..42].copy_from_slice(&ppm_x.to_le_bytes());
+        bmp_data[42..46].copy_from_slice(&ppm_y.to_le_bytes());
+        let bmp_aniso_bad = probe_reader(Cursor::new(bmp_data)).unwrap();
+        assert_eq!(bmp_aniso_bad.dpi_x, DEFAULT_DPI);
+        assert_eq!(bmp_aniso_bad.dpi_y, DEFAULT_DPI);
     }
 
     #[test]
     fn jpeg_with_exif_only_and_no_jfif() {
         let path = Path::new(FIXTURES_DIR).join("photo.jpg");
         let info = probe(&path).unwrap();
-        assert_eq!(info.dpi, DEFAULT_DPI);
+        assert_eq!(info.dpi_x, DEFAULT_DPI);
+        assert_eq!(info.dpi_y, DEFAULT_DPI);
 
-        let exif_tiff = make_exif_tiff((300, 1), Some(2), true);
+        let exif_tiff = make_exif_tiff((300, 1), (300, 1), Some(2), true);
         let mut jpeg = Vec::new();
         jpeg.extend_from_slice(&[0xFF, 0xD8]);
         jpeg.extend_from_slice(&[0xFF, 0xE1]);
@@ -789,10 +897,12 @@ mod tests {
         assert_eq!(probed.format, ImageFormat::Jpeg);
         assert_eq!(probed.width, 10);
         assert_eq!(probed.height, 10);
-        assert_eq!(probed.dpi, 300);
+        assert_eq!(probed.dpi_x, 300);
+        assert_eq!(probed.dpi_y, 300);
+        assert_eq!(probed.page_count, 1);
     }
 
-    fn make_png_with_phys(ppm: u32, unit: u8) -> Vec<u8> {
+    fn make_png_with_phys(ppm_x: u32, ppm_y: u32, unit: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(b"\x89PNG\r\n\x1a\n");
         bytes.extend_from_slice(&13u32.to_be_bytes());
@@ -803,14 +913,14 @@ mod tests {
         bytes.extend_from_slice(&[0; 4]);
         bytes.extend_from_slice(&9u32.to_be_bytes());
         bytes.extend_from_slice(b"pHYs");
-        bytes.extend_from_slice(&ppm.to_be_bytes());
-        bytes.extend_from_slice(&ppm.to_be_bytes());
+        bytes.extend_from_slice(&ppm_x.to_be_bytes());
+        bytes.extend_from_slice(&ppm_y.to_be_bytes());
         bytes.push(unit);
         bytes.extend_from_slice(&[0; 4]);
         bytes
     }
 
-    fn make_complete_png(ppm: u32) -> Vec<u8> {
+    fn make_complete_png(ppm_x: u32, ppm_y: u32) -> Vec<u8> {
         let path = Path::new(FIXTURES_DIR).join("dpi300.png");
         let original = std::fs::read(path).expect("read dpi300.png");
         let mut modified = original;
@@ -818,8 +928,8 @@ mod tests {
         while pos + 8 <= modified.len() {
             let len = u32::from_be_bytes(modified[pos..pos + 4].try_into().unwrap()) as usize;
             if &modified[pos + 4..pos + 8] == b"pHYs" {
-                modified[pos + 8..pos + 12].copy_from_slice(&ppm.to_be_bytes());
-                modified[pos + 12..pos + 16].copy_from_slice(&ppm.to_be_bytes());
+                modified[pos + 8..pos + 12].copy_from_slice(&ppm_x.to_be_bytes());
+                modified[pos + 12..pos + 16].copy_from_slice(&ppm_y.to_be_bytes());
                 let crc_data = &modified[pos + 4..pos + 8 + len];
                 let crc = crc32_simple(crc_data);
                 modified[pos + 8 + len..pos + 12 + len].copy_from_slice(&crc.to_be_bytes());
@@ -845,7 +955,7 @@ mod tests {
         !crc
     }
 
-    fn make_jpeg_with_jfif(density: u16, unit: u8) -> Vec<u8> {
+    fn make_jpeg_with_jfif(density_x: u16, density_y: u16, unit: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&[0xFF, 0xD8]);
         bytes.extend_from_slice(&[0xFF, 0xE0]);
@@ -854,8 +964,8 @@ mod tests {
         bytes.extend_from_slice(b"JFIF\0");
         bytes.extend_from_slice(&[1, 1]);
         bytes.push(unit);
-        bytes.extend_from_slice(&density.to_be_bytes());
-        bytes.extend_from_slice(&density.to_be_bytes());
+        bytes.extend_from_slice(&density_x.to_be_bytes());
+        bytes.extend_from_slice(&density_y.to_be_bytes());
         bytes.extend_from_slice(&[0, 0]);
         bytes
     }
@@ -876,7 +986,7 @@ mod tests {
         bytes.extend_from_slice(&[0, 0]);
 
         // APP1 (EXIF)
-        let exif_tiff = make_exif_tiff((exif_dpi, 1), Some(2), true);
+        let exif_tiff = make_exif_tiff((exif_dpi, 1), (exif_dpi, 1), Some(2), true);
         bytes.extend_from_slice(&[0xFF, 0xE1]);
         let app1_len = 2 + 6 + exif_tiff.len();
         bytes.extend_from_slice(&(app1_len as u16).to_be_bytes());
@@ -901,9 +1011,14 @@ mod tests {
         bytes
     }
 
-    fn make_exif_tiff(x_res: (u32, u32), res_unit: Option<u16>, is_le: bool) -> Vec<u8> {
+    fn make_exif_tiff(
+        x_res: (u32, u32),
+        y_res: (u32, u32),
+        res_unit: Option<u16>,
+        is_le: bool,
+    ) -> Vec<u8> {
         let mut tiff = Vec::new();
-        let num_entries = if res_unit.is_some() { 2u16 } else { 1u16 };
+        let num_entries = if res_unit.is_some() { 3u16 } else { 2u16 };
         let val_offset = 8 + 2 + (num_entries as u32) * 12 + 4;
 
         if is_le {
@@ -911,10 +1026,21 @@ mod tests {
             tiff.extend_from_slice(&42u16.to_le_bytes());
             tiff.extend_from_slice(&8u32.to_le_bytes());
             tiff.extend_from_slice(&num_entries.to_le_bytes());
+
+            // TAG_X_RESOLUTION (0x011A)
             tiff.extend_from_slice(&0x011Au16.to_le_bytes());
             tiff.extend_from_slice(&5u16.to_le_bytes());
             tiff.extend_from_slice(&1u32.to_le_bytes());
             tiff.extend_from_slice(&val_offset.to_le_bytes());
+
+            // TAG_Y_RESOLUTION (0x011B)
+            tiff.extend_from_slice(&0x011Bu16.to_le_bytes());
+            tiff.extend_from_slice(&5u16.to_le_bytes());
+            tiff.extend_from_slice(&1u32.to_le_bytes());
+            let y_val_offset = val_offset + 8;
+            tiff.extend_from_slice(&y_val_offset.to_le_bytes());
+
+            // TAG_RESOLUTION_UNIT (0x0128)
             if let Some(unit) = res_unit {
                 tiff.extend_from_slice(&0x0128u16.to_le_bytes());
                 tiff.extend_from_slice(&3u16.to_le_bytes());
@@ -922,18 +1048,32 @@ mod tests {
                 tiff.extend_from_slice(&unit.to_le_bytes());
                 tiff.extend_from_slice(&[0, 0]);
             }
-            tiff.extend_from_slice(&0u32.to_le_bytes());
+
+            tiff.extend_from_slice(&0u32.to_le_bytes()); // Next IFD = 0
             tiff.extend_from_slice(&x_res.0.to_le_bytes());
             tiff.extend_from_slice(&x_res.1.to_le_bytes());
+            tiff.extend_from_slice(&y_res.0.to_le_bytes());
+            tiff.extend_from_slice(&y_res.1.to_le_bytes());
         } else {
             tiff.extend_from_slice(b"MM");
             tiff.extend_from_slice(&42u16.to_be_bytes());
             tiff.extend_from_slice(&8u32.to_be_bytes());
             tiff.extend_from_slice(&num_entries.to_be_bytes());
+
+            // TAG_X_RESOLUTION (0x011A)
             tiff.extend_from_slice(&0x011Au16.to_be_bytes());
             tiff.extend_from_slice(&5u16.to_be_bytes());
             tiff.extend_from_slice(&1u32.to_be_bytes());
             tiff.extend_from_slice(&val_offset.to_be_bytes());
+
+            // TAG_Y_RESOLUTION (0x011B)
+            tiff.extend_from_slice(&0x011Bu16.to_be_bytes());
+            tiff.extend_from_slice(&5u16.to_be_bytes());
+            tiff.extend_from_slice(&1u32.to_be_bytes());
+            let y_val_offset = val_offset + 8;
+            tiff.extend_from_slice(&y_val_offset.to_be_bytes());
+
+            // TAG_RESOLUTION_UNIT (0x0128)
             if let Some(unit) = res_unit {
                 tiff.extend_from_slice(&0x0128u16.to_be_bytes());
                 tiff.extend_from_slice(&3u16.to_be_bytes());
@@ -941,9 +1081,12 @@ mod tests {
                 tiff.extend_from_slice(&unit.to_be_bytes());
                 tiff.extend_from_slice(&[0, 0]);
             }
-            tiff.extend_from_slice(&0u32.to_be_bytes());
+
+            tiff.extend_from_slice(&0u32.to_be_bytes()); // Next IFD = 0
             tiff.extend_from_slice(&x_res.0.to_be_bytes());
             tiff.extend_from_slice(&x_res.1.to_be_bytes());
+            tiff.extend_from_slice(&y_res.0.to_be_bytes());
+            tiff.extend_from_slice(&y_res.1.to_be_bytes());
         }
         tiff
     }

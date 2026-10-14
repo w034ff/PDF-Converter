@@ -21,20 +21,24 @@ export function describeImagesToPdfStatus(
   if (state.items.length === 0) {
     return plain(t.footer.noImagesSelected);
   }
-  const validCount = state.items.filter((item) => item.error === null).length;
-  if (validCount === 0) {
+  const validItems = state.items.filter((item) => item.error === null);
+  if (validItems.length === 0) {
     return { text: t.footer.noReadableImages, isWarning: true };
   }
   if (state.output === "merge") {
+    const totalPages = validItems.reduce(
+      (sum, item) => sum + (item.pageCount ?? 1),
+      0,
+    );
     return plain(
-      formatMessage(t.imagesToPdf.mergePageCount, { count: validCount }),
+      formatMessage(t.imagesToPdf.mergePageCount, { count: totalPages }),
     );
   }
   const template =
-    validCount === 1
+    validItems.length === 1
       ? t.imagesToPdf.saveEachCountSingle
       : t.imagesToPdf.saveEachCountMultiple;
-  return plain(formatMessage(template, { count: validCount }));
+  return plain(formatMessage(template, { count: validItems.length }));
 }
 
 /** The text of {@link describeImagesToPdfStatus} alone. */

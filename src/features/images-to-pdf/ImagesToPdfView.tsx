@@ -51,7 +51,7 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function formatMeta(item: ImageItem): string | undefined {
+function formatMeta(item: ImageItem, t: Translations): string | undefined {
   if (item.error !== null || item.format === null) {
     return undefined;
   }
@@ -60,9 +60,17 @@ function formatMeta(item: ImageItem): string | undefined {
     jpeg: "JPEG",
     webp: "WebP",
     bmp: "BMP",
+    tiff: "TIFF",
   };
   const formatName = formatMap[item.format] ?? item.format.toUpperCase();
-  return `${item.width} × ${item.height} · ${formatName} · ${formatBytes(item.bytes)}`;
+  const parts = [`${item.width} × ${item.height}`, formatName];
+  if (item.format === "tiff" && item.pageCount >= 2) {
+    parts.push(
+      formatMessage(t.imagesToPdf.pageCount, { count: item.pageCount }),
+    );
+  }
+  parts.push(formatBytes(item.bytes));
+  return parts.join(" · ");
 }
 
 function toListRowStatus(
@@ -574,7 +582,7 @@ export function ImagesToPdfView() {
                   }}
                   index={index + 1}
                   title={item.name}
-                  meta={formatMeta(item)}
+                  meta={formatMeta(item, t)}
                   customThumbnail={
                     <ImageThumbnail id={item.id} name={item.name} />
                   }

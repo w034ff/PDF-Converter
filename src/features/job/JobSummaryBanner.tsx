@@ -70,9 +70,16 @@ function summaryShape(
     job.finished !== null &&
     job.finished.succeeded > 0
   ) {
+    const okItems = imagesToPdf.items.filter(
+      (item) => job.results[item.id]?.status === "ok",
+    );
+    const pages =
+      okItems.length > 0
+        ? okItems.reduce((sum, item) => sum + (item.pageCount ?? 1), 0)
+        : job.finished.succeeded;
     return {
       kind: "mergedPdf",
-      pages: job.finished.succeeded,
+      pages,
       failedImages: job.finished.failed,
     };
   }

@@ -57,6 +57,7 @@ describe("ipc", () => {
             width: 2,
             height: 3,
             format: "png",
+            pageCount: 1,
             bytes: 10,
             error: null,
           },

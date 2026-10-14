@@ -190,6 +190,7 @@ export const ja = {
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
     imageCount: "画像 {count} 枚",
+    pageCount: "{count} ページ",
     skipped: "（対象外 {count} 件：{reasons}）",
     skippedFolders: "サブフォルダ",
     skippedUnsupported: "非対応の形式",
