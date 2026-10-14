@@ -135,7 +135,7 @@
 ### 4.3 PDF の書き出し（FR-02、FR-03）
 
 - 1 つの画像を 1 ページにする。結合では一覧の順にページを並べる。
-- JPEG は、メタデータの区切りを外したバイト列を `Image::from_jpeg` で入れる（`DCTDecode`）。画像のデータ（量子化表、ハフマン表、フレーム、スキャン）には触れないので再圧縮はなく、CMYK の JPEG もそのまま入る。krilla はファイル全体を画像のデータとして使うので、外さないと EXIF の位置情報などが PDF に残る（NFR-01）。
+- JPEG は、メタデータの区切りを外したバイト列を `Image::from_jpeg` で入れる（`DCTDecode`）。画像のデータ（量子化表、ハフマン表、フレーム、スキャン）には触れないので再圧縮はなく、CMYK の JPEG もそのまま入る。ICC を持たない CMYK の JPEG は、色の決まりがないので、PDF のビューアー（印刷の CMYK として直す）と画像のビューアー（素朴な計算で直す）とで違う色に見えることがある。どちらも誤りではなく、ICC を持つものは同じ色になる。krilla はファイル全体を画像のデータとして使うので、外さないと EXIF の位置情報などが PDF に残る（NFR-01）。
   - 外すもの: APP1（EXIF、XMP）、APP13（IPTC、Photoshop）、COM、ICC 以外の APP2（MPF など）、Adobe 以外の APP14、そのほかの APPn、JFIF 以外の APP0（JFXX）、EOI より後ろのデータ（モーションフォトの動画、MPF の 2 枚目以降の画像など）。JFIF（APP0）は残し、埋め込みの縮小画像は寸法を 0 にして除く。
   - 残すもの: JFIF の密度、ICC（APP2 の `ICC_PROFILE`）、Adobe（APP14。CMYK と YCCK の色の変換に要る）、メタデータでない区切りすべて。
   - EXIF は向きも含めて全部外す。向きと解像度は §4.1 の `probe` が元のバイト列から読み、向きはページの変換行列で表すので、画像の中に残す必要がない。外すのは `probe` のあと。
@@ -145,6 +145,10 @@
 - BMP は §4.1 の RGBA を `Image::from_rgba8` で入れる。
 - EXIF の向きは、画像のデータを変えずに、ページの中の変換行列で表す。8 通りの行列はスパイクの `write-bench` に実装済みで、そのまま使う。
 - PDF の文書情報には、作成ソフト（`PDF Converter <版>`）だけを入れる。元のファイル名やパスは入れない（意図せずに情報が漏れないようにするため）。
+- PDF/A（§10.1 の切り替え）を選んだときは、文書を作るときに krilla の `SerializeSettings` の `configuration` に `Archival::A2_B` の検証を入れる。krilla は RGB とグレーの画像を sRGB・sGray の ICC 付きの色で書き、sRGB の出力インテントと XMP のメタデータを入れ、規格に合わない内容があれば `finish` で失敗する。文書情報は通常の PDF と同じく作成ソフトだけ。`PdfWriter` は、通常の PDF か PDF/A かを作るときに受け取る（`PdfConformance::{Standard, PdfA2b}`）。
+  - 画像の補間（`Image::from_jpeg`・`from_png`・`from_webp` の `interpolate`）は、通常の PDF では付け、PDF/A では付けない。PDF/A は `Interpolate` を禁じ、付けると krilla が `finish` で失敗するため。拡大した小さい画像が、ビューアーによっては PDF/A で粗く見えることがある。
+  - CMYK の JPEG（フレームの成分が 4 つ。Adobe の YCCK も含む）は、PDF/A では `CmykNotAllowedInPdfA` とし、その画像をページに加えない。krilla は、画像が ICC を持っていても、文書の CMYK プロファイル（`SerializeSettings::cmyk_profile`。出力インテントになる）がないと `finish` で失敗し、同梱するプロファイルの選択には正解がないため（ICC のない画像の色は、選んだプロファイルで変わる）。見分けるのは、上の区切りの処理が読むフレーム（SOF）の成分の数。確かめるのは `probe` と画素の確認のあとで、区切りを外す前。
+  - 上の 2 つを守っていれば、`finish` が PDF/A の検証で失敗することはない。失敗したら作りの誤りなので、通常の `finish` の失敗と同じく `WriteFailed` にする（§11.2 のテストが、全フィクスチャで起きないことを確かめる）。
 - 画像のデータの誤り（`corrupt.png` など）は、krilla では文書の `finish` まで分からず、どの画像の誤りかも分からない。そのため、ページに加える前に `image` で画素を一度読み、読めなければ `DecodeFailed` としてその画像を加えない。
 - `krilla` の出力をメモリに作ってから §6.5 の方式で書き込む。結合する画像の数の上限は設けないが、§6.2 の進捗を 1 枚ごとに通知する。
 
@@ -234,6 +238,7 @@
 - 「1 つの PDF」: 「PDF を保存」で保存ダイアログを開く。初期ファイル名は一覧の先頭の画像の名前の拡張子を `.pdf` にしたもの。ダイアログで既存のファイルを選んだ場合は、OS のダイアログで上書きの確認が済んでいるので上書きする。Linux では、ダイアログをホームのフォルダで開く（指定しないと GTK がプロセスの作業フォルダで開き、AppImage では書き込めない読み取り専用のマウント先になるため）。Windows は OS が前回のフォルダを覚えているので指定しない。追加やフォルダを選ぶダイアログは「最近使ったもの」で開くので指定しない。
 - 「1 枚ずつ」: 保存先のフォルダを選び、「変換を開始」で一覧の画像を 1 つずつ PDF にする。出力名は §6.4。並列の数は §5.2 と同じ式（ワーカーは使わず、スレッドで行う）。
 - どちらも、進捗を `job-progress`、1 件ごとの結果を `job-item` で通知し、最後に `job-finished` を送る（§7.2）。
+- 「長期保存用（PDF/A）」（§10.1）は、「1 つの PDF」と「1 枚ずつ」の両方に使う。PDF/A で CMYK の画像は、ほかの読めない画像と同じく `job-item` で失敗にし（`CmykNotAllowedInPdfA`）、「1 つの PDF」では残りの画像で PDF を作る。
 
 ### 6.3 PDF → 画像（FR-04、FR-05）
 
@@ -305,6 +310,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | WorkerTimeout | ワーカーが時間内に応答しない | PDF の処理に時間がかかりすぎたため中止しました / Processing the PDF took too long and was stopped |
 | ReadFailed | 読み込みの失敗 | ファイルの読み込みに失敗しました / Failed to read file |
 | WriteFailed | 書き込みの失敗（権限、容量など） | ファイルの書き込みに失敗しました / Failed to write file |
+| CmykNotAllowedInPdfA | PDF/A を選んだときの CMYK の画像（§4.3） | PDF/A では CMYK の画像を使えません / CMYK images can't be used in PDF/A |
 | InvalidPageRange | 範囲の書式の誤り | ページの範囲の書き方が正しくありません（{detail}） / Invalid page range ({detail}) |
 | ConversionRunning | 変換中に一覧や変換を操作しようとした | 変換中は操作できません / Not available during conversion |
 | UnknownHandle | 存在しない ID | ファイルをもう一度追加してください / Please add the file again |
@@ -319,18 +325,18 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 ### 6.7 設定の保存（FR-07、FR-10）
 
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
-- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a3" | "a4" | "a5" | "jisB4" | "jisB5" | "letter" | "legal", orientation: "auto" | "portrait" | "landscape", outputDir }`、`pdfToImages: { format: "png" | "jpeg" | "webp", colorMode: "color" | "gray", dpi, outputDir }`。`dpi` は §4.4 の範囲の整数。
+- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a3" | "a4" | "a5" | "jisB4" | "jisB5" | "letter" | "legal", orientation: "auto" | "portrait" | "landscape", pdfA: boolean, outputDir }`、`pdfToImages: { format: "png" | "jpeg" | "webp", colorMode: "color" | "gray", dpi, outputDir }`。`dpi` は §4.4 の範囲の整数。
 - 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。
-- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PNG、カラー、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
+- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、PNG、カラー、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
 - `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
-- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, orientation, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
+- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, orientation, pdfA, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
 - `save_settings` は、`revision`（数）と、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にあるなどの不正な値は `InvalidParams` で拒み、何も保存しない。
   - `async` でないコマンドにし、メインスレッドで受け取った順に、値をメモリの設定に入れるだけにする。ファイルは別のスレッドで、そのときの最新の値を書く（`SettingsStore::flush`）。書き込みは 1 つずつで、ファイルがすでに最新なら書かない。書き込みの失敗は返さず、設定はメモリに残して次の書き込みで再び試す（書くのは応答のあとなので返せない。FR-10 は Should）。メインスレッドはファイルの書き込みを待たない（メモリの設定のロックは写す間しか持たない）。
   - `revision` は、画面が呼ぶたびに 1 つ増やす。Rust は、同じページからすでに受け取ったもの以下の `revision` を捨てる。WebView が要求を `fetch` の順に Rust へ渡すことは保証されておらず、入れ替わると古い値が残るため。ページの読み込みが始まると（`on_page_load` の `Started`。再読み込みを含む）、画面は 1 から数え直すので、Rust も覚えている `revision` を捨てる。
   - アプリが終わるとき（`RunEvent::Exit`）、まだ書いていない設定があれば書く（書いている途中なら、それを待つ）。閉じるボタンや Alt+F4 のほか、Windows のログオフとシャットダウンでも来る知らせで、後者ではウィンドウに `CloseRequested` が来ない。Rust の側で受けるので、capabilities は変わらない。WebView がまだ Rust に渡していない変更は残らない。
 - `pick_output_dir` は、選ばれたフォルダを §6.5 の Rust の状態と設定に入れ、設定ファイルを書き直す。書き込みに失敗しても、選んだフォルダはそのセッションで使い、`{ dirLabel }` を返す（設定ファイルの問題で変換を始められなくならないようにするため）。
 - 起動時、保存されたフォルダが存在すればそれを §6.5 の状態に入れ、存在しなければ未選択に戻す。
-- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`orientation` も `pageSize` とは別に確かめる。`orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい。`colorMode` も同じく、ない設定ファイルは「カラー」になる。逆に、新しい版が書いた `a3` などの用紙、`webp`、`gray`、選択肢にない `dpi` を `v0.1.0` が読むと、その項目だけが既定値に戻り、ほかの項目は残る）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
+- 読み込んだ値は項目ごとに確かめ、不正な項目（未知の値、型の違い、欠けた項目、存在しないフォルダ）だけを既定値に戻して、ほかの項目は残す。SVG Tracer のプリセットとパラメータのような組になった項目はない（`orientation` も `pageSize` とは別に確かめる。`orientation` がない設定ファイル（`v0.1.0` が書いたもの）は、欠けた項目として「自動」になるので、`schemaVersion` は `1` のままでよい。`colorMode` も同じく、ない設定ファイルは「カラー」になる。`pdfA` も同じく、ない設定ファイルは通常の PDF（`false`）になる。逆に、新しい版が書いた `a3` などの用紙、`webp`、`gray`、選択肢にない `dpi` を `v0.1.0` が読むと、その項目だけが既定値に戻り、ほかの項目は残る）。JSON として読めない場合と、`schemaVersion` が `1` でない場合は、すべてを既定値にする。
 
 ### 6.8 パスワード付きの PDF（FR-04）
 
@@ -355,8 +361,8 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `remove_items` | `ids` | – |
 | `get_thumbnail` | `id, page?` | PNG のバイナリ（`tauri::ipc::Response`） |
 | `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages"` | `{ dirLabel } \| null` |
-| `save_merged_pdf` | `ids, pageSize, orientation` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
-| `start_images_to_pdfs` | `ids, pageSize, orientation` | –（§6.2 の「1 枚ずつ」）。`orientation` は `pageSize` が用紙のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ） |
+| `save_merged_pdf` | `ids, pageSize, orientation, pdfA` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
+| `start_images_to_pdfs` | `ids, pageSize, orientation, pdfA` | –（§6.2 の「1 枚ずつ」）。`orientation` は `pageSize` が用紙のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ） |
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][] }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, colorMode, dpi` | –（`dpi` が §4.4 の範囲の外なら `InvalidParams`） |
 | `unlock_pdf` | `id, password` | `{ items: PdfItem[] }`（§6.8）。パスワードの誤りは `PasswordProtected`。対象が `PasswordProtected` の PDF でない、またはパスワードが空なら `InvalidParams` |
@@ -423,6 +429,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - アプリ名は「PDF Converter」。ウィンドウの既定の大きさは 1200×800、最小は 960×640。
 - 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像）、言語の切り替え、「このアプリについて」。
 - 左の設定パネル: 画像 → PDF は「出力」「ページの大きさ」「向き」（自動 / 縦 / 横）と、「1 枚ずつ」のときの保存先フォルダ。「向き」はいつも出し、「画像と同じ大きさ」の間は押せなくして、下に「用紙を選ぶと使えます」/ `Available when a paper size is chosen` と出す（「自動」のヒントはこの間は出さない）。選んだ値は状態と設定に残し、押せない間も選んだ選択肢を示す。用紙を選んだときだけ出すと、ドロップダウンの一覧が閉じた所に欄が現れて一覧の残像のように見え、下の欄も動くため。PDF → 画像は「ページ」「形式」（PNG / JPEG / WebP）「色」（カラー / グレースケール）「解像度」「保存先フォルダ」。ページのサムネイルは、グレースケールのときもカラーのまま出す（ページの確認と選択のためのもので、出力の見本ではないため）。
+- 画像 → PDF の「向き」の下に、チェックボックス「長期保存用（PDF/A）」/ `Archival (PDF/A)` を置く（既定はオフ）。規格の種類（2b）は画面に出さない。オンの間は、下に灰色の補足で「CMYK の画像は使えません」/ `CMYK images can't be used` と出す（変換を始めてから失敗を知るより前に気づけるように）。選んだ値は状態と設定に残す。チェックボックスは 16px の四角で、チェックの色はアクセントの色（`accent-color`）にし、文字は欄の見出し（`.label`）と同じ大きさと太さにする。切り替えのボタンにしないのは、多くの人が触らない付け足しの選択肢を、出力やページの大きさと同じ重さで見せないためと、設定パネルが長くなったときに、まとめて「詳しい設定」のような場所へ移しやすいため。将来、書き出す PDF の暗号化を入れるときは、PDF/A と同時に選べないようにする（PDF/A は暗号化を禁じる）。
 - 「ページの大きさ」はドロップダウン（解像度の欄と同じ `<select>`）で、選択肢は「画像と同じ大きさ」と §4.2 の用紙を表の順に並べる。用紙の選択肢は「A4 (210 × 297 mm)」「Letter (8.5 × 11 in)」のように縦向きの寸法を添え、日英で同じ文字列にする（B 判が JIS か ISO かを寸法で見分けられるようにするため）。用紙が 7 つあり、切り替えのボタンでは設定パネルの幅に収まらない。
 - 解像度の欄は、選択肢「72 dpi / 150 dpi / 300 dpi / 数値で指定…」（英語は `Custom…`。末尾の「…」は、選ぶと続けて入力が要ることを示す）。「数値で指定…」を選ぶと、すぐ下に数値の欄を出し、今の解像度を入れておく。欄は最大 4 桁の数と単位が収まる短い幅にし（上のドロップダウンに従う欄であることと、入れる値の長さを示すため）、左端はほかの部品にそろえ、単位の「dpi」は欄の枠の中の右に置く。欄は半角と全角の数字を受け付け、前後の空白（全角を含む）は無視する。§4.4 の範囲の整数でない（空、小数、範囲の外、数字以外の文字）ときは、「変換を開始」をすぐ無効にし、「{min}〜{max} の整数を入れてください」/ `Enter a whole number from {min} to {max}` を、範囲の誤り（§6.3）と同じ規則（入力が 0.6 秒止まるか欄から離れたとき）で欄の下に赤で出す。誤りの間は、下部バーの説明と「A4 の 1 ページ → … px」の行を出さず、状態と設定の `dpi` は最後の正しい値のままにする。選択肢に戻すとその値になり、欄と誤りは消える。「数値で指定…」を選んでいるかは画面だけが持ち、保存しない。起動時は、保存された `dpi` が選択肢にあればその選択肢を、なければ「数値で指定…」とその値を出す。範囲の上限と下限は Rust の `RENDER_DPI_MIN`・`RENDER_DPI_MAX` を写した定数にする（範囲の解釈（§4.5）と違い、整数を読むだけなので画面で確かめる。Rust も同じ範囲で拒む）。
 - 切り替えのボタン（`.seg`）は、ボタンの間に区切り線を引き、押せるボタンはポインターを乗せると背景を変える。選択肢が 3 つ以上あると、選んでいない 2 つが隣り合い、線がなければ 1 つのボタンに見えるため。
@@ -522,12 +529,18 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 - **PDF → 画像のグレースケールと WebP**: グレースケールは、同じページを同じ dpi のカラーで描いた画像から BT.601 の輝度（`0.299R + 0.587G + 0.114B` を四捨五入）を求め、グレーの画像と全画素で差が `COLOR_TOLERANCE_GRAY`（8）以内であること、画像が 1 チャンネルであること。U09 の前の試作では、`shapes.pdf` と写真を入れた PDF で差の最大が 3 だった（`image` の `to_luma8` は BT.709 の係数で、差が最大 28 になるので基準にしない）。WebP は、同じページを PNG で書いたものと、復号した画素が完全に一致すること（可逆）。
 - 出力した PDF が一般的なビューアーで開けること（NFR-03）は、手動の確認でブラウザー内蔵のビューアーで開いて確かめる。
 
+- **PDF/A**: §11.1 の画像のうち CMYK の JPEG を除くものを、PDF/A で「画像と同じ大きさ」と A4 にし、`finish` が成功することと、上の画像 → PDF の比較に通常の PDF と同じ基準で合格することを確かめる。通常の PDF には `/Interpolate true` があり、PDF/A にはないこと。CMYK の JPEG は PDF/A で `CmykNotAllowedInPdfA` になり、「1 つの PDF」ではほかの画像のページが作られること。通常の PDF では CMYK の JPEG も今までどおり入ること。
+- **PDF/A の検証（CI）**: krilla の検証は自己申告なので、外部の検証ツール veraPDF でも確かめる。`crates/core` の例 `write_pdfa_samples`（`cargo run -p pdfconv-core --example write_pdfa_samples -- <フォルダ>`）が、上の画像を 1 枚ずつ「画像と同じ大きさ」と A4 で、加えて全部を結合した 1 つを PDF/A で書く。CI（Ubuntu）がそのフォルダを veraPDF の Docker イメージ（`verapdf/cli`。veraPDF の開発元が公開している）で `-f 2b` で検証し、1 つでも不合格なら失敗にする（veraPDF の終了コードが 1 になる）。
+  - イメージは版のタグでなく digest で固定する（初めは 1.30.2 の `sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb`）。更新は手で行い、公開から 7 日たった版にする（§9 の依存の入手経路）。
+  - コンテナはネットワークを切り（`--network none`）、フォルダは読み取り専用で渡す。
+  - veraPDF は GPL / MPL だが、CI で動かすだけで配布物に含めないので、NFR-05 には関わらない。
+
 ### 11.3 テストの一覧
 
 | 対象 | 種類 | 主な内容 |
 | --- | --- | --- |
 | crates/core | 単体 | JPEG の区切りの処理（§4.3。外すもの・残すもの、EOI より後ろ、区切りを読めない JPEG）、probe（形式、寸法、向き、dpi、上限）、ページの配置（画像と同じ大きさ、用紙の寸法と縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
-| crates/core | 品質 | §11.2 の画像 → PDF |
+| crates/core | 品質 | §11.2 の画像 → PDF（PDF/A を含む） |
 | crates/worker | 品質 | §11.2 の PDF → 画像 |
 | crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード（なし・誤り・閲覧・所有者・ASCII 以外の文字）、壊れた PDF、ページ数の上限、描画の上限 |
 | crates/worker | 結合 | 単独のワーカー（`pdfconv-worker`）を起動し、テスト用の要求（`test-hooks` 機能の `CrashForTest`、`HangForTest`、`AllocateForTest`）で、異常終了、時間切れ、メモリの上限のあとにメインプロセスの側が続けて動くこと、新しいワーカーが起動することを確かめる（T01） |
@@ -537,4 +550,4 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 
 - 一括変換の中で特定の PDF だけでワーカーが落ちる状況は、`test-hooks` 機能のときだけ、ワーカーが名前 `CRASH_ON_OPEN_FILE_NAME`（`crash-on-open-for-test.pdf`）の PDF の `Open` で異常終了することで作る（T08）。機能を付けないビルドには含まれない。
 - 性能（NFR-02）: `shapes.pdf` の A4 のページを 150 dpi で描画する時間を `--release` のテストで測る。CI では 3 秒を超えたら失敗とし、1 秒以内は基準環境（開発者の PC）で手動確認する。
-- CI は Windows と Ubuntu で、SVG Tracer と同じ検査に加え、`npm run pdfium:fetch` のあとにワーカーのテストを実行する。
+- CI は Windows と Ubuntu で、SVG Tracer と同じ検査に加え、`npm run pdfium:fetch` のあとにワーカーのテストを実行する。Ubuntu では、§11.2 の PDF/A の検証（veraPDF）も行う。
