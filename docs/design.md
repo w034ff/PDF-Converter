@@ -145,7 +145,7 @@
 - BMP は §4.1 の RGBA を `Image::from_rgba8` で入れる。
 - EXIF の向きは、画像のデータを変えずに、ページの中の変換行列で表す。8 通りの行列はスパイクの `write-bench` に実装済みで、そのまま使う。
 - PDF の文書情報には、作成ソフト（`PDF Converter <版>`）だけを入れる。元のファイル名やパスは入れない（意図せずに情報が漏れないようにするため）。
-- PDF/A（§10.1 の切り替え）を選んだときは、文書を作るときに krilla の `SerializeSettings` の `configuration` に `Archival::A2_B` の検証を入れる。krilla は RGB とグレーの画像を sRGB・sGray の ICC 付きの色で書き、sRGB の出力インテントと XMP のメタデータを入れ、規格に合わない内容があれば `finish` で失敗する。文書情報は通常の PDF と同じく作成ソフトだけ。`PdfWriter` は、通常の PDF か PDF/A かを作るときに受け取る（`PdfConformance::{Standard, PdfA2b}`）。
+- PDF/A（§10.1 の切り替え）を選んだときは、文書を作るときに krilla の `SerializeSettings` の `configuration` に `Archival::A2_B` の検証を入れる。krilla は RGB とグレーの画像を sRGB・sGray の ICC 付きの色で書き、sRGB の出力インテントと XMP のメタデータを入れ、規格に合わない内容があれば `finish` で失敗する。文書情報には、通常の PDF と同じ作成ソフトに加えて、作成日時（書いたときの時刻を UTC で秒まで）を入れる。krilla は、PDF/A では文書情報に作成日時がないと `finish` で失敗する（作成ソフトと日時を XMP の履歴（`xmp:History`）に書くため）。UTC にするのは、地方時の時差から住んでいる地域の手がかりが残らないようにするため。時刻は依存を足さずに `SystemTime` から暦に直し、時計が 1970 年より前を指すときは 1970-01-01T00:00:00Z にする。通常の PDF には作成日時を入れない。`PdfWriter` は、通常の PDF か PDF/A かを作るときに受け取る（`PdfConformance::{Standard, PdfA2b}`）。
   - 画像の補間（`Image::from_jpeg`・`from_png`・`from_webp` の `interpolate`）は、通常の PDF では付け、PDF/A では付けない。PDF/A は `Interpolate` を禁じ、付けると krilla が `finish` で失敗するため。拡大した小さい画像が、ビューアーによっては PDF/A で粗く見えることがある。
   - CMYK の JPEG（フレームの成分が 4 つ。Adobe の YCCK も含む）は、PDF/A では `CmykNotAllowedInPdfA` とし、その画像をページに加えない。krilla は、画像が ICC を持っていても、文書の CMYK プロファイル（`SerializeSettings::cmyk_profile`。出力インテントになる）がないと `finish` で失敗し、同梱するプロファイルの選択には正解がないため（ICC のない画像の色は、選んだプロファイルで変わる）。見分けるのは、上の区切りの処理が読むフレーム（SOF）の成分の数。確かめるのは `probe` と画素の確認のあとで、区切りを外す前。
   - 上の 2 つを守っていれば、`finish` が PDF/A の検証で失敗することはない。失敗したら作りの誤りなので、通常の `finish` の失敗と同じく `WriteFailed` にする（§11.2 のテストが、全フィクスチャで起きないことを確かめる）。
