@@ -13,7 +13,7 @@ export const ja = {
     titleImages: "画像をここにドロップ",
     titlePdfs: "PDF をここにドロップ",
     descriptionImages:
-      "PNG、JPEG、WebP、BMP に対応。フォルダをドロップすると、中の画像をまとめて追加します",
+      "PNG、JPEG、WebP、BMP、TIFF に対応。フォルダをドロップすると、中の画像をまとめて追加します",
     descriptionPdfs: "フォルダをドロップすると、中の PDF をまとめて追加します",
     addImages: "画像を追加",
     addPdfs: "PDF を追加",

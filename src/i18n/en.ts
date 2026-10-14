@@ -15,7 +15,7 @@ export const en: Translations = {
     titleImages: "Drop images here",
     titlePdfs: "Drop PDFs here",
     descriptionImages:
-      "Supports PNG, JPEG, WebP, BMP. Drop a folder to add all images inside.",
+      "Supports PNG, JPEG, WebP, BMP, TIFF. Drop a folder to add all images inside.",
     descriptionPdfs: "Drop a folder to add all PDFs inside.",
     addImages: "Add images",
     addPdfs: "Add PDFs",
