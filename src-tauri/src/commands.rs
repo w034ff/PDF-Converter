@@ -490,7 +490,8 @@ mod tests {
         assert_eq!(
             filter_extensions(IMAGE_EXTENSIONS),
             [
-                "png", "PNG", "jpg", "JPG", "jpeg", "JPEG", "webp", "WEBP", "bmp", "BMP"
+                "png", "PNG", "jpg", "JPG", "jpeg", "JPEG", "webp", "WEBP", "bmp", "BMP", "tif",
+                "TIF", "tiff", "TIFF"
             ]
         );
     }

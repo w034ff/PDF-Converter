@@ -142,6 +142,7 @@ impl From<ProbeError> for IpcError {
             ProbeError::UnsupportedFormat => ErrorCode::UnsupportedFormat,
             ProbeError::DecodeFailed => ErrorCode::DecodeFailed,
             ProbeError::TooLarge => ErrorCode::TooLarge,
+            ProbeError::TooManyPages => ErrorCode::TooManyPages,
             ProbeError::ReadFailed => ErrorCode::ReadFailed,
             ProbeError::CmykNotAllowedInPdfA => ErrorCode::CmykNotAllowedInPdfA,
         };
@@ -220,6 +221,10 @@ mod tests {
         assert_eq!(
             IpcError::from(ProbeError::TooLarge),
             IpcError::new(ErrorCode::TooLarge, "80,000,000")
+        );
+        assert_eq!(
+            IpcError::from(ProbeError::TooManyPages),
+            IpcError::new(ErrorCode::TooManyPages, "1,000")
         );
         assert_eq!(
             IpcError::from(ProbeError::CmykNotAllowedInPdfA),

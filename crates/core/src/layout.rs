@@ -132,11 +132,17 @@ pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
     } else {
         (info.width as f32, info.height as f32)
     };
+    let (oriented_dpi_x, oriented_dpi_y) = if swaps {
+        (info.dpi_y as f32, info.dpi_x as f32)
+    } else {
+        (info.dpi_x as f32, info.dpi_y as f32)
+    };
+
+    let raw_w = (display_w * POINTS_PER_INCH) / oriented_dpi_x;
+    let raw_h = (display_h * POINTS_PER_INCH) / oriented_dpi_y;
 
     match page_size {
         PageSize::Fit => {
-            let raw_w = (display_w * POINTS_PER_INCH) / info.dpi as f32;
-            let raw_h = (display_h * POINTS_PER_INCH) / info.dpi as f32;
             let max_side = raw_w.max(raw_h);
             let scale = if max_side > MAX_PAGE_SIDE_PT {
                 MAX_PAGE_SIDE_PT / max_side
@@ -160,7 +166,7 @@ pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
         PageSize::Paper(paper, orientation) => {
             let (portrait_w, portrait_h) = paper.portrait_dimensions_pt();
             let is_landscape = match orientation {
-                PageOrientation::Auto => display_w > display_h,
+                PageOrientation::Auto => raw_w > raw_h,
                 PageOrientation::Portrait => false,
                 PageOrientation::Landscape => true,
             };
@@ -174,9 +180,9 @@ pub fn calculate_layout(info: &ImageInfo, page_size: PageSize) -> PageLayout {
             let avail_w = page_w - 2.0 * margin_pt;
             let avail_h = page_h - 2.0 * margin_pt;
 
-            let scale = (avail_w / display_w).min(avail_h / display_h);
-            let img_w = display_w * scale;
-            let img_h = display_h * scale;
+            let scale = (avail_w / raw_w).min(avail_h / raw_h);
+            let img_w = raw_w * scale;
+            let img_h = raw_h * scale;
 
             let x = margin_pt + (avail_w - img_w) / 2.0;
             let y = margin_pt + (avail_h - img_h) / 2.0;
@@ -201,13 +207,51 @@ mod tests {
     use crate::probe::ImageFormat;
 
     fn make_info(width: u32, height: u32, orientation: Orientation, dpi: u32) -> ImageInfo {
+        make_info_aniso(width, height, orientation, dpi, dpi)
+    }
+
+    fn make_info_aniso(
+        width: u32,
+        height: u32,
+        orientation: Orientation,
+        dpi_x: u32,
+        dpi_y: u32,
+    ) -> ImageInfo {
         ImageInfo {
             format: ImageFormat::Png,
             width,
             height,
             orientation,
-            dpi,
+            dpi_x,
+            dpi_y,
+            page_count: 1,
         }
+    }
+
+    #[test]
+    fn fit_calculates_pt_for_anisotropic_dpi() {
+        // fax_standard.tif: 1728 x 1143 px, 204 x 98 dpi
+        // raw_w = 1728 * 72 / 204 ≈ 610.0235 pt
+        // raw_h = 1143 * 72 / 98 ≈ 839.7551 pt
+        let info = make_info_aniso(1728, 1143, Orientation::NoTransforms, 204, 98);
+        let layout = calculate_layout(&info, PageSize::Fit);
+        assert!((layout.page_width - 609.88).abs() < 0.1);
+        assert!((layout.page_height - 839.76).abs() < 0.1);
+
+        // Auto orientation on PaperSize::A4 picks portrait because raw_w (610) < raw_h (840),
+        // even though pixel width (1728) > pixel height (1143).
+        let layout_a4 =
+            calculate_layout(&info, PageSize::Paper(PaperSize::A4, PageOrientation::Auto));
+        let (pw, ph) = PaperSize::A4.portrait_dimensions_pt();
+        assert_eq!(layout_a4.page_width, pw);
+        assert_eq!(layout_a4.page_height, ph);
+
+        // Rotating by 90 degrees swaps dimensions and swaps dpi_x / dpi_y
+        let rotated = make_info_aniso(1728, 1143, Orientation::Rotate90, 204, 98);
+        let layout_rot = calculate_layout(&rotated, PageSize::Fit);
+        // After Rotate90: display_w = 1143, display_h = 1728, oriented_dpi_x = 98, oriented_dpi_y = 204
+        assert!((layout_rot.page_width - 839.76).abs() < 0.1);
+        assert!((layout_rot.page_height - 609.88).abs() < 0.1);
     }
 
     #[test]

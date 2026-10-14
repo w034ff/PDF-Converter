@@ -120,14 +120,14 @@
 - `probe` は、全ページの IFD を読み（画素は読まない）、次をページごとに確かめる。1 つのページでも当てはまれば、ファイル全体をそのエラーにする（FR-01）。
   - ページ数が `MAX_TIFF_PAGES`（1_000）を超える: `TooManyPages`（`detail` は `MAX_TIFF_PAGES`）。`probe` は追加のときにメインプロセスで全ページの IFD をたどるので、たどる数に上限を置く。スキャンやファクスの束はこれより十分少なく、600 dpi の A4 の白黒でも 1_000 ページの PDF は約 330 MB になる（§4.3）。IFD の輪は `tiff` が誤りとして返す（`DecodeFailed`）。
   - 総ピクセル数が `MAX_IMAGE_PIXELS` を超える: `TooLarge`。上限はページごとに当てはめ、ページの合計には当てはめない（画素はページごとに読んで手放すため）。
-  - 読まない種類: `UnsupportedFormat`。読む種類は次の表だけで、それ以外（CMYK、CIE Lab、浮動小数点や符号付きの値、`PlanarConfiguration` が 2（色ごとに分かれた並び）、下の表にない圧縮）は読まない。
+  - 読まない種類: `UnsupportedFormat`。読む種類は次の表だけで、それ以外（CMYK、色の表（`Palette`）、`WhiteIsZero` のグレー＋透過、CIE Lab、浮動小数点や符号付きの値、`PlanarConfiguration` が 2（色ごとに分かれた並び）、下の表にない圧縮）は読まない。
 
   | 項目 | 読むもの |
   | --- | --- |
-  | 色（`PhotometricInterpretation`） | 白黒・グレー（`WhiteIsZero`・`BlackIsZero`。1・2・4・8・16 ビット）、グレー＋透過（8・16 ビット）、RGB（8・16 ビット）、RGB＋透過（8・16 ビット）、色の表（`Palette`。1・2・4・8 ビット）、YCbCr（JPEG の圧縮のときだけ） |
+  | 色（`PhotometricInterpretation`） | 白黒・グレー（`WhiteIsZero`・`BlackIsZero`。1・2・4・8・16 ビット）、グレー＋透過（`BlackIsZero` だけ。8・16 ビット）、RGB（8・16 ビット）、RGB＋透過（8・16 ビット）、YCbCr（JPEG の圧縮のときだけ） |
   | 圧縮（`Compression`） | なし（1）、CCITT G4（4）、LZW（5）、JPEG（7）、Deflate（8・32946）、PackBits（32773） |
 
-  - 読まないものの理由: CMYK は、スキャナー・複合機・ファクスの出力ではまれで、PDF/A では使えない（§4.3）。krilla の `CustomImage` は CMYK も受け付けるので、求める声が出たら通常の PDF で入れることを検討する（オーナーの決定、2026-10-14）。ファクスの G3（3）・CCITT の 1 次元（2）と古い形の JPEG（6）は、`tiff` が展開できない。複合機やスキャナーの出力は G4 が多いので、求める声が出てから `fax` の `decode_g3` で自前に読むことを検討する。ZSTD・WebP は、`tiff` の機能を足せば読めるが、スキャンの出力では使われない。
+  - 読まないものの理由: CMYK は、スキャナー・複合機・ファクスの出力ではまれで、PDF/A では使えない（§4.3）。krilla の `CustomImage` は CMYK も受け付けるので、求める声が出たら通常の PDF で入れることを検討する（オーナーの決定、2026-10-14）。ファクスの G3（3）・CCITT の 1 次元（2）と古い形の JPEG（6）は、`tiff` が展開できない。複合機やスキャナーの出力は G4 が多いので、求める声が出てから `fax` の `decode_g3` で自前に読むことを検討する。ZSTD・WebP は、`tiff` の機能を足せば読めるが、スキャンの出力では使われない。色の表と `WhiteIsZero` のグレー＋透過は、`tiff` 0.11.3 が画素の読み込みを拒む（U14 の実装の途中で分かった）。色の表はスキャンの出力ではまれなので、求める声が出てから、ストリップを自前で展開して表を引くことを検討する（オーナーの決定、2026-10-14）。
 - 透過（`ExtraSamples`）: 1 つ目の追加の値が `UnassociatedAlpha`（2）ならそのまま、`AssociatedAlpha`（1）なら色を透過の値で割り戻して（透過が 0 の画素は色も 0）、透過として扱う。`Unspecified`（0）の追加の値は透過ではない別のデータなので、捨てて不透明として扱う。2 つ目以降の追加の値も捨てる。
 - 向き: `Orientation`（274）の 1〜8 を、EXIF の向きと同じ 8 通りとして扱う（§4.3 の変換行列）。値がない・範囲の外なら向きなし。ページごとに読む。
 - 解像度: `XResolution`・`YResolution` と `ResolutionUnit`（2 はインチ、3 はセンチメートル、省略はインチ。1（単位なし）は不明として扱う）から、§4.1 の規則で `dpi_x`・`dpi_y` を決める。ページごとに読む。
@@ -169,8 +169,8 @@
 - PNG は `Image::from_png`、WebP は `Image::from_webp`。どちらも画素を変えずに可逆の圧縮で入れ、透過を保つ。16 ビットの PNG は 16 ビットのまま入れる。
 - BMP は §4.1 の RGBA を `Image::from_rgba8` で入れる。
 - TIFF（§4.1.1）は、ページごとに画素を読み、`Image::from_custom`（krilla の `CustomImage`）でグレーか RGB の 8・16 ビットとして、透過は別のチャンネルとして入れる。`Image::from_rgba8` を使わないのは、グレーのページが 4 倍の大きさの RGBA になるのと、16 ビットのページが 8 ビットに落ちるため。
-  - 白黒・2・4 ビットのグレーは 8 ビットのグレーに広げる（`WhiteIsZero` は反転する）。krilla は 1 ビットの画像も CCITT のデータのそのままの埋め込みも持たないため。PDF は元の G4 の TIFF より大きくなる（U14 の前の試作で、ファクスの fine（204×196 dpi）で約 2.4 倍、300 dpi の A4 で約 3.1 倍、600 dpi の A4 で約 4.7 倍（1 ページ約 330 KB））。オーナーが受け入れ（2026-10-14）、README に書く。小さくする方法は、求める声が出てから考える。
-  - 色の表は 8 ビットの RGB に広げる（表の 16 ビットの値は 257 で割って四捨五入）。JPEG の圧縮の TIFF は、`tiff` が戻した RGB の画素を入れる（JPEG のデータをそのまま入れる §4.3 の JPEG と違い、ファイルは大きくなるが画質は落ちない）。
+  - 白黒・2・4 ビットのグレーは 8 ビットのグレーに広げる。`tiff` は `WhiteIsZero` を反転して `BlackIsZero` の値で返し、1・2・4 ビットは行ごとに詰めたまま返すので、広げるだけで反転はしない（自分でも反転すると白黒が逆になる）。krilla は 1 ビットの画像も CCITT のデータのそのままの埋め込みも持たないため。PDF は元の G4 の TIFF より大きくなる（U14 の前の試作で、ファクスの fine（204×196 dpi）で約 2.4 倍、300 dpi の A4 で約 3.1 倍、600 dpi の A4 で約 4.7 倍（1 ページ約 330 KB））。オーナーが受け入れ（2026-10-14）、README に書く。小さくする方法は、求める声が出てから考える。
+  - JPEG の圧縮の TIFF は、`tiff` が色の変換を止めて JPEG の成分のまま返す。`PhotometricInterpretation` が YCbCr なら、JFIF の式（ITU-R BT.601 の全範囲。R = Y + 1.402(Cr − 128)、G = Y − 0.344136(Cb − 128) − 0.714136(Cr − 128)、B = Y + 1.772(Cb − 128)、四捨五入して 0〜255 に収める）で RGB に直し、RGB ならそのまま使う。JPEG のデータをそのまま入れる §4.3 の JPEG と違い、ファイルは大きくなるが画質は落ちない。
   - 16 ビットの値は、PDF の決まりどおり大きい桁から先のバイト列にする（`tiff` は CPU のバイト順の値で返すため。`MM` の TIFF も同じ）。
   - 1 つの TIFF のページは、すべての画素を読んで krilla の画像を作り終えてから、まとめて PDF のページにする。途中のページが読めないとき（`DecodeFailed`）、前のページだけが入った PDF を作らないため（FR-02）。krilla は画像を作った時点で圧縮して画素を手放すので、待たせる間のメモリは小さい（試作で、600 dpi の A4 を 20 ページで最大 59 MB）。
   - 補間（`interpolate`）は、ほかの形式と同じく通常の PDF だけで付ける。
@@ -548,12 +548,11 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | `fax_standard.tif` | 1 ページの白黒（G4、204×98 dpi、1728×1143 画素） | 横と縦の dpi が違う画像のページの大きさ |
 | `gray_lzw.tif` / `gray16_deflate.tif` / `gray4_packbits.tif` | 8 ビットのグレー（LZW、`BlackIsZero`）/ 16 ビットのグレー（Deflate、大きい桁が先の `MM`）/ 4 ビットのグレー（PackBits） | グレー、16 ビットとバイト順、ビットの広げ方 |
 | `rgb_lzw.tif` / `rgb16.tif` | 8 ビット / 16 ビットの RGB | RGB |
-| `rgba_unassoc.tif` / `rgba_assoc.tif` / `gray_alpha.tif` | 透過付きの RGB（`ExtraSamples` が 2 / 1）と、透過付きのグレー | 透過、割り戻し（§4.1.1） |
-| `palette.tif` | 8 ビットの色の表 | 色の表 |
+| `rgba_unassoc.tif` / `rgba_assoc.tif` / `gray_alpha.tif` | 透過付きの RGB（`ExtraSamples` が 2 / 1）と、透過付きのグレー（`BlackIsZero`） | 透過、割り戻し（§4.1.1） |
 | `photo_jpeg.tif` | JPEG の圧縮（7、YCbCr）の写真 | JPEG の圧縮の TIFF |
 | `rotate90.tif` | `Orientation` が 6 の RGB | TIFF の向き |
 | `metadata.tif` | `ImageDescription`・`Artist`・`DateTime`・`Software`・XMP（700）に決まった文字を持つ RGB | メタデータが PDF に残らないこと（NFR-01） |
-| `cmyk.tif` / `fax_g3.tif` / `planar.tif` | CMYK / G3（3）/ `PlanarConfiguration` が 2 | `UnsupportedFormat` |
+| `cmyk.tif` / `fax_g3.tif` / `planar.tif` / `palette.tif` | CMYK / G3（3）/ `PlanarConfiguration` が 2 / 8 ビットの色の表 | `UnsupportedFormat` |
 | `corrupt_page2.tif` | 2 ページの TIFF で、2 ページ目の圧縮のデータが途中で切れている | `probe` を通り、変換でファイル全体が `DecodeFailed` になること |
 | `too_large_page2.tif` | 2 ページ目の IFD の寸法が `MAX_IMAGE_PIXELS` を超える（画素のデータは持たない） | ページごとの `TooLarge` |
 | `too_many_pages.tif` | 1×1 画素の `MAX_TIFF_PAGES` + 1 ページ | `TooManyPages` |
@@ -588,7 +587,7 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 
 | 対象 | 種類 | 主な内容 |
 | --- | --- | --- |
-| crates/core | 単体 | JPEG の区切りの処理（§4.3。外すもの・残すもの、EOI より後ろ、区切りを読めない JPEG）、probe（形式、寸法、向き、横と縦の dpi、上限。TIFF は読む種類と読まない種類、ページ数、ページごとの上限、IFD の輪）、TIFF の画素の広げ方（ビット、`WhiteIsZero`、色の表、透過の割り戻し、16 ビットのバイト順）、ページの配置（画像と同じ大きさ、用紙の寸法と縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
+| crates/core | 単体 | JPEG の区切りの処理（§4.3。外すもの・残すもの、EOI より後ろ、区切りを読めない JPEG）、probe（形式、寸法、向き、横と縦の dpi、上限。TIFF は読む種類と読まない種類、ページ数、ページごとの上限、IFD の輪）、TIFF の画素の広げ方（ビット、`WhiteIsZero`（`tiff` の反転に重ねない）、YCbCr から RGB、透過の割り戻し、16 ビットのバイト順）、ページの配置（画像と同じ大きさ、用紙の寸法と縦横、余白、上限）、範囲の解釈（書式、全角、正規化、誤り）、出力名（重複、大文字小文字、番号の桁数） |
 | crates/core | 品質 | §11.2 の画像 → PDF（PDF/A を含む） |
 | crates/worker | 品質 | §11.2 の PDF → 画像 |
 | crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード（なし・誤り・閲覧・所有者・ASCII 以外の文字）、壊れた PDF、ページ数の上限、描画の上限 |

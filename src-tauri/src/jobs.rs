@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use pdfconv_core::naming::{
     PdfToImageInput, resolve_image_to_pdf_names, resolve_pdf_to_image_names, split_stem_and_ext,
 };
-use pdfconv_core::{PageSet, PdfConformance, PdfWriter, parse_page_range};
+use pdfconv_core::{AddImageResult, PageSet, PdfConformance, PdfWriter, parse_page_range};
 use pdfconv_worker::is_render_dpi_in_range;
 use pdfconv_worker::protocol::{RenderFormat, Request, Response};
 use serde::{Deserialize, Serialize};
@@ -464,17 +464,20 @@ where
         .ok_or_else(|| IpcError::from_code(ErrorCode::WriteFailed))?;
 
     let mut valid_tasks = Vec::new();
+    let mut total = 0u32;
     for &id in ids {
         let entry = state
             .items
             .get(id)
             .ok_or_else(|| IpcError::from_code(ErrorCode::UnknownHandle))?;
         if entry.kind == ItemKind::Image {
+            if entry.error.is_none() {
+                total = total.saturating_add(entry.page_count);
+            }
             valid_tasks.push((id, entry));
         }
     }
 
-    let total = valid_tasks.len() as u32;
     on_progress(JobProgressPayload {
         done: 0,
         total,
@@ -487,15 +490,16 @@ where
     let mut temp = create_output_temp(output_dir)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
 
+    let mut done = 0u32;
     let mut succeeded = 0u32;
     let mut failed = 0u32;
     let mut unprocessed = 0u32;
     let mut was_cancelled = false;
 
-    for (idx, (id, entry)) in valid_tasks.into_iter().enumerate() {
+    for (idx, (id, entry)) in valid_tasks.iter().enumerate() {
         if state.cancel_flag.load(Ordering::SeqCst) {
             was_cancelled = true;
-            unprocessed = total.saturating_sub(idx as u32);
+            unprocessed = (valid_tasks.len() - idx) as u32;
             break;
         }
 
@@ -506,61 +510,97 @@ where
             .unwrap_or_default();
 
         on_progress(JobProgressPayload {
-            done: succeeded + failed,
+            done,
             total,
-            current: Some(file_name),
+            current: Some(file_name.clone()),
         });
 
-        if let Some(err) = entry.error {
+        if let Some(err) = entry.error.clone() {
             failed += 1;
             on_item(JobItemPayload {
-                id,
+                id: *id,
                 status: JobItemStatus::Failed,
                 outputs: Vec::new(),
                 error: Some(err),
                 failed_pages: None,
             });
             on_progress(JobProgressPayload {
-                done: succeeded + failed,
+                done,
                 total,
                 current: None,
             });
             continue;
         }
 
-        let read_result = std::fs::read(&entry.path)
-            .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))
-            .and_then(|bytes| {
-                writer
-                    .add_page(&bytes, page_size.to_core(orientation))
-                    .map_err(IpcError::from)
-            });
+        let bytes = match std::fs::read(&entry.path) {
+            Ok(b) => b,
+            Err(_) => {
+                failed += 1;
+                done += entry.page_count;
+                on_item(JobItemPayload {
+                    id: *id,
+                    status: JobItemStatus::Failed,
+                    outputs: Vec::new(),
+                    error: Some(IpcError::from_code(ErrorCode::ReadFailed)),
+                    failed_pages: None,
+                });
+                on_progress(JobProgressPayload {
+                    done,
+                    total,
+                    current: None,
+                });
+                continue;
+            }
+        };
 
-        match read_result {
-            Ok(()) => {
+        let mut item_pages_done = 0u32;
+        let add_result = writer.add_image(
+            &bytes,
+            page_size.to_core(orientation),
+            |_page_idx, _total_in_item| {
+                item_pages_done += 1;
+                done += 1;
+                on_progress(JobProgressPayload {
+                    done,
+                    total,
+                    current: Some(file_name.clone()),
+                });
+            },
+            || state.cancel_flag.load(Ordering::SeqCst),
+        );
+
+        match add_result {
+            Ok(AddImageResult::Ok { .. }) => {
                 succeeded += 1;
                 on_item(JobItemPayload {
-                    id,
+                    id: *id,
                     status: JobItemStatus::Ok,
                     outputs: Vec::new(),
                     error: None,
                     failed_pages: None,
                 });
             }
-            Err(err) => {
+            Ok(AddImageResult::Cancelled) => {
+                was_cancelled = true;
+                unprocessed = (valid_tasks.len() - idx) as u32;
+                break;
+            }
+            Err(probe_err) => {
+                let remaining = entry.page_count.saturating_sub(item_pages_done);
+                done += remaining;
                 failed += 1;
                 on_item(JobItemPayload {
-                    id,
+                    id: *id,
                     status: JobItemStatus::Failed,
                     outputs: Vec::new(),
-                    error: Some(err),
+                    error: Some(IpcError::from(probe_err)),
                     failed_pages: None,
                 });
             }
         }
 
         on_progress(JobProgressPayload {
-            done: succeeded + failed,
+            done,
             total,
             current: None,
         });
@@ -647,12 +687,14 @@ where
         id: u64,
         filename: String,
         path: PathBuf,
+        page_count: u32,
         initial_error: Option<IpcError>,
         initial_output_name: Option<String>,
     }
 
     let mut target_names = Vec::new();
     let mut initial_tasks = Vec::new();
+    let mut total_pages = 0u32;
 
     for &id in ids {
         let entry = state
@@ -669,8 +711,9 @@ where
             .unwrap_or_default();
         if entry.error.is_none() {
             target_names.push(filename.clone());
+            total_pages = total_pages.saturating_add(entry.page_count);
         }
-        initial_tasks.push((id, filename, entry.path, entry.error));
+        initial_tasks.push((id, filename, entry.path, entry.page_count, entry.error));
     }
 
     let resolved_names = resolve_image_to_pdf_names(&target_names, &existing);
@@ -684,7 +727,7 @@ where
     let mut resolved_iter = resolved_names.into_iter();
     let tasks: VecDeque<ImageTask> = initial_tasks
         .into_iter()
-        .map(|(id, filename, path, initial_error)| {
+        .map(|(id, filename, path, page_count, initial_error)| {
             let initial_output_name = if initial_error.is_none() {
                 resolved_iter.next()
             } else {
@@ -694,20 +737,22 @@ where
                 id,
                 filename,
                 path,
+                page_count,
                 initial_error,
                 initial_output_name,
             }
         })
         .collect();
 
-    let total = tasks.len() as u32;
+    let total_items = tasks.len() as u32;
+    let total = total_pages;
     on_progress(JobProgressPayload {
         done: 0,
         total,
         current: None,
     });
 
-    if total == 0 {
+    if total_items == 0 {
         on_finished(JobFinishedPayload {
             succeeded: 0,
             failed: 0,
@@ -725,7 +770,7 @@ where
     let unprocessed = Arc::new(AtomicU32::new(0));
     let write_failed = Arc::new(AtomicBool::new(false));
 
-    let num_threads = default_worker_limit().min(total as usize).max(1);
+    let num_threads = default_worker_limit().min(total_items as usize).max(1);
     let mut handles = Vec::with_capacity(num_threads);
 
     let creator = format!("PDF Converter {}", env!("CARGO_PKG_VERSION"));
@@ -771,18 +816,12 @@ where
 
                 if let Some(err) = task.initial_error {
                     failed.fetch_add(1, Ordering::SeqCst);
-                    let current_done = done.fetch_add(1, Ordering::SeqCst) + 1;
                     on_item(JobItemPayload {
                         id: task.id,
                         status: JobItemStatus::Failed,
                         outputs: Vec::new(),
                         error: Some(err),
                         failed_pages: None,
-                    });
-                    on_progress(JobProgressPayload {
-                        done: current_done,
-                        total,
-                        current: None,
                     });
                     continue;
                 }
@@ -795,29 +834,96 @@ where
                     current: Some(task.filename.clone()),
                 });
 
-                let pdf_bytes = (|| -> Result<Vec<u8>, IpcError> {
-                    let bytes = std::fs::read(&task.path)
-                        .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))?;
-                    let mut writer = PdfWriter::new(&creator, conformance);
-                    writer
-                        .add_page(&bytes, page_size.to_core(orientation))
-                        .map_err(IpcError::from)?;
-                    writer
-                        .finish()
-                        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))
-                })();
-                let process_result = pdf_bytes.and_then(|pdf_bytes| {
-                    save_atomic(&output_dir, output_name, &pdf_bytes, &used_names).inspect_err(
-                        |err| {
-                            stop_after_write_failure(err, &write_failed);
-                        },
-                    )
+                let bytes = match std::fs::read(&task.path) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        let cur_done =
+                            done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
+                        failed.fetch_add(1, Ordering::SeqCst);
+                        on_item(JobItemPayload {
+                            id: task.id,
+                            status: JobItemStatus::Failed,
+                            outputs: Vec::new(),
+                            error: Some(IpcError::from_code(ErrorCode::ReadFailed)),
+                            failed_pages: None,
+                        });
+                        on_progress(JobProgressPayload {
+                            done: cur_done,
+                            total,
+                            current: None,
+                        });
+                        continue;
+                    }
+                };
+
+                let mut writer = PdfWriter::new(&creator, conformance);
+                let mut item_pages_done = 0u32;
+                let add_res = writer.add_image(
+                    &bytes,
+                    page_size.to_core(orientation),
+                    |_page_idx, _total_in_item| {
+                        item_pages_done += 1;
+                        let cur = done.fetch_add(1, Ordering::SeqCst) + 1;
+                        on_progress(JobProgressPayload {
+                            done: cur,
+                            total,
+                            current: Some(task.filename.clone()),
+                        });
+                    },
+                    || cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst),
+                );
+
+                match add_res {
+                    Ok(AddImageResult::Cancelled) => {
+                        unprocessed.fetch_add(1, Ordering::SeqCst);
+                        on_item(JobItemPayload {
+                            id: task.id,
+                            status: JobItemStatus::Cancelled,
+                            outputs: Vec::new(),
+                            error: None,
+                            failed_pages: None,
+                        });
+                        let mut q = match queue.lock() {
+                            Ok(g) => g,
+                            Err(p) => p.into_inner(),
+                        };
+                        unprocessed.fetch_add(q.len() as u32, Ordering::SeqCst);
+                        q.clear();
+                        break;
+                    }
+                    Err(probe_err) => {
+                        let remaining = task.page_count.saturating_sub(item_pages_done);
+                        let cur_done = done.fetch_add(remaining, Ordering::SeqCst) + remaining;
+                        failed.fetch_add(1, Ordering::SeqCst);
+                        on_item(JobItemPayload {
+                            id: task.id,
+                            status: JobItemStatus::Failed,
+                            outputs: Vec::new(),
+                            error: Some(IpcError::from(probe_err)),
+                            failed_pages: None,
+                        });
+                        on_progress(JobProgressPayload {
+                            done: cur_done,
+                            total,
+                            current: None,
+                        });
+                        continue;
+                    }
+                    Ok(AddImageResult::Ok { .. }) => {}
+                }
+
+                let pdf_bytes = writer
+                    .finish()
+                    .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()));
+                let process_result = pdf_bytes.and_then(|bytes| {
+                    save_atomic(&output_dir, output_name, &bytes, &used_names).inspect_err(|err| {
+                        stop_after_write_failure(err, &write_failed);
+                    })
                 });
 
                 match process_result {
                     Ok(saved_name) => {
                         succeeded.fetch_add(1, Ordering::SeqCst);
-                        let current_done = done.fetch_add(1, Ordering::SeqCst) + 1;
                         on_item(JobItemPayload {
                             id: task.id,
                             status: JobItemStatus::Ok,
@@ -826,14 +932,13 @@ where
                             failed_pages: None,
                         });
                         on_progress(JobProgressPayload {
-                            done: current_done,
+                            done: done.load(Ordering::SeqCst),
                             total,
                             current: None,
                         });
                     }
                     Err(err) => {
                         failed.fetch_add(1, Ordering::SeqCst);
-                        let current_done = done.fetch_add(1, Ordering::SeqCst) + 1;
                         on_item(JobItemPayload {
                             id: task.id,
                             status: JobItemStatus::Failed,
@@ -842,7 +947,7 @@ where
                             failed_pages: None,
                         });
                         on_progress(JobProgressPayload {
-                            done: current_done,
+                            done: done.load(Ordering::SeqCst),
                             total,
                             current: None,
                         });
@@ -860,8 +965,8 @@ where
     let cur_failed = failed.load(Ordering::SeqCst);
     let cur_unprocessed = unprocessed.load(Ordering::SeqCst);
     let accounted = cur_succeeded + cur_failed + cur_unprocessed;
-    if accounted < total {
-        failed.fetch_add(total - accounted, Ordering::SeqCst);
+    if accounted < total_items {
+        failed.fetch_add(total_items - accounted, Ordering::SeqCst);
     }
 
     on_finished(JobFinishedPayload {

@@ -4,6 +4,9 @@ use std::fmt;
 
 use crate::probe::MAX_IMAGE_PIXELS;
 
+/// Maximum pages allowed in a multi-page TIFF image (design §4.1.1).
+pub const MAX_TIFF_PAGES: u32 = 1_000;
+
 /// Error returned when probing an image header fails (design §4.1, §6.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProbeError {
@@ -17,6 +20,8 @@ pub enum ProbeError {
     ReadFailed,
     /// The image is CMYK and the document is PDF/A (design §4.3).
     CmykNotAllowedInPdfA,
+    /// Multi-page TIFF page count exceeds [`MAX_TIFF_PAGES`] (design §4.1.1).
+    TooManyPages,
 }
 
 impl ProbeError {
@@ -29,17 +34,20 @@ impl ProbeError {
             Self::TooLarge => "TooLarge",
             Self::ReadFailed => "ReadFailed",
             Self::CmykNotAllowedInPdfA => "CmykNotAllowedInPdfA",
+            Self::TooManyPages => "TooManyPages",
         }
     }
 
     /// Returns the error detail string if applicable (design §6.6).
     ///
     /// For [`ProbeError::TooLarge`], returns the pixel limit formatted with commas
-    /// (e.g. `"80,000,000"`). For other variants, returns `None`.
+    /// (e.g. `"80,000,000"`). For [`ProbeError::TooManyPages`], returns the page limit
+    /// formatted with commas (e.g. `"1,000"`). For other variants, returns `None`.
     #[must_use]
     pub fn detail(&self) -> Option<String> {
         match self {
             Self::TooLarge => Some(format_with_commas(MAX_IMAGE_PIXELS)),
+            Self::TooManyPages => Some(format_with_commas(u64::from(MAX_TIFF_PAGES))),
             Self::UnsupportedFormat
             | Self::DecodeFailed
             | Self::ReadFailed
@@ -78,6 +86,11 @@ impl fmt::Display for ProbeError {
             ),
             Self::ReadFailed => write!(f, "failed to read image file"),
             Self::CmykNotAllowedInPdfA => write!(f, "CMYK images can't be used in PDF/A"),
+            Self::TooManyPages => write!(
+                f,
+                "too many pages in image (limit: {} pages)",
+                format_with_commas(u64::from(MAX_TIFF_PAGES))
+            ),
         }
     }
 }
@@ -143,6 +156,9 @@ mod tests {
             "CmykNotAllowedInPdfA"
         );
         assert_eq!(ProbeError::CmykNotAllowedInPdfA.detail(), None);
+
+        assert_eq!(ProbeError::TooManyPages.code(), "TooManyPages");
+        assert_eq!(ProbeError::TooManyPages.detail().as_deref(), Some("1,000"));
     }
 
     #[test]

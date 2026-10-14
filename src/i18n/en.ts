@@ -15,7 +15,7 @@ export const en: Translations = {
     titleImages: "Drop images here",
     titlePdfs: "Drop PDFs here",
     descriptionImages:
-      "Supports PNG, JPEG, WebP, BMP. Drop a folder to add all images inside.",
+      "Supports PNG, JPEG, WebP, BMP, TIFF. Drop a folder to add all images inside.",
     descriptionPdfs: "Drop a folder to add all PDFs inside.",
     addImages: "Add images",
     addPdfs: "Add PDFs",
@@ -193,6 +193,7 @@ export const en: Translations = {
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
     imageCount: "{count} image(s)",
+    pageCount: "{count} pages",
     skipped: "({count} skipped: {reasons})",
     skippedFolders: "subfolders",
     skippedUnsupported: "unsupported formats",

@@ -188,6 +188,7 @@ pub enum ImageFormatName {
     Jpeg,
     Webp,
     Bmp,
+    Tiff,
 }
 
 impl From<ImageFormat> for ImageFormatName {
@@ -197,6 +198,7 @@ impl From<ImageFormat> for ImageFormatName {
             ImageFormat::Jpeg => Self::Jpeg,
             ImageFormat::WebP => Self::Webp,
             ImageFormat::Bmp => Self::Bmp,
+            ImageFormat::Tiff => Self::Tiff,
         }
     }
 }
@@ -223,6 +225,7 @@ pub struct ImageItem {
     pub width: u32,
     pub height: u32,
     pub format: Option<ImageFormatName>,
+    pub page_count: u32,
     /// Size of the file in bytes.
     #[ts(type = "number")]
     pub bytes: u64,
@@ -414,7 +417,7 @@ pub fn add_images(state: &AppState, paths: &[PathBuf]) -> AddResult<ImageItem> {
         ItemKind::Image,
         paths,
         |_, path| probe(path).map_err(IpcError::from),
-        |_| 0,
+        |info| info.page_count,
     );
     let added = added
         .into_iter()
@@ -432,6 +435,7 @@ pub fn add_images(state: &AppState, paths: &[PathBuf]) -> AddResult<ImageItem> {
                     width: 0,
                     height: 0,
                     format: None,
+                    page_count: 0,
                     bytes,
                     error: Some(error),
                 },
@@ -453,6 +457,7 @@ fn image_item(id: u64, name: String, bytes: u64, info: &ImageInfo) -> ImageItem 
         width,
         height,
         format: Some(info.format.into()),
+        page_count: info.page_count,
         bytes,
         error: None,
     }

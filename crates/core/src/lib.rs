@@ -9,9 +9,10 @@ pub mod page_range;
 pub mod pdf_write;
 pub mod probe;
 pub mod thumbnail;
+pub mod tiff;
 mod utc_time;
 
-pub use error::{PdfWriteError, ProbeError};
+pub use error::{MAX_TIFF_PAGES, PdfWriteError, ProbeError};
 pub use jpeg_strip::strip_jpeg_metadata;
 pub use layout::{
     MAX_PAGE_SIDE_PT, MM_PER_INCH, PAGE_MARGIN_MM, POINTS_PER_INCH, PageLayout, PageOrientation,
@@ -21,7 +22,7 @@ pub use naming::{
     PdfToImageInput, page_number_width, resolve_image_to_pdf_names, resolve_pdf_to_image_names,
 };
 pub use page_range::{PageSet, ParsePageRangeError, parse_page_range};
-pub use pdf_write::{PdfConformance, PdfWriter};
+pub use pdf_write::{AddImageResult, PdfConformance, PdfWriter};
 pub use probe::{
     DEFAULT_DPI, IMAGE_EXTENSIONS, ImageFormat, ImageInfo, MAX_DPI, MAX_IMAGE_PIXELS, MIN_DPI,
     probe, probe_reader,

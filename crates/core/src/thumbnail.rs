@@ -23,10 +23,23 @@ pub const THUMBNAIL_SIDE: u32 = 160;
 /// header or the pixels are damaged or the PNG cannot be written.
 pub fn thumbnail_png(image_bytes: &[u8]) -> Result<Vec<u8>, ProbeError> {
     let info = probe_reader(Cursor::new(image_bytes))?;
-    let mut pixels = decode_image_pixels(image_bytes)?;
+    let mut pixels = if info.format == crate::probe::ImageFormat::Tiff {
+        crate::tiff::decode_tiff_first_page_as_image(image_bytes)?
+    } else {
+        decode_image_pixels(image_bytes)?
+    };
     pixels.apply_orientation(info.orientation);
 
-    let (width, height) = fit_longer_side(pixels.width(), pixels.height());
+    let swaps = crate::layout::orientation_swaps_dimensions(info.orientation);
+    let (oriented_dpi_x, oriented_dpi_y) = if swaps {
+        (info.dpi_y, info.dpi_x)
+    } else {
+        (info.dpi_x, info.dpi_y)
+    };
+
+    let eff_w = u64::from(pixels.width()) * u64::from(oriented_dpi_y);
+    let eff_h = u64::from(pixels.height()) * u64::from(oriented_dpi_x);
+    let (width, height) = fit_longer_side_aspect(eff_w, eff_h);
     let thumbnail = pixels.resize_exact(width, height, FilterType::Triangle);
 
     let mut png = Vec::new();
@@ -38,13 +51,19 @@ pub fn thumbnail_png(image_bytes: &[u8]) -> Result<Vec<u8>, ProbeError> {
 
 /// Scales `width` × `height` so that the longer side is [`THUMBNAIL_SIDE`],
 /// keeping the shorter side at one pixel or more.
+#[cfg(test)]
 fn fit_longer_side(width: u32, height: u32) -> (u32, u32) {
-    let longer = u64::from(width.max(height)).max(1);
-    let scale = |side: u32| -> u32 {
-        let scaled = (u64::from(side) * u64::from(THUMBNAIL_SIDE) + longer / 2) / longer;
+    fit_longer_side_aspect(u64::from(width), u64::from(height))
+}
+
+/// Scales physical aspect `eff_w` × `eff_h` so that the longer side is [`THUMBNAIL_SIDE`].
+fn fit_longer_side_aspect(eff_w: u64, eff_h: u64) -> (u32, u32) {
+    let longer = eff_w.max(eff_h).max(1);
+    let scale = |side: u64| -> u32 {
+        let scaled = (side * u64::from(THUMBNAIL_SIDE) + longer / 2) / longer;
         u32::try_from(scaled).unwrap_or(THUMBNAIL_SIDE).max(1)
     };
-    (scale(width), scale(height))
+    (scale(eff_w), scale(eff_h))
 }
 
 #[cfg(test)]
@@ -134,5 +153,11 @@ mod tests {
         );
         let bytes = std::fs::read(fixture("corrupt.png")).expect("reading the fixture");
         assert_eq!(thumbnail_png(&bytes).unwrap_err(), ProbeError::DecodeFailed);
+    }
+
+    #[test]
+    fn thumbnail_aspect_ratio_respects_anisotropic_dpi() {
+        assert_eq!(thumbnail_size("fax_standard.tif"), (116, 160));
+        assert_eq!(thumbnail_size("dpi_aniso.png"), (160, 160));
     }
 }

@@ -49,7 +49,13 @@ fn main() -> Result<()> {
         ) {
             Ok(()) => {}
             Err(err) => match err.downcast_ref::<ProbeError>() {
-                Some(probe @ (ProbeError::DecodeFailed | ProbeError::CmykNotAllowedInPdfA)) => {
+                Some(
+                    probe @ (ProbeError::DecodeFailed
+                    | ProbeError::CmykNotAllowedInPdfA
+                    | ProbeError::UnsupportedFormat
+                    | ProbeError::TooLarge
+                    | ProbeError::TooManyPages),
+                ) => {
                     println!("skipped {name}: {probe}");
                     continue;
                 }

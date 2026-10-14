@@ -19,6 +19,7 @@ const sampleImageItem1: ImageItem = {
   width: 800,
   height: 600,
   format: "png",
+  pageCount: 1,
   bytes: 12345,
   error: null,
 };
@@ -29,6 +30,7 @@ const sampleImageItem2: ImageItem = {
   width: 1920,
   height: 1080,
   format: "jpeg",
+  pageCount: 1,
   bytes: 54321,
   error: null,
 };

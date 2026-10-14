@@ -612,6 +612,7 @@ describe("App", () => {
         width: 100,
         height: 100,
         format: "png",
+        pageCount: 1,
         bytes: 1000,
         error: null,
       };
@@ -621,6 +622,7 @@ describe("App", () => {
         width: 100,
         height: 100,
         format: "png",
+        pageCount: 1,
         bytes: 1000,
         error: null,
       };

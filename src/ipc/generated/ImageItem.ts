@@ -15,7 +15,7 @@ name: string,
  * Pixels as displayed: the sides are swapped when the EXIF orientation
  * turns the image by a quarter.
  */
-width: number, height: number, format: ImageFormatName | null, 
+width: number, height: number, format: ImageFormatName | null, pageCount: number, 
 /**
  * Size of the file in bytes.
  */

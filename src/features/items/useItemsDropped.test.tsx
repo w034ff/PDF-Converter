@@ -28,6 +28,7 @@ const image: ImageItem = {
   width: 10,
   height: 10,
   format: "png",
+  pageCount: 1,
   bytes: 100,
   error: null,
 };

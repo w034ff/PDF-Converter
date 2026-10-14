@@ -13,7 +13,7 @@ export const ja = {
     titleImages: "画像をここにドロップ",
     titlePdfs: "PDF をここにドロップ",
     descriptionImages:
-      "PNG、JPEG、WebP、BMP に対応。フォルダをドロップすると、中の画像をまとめて追加します",
+      "PNG、JPEG、WebP、BMP、TIFF に対応。フォルダをドロップすると、中の画像をまとめて追加します",
     descriptionPdfs: "フォルダをドロップすると、中の PDF をまとめて追加します",
     addImages: "画像を追加",
     addPdfs: "PDF を追加",
@@ -190,6 +190,7 @@ export const ja = {
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
     imageCount: "画像 {count} 枚",
+    pageCount: "{count} ページ",
     skipped: "（対象外 {count} 件：{reasons}）",
     skippedFolders: "サブフォルダ",
     skippedUnsupported: "非対応の形式",

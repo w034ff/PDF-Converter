@@ -2,12 +2,12 @@
 
 [日本語 (Japanese)](README.ja.md)
 
-PDF Converter is an open-source desktop application that converts raster images (PNG, JPEG, WebP, BMP) to PDF and PDF files to raster images (PNG, JPEG, WebP) locally on your machine.
+PDF Converter is an open-source desktop application that converts raster images (PNG, JPEG, WebP, BMP, TIFF) to PDF and PDF files to raster images (PNG, JPEG, WebP) locally on your machine.
 All processing runs entirely on your computer without uploading any files to external online services. Supported operating systems are Windows and Linux (x64).
 
 ## Features
 
-- **Images → PDF**: Converts images to PDF without compromising original quality. JPEG images are embedded directly without recompression, but metadata such as GPS location and capture date/time is excluded from the PDF (without affecting image quality). Transparent PNG, WebP, and BMP images retain transparency with lossless compression. Respects EXIF orientation and supports choosing between "Same as image" and seven paper sizes (A3, A4, A5, JIS B4, JIS B5, Letter, Legal), with Auto, Portrait, or Landscape orientation for paper sizes. The output can also be made PDF/A-2b for long-term archiving; CMYK images can't be used in that case.
+- **Images → PDF**: Converts images to PDF without compromising original quality. JPEG images are embedded directly without recompression, but metadata such as GPS location and capture date/time is excluded from the PDF (without affecting image quality). Transparent PNG, WebP, and BMP images retain transparency with lossless compression. Multi-page TIFFs have all their pages converted sequentially into the PDF (supports black-and-white fax (G4), grayscale, and RGB, with LZW, Deflate, PackBits, or JPEG compression; CMYK, palette, and G3 fax TIFFs are unsupported). PDFs created from black-and-white TIFFs are larger than the original files (around 2–5×). Respects EXIF and TIFF orientation and supports choosing between "Same as image" and seven paper sizes (A3, A4, A5, JIS B4, JIS B5, Letter, Legal), with Auto, Portrait, or Landscape orientation for paper sizes. The output can also be made PDF/A-2b for long-term archiving; CMYK images can't be used in that case.
 - **Merge & Reorder**: Combine multiple images into a single multi-page PDF. Flexible reordering via drag-and-drop or keyboard shortcuts (↑ / ↓, Alt + ↑ / ↓). Individual items can also be removed from the list.
 - **PDF → Images**: Render PDF pages into PNG, JPEG, or lossless WebP images in full color or grayscale. Choose from 72 dpi, 150 dpi, 300 dpi, or specify any custom resolution from 36 to 1000 dpi, rendered with crisp white backgrounds.
 - **Page Range Selection**: Convert all pages or specify custom page ranges (e.g. `1-3, 5`). Select individual pages interactively by clicking thumbnails for single PDFs, or apply the same range across multiple PDFs in bulk.

@@ -3,4 +3,4 @@
 /**
  * The image formats of design §4.1, as the frontend names them.
  */
-export type ImageFormatName = "png" | "jpeg" | "webp" | "bmp";
+export type ImageFormatName = "png" | "jpeg" | "webp" | "bmp" | "tiff";
