@@ -92,6 +92,57 @@ jobs:
         if: runner.os == 'Linux'
         run: docker run --rm --network none -v "$RUNNER_TEMP/pdfa:/data:ro" verapdf/cli@sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb -f 2b --format text /data
 
+      # lopdf wrote an encryption dictionary that poppler (Evince, Okular) drew
+      # as broken pages on every page while pdfium and qpdf were fine, so the
+      # password-protected output is also opened by tools other than the one
+      # the unit tests use (design §4.3.1, §11.2). A lopdf update must not
+      # bring that back unnoticed. The password is that of PASSWORD in
+      # crates/core/examples/write_encrypted_samples.rs: change them together.
+      - name: Write password-protected samples
+        if: runner.os == 'Linux'
+        run: cargo run -p pdfconv-core --example write_encrypted_samples --locked -- "$RUNNER_TEMP/encrypted"
+
+      - name: Install PDF tools for the compatibility check
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y qpdf poppler-utils mupdf-tools
+
+      - name: Open password-protected samples with qpdf, poppler and mupdf
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          password='U15 pass-word!'
+          cd "$RUNNER_TEMP/encrypted"
+
+          qpdf --check --password="$password" encrypted.pdf
+          if qpdf --check encrypted.pdf; then
+            echo "qpdf opened encrypted.pdf without the password"
+            exit 1
+          fi
+
+          # Both PDFs must draw to the same bytes on every page.
+          expected_pages=$(qpdf --show-npages plain.pdf)
+          rm -rf plain-poppler encrypted-poppler plain-mupdf encrypted-mupdf
+          mkdir plain-poppler encrypted-poppler plain-mupdf encrypted-mupdf
+          pdftoppm -r 30 -png plain.pdf plain-poppler/page
+          pdftoppm -r 30 -png -upw "$password" encrypted.pdf encrypted-poppler/page
+          mutool draw -r 30 -o plain-mupdf/page-%d.png plain.pdf
+          mutool draw -r 30 -p "$password" -o encrypted-mupdf/page-%d.png encrypted.pdf
+          for tool in poppler mupdf; do
+            for kind in plain encrypted; do
+              pages=$(ls "$kind-$tool" | wc -l)
+              if [ "$pages" -ne "$expected_pages" ]; then
+                echo "$tool drew $pages pages of the $kind PDF, expected $expected_pages"
+                exit 1
+              fi
+            done
+            for page in "plain-$tool"/*.png; do
+              if ! cmp "$page" "encrypted-$tool/$(basename "$page")"; then
+                echo "$tool drew $(basename "$page") of the encrypted PDF differently"
+                exit 1
+              fi
+            done
+          done
+
       # The Rust test above rewrites src/ipc/generated; the committed copy
       # must already be what it writes.
       - name: Check TypeScript bindings diff
