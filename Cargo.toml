@@ -17,3 +17,11 @@ unwrap_used = "deny"
 panic = "deny"
 todo = "deny"
 unimplemented = "deny"
+
+# Full debug info makes linking the dev build's memory peak; line tables keep
+# file:line in backtraces, and dependencies are never stepped through.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
