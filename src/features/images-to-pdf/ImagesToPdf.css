@@ -12,6 +12,11 @@
   gap: 8px;
 }
 
+/* The two checkboxes sit 12px apart, not the 20px between the other fields (design §10.1). */
+.images-settings-field-tight {
+  margin-top: -8px;
+}
+
 /* The label is the click target, so the whole line toggles the box. */
 .images-settings-checkbox {
   display: flex;
@@ -242,4 +247,76 @@
   top: 0;
   z-index: 1;
   box-shadow: inset 0 -1px 0 var(--color-border);
+}
+
+/* The conditions of the password dialog (design §10.1). */
+.output-password-conditions {
+  list-style: none;
+  margin: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.output-password-condition {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+}
+
+.output-password-condition.is-met {
+  color: var(--color-success);
+}
+
+.output-password-condition.is-failed {
+  color: var(--color-error);
+}
+
+.output-password-symbol {
+  width: 12px;
+  text-align: center;
+}
+
+/* Read by screen readers only: the symbol beside it is decoration. */
+.output-password-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The confirmation has no toggle button, so it needs no room for one. */
+.output-password-confirm {
+  padding-right: 12px;
+}
+
+/* A box that the other one rules out: off, and its text faded. */
+.images-settings-checkbox.is-unavailable {
+  color: var(--color-text-secondary);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.images-settings-checkbox.is-unavailable input {
+  cursor: not-allowed;
+}
+
+/* Beside the line that says what a start would do (design §10.1). */
+.images-status-protected {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.images-status-protected-icon {
+  stroke: currentColor;
 }

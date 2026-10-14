@@ -246,6 +246,23 @@ describe("state reducers", () => {
       expect(unchanged).toBe(updated);
     });
 
+    it("updates encrypt with SET_IMAGES_ENCRYPT, starting from false", () => {
+      expect(initialImagesToPdfState.encrypt).toBe(false);
+      const updated = imagesToPdfReducer(initialImagesToPdfState, {
+        type: "SET_IMAGES_ENCRYPT",
+        encrypt: true,
+      });
+      expect(updated.encrypt).toBe(true);
+      // The two boxes are independent in the state: the screen keeps them apart.
+      expect(updated.pdfA).toBe(false);
+
+      const unchanged = imagesToPdfReducer(updated, {
+        type: "SET_IMAGES_ENCRYPT",
+        encrypt: true,
+      });
+      expect(unchanged).toBe(updated);
+    });
+
     it("retains orientation when pageSize changes", () => {
       const initial: ImagesToPdfState = {
         ...initialImagesToPdfState,
@@ -383,6 +400,7 @@ describe("state reducers", () => {
           pageSize: "a4",
           orientation: "portrait",
           pdfA: true,
+          encrypt: false,
           outputDir: null,
         },
         pdfToImages: {
@@ -394,6 +412,7 @@ describe("state reducers", () => {
       });
       expect(statePreset.imagesToPdf.orientation).toBe("portrait");
       expect(statePreset.imagesToPdf.pdfA).toBe(true);
+      expect(statePreset.imagesToPdf.encrypt).toBe(false);
       expect(statePreset.pdfToImages.colorMode).toBe("gray");
       expect(statePreset.pdfToImages.dpi).toBe(300);
       expect(statePreset.pdfToImages.isCustomDpi).toBe(false);
@@ -406,6 +425,7 @@ describe("state reducers", () => {
           pageSize: "a4",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         },
         pdfToImages: {
@@ -526,6 +546,14 @@ describe("state reducers", () => {
         const state = appReducer(finishedOn("imagesToPdf"), {
           type: "SET_IMAGES_PDF_A",
           pdfA: true,
+        });
+        expect(state.job.finished).toBeNull();
+      });
+
+      it("drops it when the password choice of imagesToPdf changes", () => {
+        const state = appReducer(finishedOn("imagesToPdf"), {
+          type: "SET_IMAGES_ENCRYPT",
+          encrypt: true,
         });
         expect(state.job.finished).toBeNull();
       });

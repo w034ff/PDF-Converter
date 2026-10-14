@@ -32,6 +32,7 @@ export const initialImagesToPdfState: ImagesToPdfState = {
   pageSize: "fit",
   orientation: "auto",
   pdfA: false,
+  encrypt: false,
   outputDir: null,
 };
 
@@ -102,6 +103,15 @@ export function imagesToPdfReducer(
       return {
         ...state,
         pdfA: action.pdfA,
+      };
+    }
+    case "SET_IMAGES_ENCRYPT": {
+      if (state.encrypt === action.encrypt) {
+        return state;
+      }
+      return {
+        ...state,
+        encrypt: action.encrypt,
       };
     }
     case "SET_IMAGES_OUTPUT_DIR": {

@@ -27,6 +27,7 @@ const DEFAULT_OUTPUT: OutputMode = OutputMode::Merge;
 const DEFAULT_PAGE_SIZE: PageSizeChoice = PageSizeChoice::Fit;
 const DEFAULT_ORIENTATION: PageOrientationChoice = PageOrientationChoice::Auto;
 const DEFAULT_PDF_A: bool = false;
+const DEFAULT_ENCRYPT: bool = false;
 const DEFAULT_FORMAT: RenderFormatChoice = RenderFormatChoice::Png;
 const DEFAULT_RENDER_COLOR_MODE: RenderColorChoice = RenderColorChoice::Color;
 
@@ -70,6 +71,8 @@ pub struct ImagesToPdfOptions {
     pub page_size: PageSizeChoice,
     pub orientation: PageOrientationChoice,
     pub pdf_a: bool,
+    /// Whether the PDFs get a password. The password itself is never saved (design §6.9).
+    pub encrypt: bool,
 }
 
 /// The "PDF to images" options the user can change (design §6.7).
@@ -96,9 +99,11 @@ impl SettingsInput {
     ///
     /// # Errors
     ///
-    /// `InvalidParams` if `dpi` is not within [`pdfconv_worker::RENDER_DPI_MIN`]..=[`pdfconv_worker::RENDER_DPI_MAX`].
+    /// `InvalidParams` if `dpi` is not within [`pdfconv_worker::RENDER_DPI_MIN`]..=[`pdfconv_worker::RENDER_DPI_MAX`],
+    /// or if `pdf_a` and `encrypt` are both on (PDF/A forbids encryption, design §4.3.1).
     pub fn validate(&self) -> Result<(), IpcError> {
-        if is_render_dpi_in_range(self.pdf_to_images.dpi) {
+        let images = &self.images_to_pdf;
+        if is_render_dpi_in_range(self.pdf_to_images.dpi) && !(images.pdf_a && images.encrypt) {
             Ok(())
         } else {
             Err(IpcError::from_code(ErrorCode::InvalidParams))
@@ -114,6 +119,7 @@ pub struct ImagesToPdfSettings {
     pub page_size: PageSizeChoice,
     pub orientation: PageOrientationChoice,
     pub pdf_a: bool,
+    pub encrypt: bool,
     pub output_dir: Option<OutputDirLabel>,
 }
 
@@ -178,6 +184,7 @@ impl Default for SettingsFile {
                     page_size: DEFAULT_PAGE_SIZE,
                     orientation: DEFAULT_ORIENTATION,
                     pdf_a: DEFAULT_PDF_A,
+                    encrypt: DEFAULT_ENCRYPT,
                 },
                 output_dir: None,
             },
@@ -219,6 +226,10 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
         return SettingsFile::default();
     }
     let images = root.get("imagesToPdf").and_then(Value::as_object);
+    let pdf_a = field(images, "pdfA").unwrap_or(DEFAULT_PDF_A);
+    // Both on is possible only in a file edited by hand. PDF/A forbids encryption, so `encrypt`
+    // gives way (design §6.7).
+    let encrypt = !pdf_a && field(images, "encrypt").unwrap_or(DEFAULT_ENCRYPT);
     let pdfs = root.get("pdfToImages").and_then(Value::as_object);
     SettingsFile {
         schema_version: SCHEMA_VERSION,
@@ -228,7 +239,8 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
                 output: field(images, "output").unwrap_or(DEFAULT_OUTPUT),
                 page_size: field(images, "pageSize").unwrap_or(DEFAULT_PAGE_SIZE),
                 orientation: field(images, "orientation").unwrap_or(DEFAULT_ORIENTATION),
-                pdf_a: field(images, "pdfA").unwrap_or(DEFAULT_PDF_A),
+                pdf_a,
+                encrypt,
             },
             output_dir: field(images, "outputDir"),
         },
@@ -485,6 +497,7 @@ pub fn get_settings_internal(state: &AppState) -> Settings {
             page_size: file.images_to_pdf.options.page_size,
             orientation: file.images_to_pdf.options.orientation,
             pdf_a: file.images_to_pdf.options.pdf_a,
+            encrypt: file.images_to_pdf.options.encrypt,
             output_dir: label_of(&state.images_output_dir),
         },
         pdf_to_images: PdfToImagesSettings {

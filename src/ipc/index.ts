@@ -216,6 +216,7 @@ export function isSettings(value: unknown): value is Settings {
     isPageSizeChoice(imagesToPdf.pageSize) &&
     isPageOrientationChoice(imagesToPdf.orientation) &&
     typeof imagesToPdf.pdfA === "boolean" &&
+    typeof imagesToPdf.encrypt === "boolean" &&
     isOutputDirLabel(imagesToPdf.outputDir) &&
     isRecord(pdfToImages) &&
     (pdfToImages.format === "png" ||
@@ -352,12 +353,14 @@ export async function saveMergedPdf(
   pageSize: PageSizeChoice,
   orientation: PageOrientationChoice,
   pdfA: boolean,
+  password: string | null,
 ): Promise<SaveMergedPdfResult | null> {
   return invokeWrapped<SaveMergedPdfResult | null>("save_merged_pdf", {
     ids,
     pageSize,
     orientation,
     pdfA,
+    password,
   });
 }
 
@@ -367,12 +370,14 @@ export async function startImagesToPdfs(
   pageSize: PageSizeChoice,
   orientation: PageOrientationChoice,
   pdfA: boolean,
+  password: string | null,
 ): Promise<void> {
   return invokeWrapped<void>("start_images_to_pdfs", {
     ids,
     pageSize,
     orientation,
     pdfA,
+    password,
   });
 }
 

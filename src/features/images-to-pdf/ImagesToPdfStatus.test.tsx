@@ -67,6 +67,7 @@ describe("ImagesToPdfStatus", () => {
         pageSize: "fit",
         orientation: "auto",
         pdfA: false,
+        encrypt: false,
         outputDir: null,
       };
       expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -82,6 +83,7 @@ describe("ImagesToPdfStatus", () => {
         pageSize: "fit",
         orientation: "auto",
         pdfA: false,
+        encrypt: false,
         outputDir: null,
       };
       expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -100,6 +102,7 @@ describe("ImagesToPdfStatus", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -117,6 +120,7 @@ describe("ImagesToPdfStatus", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -134,6 +138,7 @@ describe("ImagesToPdfStatus", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -151,6 +156,7 @@ describe("ImagesToPdfStatus", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -170,6 +176,7 @@ describe("ImagesToPdfStatus", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -185,6 +192,7 @@ describe("ImagesToPdfStatus", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(
@@ -200,6 +208,7 @@ describe("ImagesToPdfStatus", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          encrypt: false,
           outputDir: null,
         };
         expect(getImagesToPdfStatusText(state, ja)).toBe(

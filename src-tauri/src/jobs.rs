@@ -10,7 +10,10 @@ use std::sync::{Arc, Mutex};
 use pdfconv_core::naming::{
     PdfToImageInput, resolve_image_to_pdf_names, resolve_pdf_to_image_names, split_stem_and_ext,
 };
-use pdfconv_core::{AddImageResult, PageSet, PdfConformance, PdfWriter, parse_page_range};
+use pdfconv_core::{
+    AddImageResult, OutputPassword, PageSet, PdfConformance, PdfWriter, encrypt_pdf,
+    parse_page_range,
+};
 use pdfconv_worker::is_render_dpi_in_range;
 use pdfconv_worker::protocol::{RenderFormat, Request, Response};
 use serde::{Deserialize, Serialize};
@@ -51,6 +54,53 @@ pub fn pdf_conformance(pdf_a: bool) -> PdfConformance {
         PdfConformance::PdfA2b
     } else {
         PdfConformance::Standard
+    }
+}
+
+/// What a job writes: the PDF standard and the password of the PDFs, if any. A password is
+/// never combined with PDF/A ([`output_password`]).
+#[derive(Debug, Clone)]
+pub struct PdfOutput {
+    pub conformance: PdfConformance,
+    pub password: Option<OutputPassword>,
+}
+
+impl PdfOutput {
+    #[must_use]
+    pub fn new(conformance: PdfConformance, password: Option<OutputPassword>) -> Self {
+        Self {
+            conformance,
+            password,
+        }
+    }
+}
+
+/// Checks the password a command received against the PDF standard it selects (design §6.9,
+/// §7.1). PDF/A forbids encryption, and a password outside the rule of design §4.3.1 would not
+/// open the PDF in every viewer. The screen checks both first, so an error here is not shown.
+pub fn output_password(
+    conformance: PdfConformance,
+    password: Option<String>,
+) -> Result<Option<OutputPassword>, IpcError> {
+    let Some(password) = password else {
+        return Ok(None);
+    };
+    if conformance == PdfConformance::PdfA2b {
+        return Err(IpcError::from_code(ErrorCode::InvalidParams));
+    }
+    OutputPassword::new(password)
+        .map(Some)
+        .map_err(|_| IpcError::from_code(ErrorCode::InvalidParams))
+}
+
+/// Encrypts a written PDF when the job has a password. Encryption is neither counted in the
+/// progress nor interrupted by a cancel: a PDF takes about a second even when it is large
+/// (design §6.2).
+fn protect_pdf(pdf: Vec<u8>, password: Option<&OutputPassword>) -> Result<Vec<u8>, IpcError> {
+    match password {
+        Some(password) => encrypt_pdf(pdf, password)
+            .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string())),
+        None => Ok(pdf),
     }
 }
 
@@ -446,7 +496,7 @@ pub fn run_save_merged_pdf<FProg, FItem, FFin>(
     ids: &[u64],
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
-    conformance: PdfConformance,
+    output: &PdfOutput,
     dest_path: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<SaveMergedPdfResult, IpcError>
@@ -485,7 +535,7 @@ where
     });
 
     let creator = format!("PDF Converter {}", env!("CARGO_PKG_VERSION"));
-    let mut writer = PdfWriter::new(&creator, conformance);
+    let mut writer = PdfWriter::new(&creator, output.conformance);
 
     let mut temp = create_output_temp(output_dir)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
@@ -634,6 +684,7 @@ where
     let pdf_bytes = writer
         .finish()
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    let pdf_bytes = protect_pdf(pdf_bytes, output.password.as_ref())?;
 
     temp.write_all(&pdf_bytes)
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
@@ -668,7 +719,7 @@ pub fn run_images_to_pdfs<FProg, FItem, FFin>(
     ids: &[u64],
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
-    conformance: PdfConformance,
+    output: &PdfOutput,
     output_dir: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<(), IpcError>
@@ -787,6 +838,7 @@ where
         let used_names = Arc::clone(&used_names_lower);
         let output_dir = output_dir_buf.clone();
         let creator = creator.clone();
+        let output = output.clone();
         let on_progress = Arc::clone(&on_progress);
         let on_item = Arc::clone(&on_item);
 
@@ -856,7 +908,7 @@ where
                     }
                 };
 
-                let mut writer = PdfWriter::new(&creator, conformance);
+                let mut writer = PdfWriter::new(&creator, output.conformance);
                 let mut item_pages_done = 0u32;
                 let add_res = writer.add_image(
                     &bytes,
@@ -914,7 +966,8 @@ where
 
                 let pdf_bytes = writer
                     .finish()
-                    .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()));
+                    .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))
+                    .and_then(|bytes| protect_pdf(bytes, output.password.as_ref()));
                 let process_result = pdf_bytes.and_then(|bytes| {
                     save_atomic(&output_dir, output_name, &bytes, &used_names).inspect_err(|err| {
                         stop_after_write_failure(err, &write_failed);
@@ -1369,6 +1422,7 @@ pub fn start_images_to_pdfs_internal<FProg, FItem, FFin>(
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
     conformance: PdfConformance,
+    password: Option<String>,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
 ) -> Result<(), IpcError>
 where
@@ -1376,6 +1430,9 @@ where
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
     FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
 {
+    // Nothing has started yet, so a refused password leaves no state to undo (design §7.1).
+    let output = PdfOutput::new(conformance, output_password(conformance, password)?);
+
     // Check conversion running first per design §6.5, §7.1
     if state
         .is_running
@@ -1443,7 +1500,7 @@ where
                 &ids_owned,
                 page_size,
                 orientation,
-                conformance,
+                &output,
                 &output_dir,
                 wrapped_callbacks,
             )

@@ -18,10 +18,10 @@ use pdf_converter_lib::error::ErrorCode;
 use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items, unlock_pdf};
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
-    PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice, RunningGuard,
-    check_page_range_internal, list_existing_files, pdf_conformance, run_images_to_pdfs,
-    run_pdfs_to_images, run_save_merged_pdf, save_atomic, start_images_to_pdfs_internal,
-    start_pdfs_to_images_internal,
+    PageOrientationChoice, PageSizeChoice, PdfOutput, RenderColorChoice, RenderFormatChoice,
+    RunningGuard, check_page_range_internal, list_existing_files, output_password, pdf_conformance,
+    run_images_to_pdfs, run_pdfs_to_images, run_save_merged_pdf, save_atomic,
+    start_images_to_pdfs_internal, start_pdfs_to_images_internal,
 };
 
 #[path = "../../crates/core/tests/support/fixture_passwords.rs"]
@@ -31,7 +31,7 @@ use pdf_converter_lib::settings::{
     OutputKind, apply_picked_dir, get_settings_internal, load_settings, restore_settings,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig, default_worker_limit};
-use pdfconv_core::{PdfConformance, parse_page_range};
+use pdfconv_core::{OutputPassword, PdfConformance, parse_page_range};
 use pdfconv_worker::WORKER_FLAG;
 #[cfg(feature = "test-hooks")]
 use pdfconv_worker::server::CRASH_ON_OPEN_FILE_NAME;
@@ -197,7 +197,7 @@ fn images_to_pdfs_each_mixed_success_and_failure() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -481,7 +481,7 @@ fn cancellation_images_to_pdfs_leaves_no_temp_files() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -521,7 +521,7 @@ fn cancellation_merged_pdf_writes_no_file() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_path,
         recorder.callbacks(),
     )
@@ -644,6 +644,7 @@ fn conversion_running_rejects_operations() {
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -685,6 +686,7 @@ fn conversion_running_rejects_operations() {
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -721,6 +723,7 @@ fn unset_output_dir_rejects_with_invalid_params() {
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -759,6 +762,7 @@ fn unknown_handle_rejects() {
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -785,7 +789,7 @@ fn unknown_handle_rejects() {
         &[nonexistent_id],
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -813,7 +817,7 @@ fn unknown_handle_rejects() {
         &[nonexistent_id],
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &temp_out.path().join("merged.pdf"),
         recorder.callbacks(),
     )
@@ -850,6 +854,7 @@ fn output_dir_that_cannot_be_listed_rejects_and_resets_is_running() {
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -896,6 +901,7 @@ fn start_internal_ok_delivers_job_finished() {
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks_recording_running(Arc::clone(&app_state.is_running)),
     )
     .expect("start_images_to_pdfs_internal should succeed");
@@ -947,6 +953,7 @@ fn starting_images_to_pdfs_passes_the_conformance_on() {
             PageSizeChoice::Fit,
             PageOrientationChoice::Auto,
             conformance,
+            None,
             recorder.callbacks(),
         )
         .expect("start_images_to_pdfs_internal should succeed");
@@ -1061,7 +1068,7 @@ fn cancellation_during_images_to_pdfs_leaves_unprocessed() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         callbacks,
     )
@@ -1119,7 +1126,7 @@ fn cancellation_during_merged_pdf_on_item_writes_no_file() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_path,
         callbacks,
     )
@@ -1225,7 +1232,7 @@ fn images_to_pdfs_each_skips_initial_error_and_does_not_claim_output_name() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -1280,7 +1287,7 @@ fn merged_pdf_skips_initial_error_without_rereading_file() {
         &[id],
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_path,
         recorder.callbacks(),
     )
@@ -1323,7 +1330,7 @@ fn a_merged_pdf_that_was_written_reports_its_name() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_path,
         recorder.callbacks(),
     )
@@ -1373,7 +1380,7 @@ fn a_merged_pdf_is_pdf_a_only_when_asked() {
             &ids,
             PageSizeChoice::Fit,
             PageOrientationChoice::Auto,
-            conformance,
+            &PdfOutput::new(conformance, None),
             &dest_path,
             recorder.callbacks(),
         )
@@ -1408,7 +1415,7 @@ fn each_pdf_is_pdf_a_only_when_asked() {
             &ids,
             PageSizeChoice::Fit,
             PageOrientationChoice::Auto,
-            conformance,
+            &PdfOutput::new(conformance, None),
             temp_out.path(),
             recorder.callbacks(),
         )
@@ -1445,7 +1452,7 @@ fn a_cmyk_image_fails_alone_in_pdf_a_and_the_merged_pdf_has_the_rest() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::PdfA2b,
+        &PdfOutput::new(PdfConformance::PdfA2b, None),
         &dest_path,
         recorder.callbacks(),
     )
@@ -1496,7 +1503,7 @@ fn a_cmyk_image_fails_alone_in_each_mode_in_pdf_a_and_not_otherwise() {
             &ids,
             PageSizeChoice::Fit,
             PageOrientationChoice::Auto,
-            conformance,
+            &PdfOutput::new(conformance, None),
             temp_out.path(),
             recorder.callbacks(),
         )
@@ -1574,7 +1581,7 @@ fn each_mode_pdfs_get_the_permissions_of_a_new_file() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -1611,7 +1618,7 @@ fn the_merged_pdf_gets_the_permissions_of_a_new_file() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_path,
         recorder.callbacks(),
     )
@@ -1691,6 +1698,7 @@ fn start_both(app_state: &AppState, image_id: u64, pdf_id: u64) -> (ErrorCode, E
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -1781,6 +1789,7 @@ fn only_the_missing_output_dir_is_forgotten() {
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .unwrap_err();
@@ -1876,7 +1885,7 @@ fn a_write_failure_stops_images_to_pdfs_and_leaves_the_rest_unprocessed() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &missing_dir(temp_out.path()),
         recorder.callbacks(),
     )
@@ -2028,7 +2037,7 @@ fn images_that_cannot_be_decoded_do_not_stop_the_rest() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -2193,7 +2202,7 @@ fn a4_portrait_produces_portrait_pdf_from_landscape_image() {
         &[id],
         PageSizeChoice::A4,
         PageOrientationChoice::Portrait,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest,
         recorder.callbacks(),
     )
@@ -2233,6 +2242,7 @@ fn a4_landscape_produces_landscape_pdf_from_portrait_image() {
         PageSizeChoice::A4,
         PageOrientationChoice::Landscape,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .expect("start_images_to_pdfs_internal should succeed");
@@ -2276,7 +2286,7 @@ fn fit_page_size_ignores_orientation() {
         &[id1],
         PageSizeChoice::Fit,
         PageOrientationChoice::Portrait,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_portrait,
         recorder.callbacks(),
     )
@@ -2289,7 +2299,7 @@ fn fit_page_size_ignores_orientation() {
         &[id2],
         PageSizeChoice::Fit,
         PageOrientationChoice::Landscape,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_landscape,
         recorder.callbacks(),
     )
@@ -2322,6 +2332,7 @@ fn jis_b5_landscape_produces_expected_dimensions_in_each_mode() {
         PageSizeChoice::JisB5,
         PageOrientationChoice::Landscape,
         PdfConformance::Standard,
+        None,
         recorder.callbacks(),
     )
     .expect("start_images_to_pdfs_internal should succeed");
@@ -2367,7 +2378,7 @@ fn letter_auto_produces_expected_dimensions_in_merged_mode() {
         &[id],
         PageSizeChoice::Letter,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest,
         recorder.callbacks(),
     )
@@ -2626,7 +2637,7 @@ fn merged_pdf_progress_counts_pages_and_corrupt_tiff_page2_reaches_total() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_pdf,
         recorder.callbacks(),
     )
@@ -2677,7 +2688,7 @@ fn images_to_pdfs_progress_counts_pages_and_corrupt_tiff_leaves_no_file() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         temp_out.path(),
         recorder.callbacks(),
     )
@@ -2739,7 +2750,7 @@ fn cancellation_during_tiff_merged_pdf_writes_no_file() {
         &ids,
         PageSizeChoice::Fit,
         PageOrientationChoice::Auto,
-        PdfConformance::Standard,
+        &PdfOutput::new(PdfConformance::Standard, None),
         &dest_pdf,
         callbacks,
     )
@@ -2752,4 +2763,252 @@ fn cancellation_during_tiff_merged_pdf_writes_no_file() {
     let finished = f.lock().unwrap().clone().expect("finished event");
     assert!(finished.cancelled);
     assert_eq!(finished.succeeded, 0);
+}
+
+const OUTPUT_PASSWORD: &str = "U15 pass-word!";
+const WRONG_OUTPUT_PASSWORD: &str = "U15 pass-word?";
+
+fn output_password_for_test(text: &str) -> OutputPassword {
+    OutputPassword::new(text.to_string()).expect("a valid password")
+}
+
+/// Whether `pdf` is protected: it is refused as `PasswordProtected` when added, the wrong
+/// password is refused, and `OUTPUT_PASSWORD` opens it with `page_count` pages.
+fn assert_protected_by_output_password(pdf_path: &Path, page_count: u32) {
+    let app_state = state();
+    let added = add_pdfs(&app_state, &[pdf_path.to_path_buf()]);
+    let item = &added.added[0];
+    assert_eq!(
+        item.error.as_ref().map(|e| e.code),
+        Some(ErrorCode::PasswordProtected),
+        "{pdf_path:?} is added without a password"
+    );
+    let wrong = unlock_pdf(&app_state, item.id, WRONG_OUTPUT_PASSWORD);
+    assert_eq!(
+        wrong.err().map(|e| e.code),
+        Some(ErrorCode::PasswordProtected),
+        "{pdf_path:?} with a wrong password"
+    );
+    let unlocked = unlock_pdf(&app_state, item.id, OUTPUT_PASSWORD).expect("the password opens it");
+    assert_eq!(unlocked.items[0].error, None);
+    assert_eq!(unlocked.items[0].page_count, page_count);
+}
+
+#[test]
+fn the_merged_pdf_is_encrypted_with_the_password() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let paths = [
+        copy_fixture(temp_in.path(), "photo.jpg", "a.jpg"),
+        copy_fixture(temp_in.path(), "logo_alpha.png", "b.png"),
+    ];
+    let ids: Vec<u64> = add_images(&app_state, &paths)
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+    let dest_path = temp_out.path().join("merged.pdf");
+
+    let recorder = TestRecorder::new();
+    let res = run_save_merged_pdf(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        &PdfOutput::new(
+            PdfConformance::Standard,
+            Some(output_password_for_test(OUTPUT_PASSWORD)),
+        ),
+        &dest_path,
+        recorder.callbacks(),
+    )
+    .expect("run_save_merged_pdf should succeed");
+
+    assert_eq!(res.saved_name, Some("merged.pdf".to_string()));
+    assert_eq!(recorder.finished().succeeded, 2);
+    assert_protected_by_output_password(&dest_path, 2);
+    assert_no_temp_files(temp_out.path());
+}
+
+#[test]
+fn every_pdf_of_each_mode_is_encrypted_with_the_password() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let paths = [
+        copy_fixture(temp_in.path(), "photo.jpg", "img1.jpg"),
+        copy_fixture(temp_in.path(), "logo_alpha.png", "img2.png"),
+        copy_fixture(temp_in.path(), "scan_g4.tif", "img3.tif"),
+    ];
+    let ids: Vec<u64> = add_images(&app_state, &paths)
+        .added
+        .iter()
+        .map(|item| item.id)
+        .collect();
+
+    let recorder = TestRecorder::new();
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        &PdfOutput::new(
+            PdfConformance::Standard,
+            Some(output_password_for_test(OUTPUT_PASSWORD)),
+        ),
+        temp_out.path(),
+        recorder.callbacks(),
+    )
+    .expect("run_images_to_pdfs should succeed");
+
+    let items = recorder.items();
+    assert_eq!(items.len(), 3);
+    let page_counts = [1, 1, 3];
+    for (id, page_count) in ids.iter().zip(page_counts) {
+        let item = items.iter().find(|item| item.id == *id).expect("an item");
+        assert_eq!(item.status, JobItemStatus::Ok);
+        assert_protected_by_output_password(&temp_out.path().join(&item.outputs[0]), page_count);
+    }
+    assert_no_temp_files(temp_out.path());
+}
+
+#[test]
+fn without_a_password_the_pdfs_are_not_encrypted() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let ids = [add_images(&app_state, &[path]).added[0].id];
+
+    let merged = temp_out.path().join("merged.pdf");
+    run_save_merged_pdf(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        &PdfOutput::new(PdfConformance::Standard, None),
+        &merged,
+        TestRecorder::new().callbacks(),
+    )
+    .expect("run_save_merged_pdf should succeed");
+    run_images_to_pdfs(
+        &app_state,
+        &ids,
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        &PdfOutput::new(PdfConformance::Standard, None),
+        temp_out.path(),
+        TestRecorder::new().callbacks(),
+    )
+    .expect("run_images_to_pdfs should succeed");
+
+    for name in ["merged.pdf", "photo.pdf"] {
+        let pdf = fs::read(temp_out.path().join(name)).expect("reading a PDF");
+        assert!(!pdf.windows(8).any(|w| w == b"/Encrypt"), "{name}");
+        let added = add_pdfs(&app_state, &[temp_out.path().join(name)]);
+        assert_eq!(
+            added.added[0].error, None,
+            "{name} opens without a password"
+        );
+    }
+}
+
+#[test]
+fn starting_images_to_pdfs_passes_the_password_on() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let id = add_images(&app_state, &[path]).added[0].id;
+    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+
+    let recorder = TestRecorder::new();
+    start_images_to_pdfs_internal(
+        &app_state,
+        &[id],
+        PageSizeChoice::Fit,
+        PageOrientationChoice::Auto,
+        PdfConformance::Standard,
+        Some(OUTPUT_PASSWORD.to_string()),
+        recorder.callbacks(),
+    )
+    .expect("start_images_to_pdfs_internal should succeed");
+
+    assert_eq!(recorder.wait_finished(Duration::from_secs(10)).succeeded, 1);
+    assert_protected_by_output_password(&temp_out.path().join("photo.pdf"), 1);
+}
+
+#[test]
+fn a_password_with_pdf_a_or_against_the_rule_is_refused_before_anything_starts() {
+    let app_state = state();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
+    let id = add_images(&app_state, &[path]).added[0].id;
+    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+
+    let refused = [
+        (PdfConformance::PdfA2b, OUTPUT_PASSWORD),
+        (PdfConformance::Standard, ""),
+        (PdfConformance::Standard, "パスワード"),
+        (PdfConformance::Standard, "tab\there"),
+        (PdfConformance::Standard, &"a".repeat(128)),
+    ];
+    for (conformance, password) in refused {
+        let recorder = TestRecorder::new();
+        let res = start_images_to_pdfs_internal(
+            &app_state,
+            &[id],
+            PageSizeChoice::Fit,
+            PageOrientationChoice::Auto,
+            conformance,
+            Some(password.to_string()),
+            recorder.callbacks(),
+        );
+        assert_eq!(
+            res.err().map(|e| e.code),
+            Some(ErrorCode::InvalidParams),
+            "{conformance:?} with {password:?}"
+        );
+        assert!(recorder.items().is_empty());
+        assert!(
+            !app_state.is_running.load(Ordering::SeqCst),
+            "the refusal leaves the job idle"
+        );
+    }
+    assert_eq!(fs::read_dir(temp_out.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn output_password_checks_the_rule_and_the_standard() {
+    assert!(
+        output_password(PdfConformance::Standard, None)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        output_password(PdfConformance::PdfA2b, None)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        output_password(PdfConformance::Standard, Some(OUTPUT_PASSWORD.to_string()))
+            .unwrap()
+            .is_some()
+    );
+    for (conformance, password) in [
+        (PdfConformance::PdfA2b, OUTPUT_PASSWORD),
+        (PdfConformance::Standard, ""),
+        (PdfConformance::Standard, "\u{7f}"),
+        (PdfConformance::Standard, "ＡＢＣ"),
+    ] {
+        assert_eq!(
+            output_password(conformance, Some(password.to_string()))
+                .err()
+                .map(|e| e.code),
+            Some(ErrorCode::InvalidParams),
+            "{conformance:?} with {password:?}"
+        );
+    }
 }

@@ -32,6 +32,7 @@ const SAVED_SETTINGS: Settings = {
     pageSize: "letter",
     orientation: "auto",
     pdfA: false,
+    encrypt: false,
     outputDir: { dirLabel: "Scans" },
   },
   pdfToImages: {
@@ -223,6 +224,26 @@ describe("App", () => {
       ).toBeChecked();
     });
 
+    it("starts with the password box as saved", async () => {
+      mockAppIpc((cmd) =>
+        cmd === "get_settings"
+          ? {
+              ...SAVED_SETTINGS,
+              imagesToPdf: { ...SAVED_SETTINGS.imagesToPdf, encrypt: true },
+            }
+          : null,
+      );
+      render(<App initialNavLang="ja" />);
+      await flush();
+
+      expect(
+        screen.getByRole("checkbox", { name: "Password-protect" }),
+      ).toBeChecked();
+      expect(
+        screen.getByRole("checkbox", { name: "Archival (PDF/A)" }),
+      ).toBeDisabled();
+    });
+
     it("follows the OS language when none was saved", async () => {
       mockAppIpc((cmd) =>
         cmd === "get_settings" ? { ...SAVED_SETTINGS, language: null } : null,
@@ -301,6 +322,7 @@ describe("App", () => {
         pageSize: "fit",
         orientation: "auto",
         pdfA: false,
+        encrypt: false,
       };
       expect(saved).toEqual([
         {
@@ -349,6 +371,7 @@ describe("App", () => {
               pageSize: "letter",
               orientation: "portrait",
               pdfA: false,
+              encrypt: false,
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
           },
@@ -374,6 +397,33 @@ describe("App", () => {
               pageSize: "letter",
               orientation: "auto",
               pdfA: true,
+              encrypt: false,
+            },
+            pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+          },
+        },
+      ]);
+    });
+
+    it("saves when changing the password choice alone", async () => {
+      const saved = mockSaves();
+      render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
+
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: "Password-protect" }),
+      );
+      await act(async () => {});
+      expect(saved).toEqual([
+        {
+          revision: 1,
+          settings: {
+            language: "en",
+            imagesToPdf: {
+              output: "each",
+              pageSize: "letter",
+              orientation: "auto",
+              pdfA: false,
+              encrypt: true,
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
           },
@@ -398,6 +448,7 @@ describe("App", () => {
               pageSize: "jisB5",
               orientation: "auto",
               pdfA: false,
+              encrypt: false,
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
           },
@@ -425,6 +476,7 @@ describe("App", () => {
               pageSize: "letter",
               orientation: "auto",
               pdfA: false,
+              encrypt: false,
             },
             pdfToImages: { format: "jpeg", colorMode: "gray", dpi: 300 },
           },
@@ -450,6 +502,7 @@ describe("App", () => {
               pageSize: "fit",
               orientation: "auto",
               pdfA: false,
+              encrypt: false,
             },
             pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
           },

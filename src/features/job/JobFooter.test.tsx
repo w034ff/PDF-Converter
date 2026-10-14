@@ -68,7 +68,7 @@ function Harness({ tab = "imagesToPdf" }: { tab?: ActiveTab }) {
       <button
         type="button"
         onClick={() =>
-          void runner.startImagesToPdfs(targets, "fit", "auto", true)
+          void runner.startImagesToPdfs(targets, "fit", "auto", true, null)
         }
       >
         start each
@@ -76,7 +76,7 @@ function Harness({ tab = "imagesToPdf" }: { tab?: ActiveTab }) {
       <button
         type="button"
         onClick={() =>
-          void runner.saveMergedPdf(targets, "a4", "portrait", false)
+          void runner.saveMergedPdf(targets, "a4", "portrait", false, null)
         }
       >
         save merged
@@ -147,6 +147,7 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: true,
+          password: null,
         },
       }),
     );
@@ -328,6 +329,7 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
         pageSize: "a4",
         orientation: "portrait",
         pdfA: false,
+        password: null,
       },
     });
   });

@@ -110,8 +110,13 @@ export function ImagesToPdfSettings() {
         )}
       </div>
 
+      {/* PDF/A forbids encryption (design §4.3.1), so while one of the two
+          boxes is on the other cannot be turned on. It is not turned off for
+          the user: a choice they made is not taken back silently. */}
       <div className="images-settings-field">
-        <label className="label images-settings-checkbox">
+        <label
+          className={`label images-settings-checkbox${imagesToPdf.encrypt ? " is-unavailable" : ""}`}
+        >
           <input
             type="checkbox"
             checked={imagesToPdf.pdfA}
@@ -121,12 +126,40 @@ export function ImagesToPdfSettings() {
                 pdfA: event.target.checked,
               })
             }
-            disabled={disabled}
+            disabled={disabled || imagesToPdf.encrypt}
           />
           {t.imagesToPdf.pdfALabel}
         </label>
         {imagesToPdf.pdfA && (
           <span className="hint">{t.imagesToPdf.pdfAHint}</span>
+        )}
+        {imagesToPdf.encrypt && (
+          <span className="hint">{t.imagesToPdf.pdfAUnavailableHint}</span>
+        )}
+      </div>
+
+      <div className="images-settings-field images-settings-field-tight">
+        <label
+          className={`label images-settings-checkbox${imagesToPdf.pdfA ? " is-unavailable" : ""}`}
+        >
+          <input
+            type="checkbox"
+            checked={imagesToPdf.encrypt}
+            onChange={(event) =>
+              dispatch({
+                type: "SET_IMAGES_ENCRYPT",
+                encrypt: event.target.checked,
+              })
+            }
+            disabled={disabled || imagesToPdf.pdfA}
+          />
+          {t.imagesToPdf.encryptLabel}
+        </label>
+        {imagesToPdf.encrypt && (
+          <span className="hint">{t.imagesToPdf.encryptHint}</span>
+        )}
+        {imagesToPdf.pdfA && (
+          <span className="hint">{t.imagesToPdf.encryptUnavailableHint}</span>
         )}
       </div>
 

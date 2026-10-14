@@ -470,6 +470,7 @@ describe("ImagesToPdf (T11)", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          password: null,
         },
       });
     });
@@ -526,6 +527,7 @@ describe("ImagesToPdf (T11)", () => {
           pageSize: "fit",
           orientation: "auto",
           pdfA: false,
+          password: null,
         },
       });
     });
@@ -588,7 +590,13 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: false },
+        args: {
+          ids: [1],
+          pageSize: "fit",
+          orientation: "auto",
+          pdfA: false,
+          password: null,
+        },
       });
     });
   });
@@ -750,7 +758,13 @@ describe("ImagesToPdf (T11)", () => {
     await waitFor(() => {
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: false },
+        args: {
+          ids: [1],
+          pageSize: "fit",
+          orientation: "auto",
+          pdfA: false,
+          password: null,
+        },
       });
     });
 
@@ -2003,6 +2017,7 @@ describe("ImagesToPdf (T11)", () => {
           pageSize: "jisB5",
           orientation: "portrait",
           pdfA: false,
+          password: null,
         },
       });
     });
@@ -2059,6 +2074,7 @@ describe("ImagesToPdf (T11)", () => {
           pageSize: "letter",
           orientation: "landscape",
           pdfA: false,
+          password: null,
         },
       });
     });
@@ -2195,7 +2211,13 @@ describe("ImagesToPdf (T11)", () => {
       await waitFor(() => {
         expect(calls).toContainEqual({
           cmd: "save_merged_pdf",
-          args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: true },
+          args: {
+            ids: [1],
+            pageSize: "fit",
+            orientation: "auto",
+            pdfA: true,
+            password: null,
+          },
         });
       });
     });
@@ -2217,7 +2239,13 @@ describe("ImagesToPdf (T11)", () => {
       await waitFor(() => {
         expect(calls).toContainEqual({
           cmd: "start_images_to_pdfs",
-          args: { ids: [1], pageSize: "fit", orientation: "auto", pdfA: true },
+          args: {
+            ids: [1],
+            pageSize: "fit",
+            orientation: "auto",
+            pdfA: true,
+            password: null,
+          },
         });
       });
     });
