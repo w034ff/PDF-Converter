@@ -10,7 +10,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { SETTINGS_SAVE_DEBOUNCE_MS } from "./features/settings/useSettingsAutoSave";
 import {
   JOB_FINISHED_EVENT,
   JOB_PROGRESS_EVENT,
@@ -270,36 +269,34 @@ describe("App", () => {
       return saved;
     }
 
-    it("saves a run of changes once, after they settle", async () => {
-      vi.useFakeTimers();
+    it("saves each change right away, with a higher revision each time", () => {
       const saved = mockSaves();
       render(<App initialNavLang="ja" initialSettings={null} />);
       fireEvent.click(screen.getByRole("tab", { name: "PDF → 画像" }));
 
       const dpi = screen.getByRole("combobox", { name: "解像度" });
-      fireEvent.change(dpi, { target: { value: "72" } });
-      act(() => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS - 1);
-      });
       fireEvent.change(dpi, { target: { value: "300" } });
       fireEvent.click(screen.getByRole("button", { name: "JPEG" }));
-      act(() => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS - 1);
-      });
-      expect(saved).toEqual([]);
 
-      await act(async () => {
-        vi.advanceTimersByTime(1);
-      });
+      const imagesToPdf = {
+        output: "merge",
+        pageSize: "fit",
+        orientation: "auto",
+      };
       expect(saved).toEqual([
         {
+          revision: 1,
           settings: {
             language: null,
-            imagesToPdf: {
-              output: "merge",
-              pageSize: "fit",
-              orientation: "auto",
-            },
+            imagesToPdf,
+            pdfToImages: { format: "png", colorMode: "color", dpi: 300 },
+          },
+        },
+        {
+          revision: 2,
+          settings: {
+            language: null,
+            imagesToPdf,
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
           },
         },
@@ -307,32 +304,14 @@ describe("App", () => {
     });
 
     it("does not save what the app started with", async () => {
-      vi.useFakeTimers();
       const saved = mockSaves();
       render(<App initialNavLang="ja" initialSettings={SAVED_SETTINGS} />);
 
-      await act(async () => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS * 2);
-      });
-      expect(saved).toEqual([]);
-    });
-
-    it("does not save a change that was undone before the save", async () => {
-      vi.useFakeTimers();
-      const saved = mockSaves();
-      render(<App initialNavLang="ja" initialSettings={null} />);
-
-      const pageSize = screen.getByRole("combobox", { name: "ページの大きさ" });
-      fireEvent.change(pageSize, { target: { value: "a4" } });
-      fireEvent.change(pageSize, { target: { value: "fit" } });
-      await act(async () => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS * 2);
-      });
+      await act(async () => {});
       expect(saved).toEqual([]);
     });
 
     it("saves when changing orientation alone", async () => {
-      vi.useFakeTimers();
       const saved = mockSaves();
       render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
 
@@ -340,11 +319,10 @@ describe("App", () => {
       fireEvent.click(
         within(orientation).getByRole("button", { name: "Portrait" }),
       );
-      await act(async () => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS);
-      });
+      await act(async () => {});
       expect(saved).toEqual([
         {
+          revision: 1,
           settings: {
             language: "en",
             imagesToPdf: {
@@ -359,17 +337,15 @@ describe("App", () => {
     });
 
     it("saves when changing page size alone", async () => {
-      vi.useFakeTimers();
       const saved = mockSaves();
       render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
 
       const pageSize = screen.getByRole("combobox", { name: "Page size" });
       fireEvent.change(pageSize, { target: { value: "jisB5" } });
-      await act(async () => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS);
-      });
+      await act(async () => {});
       expect(saved).toEqual([
         {
+          revision: 1,
           settings: {
             language: "en",
             imagesToPdf: {
@@ -384,7 +360,6 @@ describe("App", () => {
     });
 
     it("saves when changing colorMode alone", async () => {
-      vi.useFakeTimers();
       const saved = mockSaves();
       render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
       fireEvent.click(screen.getByRole("tab", { name: "PDF → Images" }));
@@ -393,11 +368,10 @@ describe("App", () => {
       fireEvent.click(
         within(colorGroup).getByRole("button", { name: "Grayscale" }),
       );
-      await act(async () => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS);
-      });
+      await act(async () => {});
       expect(saved).toEqual([
         {
+          revision: 1,
           settings: {
             language: "en",
             imagesToPdf: {
@@ -412,18 +386,16 @@ describe("App", () => {
     });
 
     it("saves the picked language, not the one taken from the OS", async () => {
-      vi.useFakeTimers();
       const saved = mockSaves();
       render(<App initialNavLang="ja" initialSettings={null} />);
 
       fireEvent.change(screen.getByRole("combobox", { name: "言語" }), {
         target: { value: "en" },
       });
-      await act(async () => {
-        vi.advanceTimersByTime(SETTINGS_SAVE_DEBOUNCE_MS);
-      });
+      await act(async () => {});
       expect(saved).toEqual([
         {
+          revision: 1,
           settings: {
             language: "en",
             imagesToPdf: {

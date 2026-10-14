@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use pdfconv_worker::WORKER_FLAG;
+use tauri::webview::PageLoadEvent;
 use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
 pub mod commands;
@@ -113,8 +114,21 @@ pub fn run() {
                 });
             }
         })
-        .run(tauri::generate_context!())
-        .expect("Tauri application should start");
+        .on_page_load(|webview, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                webview.state::<AppState>().settings.start_page();
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("Tauri application should start")
+        .run(|app, event| {
+            // `Exit` rather than `CloseRequested`, because a Windows logoff
+            // or shutdown sends only `Exit` (design §6.7). A failed write is
+            // dropped as in `save_settings`.
+            if let tauri::RunEvent::Exit = event {
+                let _ = app.state::<AppState>().settings.flush();
+            }
+        });
 }
 
 /// How a drop was sorted, for the terminal of a debug build.

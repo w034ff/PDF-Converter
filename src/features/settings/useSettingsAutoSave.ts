@@ -2,12 +2,6 @@ import { useEffect, useRef } from "react";
 import { saveSettings, type SettingsInput } from "../../ipc";
 import { useAppState } from "../../state";
 
-/**
- * How long the settings wait after a change before they are saved, so a run
- * of changes (stepping through the resolutions, say) is written once.
- */
-export const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
-
 function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
   return (
     a.language === b.language &&
@@ -21,12 +15,14 @@ function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
 }
 
 /**
- * Saves the settings with `save_settings` once they have stayed unchanged
- * for {@link SETTINGS_SAVE_DEBOUNCE_MS} (design §6.7). What the app started
- * with is not saved again. Output folders are not part of it: `pick_output_dir`
- * saves those itself.
+ * Saves the settings with `save_settings` as soon as they change (design
+ * §6.7), so closing the app right after a change keeps it. Each call carries
+ * a higher revision, so Rust keeps the latest settings even if the calls
+ * arrive out of order. What the app started with, or what was sent last, is
+ * not sent again. Output folders are not part of it: `pick_output_dir` saves
+ * those itself.
  *
- * A failed save is dropped: the settings still apply to this session, and
+ * A rejected save is dropped: the settings still apply to this session, and
  * keeping them for the next one is a Should requirement (FR-10) that must not
  * get in the way of converting.
  */
@@ -36,11 +32,12 @@ export function useSettingsAutoSave(): void {
   const { output, pageSize, orientation } = imagesToPdf;
   const { format, colorMode, dpi } = pdfToImages;
 
-  const savedRef = useRef<SettingsInput>({
+  const sentRef = useRef<SettingsInput>({
     language: preference,
     imagesToPdf: { output, pageSize, orientation },
     pdfToImages: { format, colorMode, dpi },
   });
+  const revisionRef = useRef(0);
 
   useEffect(() => {
     const next: SettingsInput = {
@@ -48,17 +45,13 @@ export function useSettingsAutoSave(): void {
       imagesToPdf: { output, pageSize, orientation },
       pdfToImages: { format, colorMode, dpi },
     };
-    if (sameSettings(next, savedRef.current)) {
+    if (sameSettings(next, sentRef.current)) {
       return;
     }
-    const timer = setTimeout(() => {
-      savedRef.current = next;
-      saveSettings(next).catch(() => {
-        // Dropped on purpose; see the doc comment.
-      });
-    }, SETTINGS_SAVE_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-    };
+    sentRef.current = next;
+    revisionRef.current += 1;
+    saveSettings(revisionRef.current, next).catch(() => {
+      // Dropped on purpose; see the doc comment.
+    });
   }, [preference, output, pageSize, orientation, format, colorMode, dpi]);
 }

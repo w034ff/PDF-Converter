@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
@@ -25,6 +26,18 @@ fn state() -> AppState {
         "unused-worker",
         Vec::<String>::new(),
     )))
+}
+
+/// The `revision` the next [`save`] passes. One counter for all the tests is
+/// enough: each store only needs higher numbers than it has seen.
+static NEXT_REVISION: AtomicU64 = AtomicU64::new(1);
+
+/// What `save_settings` does, with the write it leaves to another thread made
+/// at once.
+fn save(state: &AppState, input: &SettingsInput) -> Result<(), IpcError> {
+    let revision = NEXT_REVISION.fetch_add(1, Ordering::Relaxed);
+    state.settings.update(revision, input)?;
+    state.settings.flush()
 }
 
 fn write_settings(config_dir: &Path, json: &Value) {
@@ -528,7 +541,7 @@ fn save_settings_takes_the_input_over_and_keeps_the_folders() {
     let _ = apply_picked_dir(&state, OutputKind::ImagesToPdf, images_dir.clone());
     let _ = apply_picked_dir(&state, OutputKind::PdfToImages, pdfs_dir.clone());
 
-    state.settings.save(&input()).expect("saving");
+    save(&state, &input()).expect("saving");
 
     let loaded = load_settings(&config_dir);
     assert_eq!(loaded.language, Some(Language::En));
@@ -547,7 +560,7 @@ fn save_settings_rejects_an_out_of_range_dpi_and_changes_nothing() {
     let config_dir = temp.path().join("config");
     let state = state();
     restore_settings(&state, &config_dir);
-    state.settings.save(&input()).expect("saving");
+    save(&state, &input()).expect("saving");
     let before = fs::read(config_dir.join(SETTINGS_FILE_NAME)).expect("reading the file");
     let held = state.settings.file();
 
@@ -557,7 +570,7 @@ fn save_settings_rejects_an_out_of_range_dpi_and_changes_nothing() {
         bad.images_to_pdf.output = OutputMode::Merge;
         bad.pdf_to_images.dpi = dpi;
         assert_eq!(
-            state.settings.save(&bad),
+            save(&state, &bad),
             Err(IpcError::from_code(ErrorCode::InvalidParams)),
             "for {dpi}"
         );
@@ -578,7 +591,7 @@ fn save_settings_accepts_valid_dpis() {
     for dpi in [RENDER_DPI_MIN, RENDER_DPI_MAX, 600, 72, 150, 300] {
         let mut valid = input();
         valid.pdf_to_images.dpi = dpi;
-        state.settings.save(&valid).expect("saving");
+        save(&state, &valid).expect("saving");
         assert_eq!(load_settings(temp.path()).pdf_to_images.options.dpi, dpi);
     }
 }
@@ -611,7 +624,7 @@ fn round_trips_webp_gray_and_custom_dpi() {
     custom.pdf_to_images.color_mode = RenderColorChoice::Gray;
     custom.pdf_to_images.dpi = 600;
 
-    state.settings.save(&custom).expect("saving");
+    save(&state, &custom).expect("saving");
 
     let loaded = load_settings(&config_dir);
     assert_eq!(
@@ -659,8 +672,8 @@ fn a_write_leaves_no_temporary_file() {
     let state = state();
     restore_settings(&state, &config_dir);
 
-    state.settings.save(&input()).expect("saving");
-    state.settings.save(&input()).expect("saving again");
+    save(&state, &input()).expect("saving");
+    save(&state, &input()).expect("saving again");
     let _ = apply_picked_dir(&state, OutputKind::ImagesToPdf, temp.path().to_path_buf());
 
     assert_eq!(leftovers(&config_dir), Vec::<String>::new());
@@ -833,7 +846,7 @@ fn a_picked_folder_keeps_the_other_settings() {
     let config_dir = temp.path().join("config");
     let state = state();
     restore_settings(&state, &config_dir);
-    state.settings.save(&input()).expect("saving");
+    save(&state, &input()).expect("saving");
 
     let _ = apply_picked_dir(&state, OutputKind::PdfToImages, temp.path().to_path_buf());
 
@@ -879,7 +892,7 @@ fn a_picked_folder_is_used_even_when_the_file_cannot_be_written() {
         .expect("making the settings folder read-only");
 
     let (label, persisted) = apply_picked_dir(&state, OutputKind::PdfToImages, picked.clone());
-    let saved = state.settings.save(&input());
+    let saved = save(&state, &input());
     let leftover_files = leftovers(&config_dir);
 
     fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o700))
@@ -905,32 +918,11 @@ fn a_picked_folder_is_used_even_when_the_file_cannot_be_written() {
     assert!(!config_dir.join(SETTINGS_FILE_NAME).exists());
 
     // The folder was kept in memory, so the next successful write has it.
-    state.settings.save(&input()).expect("saving once writable");
+    save(&state, &input()).expect("saving once writable");
     assert_eq!(
         load_settings(&config_dir).pdf_to_images.output_dir,
         Some(picked)
     );
-}
-
-#[cfg(unix)]
-#[test]
-fn a_failed_save_settings_leaves_the_held_settings_as_they_were() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let temp = TempDir::new().expect("temp dir");
-    let config_dir = new_dir(temp.path(), "config");
-    let state = state();
-    restore_settings(&state, &config_dir);
-    let held = state.settings.file();
-    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o500))
-        .expect("making the settings folder read-only");
-
-    let saved = state.settings.save(&input());
-
-    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o700))
-        .expect("making the settings folder writable again");
-    assert!(saved.is_err());
-    assert_eq!(state.settings.file(), held);
 }
 
 #[cfg(unix)]
@@ -952,10 +944,7 @@ fn a_folder_whose_name_is_not_unicode_is_used_but_not_remembered() {
     assert_eq!(persisted, Ok(()));
     assert_eq!(*state.images_output_dir.lock().unwrap(), Some(odd));
     assert_eq!(load_settings(&config_dir).images_to_pdf.output_dir, None);
-    state
-        .settings
-        .save(&input())
-        .expect("the file stays writable");
+    save(&state, &input()).expect("the file stays writable");
 }
 
 #[test]
@@ -993,7 +982,7 @@ fn seven_paper_sizes_and_orientations_roundtrip() {
             inp.images_to_pdf.page_size = paper;
             inp.images_to_pdf.orientation = orientation;
 
-            state.settings.save(&inp).expect("saving settings");
+            save(&state, &inp).expect("saving settings");
             let loaded = load_settings(&config_dir);
             assert_eq!(loaded.images_to_pdf.options.page_size, paper);
             assert_eq!(loaded.images_to_pdf.options.orientation, orientation);
@@ -1033,4 +1022,99 @@ fn save_settings_rejects_missing_orientation_and_unknown_page_size() {
         }
     });
     assert!(serde_json::from_value::<SettingsInput>(unknown_page_size).is_err());
+}
+
+#[test]
+fn an_update_reaches_the_file_only_on_flush() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+
+    state.settings.update(1, &input()).expect("updating");
+    assert_eq!(state.settings.file().language, Some(Language::En));
+    assert!(!config_dir.join(SETTINGS_FILE_NAME).exists());
+
+    state.settings.flush().expect("flushing");
+    assert_eq!(load_settings(&config_dir), state.settings.file());
+}
+
+#[test]
+fn a_flush_with_nothing_new_does_not_write() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+
+    state.settings.flush().expect("flushing");
+    assert!(!config_dir.join(SETTINGS_FILE_NAME).exists());
+
+    state.settings.update(1, &input()).expect("updating");
+    state.settings.flush().expect("flushing");
+    fs::remove_file(config_dir.join(SETTINGS_FILE_NAME)).expect("removing the file");
+    state.settings.flush().expect("flushing again");
+    assert!(!config_dir.join(SETTINGS_FILE_NAME).exists());
+}
+
+#[test]
+fn an_update_older_than_one_taken_is_ignored() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    let mut older = input();
+    older.pdf_to_images.dpi = 72;
+    let mut newer = input();
+    newer.pdf_to_images.dpi = 300;
+
+    state.settings.update(2, &newer).expect("updating");
+    state.settings.update(1, &older).expect("updating");
+    state.settings.update(2, &older).expect("updating");
+    state.settings.flush().expect("flushing");
+
+    assert_eq!(load_settings(&config_dir).pdf_to_images.options.dpi, 300);
+}
+
+#[test]
+fn a_new_page_counts_its_revisions_from_the_start() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    let mut first = input();
+    first.pdf_to_images.dpi = 72;
+    let mut after_reload = input();
+    after_reload.pdf_to_images.dpi = 300;
+
+    state.settings.update(5, &first).expect("updating");
+    state.settings.start_page();
+    state.settings.update(1, &after_reload).expect("updating");
+    state.settings.flush().expect("flushing");
+
+    assert_eq!(load_settings(&config_dir).pdf_to_images.options.dpi, 300);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_flush_is_tried_again_by_the_next() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = new_dir(temp.path(), "config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    state.settings.update(1, &input()).expect("updating");
+
+    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o500))
+        .expect("making the settings folder read-only");
+    let failed = state.settings.flush();
+    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o700))
+        .expect("making the settings folder writable again");
+
+    assert_eq!(
+        failed.expect_err("the write must fail").code,
+        ErrorCode::WriteFailed
+    );
+    state.settings.flush().expect("flushing again");
+    assert_eq!(load_settings(&config_dir), state.settings.file());
 }
