@@ -77,6 +77,21 @@ jobs:
       - name: Rust Test
         run: cargo test --workspace --all-features --locked
 
+      # krilla reports its own PDF/A conformance, so veraPDF checks it too
+      # (design §11.2). It exits with 1 when any file fails, which fails the
+      # step. Docker is on the Ubuntu runner only.
+      - name: Write PDF/A samples
+        if: runner.os == 'Linux'
+        run: cargo run -p pdfconv-core --example write_pdfa_samples --locked -- "$RUNNER_TEMP/pdfa"
+
+      # The image is pinned by digest because a tag can be moved to another
+      # image; the digest is veraPDF 1.30.2, a release at least 7 days old
+      # when it was chosen (design §9). Update it by hand. The container has no
+      # network and sees the samples read-only.
+      - name: Validate PDF/A samples with veraPDF
+        if: runner.os == 'Linux'
+        run: docker run --rm --network none -v "$RUNNER_TEMP/pdfa:/data:ro" verapdf/cli@sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb -f 2b --format text /data
+
       # The Rust test above rewrites src/ipc/generated; the committed copy
       # must already be what it writes.
       - name: Check TypeScript bindings diff

@@ -19,12 +19,14 @@ export interface JobRunner {
     targets: JobTarget[],
     pageSize: PageSizeChoice,
     orientation: PageOrientationChoice,
+    pdfA: boolean,
   ): Promise<void>;
   /** Starts "1 枚ずつ" for `targets` (design §6.2). */
   startImagesToPdfs(
     targets: JobTarget[],
     pageSize: PageSizeChoice,
     orientation: PageOrientationChoice,
+    pdfA: boolean,
   ): Promise<void>;
   /** Starts PDF → images for `targets` (design §6.3). */
   startPdfsToImages(
@@ -77,9 +79,9 @@ export function useJobRunner(): JobRunner {
     }
 
     return {
-      async saveMergedPdf(targets, pageSize, orientation) {
+      async saveMergedPdf(targets, pageSize, orientation, pdfA) {
         const outcome = await run("imagesToPdf", targets, (ids) =>
-          saveMergedPdf(ids, pageSize, orientation),
+          saveMergedPdf(ids, pageSize, orientation, pdfA),
         );
         if ("error" in outcome) {
           return;
@@ -94,9 +96,9 @@ export function useJobRunner(): JobRunner {
         // image could be added). `job-finished` has already set the result,
         // and the banner and rows keep showing it.
       },
-      async startImagesToPdfs(targets, pageSize, orientation) {
+      async startImagesToPdfs(targets, pageSize, orientation, pdfA) {
         await run("imagesToPdf", targets, (ids) =>
-          startImagesToPdfs(ids, pageSize, orientation),
+          startImagesToPdfs(ids, pageSize, orientation, pdfA),
         );
       },
       async startPdfsToImages(targets, range, format, colorMode, dpi) {

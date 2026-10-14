@@ -26,11 +26,12 @@ pub enum ErrorCode {
     InvalidParams,
     OutputDirMissing,
     OutputDirNotWritable,
+    CmykNotAllowedInPdfA,
 }
 
 impl ErrorCode {
     /// Every code, so that [`ErrorCode::from_name`] cannot miss one.
-    const ALL: [Self; 17] = [
+    const ALL: [Self; 18] = [
         Self::UnsupportedFormat,
         Self::DecodeFailed,
         Self::PdfOpenFailed,
@@ -48,6 +49,7 @@ impl ErrorCode {
         Self::InvalidParams,
         Self::OutputDirMissing,
         Self::OutputDirNotWritable,
+        Self::CmykNotAllowedInPdfA,
     ];
 
     /// The name of the code as it appears in design §6.6.
@@ -70,6 +72,7 @@ impl ErrorCode {
             Self::InvalidParams => "InvalidParams",
             Self::OutputDirMissing => "OutputDirMissing",
             Self::OutputDirNotWritable => "OutputDirNotWritable",
+            Self::CmykNotAllowedInPdfA => "CmykNotAllowedInPdfA",
         }
     }
 
@@ -140,6 +143,7 @@ impl From<ProbeError> for IpcError {
             ProbeError::DecodeFailed => ErrorCode::DecodeFailed,
             ProbeError::TooLarge => ErrorCode::TooLarge,
             ProbeError::ReadFailed => ErrorCode::ReadFailed,
+            ProbeError::CmykNotAllowedInPdfA => ErrorCode::CmykNotAllowedInPdfA,
         };
         Self {
             code,
@@ -216,6 +220,10 @@ mod tests {
         assert_eq!(
             IpcError::from(ProbeError::TooLarge),
             IpcError::new(ErrorCode::TooLarge, "80,000,000")
+        );
+        assert_eq!(
+            IpcError::from(ProbeError::CmykNotAllowedInPdfA),
+            IpcError::from_code(ErrorCode::CmykNotAllowedInPdfA)
         );
     }
 

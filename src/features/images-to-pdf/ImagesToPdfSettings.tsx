@@ -14,7 +14,7 @@ import "./ImagesToPdf.css";
 
 /**
  * Settings panel for Images to PDF (design §6.1, §6.2, mockups Main.dc.html, ImagesMerge.dc.html, ImagesEach.dc.html).
- * Provides output mode ("merge" | "each"), page size dropdown, orientation, and output folder picker for "each" mode.
+ * Provides output mode ("merge" | "each"), page size dropdown, orientation, the PDF/A checkbox, and output folder picker for "each" mode.
  */
 export function ImagesToPdfSettings() {
   const { imagesToPdf, job, language } = useAppState();
@@ -107,6 +107,26 @@ export function ImagesToPdfSettings() {
           imagesToPdf.orientation === "auto" && (
             <span className="hint">{t.imagesToPdf.orientationAutoHint}</span>
           )
+        )}
+      </div>
+
+      <div className="images-settings-field">
+        <label className="label images-settings-checkbox">
+          <input
+            type="checkbox"
+            checked={imagesToPdf.pdfA}
+            onChange={(event) =>
+              dispatch({
+                type: "SET_IMAGES_PDF_A",
+                pdfA: event.target.checked,
+              })
+            }
+            disabled={disabled}
+          />
+          {t.imagesToPdf.pdfALabel}
+        </label>
+        {imagesToPdf.pdfA && (
+          <span className="hint">{t.imagesToPdf.pdfAHint}</span>
         )}
       </div>
 

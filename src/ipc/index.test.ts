@@ -201,6 +201,7 @@ describe("ipc", () => {
           output: "merge",
           pageSize: "fit",
           orientation: "auto",
+          pdfA: false,
           outputDir: { dirLabel: "out" },
         },
         pdfToImages: {
@@ -227,6 +228,7 @@ describe("ipc", () => {
           output: "each",
           pageSize: "a4",
           orientation: "portrait",
+          pdfA: true,
         },
         pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
       };
@@ -252,6 +254,7 @@ describe("ipc", () => {
             output: "merge",
             pageSize: "fit",
             orientation: "auto",
+            pdfA: false,
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 100 },
         }),
@@ -270,6 +273,7 @@ describe("ipc", () => {
             output: "merge",
             pageSize: "fit",
             orientation: "auto",
+            pdfA: false,
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
         }),
@@ -315,23 +319,23 @@ describe("ipc", () => {
         return { savedName: "out.pdf" };
       });
 
-      const res = await saveMergedPdf([1, 2], "fit", "auto");
+      const res = await saveMergedPdf([1, 2], "fit", "auto", true);
       expect(res).toEqual({ savedName: "out.pdf" });
       expect(calls).toEqual([
         [
           "save_merged_pdf",
-          { ids: [1, 2], pageSize: "fit", orientation: "auto" },
+          { ids: [1, 2], pageSize: "fit", orientation: "auto", pdfA: true },
         ],
       ]);
     });
 
     it("tells a cancelled dialog from a merge that wrote no PDF", async () => {
       mockIPC(() => null);
-      expect(await saveMergedPdf([1], "fit", "auto")).toBeNull();
+      expect(await saveMergedPdf([1], "fit", "auto", false)).toBeNull();
 
       clearMocks();
       mockIPC(() => ({ savedName: null }));
-      expect(await saveMergedPdf([1], "fit", "auto")).toEqual({
+      expect(await saveMergedPdf([1], "fit", "auto", false)).toEqual({
         savedName: null,
       });
     });
@@ -343,11 +347,16 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await startImagesToPdfs([1, 2], "a4", "portrait");
+      await startImagesToPdfs([1, 2], "a4", "portrait", true);
       expect(calls).toEqual([
         [
           "start_images_to_pdfs",
-          { ids: [1, 2], pageSize: "a4", orientation: "portrait" },
+          {
+            ids: [1, 2],
+            pageSize: "a4",
+            orientation: "portrait",
+            pdfA: true,
+          },
         ],
       ]);
     });
@@ -418,6 +427,7 @@ describe("ipc", () => {
           output: "merge",
           pageSize: "a4",
           orientation: "auto",
+          pdfA: false,
           outputDir: null,
         },
         pdfToImages: {
@@ -428,6 +438,31 @@ describe("ipc", () => {
         },
       };
       expect(isSettings(valid)).toBe(true);
+
+      // pdfA must be a boolean, and must be there
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, pdfA: true },
+        }),
+      ).toBe(true);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: { ...valid.imagesToPdf, pdfA: "true" },
+        }),
+      ).toBe(false);
+      expect(
+        isSettings({
+          ...valid,
+          imagesToPdf: {
+            output: "merge",
+            pageSize: "a4",
+            orientation: "auto",
+            outputDir: null,
+          },
+        }),
+      ).toBe(false);
 
       // Accepts all 8 page sizes
       const allSizes: readonly PageSizeChoice[] = [

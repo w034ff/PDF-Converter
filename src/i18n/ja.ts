@@ -185,6 +185,8 @@ export const ja = {
     orientationLandscape: "横",
     orientationAutoHint: "横長の画像は横、それ以外は縦にします",
     orientationUnavailableHint: "用紙を選ぶと使えます",
+    pdfALabel: "長期保存用（PDF/A）",
+    pdfAHint: "CMYK の画像は使えません",
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
     imageCount: "画像 {count} 枚",

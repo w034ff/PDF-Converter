@@ -34,6 +34,7 @@ export function ImagesToPdfAction() {
         validTargets,
         imagesToPdf.pageSize,
         imagesToPdf.orientation,
+        imagesToPdf.pdfA,
       );
     } else {
       void runWithOutputDir(imagesToPdf.outputDir, () =>
@@ -41,6 +42,7 @@ export function ImagesToPdfAction() {
           validTargets,
           imagesToPdf.pageSize,
           imagesToPdf.orientation,
+          imagesToPdf.pdfA,
         ),
       );
     }

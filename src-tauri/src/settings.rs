@@ -26,6 +26,7 @@ pub const SETTINGS_FILE_NAME: &str = "settings.json";
 const DEFAULT_OUTPUT: OutputMode = OutputMode::Merge;
 const DEFAULT_PAGE_SIZE: PageSizeChoice = PageSizeChoice::Fit;
 const DEFAULT_ORIENTATION: PageOrientationChoice = PageOrientationChoice::Auto;
+const DEFAULT_PDF_A: bool = false;
 const DEFAULT_FORMAT: RenderFormatChoice = RenderFormatChoice::Png;
 const DEFAULT_RENDER_COLOR_MODE: RenderColorChoice = RenderColorChoice::Color;
 
@@ -68,6 +69,7 @@ pub struct ImagesToPdfOptions {
     pub output: OutputMode,
     pub page_size: PageSizeChoice,
     pub orientation: PageOrientationChoice,
+    pub pdf_a: bool,
 }
 
 /// The "PDF to images" options the user can change (design §6.7).
@@ -111,6 +113,7 @@ pub struct ImagesToPdfSettings {
     pub output: OutputMode,
     pub page_size: PageSizeChoice,
     pub orientation: PageOrientationChoice,
+    pub pdf_a: bool,
     pub output_dir: Option<OutputDirLabel>,
 }
 
@@ -174,6 +177,7 @@ impl Default for SettingsFile {
                     output: DEFAULT_OUTPUT,
                     page_size: DEFAULT_PAGE_SIZE,
                     orientation: DEFAULT_ORIENTATION,
+                    pdf_a: DEFAULT_PDF_A,
                 },
                 output_dir: None,
             },
@@ -224,6 +228,7 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
                 output: field(images, "output").unwrap_or(DEFAULT_OUTPUT),
                 page_size: field(images, "pageSize").unwrap_or(DEFAULT_PAGE_SIZE),
                 orientation: field(images, "orientation").unwrap_or(DEFAULT_ORIENTATION),
+                pdf_a: field(images, "pdfA").unwrap_or(DEFAULT_PDF_A),
             },
             output_dir: field(images, "outputDir"),
         },
@@ -479,6 +484,7 @@ pub fn get_settings_internal(state: &AppState) -> Settings {
             output: file.images_to_pdf.options.output,
             page_size: file.images_to_pdf.options.page_size,
             orientation: file.images_to_pdf.options.orientation,
+            pdf_a: file.images_to_pdf.options.pdf_a,
             output_dir: label_of(&state.images_output_dir),
         },
         pdf_to_images: PdfToImagesSettings {

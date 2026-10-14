@@ -59,6 +59,7 @@ fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
             "output": "each",
             "pageSize": "a4",
             "orientation": "portrait",
+            "pdfA": true,
             "outputDir": images_dir,
         },
         "pdfToImages": {
@@ -81,6 +82,7 @@ fn input() -> SettingsInput {
             output: OutputMode::Each,
             page_size: PageSizeChoice::A4,
             orientation: PageOrientationChoice::Portrait,
+            pdf_a: true,
         },
         pdf_to_images: PdfToImagesOptions {
             format: RenderFormatChoice::Jpeg,
@@ -110,6 +112,7 @@ fn the_defaults_are_those_of_the_design() {
         file.images_to_pdf.options.orientation,
         PageOrientationChoice::Auto
     );
+    assert!(!file.images_to_pdf.options.pdf_a);
     assert_eq!(file.images_to_pdf.output_dir, None);
     assert_eq!(file.pdf_to_images.options.format, RenderFormatChoice::Png);
     assert_eq!(
@@ -339,6 +342,26 @@ fn a_missing_orientation_resets_only_the_orientation() {
 }
 
 #[test]
+fn a_missing_pdf_a_resets_only_the_pdf_a() {
+    assert_only_resets(
+        |json| {
+            json["imagesToPdf"].as_object_mut().unwrap().remove("pdfA");
+        },
+        |file| file.images_to_pdf.options.pdf_a = false,
+    );
+}
+
+#[test]
+fn a_pdf_a_of_the_wrong_type_resets_only_the_pdf_a() {
+    for wrong in [json!("true"), json!(1), json!(null), json!([true])] {
+        assert_only_resets(
+            |json| json["imagesToPdf"]["pdfA"] = wrong.clone(),
+            |file| file.images_to_pdf.options.pdf_a = false,
+        );
+    }
+}
+
+#[test]
 fn an_unknown_format_resets_only_the_format() {
     assert_only_resets(
         |json| json["pdfToImages"]["format"] = json!("gif"),
@@ -466,6 +489,7 @@ fn dev_settings_file_with_only_a4_orientation_resets_orientation_to_auto_and_pre
         file.images_to_pdf.options.orientation,
         PageOrientationChoice::Auto
     );
+    assert!(!file.images_to_pdf.options.pdf_a);
 }
 
 #[test]
@@ -774,6 +798,7 @@ fn get_settings_has_no_path() {
                 "output": "each",
                 "pageSize": "a4",
                 "orientation": "portrait",
+                "pdfA": true,
                 "outputDir": { "dirLabel": "images-out" },
             },
             "pdfToImages": {
@@ -795,7 +820,7 @@ fn get_settings_of_the_defaults_has_no_folders() {
         json,
         json!({
             "language": null,
-            "imagesToPdf": { "output": "merge", "pageSize": "fit", "orientation": "auto", "outputDir": null },
+            "imagesToPdf": { "output": "merge", "pageSize": "fit", "orientation": "auto", "pdfA": false, "outputDir": null },
             "pdfToImages": { "format": "png", "colorMode": "color", "dpi": 150, "outputDir": null },
         })
     );
@@ -997,7 +1022,8 @@ fn save_settings_rejects_missing_orientation_and_unknown_page_size() {
         "language": "ja",
         "imagesToPdf": {
             "output": "merge",
-            "pageSize": "a4"
+            "pageSize": "a4",
+            "pdfA": false
         },
         "pdfToImages": {
             "format": "png",
@@ -1013,7 +1039,8 @@ fn save_settings_rejects_missing_orientation_and_unknown_page_size() {
         "imagesToPdf": {
             "output": "merge",
             "pageSize": "b5",
-            "orientation": "auto"
+            "orientation": "auto",
+            "pdfA": false
         },
         "pdfToImages": {
             "format": "png",
@@ -1022,6 +1049,22 @@ fn save_settings_rejects_missing_orientation_and_unknown_page_size() {
         }
     });
     assert!(serde_json::from_value::<SettingsInput>(unknown_page_size).is_err());
+
+    // Missing pdfA
+    let missing_pdf_a = json!({
+        "language": "ja",
+        "imagesToPdf": {
+            "output": "merge",
+            "pageSize": "a4",
+            "orientation": "auto"
+        },
+        "pdfToImages": {
+            "format": "png",
+            "colorMode": "color",
+            "dpi": 150
+        }
+    });
+    assert!(serde_json::from_value::<SettingsInput>(missing_pdf_a).is_err());
 }
 
 #[test]

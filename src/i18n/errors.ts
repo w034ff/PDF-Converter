@@ -24,6 +24,7 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
   OutputDirMissing:
     "保存先のフォルダが見つかりません。フォルダを選び直してください",
   OutputDirNotWritable: "保存先のフォルダに書き込めません",
+  CmykNotAllowedInPdfA: "PDF/A では CMYK の画像を使えません",
 };
 
 export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
@@ -45,6 +46,7 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
   InvalidParams: "Invalid settings",
   OutputDirMissing: "The output folder can't be found. Choose a folder again.",
   OutputDirNotWritable: "Can't write to the output folder",
+  CmykNotAllowedInPdfA: "CMYK images can't be used in PDF/A",
 };
 
 /**

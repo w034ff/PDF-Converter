@@ -67,13 +67,17 @@ function Harness({ tab = "imagesToPdf" }: { tab?: ActiveTab }) {
     <>
       <button
         type="button"
-        onClick={() => void runner.startImagesToPdfs(targets, "fit", "auto")}
+        onClick={() =>
+          void runner.startImagesToPdfs(targets, "fit", "auto", true)
+        }
       >
         start each
       </button>
       <button
         type="button"
-        onClick={() => void runner.saveMergedPdf(targets, "a4", "portrait")}
+        onClick={() =>
+          void runner.saveMergedPdf(targets, "a4", "portrait", false)
+        }
       >
         save merged
       </button>
@@ -138,7 +142,12 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     await waitFor(() =>
       expect(calls).toContainEqual({
         cmd: "start_images_to_pdfs",
-        args: { ids: [1, 2, 3], pageSize: "fit", orientation: "auto" },
+        args: {
+          ids: [1, 2, 3],
+          pageSize: "fit",
+          orientation: "auto",
+          pdfA: true,
+        },
       }),
     );
     expect(
@@ -314,7 +323,12 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     );
     expect(calls).toContainEqual({
       cmd: "save_merged_pdf",
-      args: { ids: [1, 2, 3], pageSize: "a4", orientation: "portrait" },
+      args: {
+        ids: [1, 2, 3],
+        pageSize: "a4",
+        orientation: "portrait",
+        pdfA: false,
+      },
     });
   });
 

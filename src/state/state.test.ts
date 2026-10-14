@@ -229,6 +229,21 @@ describe("state reducers", () => {
       expect(unchanged).toBe(updated);
     });
 
+    it("updates pdfA with SET_IMAGES_PDF_A, starting from false", () => {
+      expect(initialImagesToPdfState.pdfA).toBe(false);
+      const updated = imagesToPdfReducer(initialImagesToPdfState, {
+        type: "SET_IMAGES_PDF_A",
+        pdfA: true,
+      });
+      expect(updated.pdfA).toBe(true);
+
+      const unchanged = imagesToPdfReducer(updated, {
+        type: "SET_IMAGES_PDF_A",
+        pdfA: true,
+      });
+      expect(unchanged).toBe(updated);
+    });
+
     it("retains orientation when pageSize changes", () => {
       const initial: ImagesToPdfState = {
         ...initialImagesToPdfState,
@@ -365,6 +380,7 @@ describe("state reducers", () => {
           output: "merge",
           pageSize: "a4",
           orientation: "portrait",
+          pdfA: true,
           outputDir: null,
         },
         pdfToImages: {
@@ -375,6 +391,7 @@ describe("state reducers", () => {
         },
       });
       expect(statePreset.imagesToPdf.orientation).toBe("portrait");
+      expect(statePreset.imagesToPdf.pdfA).toBe(true);
       expect(statePreset.pdfToImages.colorMode).toBe("gray");
       expect(statePreset.pdfToImages.dpi).toBe(300);
       expect(statePreset.pdfToImages.isCustomDpi).toBe(false);
@@ -386,6 +403,7 @@ describe("state reducers", () => {
           output: "merge",
           pageSize: "a4",
           orientation: "auto",
+          pdfA: false,
           outputDir: null,
         },
         pdfToImages: {
@@ -498,6 +516,14 @@ describe("state reducers", () => {
         const state = appReducer(finishedOn("imagesToPdf"), {
           type: "SET_IMAGES_ORIENTATION",
           orientation: "landscape",
+        });
+        expect(state.job.finished).toBeNull();
+      });
+
+      it("drops it when the PDF/A choice of imagesToPdf changes", () => {
+        const state = appReducer(finishedOn("imagesToPdf"), {
+          type: "SET_IMAGES_PDF_A",
+          pdfA: true,
         });
         expect(state.job.finished).toBeNull();
       });

@@ -18,7 +18,7 @@ use crate::error::{ErrorCode, IpcError};
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
     self, CheckPageRangeResult, PageOrientationChoice, PageSizeChoice, RenderColorChoice,
-    RenderFormatChoice, SaveMergedPdfResult,
+    RenderFormatChoice, SaveMergedPdfResult, pdf_conformance,
 };
 use crate::settings::{self, OutputDirLabel, OutputKind, Settings, SettingsInput};
 
@@ -234,6 +234,7 @@ pub async fn save_merged_pdf(
     ids: Vec<u64>,
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
+    pdf_a: bool,
 ) -> Result<Option<SaveMergedPdfResult>, IpcError> {
     if state
         .is_running
@@ -308,6 +309,7 @@ pub async fn save_merged_pdf(
             &ids,
             page_size,
             orientation,
+            pdf_conformance(pdf_a),
             &dest_path,
             callbacks,
         )
@@ -325,6 +327,7 @@ pub async fn start_images_to_pdfs(
     ids: Vec<u64>,
     page_size: PageSizeChoice,
     orientation: PageOrientationChoice,
+    pdf_a: bool,
 ) -> Result<(), IpcError> {
     let w1 = window.clone();
     let w2 = window.clone();
@@ -342,7 +345,14 @@ pub async fn start_images_to_pdfs(
         },
     };
 
-    jobs::start_images_to_pdfs_internal(&state, &ids, page_size, orientation, callbacks)
+    jobs::start_images_to_pdfs_internal(
+        &state,
+        &ids,
+        page_size,
+        orientation,
+        pdf_conformance(pdf_a),
+        callbacks,
+    )
 }
 
 /// Starts batch conversion of PDF pages to image files in the background (design §6.3, §7.1).

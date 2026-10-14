@@ -26,6 +26,7 @@ const ALL_ERROR_CODES: ErrorCode[] = [
   "InvalidParams",
   "OutputDirMissing",
   "OutputDirNotWritable",
+  "CmykNotAllowedInPdfA",
 ];
 
 describe("i18n", () => {
@@ -49,7 +50,7 @@ describe("i18n", () => {
   });
 
   describe("formatErrorMessage", () => {
-    it("formats all 17 error codes in Japanese", () => {
+    it("formats all 18 error codes in Japanese", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "ja")).toBe(
         "対応していない形式です",
       );
@@ -101,9 +102,12 @@ describe("i18n", () => {
       expect(formatErrorMessage("OutputDirNotWritable", null, "ja")).toBe(
         "保存先のフォルダに書き込めません",
       );
+      expect(formatErrorMessage("CmykNotAllowedInPdfA", null, "ja")).toBe(
+        "PDF/A では CMYK の画像を使えません",
+      );
     });
 
-    it("formats all 17 error codes in English", () => {
+    it("formats all 18 error codes in English", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "en")).toBe(
         "Unsupported file format",
       );
@@ -154,6 +158,9 @@ describe("i18n", () => {
       );
       expect(formatErrorMessage("OutputDirNotWritable", null, "en")).toBe(
         "Can't write to the output folder",
+      );
+      expect(formatErrorMessage("CmykNotAllowedInPdfA", null, "en")).toBe(
+        "CMYK images can't be used in PDF/A",
       );
     });
 
