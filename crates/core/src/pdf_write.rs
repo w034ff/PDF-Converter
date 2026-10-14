@@ -147,6 +147,7 @@ impl PdfWriter {
             return Ok(AddImageResult::Cancelled);
         }
 
+        // PDF/A forbids /Interpolate, and krilla fails `finish` if it is set.
         let interpolate = self.conformance == PdfConformance::Standard;
 
         if info.format == ImageFormat::Tiff {
@@ -160,6 +161,14 @@ impl PdfWriter {
                 Err(()) => return Ok(AddImageResult::Cancelled),
             };
 
+            for (_img, page_info) in &pages {
+                let layout = calculate_layout(page_info, page_size);
+                PageSettings::from_wh(layout.page_width, layout.page_height)
+                    .ok_or(ProbeError::DecodeFailed)?;
+                Size::from_wh(page_info.width as f32, page_info.height as f32)
+                    .ok_or(ProbeError::DecodeFailed)?;
+            }
+
             let count = pages.len() as u32;
             for (img, page_info) in pages {
                 self.commit_page(img, &page_info, page_size)?;
@@ -169,8 +178,13 @@ impl PdfWriter {
 
         let dynamic_img = decode_image_pixels(image_bytes)?;
 
+        // JPEG has metadata stripped before embedding (design §4.3).
+        // PNG and WebP are decoded to pixels by krilla and losslessly recompressed.
+        // BMP uses the RGBA pixels read by `image`.
         let img = match info.format {
             ImageFormat::Jpeg => {
+                // krilla requires a document CMYK profile for any CMYK image in PDF/A,
+                // and none is bundled (design §4.3).
                 if self.conformance == PdfConformance::PdfA2b
                     && crate::jpeg_strip::jpeg_component_count(image_bytes)?
                         == Some(crate::jpeg_strip::CMYK_COMPONENT_COUNT)

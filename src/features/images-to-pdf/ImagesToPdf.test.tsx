@@ -1620,14 +1620,18 @@ describe("ImagesToPdf (T11)", () => {
     async function mergeAndFinish(
       finished: JobFinishedPayload,
       result: unknown,
-      items: JobItemPayload[] = [],
+      items: JobItemPayload[] = [
+        { id: 1, status: "ok", outputs: [] },
+        { id: 2, status: "ok", outputs: [] },
+      ],
       lang = "ja-JP",
+      addedImages: ImageItem[] = [sampleImage1, sampleImage2],
     ) {
       let resolveSave: (value: unknown) => void = () => {};
       mockAppIpc((cmd) => {
         if (cmd === "add_images") {
           const added: AddResult<ImageItem> = {
-            added: [sampleImage1, sampleImage2],
+            added: addedImages,
             skipped: { unsupported: 0, folders: 0, duplicates: 0 },
           };
           return added;
@@ -1648,7 +1652,7 @@ describe("ImagesToPdf (T11)", () => {
           name: lang === "ja-JP" ? "画像を追加" : "Add images",
         }),
       );
-      await screen.findByText("photo.jpg");
+      await screen.findByText(addedImages[0]?.name ?? "photo.jpg");
 
       fireEvent.click(
         screen.getByRole("button", {
@@ -1675,9 +1679,22 @@ describe("ImagesToPdf (T11)", () => {
     };
 
     it("counts the pages of the PDF and adds the images that failed", async () => {
+      const tenPageTiff: ImageItem = {
+        ...sampleImage1,
+        id: 1,
+        name: "scan.tif",
+        format: "tiff",
+        pageCount: 10,
+      };
       await mergeAndFinish(
-        { ...NOTHING, succeeded: 10, failed: 1 },
+        { ...NOTHING, succeeded: 1, failed: 1 },
         { savedName: "merged.pdf" },
+        [
+          { id: 1, status: "ok", outputs: [] },
+          { id: 2, status: "failed", outputs: [] },
+        ],
+        "ja-JP",
+        [tenPageTiff, sampleImage2],
       );
 
       expect(await screen.findByRole("status")).toHaveTextContent(
@@ -1814,6 +1831,8 @@ describe("ImagesToPdf (T11)", () => {
 
     // Finish job
     await act(async () => {
+      await emit(JOB_ITEM_EVENT, { id: 1, status: "ok", outputs: [] });
+      await emit(JOB_ITEM_EVENT, { id: 2, status: "ok", outputs: [] });
       await emit(JOB_FINISHED_EVENT, {
         succeeded: 2,
         failed: 0,

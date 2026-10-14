@@ -27,7 +27,7 @@ export function describeImagesToPdfStatus(
   }
   if (state.output === "merge") {
     const totalPages = validItems.reduce(
-      (sum, item) => sum + (item.pageCount ?? 1),
+      (sum, item) => sum + item.pageCount,
       0,
     );
     return plain(

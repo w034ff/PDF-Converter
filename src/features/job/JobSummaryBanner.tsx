@@ -73,10 +73,7 @@ function summaryShape(
     const okItems = imagesToPdf.items.filter(
       (item) => job.results[item.id]?.status === "ok",
     );
-    const pages =
-      okItems.length > 0
-        ? okItems.reduce((sum, item) => sum + (item.pageCount ?? 1), 0)
-        : job.finished.succeeded;
+    const pages = okItems.reduce((sum, item) => sum + item.pageCount, 0);
     return {
       kind: "mergedPdf",
       pages,

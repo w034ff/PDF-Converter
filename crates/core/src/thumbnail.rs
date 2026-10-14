@@ -154,4 +154,10 @@ mod tests {
         let bytes = std::fs::read(fixture("corrupt.png")).expect("reading the fixture");
         assert_eq!(thumbnail_png(&bytes).unwrap_err(), ProbeError::DecodeFailed);
     }
+
+    #[test]
+    fn thumbnail_aspect_ratio_respects_anisotropic_dpi() {
+        assert_eq!(thumbnail_size("fax_standard.tif"), (116, 160));
+        assert_eq!(thumbnail_size("dpi_aniso.png"), (160, 160));
+    }
 }
