@@ -13,11 +13,18 @@ workspace = true
 image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png", "webp"] }
 # Writes the PDF; JPEG bytes go in unchanged (design §2, §4.3).
 krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }
+# Reads every page of a TIFF; image reads only the first (design §2, §4.1.1).
+# The features are the compressions the app reads: G3, ZSTD and WebP stay out.
+tiff = { version = "0.11.3", default-features = false, features = ["deflate", "fax", "jpeg", "lzw"] }
 
 # Only examples/gen_fixtures.rs and the tests use these (design §11.1, §11.2).
 [dev-dependencies]
 # Decompresses FlateDecode streams in tests to verify stripped metadata (design §11.2).
 flate2 = "1.1.10"
+# Encodes the G4 pages of the TIFF fixtures; the same major version as tiff uses.
+fax = "0.2.7"
+# Compresses the LZW pages of the TIFF fixtures; tiff decodes with the same crate.
+weezl = "0.1.12"
 # Writes CMYK JPEGs, which image cannot, and the EXIF and JFIF density segments.
 jpeg-encoder = "0.7.1"
 # The standard security handler of encrypted.pdf and restricted.pdf is MD5-based.
