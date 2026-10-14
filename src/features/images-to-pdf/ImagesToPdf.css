@@ -293,9 +293,11 @@
   white-space: nowrap;
 }
 
-/* The confirmation has no toggle button, so it needs no room for one. */
-.output-password-confirm {
-  padding-right: 12px;
+/* The confirmation has no toggle button, so it needs no room for one. Both
+   classes are named so that this wins over .password-dialog-input whichever
+   stylesheet the build puts first. */
+.password-dialog-input.output-password-confirm {
+  padding-right: 10px;
 }
 
 /* A box that the other one rules out: off, and its text faded. */
