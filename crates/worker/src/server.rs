@@ -13,10 +13,13 @@ use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfPage, PdfRenderConfig, Pdfium, PdfiumError, PdfiumInternalError,
 };
 
+use crate::crop::{self, RegionRequest};
 use crate::protocol::{
     PageDimensions, RenderColor, RenderFormat, Request, Response, read_message, write_message,
 };
-use crate::{JPEG_QUALITY, MAX_PDF_PAGES, MAX_RENDER_PIXELS, is_render_dpi_in_range};
+use crate::{
+    JPEG_QUALITY, MAX_PDF_PAGES, MAX_RENDER_PIXELS, PAGE_VIEW_MAX_SIDE, is_render_dpi_in_range,
+};
 
 /// How much memory one worker may use (design §5.3). Allocations beyond it
 /// fail and end the worker, which the main process reports as a crash.
@@ -30,7 +33,7 @@ pub const CRASH_ON_OPEN_FILE_NAME: &str = "crash-on-open-for-test.pdf";
 const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
 
 /// Error code when opening or decoding a PDF fails.
-const CODE_PDF_OPEN_FAILED: &str = "PdfOpenFailed";
+pub(crate) const CODE_PDF_OPEN_FAILED: &str = "PdfOpenFailed";
 
 /// Error code when a PDF requires a password to open.
 const CODE_PASSWORD_PROTECTED: &str = "PasswordProtected";
@@ -42,10 +45,10 @@ const CODE_READ_FAILED: &str = "ReadFailed";
 const CODE_TOO_MANY_PAGES: &str = "TooManyPages";
 
 /// Error code when rendered page dimensions exceed the maximum pixel limit.
-const CODE_RENDER_TOO_LARGE: &str = "RenderTooLarge";
+pub(crate) const CODE_RENDER_TOO_LARGE: &str = "RenderTooLarge";
 
 /// Error code when arguments are out of range or no document is open.
-const CODE_INVALID_PARAMS: &str = "InvalidParams";
+pub(crate) const CODE_INVALID_PARAMS: &str = "InvalidParams";
 
 /// Runs the worker loop. `library_dir` is the folder holding the bundled
 /// pdfium library; pdfium is loaded on the first request that needs it.
@@ -195,37 +198,13 @@ impl State {
                         Err(resp) => return (resp, Vec::new()),
                     };
 
-                let mut encoded = Vec::new();
-                let encode_result = match format {
-                    RenderFormat::Png => PngEncoder::new(&mut encoded).write_image(
-                        &pixels,
-                        target_width,
-                        target_height,
-                        color_type,
-                    ),
-                    RenderFormat::Jpeg => JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY)
-                        .write_image(&pixels, target_width, target_height, color_type),
-                    RenderFormat::Webp => WebPEncoder::new_lossless(&mut encoded).write_image(
-                        &pixels,
-                        target_width,
-                        target_height,
-                        color_type,
-                    ),
-                };
-
-                match encode_result {
-                    Ok(()) => (Response::Render, encoded),
-                    Err(e) => (
-                        Response::Error {
-                            code: CODE_PDF_OPEN_FAILED.into(),
-                            detail: Some(format!("{e:?}")),
-                        },
-                        Vec::new(),
-                    ),
+                match encode_pixels(&pixels, target_width, target_height, color_type, format) {
+                    Ok(encoded) => (Response::Render, encoded),
+                    Err(response) => (response, Vec::new()),
                 }
             }
             Request::Thumbnail { page, max_side } => {
-                if max_side == 0 {
+                if max_side == 0 || max_side > PAGE_VIEW_MAX_SIDE {
                     return (
                         Response::Error {
                             code: CODE_INVALID_PARAMS.into(),
@@ -294,6 +273,50 @@ impl State {
                     ),
                 }
             }
+            Request::PageImages { page } => {
+                let result = self.document().and_then(|doc| crop::page_images(doc, page));
+                match result {
+                    Ok(images) => (Response::PageImages { images }, Vec::new()),
+                    Err(response) => (response, Vec::new()),
+                }
+            }
+            Request::ImageOnTop { page, image_index } => {
+                let result = self.document().and_then(|doc| {
+                    crop::image_on_top(doc, page, image_index, crop::ON_TOP_CHECK_PIXELS)
+                });
+                match result {
+                    Ok(on_top) => (Response::ImageOnTop { on_top }, Vec::new()),
+                    Err(response) => (response, Vec::new()),
+                }
+            }
+            Request::RenderRegion {
+                page,
+                rect_pt,
+                image_index,
+                dpi,
+                format,
+                color,
+                photo_native,
+                photo_only,
+            } => {
+                let request = RegionRequest {
+                    page,
+                    rect: rect_pt,
+                    image_index,
+                    dpi,
+                    format,
+                    color,
+                    photo_native,
+                    photo_only,
+                };
+                let result = self
+                    .document()
+                    .and_then(|doc| crop::render_region(doc, &request, MAX_RENDER_PIXELS));
+                match result {
+                    Ok((response, image)) => (response, image),
+                    Err(response) => (response, Vec::new()),
+                }
+            }
             Request::Close => {
                 self.document = None;
                 (Response::Close, Vec::new())
@@ -322,26 +345,14 @@ impl State {
         }
     }
 
+    fn document(&self) -> Result<&PdfDocument<'static>, Response> {
+        self.document
+            .as_ref()
+            .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))
+    }
+
     fn page_for_rendering(&self, page: u32) -> Result<PdfPage<'_>, Response> {
-        let Some(doc) = &self.document else {
-            return Err(Response::Error {
-                code: CODE_INVALID_PARAMS.into(),
-                detail: None,
-            });
-        };
-        let page_count = doc.pages().len() as u32;
-        if page == 0 || page > page_count {
-            return Err(Response::Error {
-                code: CODE_INVALID_PARAMS.into(),
-                detail: None,
-            });
-        }
-        doc.pages()
-            .get((page - 1) as i32)
-            .map_err(|_| Response::Error {
-                code: CODE_INVALID_PARAMS.into(),
-                detail: None,
-            })
+        load_page(self.document()?, page)
     }
 
     fn pdfium(&mut self) -> Result<&'static Pdfium, Response> {
@@ -354,6 +365,76 @@ impl State {
         }
         self.pdfium
             .ok_or_else(|| unavailable(&"pdfium was not stored"))
+    }
+}
+
+/// An error response with `code` (design §6.6).
+pub(crate) fn error_response(code: &str, detail: Option<String>) -> Response {
+    Response::Error {
+        code: code.into(),
+        detail,
+    }
+}
+
+/// Loads page `page` (1-based) of `doc`, or `InvalidParams` when there is no
+/// such page.
+pub(crate) fn load_page<'a>(doc: &'a PdfDocument<'_>, page: u32) -> Result<PdfPage<'a>, Response> {
+    let page_count = doc.pages().len() as u32;
+    if page == 0 || page > page_count {
+        return Err(error_response(CODE_INVALID_PARAMS, None));
+    }
+    doc.pages()
+        .get((page - 1) as i32)
+        .map_err(|_| error_response(CODE_INVALID_PARAMS, None))
+}
+
+/// Encodes `pixels` (`width` × `height`, laid out as `color_type`) in `format`
+/// (design §4.4).
+pub(crate) fn encode_pixels(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    color_type: ExtendedColorType,
+    format: RenderFormat,
+) -> Result<Vec<u8>, Response> {
+    let mut encoded = Vec::new();
+    let result = match format {
+        RenderFormat::Png => {
+            PngEncoder::new(&mut encoded).write_image(pixels, width, height, color_type)
+        }
+        RenderFormat::Jpeg => JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY)
+            .write_image(pixels, width, height, color_type),
+        RenderFormat::Webp => {
+            WebPEncoder::new_lossless(&mut encoded).write_image(pixels, width, height, color_type)
+        }
+    };
+    result
+        .map(|()| encoded)
+        .map_err(|e| error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}"))))
+}
+
+/// Turns pdfium's RGBA bytes into the pixels to encode: RGB, or one gray
+/// channel (design §4.4: `FPDF_GRAYSCALE` makes R = G = B). With `keep_alpha`
+/// the alpha channel stays: RGBA, or gray and alpha.
+pub(crate) fn pixels_from_rgba(
+    rgba: Vec<u8>,
+    color: RenderColor,
+    keep_alpha: bool,
+) -> (Vec<u8>, ExtendedColorType) {
+    let pixels = rgba.as_chunks::<4>().0;
+    match (color, keep_alpha) {
+        (RenderColor::Color, true) => (rgba, ExtendedColorType::Rgba8),
+        (RenderColor::Color, false) => (
+            pixels.iter().flat_map(|p| [p[0], p[1], p[2]]).collect(),
+            ExtendedColorType::Rgb8,
+        ),
+        (RenderColor::Gray, true) => (
+            pixels.iter().flat_map(|p| [p[0], p[3]]).collect(),
+            ExtendedColorType::La8,
+        ),
+        (RenderColor::Gray, false) => {
+            (pixels.iter().map(|p| p[0]).collect(), ExtendedColorType::L8)
+        }
     }
 }
 
@@ -396,24 +477,7 @@ fn render_page_pixels(
             detail: Some(format!("{e:?}")),
         })?;
 
-    let rgba = bitmap.as_rgba_bytes();
-    let num_pixels = (target_width as usize) * (target_height as usize);
-    match color {
-        RenderColor::Color => {
-            let mut rgb = Vec::with_capacity(num_pixels * 3);
-            for chunk in rgba.as_chunks::<4>().0 {
-                rgb.extend_from_slice(&chunk[0..3]);
-            }
-            Ok((rgb, ExtendedColorType::Rgb8))
-        }
-        RenderColor::Gray => {
-            let mut gray = Vec::with_capacity(num_pixels);
-            for chunk in rgba.as_chunks::<4>().0 {
-                gray.push(chunk[0]);
-            }
-            Ok((gray, ExtendedColorType::L8))
-        }
-    }
+    Ok(pixels_from_rgba(bitmap.as_rgba_bytes(), color, false))
 }
 
 fn unavailable(error: &dyn std::fmt::Debug) -> Response {

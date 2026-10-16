@@ -407,13 +407,15 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
 }
 
 #[test]
-fn rejects_thumbnail_exceeding_max_render_pixels() {
+fn rejects_thumbnail_exceeding_the_page_view_size() {
     let mut worker = start();
     worker
         .request(&open_req(fixtures_dir().join("shapes.pdf")), ANSWER_TIMEOUT)
         .expect("Open should succeed");
 
-    // Thumbnail with max_side = 200_000 produces ~2.8e10 pixels (> 100_000_000 MAX_RENDER_PIXELS)
+    // Thumbnail with max_side = 200_000 would produce ~2.8e10 pixels, but the
+    // page view size (design §5.1) already rules it out as InvalidParams
+    // before the pixel limit could answer RenderTooLarge.
     match worker.request(
         &Request::Thumbnail {
             page: 1,
@@ -421,8 +423,8 @@ fn rejects_thumbnail_exceeding_max_render_pixels() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "RenderTooLarge"),
-        other => panic!("expected RenderTooLarge, got {other:?}"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        other => panic!("expected InvalidParams, got {other:?}"),
     }
 }
 

@@ -4,6 +4,7 @@
 //! [`server::run`]; [`client::WorkerProcess`] is the main-process side.
 
 pub mod client;
+mod crop;
 pub mod protocol;
 pub mod server;
 #[cfg(windows)]
@@ -18,6 +19,10 @@ pub const MAX_PDF_PAGES: u32 = 10_000;
 
 /// Maximum total pixels for a rendered page before being rejected with `RenderTooLarge` (design §4.4, §6.6).
 pub const MAX_RENDER_PIXELS: u64 = 100_000_000;
+
+/// The largest `max_side` that `Thumbnail` accepts: the crop tab shows a page
+/// at most this many pixels on its longer side (design §5.1).
+pub const PAGE_VIEW_MAX_SIDE: u32 = 2400;
 
 /// Quality for JPEG encoding (design §4.4).
 pub const JPEG_QUALITY: u8 = 90;
