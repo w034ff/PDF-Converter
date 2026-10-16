@@ -1,7 +1,9 @@
 {
   "bundle": {
     "resources": {
-      "pdfium/windows/bin/pdfium.dll": "pdfium/pdfium.dll"
+      "pdfium/windows/bin/pdfium.dll": "pdfium/pdfium.dll",
+      "onnxruntime/windows/onnxruntime.dll": "onnxruntime/onnxruntime.dll",
+      "layout-model/PP-DocLayout_plus-L-int8.onnx": "layout-model/PP-DocLayout_plus-L-int8.onnx"
     }
   }
 }

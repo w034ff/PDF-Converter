@@ -85,13 +85,19 @@ PDF Converter は、画像（PNG、JPEG、WebP、BMP、TIFF）から PDF への�
    npm run pdfium:fetch
    ```
 
-3. 開発モードでの起動:
+3. onnxruntime とレイアウトの解析のモデルの取得（これもビルド時にのみ取得します）:
+
+   ```bash
+   npm run layout:fetch
+   ```
+
+4. 開発モードでの起動:
 
    ```bash
    npm run tauri dev
    ```
 
-4. リリース用パッケージのビルド:
+5. リリース用パッケージのビルド:
 
    ```bash
    npm run tauri build

@@ -54,9 +54,13 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      # The license list includes the bundled pdfium's license files.
+      # The license list includes the license files of the bundled pdfium and
+      # onnxruntime.
       - name: Fetch pdfium
         run: npm run pdfium:fetch
+
+      - name: Fetch onnxruntime and the layout model
+        run: npm run layout:fetch
 
       - name: Install license tools
         uses: taiki-e/install-action@v2
@@ -132,6 +136,9 @@ jobs:
 
       - name: Fetch pdfium
         run: npm run pdfium:fetch
+
+      - name: Fetch onnxruntime and the layout model
+        run: npm run layout:fetch
 
       # `tauri build` runs cargo without --locked; fail here instead of letting it
       # resolve versions that differ from the reviewed Cargo.lock.

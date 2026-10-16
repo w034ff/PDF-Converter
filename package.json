@@ -17,6 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "pdfium:fetch": "node scripts/fetch-pdfium.ts",
+    "layout:fetch": "node scripts/fetch-layout.ts",
     "licenses:check": "cargo deny check licenses bans sources && license-checker-rseidelsohn --production --excludePrivatePackages --summary --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;Zlib\"",
     "licenses:generate": "node scripts/generate-licenses.ts",
     "manual-test:files": "node scripts/make-manual-test-files.ts",

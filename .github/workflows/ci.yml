@@ -56,6 +56,11 @@ jobs:
       - name: Fetch pdfium
         run: npm run pdfium:fetch
 
+      # The bundle resources (tauri.<os>.conf.json) must exist for the app
+      # crate to build, and the layout tests use the model (design §8.5, §11.1).
+      - name: Fetch onnxruntime and the layout model
+        run: npm run layout:fetch
+
       - name: Code Format Check
         run: npm run format:check
 
@@ -181,8 +186,10 @@ jobs:
         if: runner.os == 'Linux'
         run: npm run licenses:check
 
-      # The list includes the license files of the bundled pdfium, which the
-      # "Fetch pdfium" step above unpacked.
+      # The list includes the license files of the bundled pdfium and
+      # onnxruntime, which the "Fetch pdfium" and "Fetch onnxruntime and the
+      # layout model" steps above unpacked, and the files of the layout model
+      # in scripts/layout-model.
       - name: Check third-party license list is current
         if: runner.os == 'Linux'
         run: |
