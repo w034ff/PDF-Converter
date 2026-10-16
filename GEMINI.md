@@ -100,6 +100,7 @@ Do not push through by guessing.
 - Do not mock the unit under test. In the frontend, mock only the IPC boundary (`@tauri-apps/api/mocks`).
 - Use the fixtures in `crates/core/tests/fixtures/`. Do not add third-party images or PDFs; generate new fixtures with `crates/core/examples/gen_fixtures.rs`.
 - Do not weaken or delete an existing test to make a change pass. If a test looks wrong, explain why in the report.
+- Do not change production code to suit a test fake. Production code handles only what production can return; when a fake answers differently (for example, `mockIPC` returning `undefined` for a command that always returns a value) and a test fails, fix the fake. A branch that only a fake can reach hides the same failure if it ever happens for real.
 
 ## Commit messages
 
