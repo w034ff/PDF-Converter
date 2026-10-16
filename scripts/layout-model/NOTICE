@@ -1,0 +1,10 @@
+PP-DocLayout_plus-L-int8.onnx
+
+This file is a modified version of PP-DocLayout_plus-L by PaddlePaddle,
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Original: https://huggingface.co/PaddlePaddle/PP-DocLayout_plus-L_onnx
+(inference.onnx at commit feb74619326f634e0e883218598096a3733ad9f7).
+
+Changes: the weights were quantized to 8-bit integers (dynamic quantization
+with ONNX Runtime 1.26.0, scripts/quantize-layout-model.py in this repository).
