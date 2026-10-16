@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>切り出し：案 A</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4492b}a:hover{color:#8a3520}
+.btn{font:inherit;font-size:13px;border-radius:6px;padding:0 12px;min-height:32px;cursor:pointer;white-space:nowrap}
+.btn-primary{background:#b4492b;color:#fff;border:1px solid #b4492b;font-weight:500}
+.btn-ghost{background:#fff;color:#1f1f1f;border:1px solid #cfcbc4}
+.icon-btn{font:inherit;font-size:14px;width:32px;min-height:32px;border-radius:6px;border:1px solid #cfcbc4;background:#fff;color:#1f1f1f;cursor:pointer;padding:0}
+.seg{display:flex;border:1px solid #cfcbc4;border-radius:6px;overflow:hidden}
+.seg button{flex:1;font:inherit;font-size:13px;min-height:32px;border:0;border-left:1px solid #cfcbc4;background:#fff;color:#1f1f1f;cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:#b4492b;color:#fff}
+.label{font-size:13px;font-weight:500;color:#1f1f1f}
+.hint{font-size:12px;color:#5c5a56}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;color:#5c5a56}
+.field{font:inherit;font-size:13px;min-height:32px;border:1px solid #cfcbc4;border-radius:6px;padding:0 8px;background:#fff;box-sizing:border-box}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:500}
+.check input{width:16px;height:16px;margin:2px 0 0;accent-color:#b4492b;flex:none}
+.tag{font-size:11px;line-height:16px;padding:0 6px;border-radius:4px;white-space:nowrap}
+</style>
+</helmet>
+<div style="height: 800px; display: flex; flex-direction: column; background: #f4f3f0; color: #1f1f1f; font-family: 'Noto Sans JP', system-ui, sans-serif; overflow: hidden">
+  <header style="height: 48px; display: flex; align-items: center; gap: 24px; padding: 0 16px; background: #ffffff; border-bottom: 1px solid #dcd9d3; flex: none">
+    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b4492b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>
+      PDF Converter
+    </div>
+    <nav style="display: flex; align-self: stretch" aria-label="変換の種類">
+      <a href="ImagesMerge.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none">画像 → PDF</a>
+      <a href="PdfSingle.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none">PDF → 画像</a>
+      <a href="#" aria-current="page" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; font-weight: 500; color: #1f1f1f; text-decoration: none; border-bottom: 2px solid #b4492b">切り出し</a>
+    </nav>
+    <div style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+      <label class="hint" for="lang">言語</label>
+      <select id="lang" style="font: inherit; font-size: 13px; min-height: 32px; border: 1px solid #cfcbc4; border-radius: 6px; padding: 0 8px; background: #fff"><option>日本語</option><option>English</option></select>
+      <button class="btn btn-ghost" aria-label="このアプリについて" style="width: 32px; padding: 0">i</button>
+    </div>
+  </header>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav aria-label="ページ" style="flex: none; width: 124px; background: #ffffff; border-right: 1px solid #dcd9d3; overflow-y: auto; box-sizing: border-box">
+      <ul style="list-style: none; margin: 0; padding: 12px; display: flex; flex-direction: column; gap: 12px">
+          <li><button aria-label="ページ 1" aria-current="false" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; display: block"><span class="tag" style="position: absolute; right: 4px; top: 4px; background: #b4492b; color: #ffffff">1</span></span>
+            <span class="mono" style="color: #5c5a56">1</span>
+          </button></li>
+          <li><button aria-label="ページ 2" aria-current="false" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; display: block"></span>
+            <span class="mono" style="color: #5c5a56">2</span>
+          </button></li>
+          <li><button aria-label="ページ 3" aria-current="page" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 2px solid #b4492b; border-radius: 3px; box-sizing: border-box; display: block"><span class="tag" style="position: absolute; right: 4px; top: 4px; background: #b4492b; color: #ffffff">3</span></span>
+            <span class="mono" style="color: #1f1f1f">3</span>
+          </button></li>
+          <li><button aria-label="ページ 4" aria-current="false" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; display: block"></span>
+            <span class="mono" style="color: #5c5a56">4</span>
+          </button></li>
+          <li><button aria-label="ページ 5" aria-current="false" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; display: block"><span class="tag" style="position: absolute; right: 4px; top: 4px; background: #b4492b; color: #ffffff">1</span></span>
+            <span class="mono" style="color: #5c5a56">5</span>
+          </button></li>
+          <li><button aria-label="ページ 6" aria-current="false" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; display: block"></span>
+            <span class="mono" style="color: #5c5a56">6</span>
+          </button></li>
+          <li><button aria-label="ページ 7" aria-current="false" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; display: block"></span>
+            <span class="mono" style="color: #5c5a56">7</span>
+          </button></li>
+          <li><button aria-label="ページ 8" aria-current="false" style="width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit">
+            <span style="position: relative; width: 100%; aspect-ratio: 210 / 297; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; display: block"></span>
+            <span class="mono" style="color: #5c5a56">8</span>
+          </button></li>
+      </ul>
+    </nav>
+
+    <main style="flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #ffffff; border-bottom: 1px solid #dcd9d3; flex: none">
+        <span style="font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">market-report-2026.pdf</span>
+        <span class="mono" style="white-space: nowrap">3 / 12</span>
+        <button class="btn btn-ghost" style="margin-left: auto">別の PDF を開く</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; flex: none">
+        <div class="seg" role="group" aria-label="表示の大きさ" style="flex: none">
+          <button aria-pressed="false" style="padding: 0 10px; white-space: nowrap">幅</button>
+          <button aria-pressed="true" style="padding: 0 10px; white-space: nowrap">全体</button>
+        </div>
+        <button class="icon-btn" aria-label="縮小">−</button>
+        <span class="mono">64%</span>
+        <button class="icon-btn" aria-label="拡大">＋</button>
+        <label class="check" style="margin-left: 4px; align-items: center; white-space: nowrap"><input type="checkbox" checked style="margin: 0">候補</label>
+        <button class="btn btn-ghost" aria-haspopup="menu" style="margin-left: auto">範囲を追加 ▾</button>
+      </div>
+
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 24px 16px 16px"><div style="position: relative; width: 390px; height: 552px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.18); flex: none; margin: 0 auto"><div style="position: absolute; left: 10%; top: 5%; width: 50%; height: 2.2%; box-sizing: border-box; background: #c9c5bd; border-radius: 2px"></div><div style="position: absolute; left: 10%; top: 9%; width: 80%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div><div style="position: absolute; left: 10%; top: 11%; width: 76%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div><div style="position: absolute; left: 10%; top: 14%; width: 48%; height: 22%; box-sizing: border-box; background: linear-gradient(160deg, #9fb7cf 0%, #c6d4c1 55%, #8c7a63 100%)"></div><div style="position: absolute; left: 47%; top: 29%; width: 9%; height: 5.5%; box-sizing: border-box; background: #2d5fa8; border: 2px solid #ffffff; border-radius: 3px"></div><div style="position: absolute; left: 10%; top: 14%; width: 48%; height: 22%; box-sizing: border-box; border: 2px solid #b4492b"><span class="tag" style="position: absolute; left: -1px; top: -18px; background: #ffffff; color: #b4492b; border: 1px solid #b4492b">写真</span></div><div style="position: absolute; left: 62%; top: 14%; width: 28%; height: 16%; box-sizing: border-box; background: linear-gradient(200deg, #d8c3a5, #b59a7a)"></div><div style="position: absolute; left: 62%; top: 14%; width: 28%; height: 16%; box-sizing: border-box; border: 1.5px dashed #5c5a56"></div><div style="position: absolute; left: 62%; top: 31.5%; width: 26%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div><div style="position: absolute; left: 62%; top: 33.5%; width: 20%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div><div style="position: absolute; left: 10%; top: 39%; width: 80%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div><div style="position: absolute; left: 10%; top: 41%; width: 78%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div><div style="position: absolute; left: 10%; top: 43%; width: 70%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div><div style="position: absolute; left: 12%; top: 49%; width: 76%; height: 22%; box-sizing: border-box; background: #ffffff"><div style="position: absolute; left: 8%; right: 4%; bottom: 12%; top: 10%; display: flex; align-items: flex-end; gap: 6%; border-left: 1px solid #8a867e; border-bottom: 1px solid #8a867e; padding-left: 4%"><span style="flex: 1; height: 40%; background: #5b8cc4"></span><span style="flex: 1; height: 65%; background: #5b8cc4"></span><span style="flex: 1; height: 52%; background: #5b8cc4"></span><span style="flex: 1; height: 80%; background: #d08a4c"></span><span style="flex: 1; height: 70%; background: #5b8cc4"></span></div></div><div style="position: absolute; left: 10%; top: 47.5%; width: 80%; height: 25%; box-sizing: border-box; border: 2px solid #b4492b; background: rgba(180, 73, 43, 0.06)"><span class="tag" style="position: absolute; left: -1px; top: -18px; background: #b4492b; color: #ffffff; border: 1px solid #ffffff">グラフ</span><span style="position: absolute; left: calc(0% - 4px); top: calc(0% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span><span style="position: absolute; left: calc(50% - 4px); top: calc(0% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span><span style="position: absolute; left: calc(100% - 4px); top: calc(0% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span><span style="position: absolute; left: calc(0% - 4px); top: calc(50% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span><span style="position: absolute; left: calc(100% - 4px); top: calc(50% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span><span style="position: absolute; left: calc(0% - 4px); top: calc(100% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span><span style="position: absolute; left: calc(50% - 4px); top: calc(100% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span><span style="position: absolute; left: calc(100% - 4px); top: calc(100% - 4px); width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #b4492b; box-sizing: border-box"></span></div><div style="position: absolute; left: 82%; top: 75%; width: 8%; height: 5.5%; box-sizing: border-box; background: #ece9e3; border-radius: 50%"></div><div style="position: absolute; left: 81%; top: 74.3%; width: 10%; height: 7%; box-sizing: border-box; border: 1px solid #0e6b66"><span class="tag" style="position: absolute; left: -1px; top: -18px; background: #ffffff; color: #0e6b66; border: 1px solid #0e6b66">図</span></div><div style="position: absolute; left: 10%; top: 75%; width: 66%; height: 16%; box-sizing: border-box; background: repeating-linear-gradient(180deg, #ffffff 0, #ffffff 13%, #e4e1db 13%, #e4e1db 14.5%); border: 1px solid #c9c5bd"></div><div style="position: absolute; left: 10%; top: 75%; width: 66%; height: 16%; box-sizing: border-box; border: 2px solid #b4492b"><span class="tag" style="position: absolute; left: -1px; top: -18px; background: #ffffff; color: #b4492b; border: 1px solid #b4492b">表</span></div><div style="position: absolute; left: 10%; top: 94%; width: 30%; height: 1%; box-sizing: border-box; background: #e4e1db; border-radius: 2px"></div></div></div>
+    </main>
+    <section aria-label="範囲と書き出しの設定" style="flex: none; width: 340px; background: #ffffff; border-left: 1px solid #dcd9d3; display: flex; flex-direction: column; min-height: 0">
+      <div style="padding: 12px 16px 8px; display: flex; align-items: baseline; gap: 8px; flex: none">
+        <span class="label">範囲</span><span class="hint">5 個 · 書き出す 5 個</span>
+      </div>
+      <ul style="list-style: none; margin: 0; padding: 0 16px 12px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; min-height: 0">
+          <li style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 6px">
+            <input type="checkbox" checked aria-label="範囲 1 を書き出す" style="width: 16px; height: 16px; margin: 0; accent-color: #b4492b; flex: none">
+            <button aria-label="p.1 の写真を表示" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; font: inherit; text-align: left; cursor: pointer; color: #1f1f1f">
+              <span style="width: 44px; height: 34px; background: #c9d6e6; border: 1px solid #dcd9d3; border-radius: 3px; flex: none"></span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="display: flex; gap: 6px; align-items: center; font-size: 13px"><span class="mono" style="color: #1f1f1f">p.1</span><span style="font-weight: 500">写真</span></span>
+                <span class="mono" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">元の画素 1755 × 1100</span>
+              </span>
+            </button>
+            <button class="icon-btn" aria-label="範囲 1 を消す" style="border: 0; background: transparent; width: 28px; color: #5c5a56">×</button>
+          </li>
+          <li style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 6px">
+            <input type="checkbox" checked aria-label="範囲 2 を書き出す" style="width: 16px; height: 16px; margin: 0; accent-color: #b4492b; flex: none">
+            <button aria-label="p.3 の写真を表示" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; font: inherit; text-align: left; cursor: pointer; color: #1f1f1f">
+              <span style="width: 44px; height: 34px; background: #c9d6e6; border: 1px solid #dcd9d3; border-radius: 3px; flex: none"></span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="display: flex; gap: 6px; align-items: center; font-size: 13px"><span class="mono" style="color: #1f1f1f">p.3</span><span style="font-weight: 500">写真</span><span class="tag" style="color: #8a5a00; border: 1px solid #8a5a00">重なりあり</span></span>
+                <span class="mono" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">元の画素 1241 × 964</span>
+              </span>
+            </button>
+            <button class="icon-btn" aria-label="範囲 2 を消す" style="border: 0; background: transparent; width: 28px; color: #5c5a56">×</button>
+          </li>
+          <li style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #faebe6; border: 1px solid #b4492b; border-radius: 6px">
+            <input type="checkbox" checked aria-label="範囲 3 を書き出す" style="width: 16px; height: 16px; margin: 0; accent-color: #b4492b; flex: none">
+            <button aria-label="p.3 のグラフを表示" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; font: inherit; text-align: left; cursor: pointer; color: #1f1f1f">
+              <span style="width: 44px; height: 34px; background: #e8e4da; border: 1px solid #dcd9d3; border-radius: 3px; flex: none"></span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="display: flex; gap: 6px; align-items: center; font-size: 13px"><span class="mono" style="color: #1f1f1f">p.3</span><span style="font-weight: 500">グラフ</span></span>
+                <span class="mono" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">150 dpi · 742 × 433</span>
+              </span>
+            </button>
+            <button class="icon-btn" aria-label="範囲 3 を消す" style="border: 0; background: transparent; width: 28px; color: #5c5a56">×</button>
+          </li>
+          <li style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 6px">
+            <input type="checkbox" checked aria-label="範囲 4 を書き出す" style="width: 16px; height: 16px; margin: 0; accent-color: #b4492b; flex: none">
+            <button aria-label="p.3 の表を表示" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; font: inherit; text-align: left; cursor: pointer; color: #1f1f1f">
+              <span style="width: 44px; height: 34px; background: #dde8df; border: 1px solid #dcd9d3; border-radius: 3px; flex: none"></span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="display: flex; gap: 6px; align-items: center; font-size: 13px"><span class="mono" style="color: #1f1f1f">p.3</span><span style="font-weight: 500">表</span></span>
+                <span class="mono" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">150 dpi · 742 × 287</span>
+              </span>
+            </button>
+            <button class="icon-btn" aria-label="範囲 4 を消す" style="border: 0; background: transparent; width: 28px; color: #5c5a56">×</button>
+          </li>
+          <li style="display: flex; align-items: center; gap: 8px; padding: 8px; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 6px">
+            <input type="checkbox" checked aria-label="範囲 5 を書き出す" style="width: 16px; height: 16px; margin: 0; accent-color: #b4492b; flex: none">
+            <button aria-label="p.5 の手で選んだ範囲を表示" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; font: inherit; text-align: left; cursor: pointer; color: #1f1f1f">
+              <span style="width: 44px; height: 34px; background: #ece9e3; border: 1px solid #dcd9d3; border-radius: 3px; flex: none"></span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="display: flex; gap: 6px; align-items: center; font-size: 13px"><span class="mono" style="color: #1f1f1f">p.5</span><span style="font-weight: 500">手で選んだ範囲</span></span>
+                <span class="mono" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">150 dpi · 520 × 610</span>
+              </span>
+            </button>
+            <button class="icon-btn" aria-label="範囲 5 を消す" style="border: 0; background: transparent; width: 28px; color: #5c5a56">×</button>
+          </li>
+      </ul>
+
+      <div style="border-top: 1px solid #dcd9d3; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 14px; flex: none">
+        <button class="btn" aria-expanded="true" style="border: 0; background: transparent; padding: 0; min-height: 24px; display: flex; justify-content: space-between; align-items: center">
+          <span class="label">書き出しの設定</span>
+          <span class="hint">▴</span>
+        </button>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span class="label">形式</span>
+        <div class="seg" role="group" aria-label="形式">
+          <button aria-pressed="true">PNG</button>
+          <button aria-pressed="false">JPEG</button>
+          <button aria-pressed="false">WebP</button>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span class="label">色</span>
+        <div class="seg" role="group" aria-label="色">
+          <button aria-pressed="true">カラー</button>
+          <button aria-pressed="false">グレースケール</button>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label class="label" for="dpi">解像度</label>
+        <select id="dpi" class="field">
+          <option>72 dpi</option>
+          <option selected>150 dpi</option>
+          <option>300 dpi</option>
+          <option>数値で指定…</option>
+        </select>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <label class="check"><input type="checkbox" checked>写真は元の画素で書き出す</label>
+        <span class="hint" style="padding-left: 24px">写真は解像度によらず、元の画素の数で書き出します</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <label class="check"><input type="checkbox">写真だけを書き出す</label>
+        <span class="hint" style="padding-left: 24px">写真に重なった文字や枠を除きます</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span class="label">保存先フォルダ</span>
+        <span class="mono" style="word-break: break-all">C:\Users\owner\Documents\figures</span>
+        <button class="btn btn-ghost" style="align-self: flex-start">フォルダを選ぶ</button>
+      </div>
+</div>
+
+    </section>
+  </div>
+
+  <footer style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: #ffffff; border-top: 1px solid #dcd9d3; flex: none">
+    <span class="hint">5 個の範囲を PNG で書き出します</span>
+    <button class="btn btn-primary" style="margin-left: auto; min-height: 36px; padding: 0 16px">書き出す</button>
+  </footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -65,6 +65,30 @@
       "h": 800,
       "title": "候補 C：紫 #5b3c9e",
       "expand": "fill"
+    },
+    "CropEmpty.dc.html": {
+      "x": 0,
+      "y": 3660,
+      "w": 1200,
+      "h": 800,
+      "title": "切り出し：空の状態",
+      "expand": "fill"
+    },
+    "CropA.dc.html": {
+      "x": 1280,
+      "y": 3660,
+      "w": 1200,
+      "h": 800,
+      "title": "切り出し：PDF を開いて範囲を選んだ状態（サムネイルは左、書き出しの設定は範囲の一覧の下でたためる）",
+      "expand": "fill"
+    },
+    "CropA960.dc.html": {
+      "x": 2560,
+      "y": 3660,
+      "w": 960,
+      "h": 640,
+      "title": "切り出し：最小の大きさ（960×640、書き出しの設定をたたんだ状態）",
+      "expand": "fill"
     }
   },
   "createdOnFiles": {
@@ -99,6 +123,14 @@
       "kind": "title1",
       "maxW": 3760,
       "w": 240
+    },
+    "rowCrop": {
+      "kind": "title1",
+      "maxW": 3520,
+      "text": "切り出し",
+      "w": 240,
+      "x": 0,
+      "y": 3360
     }
   },
   "order": [
@@ -109,7 +141,10 @@
     "PdfBatch.dc.html",
     "AccentA.dc.html",
     "AccentB.dc.html",
-    "AccentC.dc.html"
+    "AccentC.dc.html",
+    "CropEmpty.dc.html",
+    "CropA.dc.html",
+    "CropA960.dc.html"
   ],
   "pages": [],
   "title": "PDF Converter 画面案"
