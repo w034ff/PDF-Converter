@@ -126,8 +126,35 @@ pub struct PageDimensions {
     pub height_pt: f32,
 }
 
+/// A rectangle on a page, in points, in the orientation the page is shown in:
+/// the origin is the top-left corner and y grows downwards (design §4.6).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RectPt {
+    pub x0: f64,
+    pub y0: f64,
+    pub x1: f64,
+    pub y1: f64,
+}
+
+/// One embedded image of a page (design §4.6, §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbeddedImage {
+    /// Position among all the images met while walking the page in drawing
+    /// order, including those left out of the list, so it does not change
+    /// when the list is filtered.
+    pub image_index: u32,
+    /// The image's frame on the page, cut to the page.
+    pub rect_pt: RectPt,
+    pub px_width: u32,
+    pub px_height: u32,
+    /// Whether the image is placed by flips and quarter turns only, so that
+    /// it can be written out in its own pixels.
+    pub native: bool,
+}
+
 /// A request from the main process.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
@@ -151,6 +178,25 @@ pub enum Request {
     },
     /// Renders page `page` (1-based) with the longer side at `max_side` as PNG (design §5.1).
     Thumbnail { page: u32, max_side: u32 },
+    /// Lists the embedded images of page `page` (design §4.6, §5.1).
+    PageImages { page: u32 },
+    /// Whether anything is drawn over the embedded image `image_index` of
+    /// page `page` (design §4.6, §5.1).
+    ImageOnTop { page: u32, image_index: u32 },
+    /// Renders one range of page `page` (design §4.6, §5.1). `image_index`
+    /// is set for a photo range; then `photo_native` writes the image's own
+    /// pixels and `photo_only` leaves out everything but the image.
+    RenderRegion {
+        page: u32,
+        rect_pt: RectPt,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image_index: Option<u32>,
+        dpi: u32,
+        format: RenderFormat,
+        color: RenderColor,
+        photo_native: bool,
+        photo_only: bool,
+    },
     /// Closes any currently opened PDF document (design §5.1).
     Close,
     /// Allocates and touches this much memory, to test the memory limit.
@@ -183,6 +229,19 @@ pub enum Response {
     Render,
     /// A thumbnail was rendered; the PNG bytes are in the message body (design §5.1).
     Thumbnail,
+    /// The embedded images of the page (design §5.1).
+    PageImages { images: Vec<EmbeddedImage> },
+    /// Whether anything is drawn over the image (design §5.1).
+    ImageOnTop { on_top: bool },
+    /// A range was rendered; the image bytes are in the message body.
+    /// `width` and `height` are the written image's size; `scaled_down` is
+    /// set when a photo had to be written smaller than its own pixels to stay
+    /// within `MAX_RENDER_PIXELS` (design §4.6, §5.1).
+    RenderRegion {
+        width: u32,
+        height: u32,
+        scaled_down: bool,
+    },
     /// The currently open PDF was closed (design §5.1).
     Close,
     /// The request failed; `code` is one of the error codes of design §6.6.
@@ -462,5 +521,85 @@ mod tests {
         assert_eq!(req_no_pass_json, r#"{"type":"open","path":"doc.pdf"}"#);
         let deserialized_no_pass: Request = serde_json::from_str(&req_no_pass_json).unwrap();
         assert_eq!(deserialized_no_pass, req_no_pass);
+    }
+
+    #[test]
+    fn crop_requests_use_the_names_of_design_5_1() {
+        let region = Request::RenderRegion {
+            page: 2,
+            rect_pt: RectPt {
+                x0: 1.5,
+                y0: 2.0,
+                x1: 30.0,
+                y1: 40.25,
+            },
+            image_index: Some(3),
+            dpi: 150,
+            format: RenderFormat::Png,
+            color: RenderColor::Gray,
+            photo_native: true,
+            photo_only: false,
+        };
+        let json = serde_json::to_string(&region).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"renderRegion","page":2,"rectPt":{"x0":1.5,"y0":2.0,"x1":30.0,"y1":40.25},"imageIndex":3,"dpi":150,"format":"png","color":"gray","photoNative":true,"photoOnly":false}"#
+        );
+        assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), region);
+
+        // A range that is not a photo has no image index at all.
+        let rectangle = r#"{"type":"renderRegion","page":1,"rectPt":{"x0":0.0,"y0":0.0,"x1":1.0,"y1":1.0},"dpi":72,"format":"jpeg","color":"color","photoNative":false,"photoOnly":false}"#;
+        match serde_json::from_str::<Request>(rectangle).unwrap() {
+            Request::RenderRegion { image_index, .. } => assert_eq!(image_index, None),
+            other => panic!("{other:?}"),
+        }
+
+        assert_eq!(
+            serde_json::to_string(&Request::PageImages { page: 4 }).unwrap(),
+            r#"{"type":"pageImages","page":4}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Request::ImageOnTop {
+                page: 4,
+                image_index: 7
+            })
+            .unwrap(),
+            r#"{"type":"imageOnTop","page":4,"imageIndex":7}"#
+        );
+    }
+
+    #[test]
+    fn crop_responses_use_the_names_of_design_5_1() {
+        let images = Response::PageImages {
+            images: vec![EmbeddedImage {
+                image_index: 2,
+                rect_pt: RectPt {
+                    x0: 1.0,
+                    y0: 2.0,
+                    x1: 3.0,
+                    y1: 4.0,
+                },
+                px_width: 61,
+                px_height: 43,
+                native: true,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_string(&images).unwrap(),
+            r#"{"type":"pageImages","images":[{"imageIndex":2,"rectPt":{"x0":1.0,"y0":2.0,"x1":3.0,"y1":4.0},"pxWidth":61,"pxHeight":43,"native":true}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::ImageOnTop { on_top: true }).unwrap(),
+            r#"{"type":"imageOnTop","onTop":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::RenderRegion {
+                width: 10,
+                height: 20,
+                scaled_down: false
+            })
+            .unwrap(),
+            r#"{"type":"renderRegion","width":10,"height":20,"scaledDown":false}"#
+        );
     }
 }
