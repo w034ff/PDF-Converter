@@ -20,12 +20,15 @@
 │  `pdf-converter --pdf-worker` で起動。WebView を作らない          │
 │   ・pdfium で PDF を開く、ページ数・大きさを返す                 │
 │   ・ページを描画し、画像にして返す（サムネイルも同じ）           │
+│   ・切り出しの範囲の描画、埋め込み画像の一覧、レイアウトの解析   │
+│     （onnxruntime。§4.6、§4.7）                                   │
 │   ・ファイルを書かない。読むのは渡された PDF 1 つだけ             │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 - PDF の読み込みと描画は、すべてワーカーで行う。pdfium が壊れた PDF で異常終了しても、終了するのはワーカーだけで、アプリは動き続ける（NFR-01）。無限ループとメモリの使いすぎも、時間とメモリの上限（§5.3）でワーカーごと止める。
 - 画像 → PDF は、画像の読み込み（image）と PDF の書き出し（krilla）がどちらも純 Rust なので、メインプロセスで行う。
+- 切り出し（FR-11）のレイアウトの解析も、ワーカーで行う。入力は信頼できない PDF を描いた画素で、onnxruntime は C++ のライブラリなので、異常終了をワーカーに閉じ込めるため。
 - 変換の処理は Tauri に依存しない crate `crates/core` に置く（SVG Tracer の `crates/tracer` と同じ考え方）。WebKitGTK なしに `cargo test` できる。
 - フロントエンドはファイルパスを Rust に渡さない。ダイアログと D&D は Rust で受け、パスは Rust の表に登録して ID だけを返す（SVG Tracer §6 と同じ）。
 
@@ -39,6 +42,7 @@
 | PDF の暗号化 | `lopdf`（既定の機能なし）、`getrandom` | krilla も pdfium も暗号化した PDF を書けないため（§4.3.1）。純 Rust で、AES-256（revision 6）を持つ |
 | 画像の読み込み | `image`（png、jpeg、webp、bmp 機能のみ） | 寸法・EXIF の向きの取得、BMP の読み込み、PDF → 画像の PNG / JPEG / WebP の書き出し |
 | TIFF の読み込み | `tiff`（deflate、fax、jpeg、lzw 機能のみ） | `image` は TIFF の最初のページしか読まないため（§4.1.1）。純 Rust で、ファクスの G4 も読める |
+| レイアウトの解析（切り出しの候補） | PP-DocLayout_plus-L（PaddlePaddle、Apache-2.0）を int8 に量子化したもの（§8.5）を、onnxruntime 1.26.0（Microsoft の公式のビルド、MIT）で動かす。Rust からは `ort`（`=2.0.0-rc.14`、`load-dynamic`、`api-26`） | 埋め込み画像の下調べ（2026-10-16）で、図・グラフ・表の 87 % の範囲が合い（論文・白書は 99 %）、int8 でも元のモデルとの一致が 99.7 %、ファイルは 130 MB から 34 MB になった。より小さい PP-DocLayout-M・S は 4 割前後を取りこぼした。`ort` は ocr-bench（OCR の検証）と同じ版で、同じ入力で Python の onnxruntime と同じ箱を出した |
 | 並列処理 | `std::thread` とチャネル | ワーカーはプロセスなので、スレッドプールのライブラリは要らない |
 | 一時ファイル | `tempfile` | 原子的な保存（§6.5） |
 | IPC 型共有 | `ts-rs` | SVG Tracer と同じ |
@@ -49,6 +53,7 @@
 - ライブラリは実装開始時点の最新安定版とし、`Cargo.lock` と `package-lock.json` をコミットして固定する。
 - `pdfium-render` の pdfium の API の版を選ぶ機能（`pdfium_NNNN`）は、同梱する pdfium の版以下で最も新しいものを明示する（2026-10 時点では、同梱の 8076 に対して `pdfium_7881`。スパイクはこの組み合わせで動いた）。`pdfium_latest` は使わない（crate の更新で API の版が同梱の pdfium より新しくならないようにするため）。
 - Tauri のプラグインは `tauri-plugin-dialog` だけを使い、Rust 側からだけ呼ぶ（§9）。
+- `ort` はリリース候補の版（2.0.0-rc）しかない（2026-10 時点）。版を `=` で固定し、安定版が出たら §9 の依存の入手経路の規則（公開から 7 日）で移る。onnxruntime は実行時に読み込み（`load-dynamic`）、`ort` の既定のビルド時の取得（pyke の配布物）は使わない（§8.5 で版とハッシュを固定して取得するため）。
 
 ## 3. ディレクトリ構成
 
@@ -64,6 +69,7 @@
 │   │   ├── pdf_encrypt.rs    書き出す PDF の暗号化とパスワードの規則（§4.3.1）
 │   │   ├── page_range.rs     ページの範囲の解釈（§4.5）
 │   │   ├── naming.rs         出力名の決定（§6.4）
+│   │   ├── region.rs         切り出しの範囲の幾何（座標、行の判定と番号、写真の範囲との一致。§4.6、§6.4）
 │   │   └── error.rs
 │   ├── examples/gen_fixtures.rs   フィクスチャの生成（§11.1）
 │   └── tests/
@@ -71,6 +77,8 @@
 │   └── src/
 │       ├── protocol.rs       メッセージの型と読み書き（メインプロセスと共有）
 │       ├── server.rs         ワーカーの本体（§5）
+│       ├── crop.rs           切り出しの範囲の描画、埋め込み画像の一覧、重なりの判定（§4.6）
+│       ├── layout.rs         レイアウトの解析（`ort`。§4.7）
 │       ├── client.rs         メインプロセスの側の 1 つのワーカー（起動、要求、時間切れ、異常終了）
 │       ├── windows_job.rs    Windows のジョブオブジェクト（§5.3）
 │       └── main.rs           テスト用の単独のワーカー（`pdfconv-worker`）
@@ -81,20 +89,24 @@
 │   │   ├── items.rs          ファイルの ID の表と一覧の項目
 │   │   ├── worker_pool.rs    ワーカーの数の管理と貸し出し（§5.2）。1 つのワーカーの扱いは crates/worker の client.rs
 │   │   ├── jobs.rs           変換の実行・進捗・キャンセル（§6）
+│   │   ├── crop.rs           切り出しの PDF、解析のワーカー、書き出し（§6.10）
 │   │   └── settings.rs       設定の読み書き（§6.7）
 │   ├── pdfium/               取得した pdfium（コミットしない、§8.1）
+│   ├── onnxruntime/          取得した onnxruntime（コミットしない、§8.5）
+│   ├── layout-model/         取得したレイアウトの解析のモデル（コミットしない、§8.5）
 │   ├── capabilities/main.json
 │   └── tauri.conf.json
 ├── src/                      フロントエンド
 │   ├── features/images-to-pdf/
 │   ├── features/pdf-to-images/
+│   ├── features/crop/
 │   ├── features/about/
 │   ├── components/           一覧、切り替えボタン、進捗など
 │   ├── ipc/、ipc/generated/
 │   ├── i18n/
 │   ├── licenses/
 │   └── styles/
-├── scripts/                  fetch-pdfium.ts、generate-licenses.ts
+├── scripts/                  fetch-pdfium.ts、fetch-layout.ts、quantize-layout-model.py、generate-licenses.ts
 ├── docs/
 ├── about.toml / deny.toml
 ├── GEMINI.md
@@ -224,6 +236,37 @@
 - PDF のページ数を超える番号は、エラーにせず、その PDF では飛ばす（FR-04 の「あるページだけを変換する」）。1 ページも残らなければ、その PDF は「対象のページなし」。
 - 純粋関数 `parse_page_range(text) -> Result<PageSet, …>` と `PageSet::pages_within(page_count)` にして、単体テストで網羅する。フロントエンドには同じ処理を持たず、§7 のコマンドで Rust に問い合わせる（解釈の規則を 1 か所にするため）。
 
+### 4.6 切り出しの描画（FR-11）
+
+根拠の試作は、リポジトリの外の `spikes/embedded-images`（README の「dpi を合わせた切り出しと元の画素の比較」「切り出しの事前の試作の残り」）。
+
+- **座標**: 範囲は、ページを表示する向き（`/Rotate` を当てたあと）の座標で、左上を原点、単位を pt にした矩形で持つ（サムネイルとページの表示と同じ向き）。純粋な計算（`PageRect`、行の判定、写真の範囲との一致）は `crates/core` の `region.rs` に置き、pdfium に依存させない。
+- **前段の座標の測り方**: `FPDF_RenderPageBitmapWithMatrix`（`pdfium-render` の `PdfRenderConfig::apply_matrix`）は、ページを「表示する向きで 1 pt = 1 画素」にする行列に、渡した行列を重ねて描く。この前段の行列は、`/Rotate` と `CropBox` から自分で組み立てず、`PdfPage::points_to_pixels` を大きな寸法（`DISPLAY_PROBE_SCALE`、1 pt = 100_000 画素）で 3 点に呼んで測る。`/Rotate` の場合分けを書かずに済み、試作では `/Rotate` 0・90・270、原点からずれた `CropBox`、大きさが整数でないページ（A4 の 595.276 pt）のすべてで画素が一致した。ページの大きさを整数に切り捨てた行列を使うと、整数でないページで 2 画素までずれた。
+- **手で選んだ範囲と候補の範囲**: ページを解像度（dpi）で描いたものから、その矩形を切り取ったものと同じになるように描く。倍率は `dpi / 72`、出力の寸法は矩形の幅と高さに倍率を掛けて四捨五入した値。総ピクセル数が `MAX_RENDER_PIXELS` を超える範囲は `RenderTooLarge`（§4.4 と同じ）。
+- **写真の範囲（「写真は元の画素で書き出す」のとき）**: 埋め込まれた画像の元の画素と、出力の画素が 1 対 1 に重なるように描く。画像は、ページの上で縮小・拡大・回転・反転・せん断して置かれていても、元の画素の並びは変わらない。次の 3 つを守ると、写真の不透明な部分の画素は、pdfium がその画像だけを元の画素の数で描いた結果と完全に一致した（試作の 36 本の公開の PDF の 554 枚と、合成の PDF の 24 か所。Linux と Windows で同じ画素）。
+  1. 描く行列を、画像の画素の格子に合わせる。画像の行列（フォームの入れ子の行列を掛けたもの）から「画像の画素 → ページ」の行列を作り、その逆に前段の行列の逆を掛けたものを渡す。出力の寸法は画像の画素の数（幅 × 高さ）。小数の位置のずれも、この行列で消える。
+  2. 画像の矩形の各辺を `PHOTO_EDGE_INSET`（0.001 画素）だけ内側に寄せる。pdfium は画像の描画先の矩形を外側の整数に丸めるので、浮動小数点の誤差で 1 画素はみ出ると、画像を 1 画素引き伸ばしてぼかすため（試作では、寄せないと大半の写真がぼけた）。
+  3. 前段の行列は上のとおり測る（整数に切り捨てない）。
+  - 1 で描くと、画像は保存された向き（画素の格子の向き）で出る。ページの上で 90 度単位で回転・反転して置かれた画像は、描いたあとに画素を並べ替えて（ロスなし）、ページで見えている向きにする。90 度単位でない回転とせん断の画像は、写真の範囲にしない（その画像の枠をクリックしても、外接矩形の手で選んだ範囲として dpi で描く）。試作の 541 枚のうち、回転・反転・せん断のない画像は 526 枚で、残りの 15 枚がどの置き方だったかは数えていない。
+  - 元の画素の数が `MAX_RENDER_PIXELS` を超える写真は、縦横比を保って上限に収まる倍率で、同じ格子の向きのまま描く（画素は一致しない）。範囲の一覧に「縮小」を出す（§10.1）。
+  - 解像度の範囲（§4.4 の `RENDER_DPI_MIN`〜`RENDER_DPI_MAX`）は、写真の範囲には当てはめない（論文には 1,250 dpi 相当の写真があった）。画素数の上限でメモリを守る。
+- **写真だけを書き出す**: そのページを読み込み直し、内容の書き直しを止めて（`PdfPageContentRegenerationStrategy::Manual`）から、写真以外の物をすべて外して描く。入れ子のフォームの中の写真は、外側からたどり、各段で写真に至る物以外を外す。注釈は描かない（`FPDF_ANNOT` を付けない）。書き直しを止めないと、物を外したとき（と画像の行列を変えたとき）に pdfium-render がページの内容を書き直し、同じページを読み込み直すと何も描かれなくなった（試作）。
+- **背景**: 白で塗ってから描く（§4.4 と同じ）。ただし「写真だけを書き出す」で PNG か WebP に書くときは、透明（`0x00000000`）で塗ったビットマップに描き、pdfium のアルファをそのまま書く（RGBA、グレースケールなら LA）。試作では、554 枚すべてで不透明な画素の色が一致し、541 枚でアルファが白と黒の背景での描画の覆いと一致した。食い違った 13 枚（透明のグループやブレンドを持つものと見られ、原因は未調査）に備え、書き出しのときに白と黒の背景でも描き、覆いとアルファが食い違ったら、その写真は白の背景で書く（実装の前に、この 13 枚の原因を調べる）。
+- **写真の上に何かが載っているか**（範囲の一覧の印、FR-11）: 物の外接矩形の重なりでは判定しない（試作で、描いた結果との食い違いが 4 枚に 1 枚あった）。写真の格子で、ページ全体と写真だけを描いて比べ、写真が覆う画素（写真だけを白と黒の背景で描いて同じ画素）のうち、どれかの色の差が `ON_TOP_COLOR_TOLERANCE`（8）を超える画素が `ON_TOP_MIN_PIXELS`（20）以上なら「載っている」とする。速さのため、比べる描画は総ピクセル数が `ON_TOP_CHECK_PIXELS`（4_000_000）以下になる倍率で描く（しきい値は実装の試作で見直す）。
+- **色と形式**: カラー・グレースケール、PNG・JPEG・WebP の書き方は §4.4 と同じ。グレースケールは `FPDF_GRAYSCALE` で描く。
+- **埋め込み画像の一覧**: ページ直下とフォームの入れ子の中の画像を、描く順にたどって番号（`imageIndex`）を振る。注釈の中の画像は含めない（ページ上の位置を正しく求められないため）。元の画素の幅か高さが `MIN_PHOTO_SIDE_PX`（16）未満の画像と、ページの上で見える大きさの短い辺が `MIN_PHOTO_SIDE_PT`（12）未満の画像も含めない（PowerPoint から書き出した資料の 2×2 px の透明な画像が数百枚重なるため）。ページの上の枠は、画像の単位正方形を行列で写した 4 つの角の外接矩形を、ページの見える範囲で切り詰めたもの。番号は同じ PDF・同じ pdfium なら変わらないので、ワーカーへの要求（§5.1）は番号で写真を指す。
+- 描く時間（試作、release）: 写真 1 枚の格子に合わせた描画は中央値 2.6 ms、90 % 点 22 ms、最大 1 秒ほど。
+
+### 4.7 レイアウトの解析（FR-11 の候補）
+
+- モデルは PP-DocLayout_plus-L を int8 に量子化したもの（§8.5）。入力は 800×800、出力は 20 種類の箱。onnxruntime は §8.5 の版を実行時に読み込む。
+- **前処理**: ページを長い辺 `LAYOUT_RENDER_LONG_SIDE`（1600 px）で白の背景に描き（PDF → 画像と同じ pdfium の描画）、`image` の `CatmullRom` で 800×800 に縮め（縦横比は保たない）、RGB を 0〜1 にする。入力は `image`（1×3×800×800）、`im_shape`（800, 800）、`scale_factor`（800 ÷ 描いた高さ, 800 ÷ 描いた幅）。PaddleX の既定（PIL の bicubic）と描画のエンジンの版は違うが、試作で Python の結果との一致は 99.0 %、目で全部が合うと判定した 15 本では 100 % だった。
+- **後処理**: 出力の各行（種類、スコア、左上と右下の座標。描いた画像の画素）から、種類が `image`・`chart`・`table` で、スコアが `LAYOUT_SCORE_MIN`（0.48）以上のものを残す。0.48 は、int8 にしたモデルで元のモデル（しきい値 0.5）と箱が最もよく一致した値。重なりは PaddleX の `layout_nms` と同じく、同じ種類で IoU が 0.6 以上、違う種類で 0.98 以上のとき、スコアの低い方を除く。短い辺が `LAYOUT_MIN_SIDE_PT`（18 pt）未満の箱も除く（アイコンや QR コードを減らすため。値は実装の試作で、下調べの 36 本の判定で見直す）。
+- **種類**: `chart` はグラフ、`table` は表。`image` は、埋め込み画像（§4.6 の一覧）の枠と IoU が `PHOTO_MATCH_IOU`（0.85）以上のものがあれば、その画像の写真の範囲（枠はモデルの箱でなく画像の枠）にし、なければ図（図形で描かれた絵）にする。値は実装の試作で見直す。
+- **セッション**: 最適化は最大（`GraphOptimizationLevel::Level3`）、スレッドは `min(LAYOUT_THREADS（6）, 論理 CPU 数 - 1)`、プールのスレッドの空回りを止める（`with_intra_op_spinning(false)`。止めないと同じ検出器が約 4 倍遅く出た（ocr-bench））。モデルは最初の解析のときに読み込み（約 0.5 秒、読み込み直後のメモリ約 365 MB）、そのワーカーが終わるまで持つ。
+- **速さとメモリ（試作）**: 推論は 1 ページ 0.42 秒（元のモデル、Python、6 コアに固定）、int8 で 0.58 秒、Windows の `ort` で 0.62 秒（コアの固定なし）。Python でのピークのメモリは 0.56 GB。Rust のワーカーでのメモリは測っていない（作業計画のタスクで `WORKER_MEMORY_LIMIT` に収まることを確かめる）。
+- **使えないとき**: onnxruntime かモデルを読み込めない（配布物が壊れている）ときは `LayoutUnavailable`（§6.6）。その PDF を開いている間は候補を出さず、手で選ぶ範囲と写真の範囲は使える（FR-09）。
+
 ## 5. ワーカー（NFR-01）
 
 ### 5.1 メッセージ
@@ -237,12 +280,17 @@
 | --- | --- | --- |
 | `Open { path, password }` | PDF を開く。`password` は `null` か、利用者が入れたパスワード（§6.8）。前に開いていたものは閉じる | `{ pageCount, pages: [{ widthPt, heightPt }] }` またはエラー |
 | `Render { page, dpi, format, color }` | 開いている PDF の 1 ページを描画して書き出す（`format` は `png` / `jpeg` / `webp`、`color` は `color` / `gray`、§4.4） | 本体に画像のバイト列 |
-| `Thumbnail { page, maxSide }` | 長い辺を `maxSide` px にして描画し、PNG にする | 本体に PNG |
+| `Thumbnail { page, maxSide }` | 長い辺を `maxSide` px にして描画し、PNG にする（切り出しのページの表示にも使う。`maxSide` は `PAGE_VIEW_MAX_SIDE`（2400）まで） | 本体に PNG |
+| `PageImages { page }` | 1 ページの埋め込み画像の一覧（§4.6） | `{ images: [{ imageIndex, rectPt, pxWidth, pxHeight, native }] }`。`rectPt` は §4.6 の座標の枠、`native` は元の画素で書き出せるか（90 度単位の置き方か） |
+| `ImageOnTop { page, imageIndex }` | 写真の上に何かが載っているか（§4.6） | `{ onTop }` |
+| `Detect { page }` | 1 ページのレイアウトの解析（§4.7） | `{ candidates: [{ kind, score, rectPt, imageIndex }] }`。`kind` は `photo` / `figure` / `chart` / `table`、`imageIndex` は `photo` のときだけ |
+| `RenderRegion { page, rectPt, imageIndex, dpi, format, color, photoNative, photoOnly }` | 切り出しの 1 つの範囲を描いて書き出す（§4.6）。`imageIndex` は写真の範囲だけ。写真の範囲は、`photoNative` なら元の画素で、そうでなければ `rectPt` を dpi で描き、どちらも `photoOnly` ならほかの物を外す | 本体に画像のバイト列。ヘッダーに `{ width, height, scaledDown }` |
 | `Close` | 開いている PDF を閉じる | `{}` |
 
 - エラーの応答は `{ code, detail }`（§6.6 のコード）。pdfium のパスワードのエラーは `PasswordProtected`、それ以外で開けないものは `PdfOpenFailed`。
 - ページ数が `MAX_PDF_PAGES`（10_000）を超える PDF は、`Open` で `TooManyPages` を返す。
 - ワーカーはファイルを書かない。描画した画像はメインプロセスに返し、メインプロセスが §6.5 の方式で保存する。
+- `Detect` は、onnxruntime とモデルを最初の `Detect` で読み込む。読み込めなければ `LayoutUnavailable` を返し、そのワーカーは以後の `Detect` に同じエラーを返す（ほかの要求は続けて受ける）。
 
 ### 5.2 ワーカーの管理（`worker_pool.rs`）
 
@@ -251,6 +299,7 @@
 - 応答の待ちには時間の上限を設ける: `Open` は `OPEN_TIMEOUT`（30 秒）、`Render` と `Thumbnail` は `RENDER_TIMEOUT`（60 秒）。超えたらワーカーを強制終了し、その要求を `WorkerTimeout` で失敗させる。
 - ワーカーが応答の途中で終了した、または読めない応答を返した場合は、その要求を `WorkerCrashed` で失敗させ、ワーカーを捨てる。次の要求では新しいワーカーを起動する。
 - 1 つの PDF でワーカーが続けて落ちるのを避けるため、`WorkerCrashed` / `WorkerTimeout` になった PDF は、その一括変換の中で再試行しない。
+- 切り出しのレイアウトの解析（`Detect`）は、プールとは別の 1 つのワーカー（解析のワーカー）だけで行う。モデルを読み込んだワーカーが増えると、そのぶんメモリが増えるため（1 つで 0.5 GB 前後）。解析のワーカーは、切り出しの PDF を開いている間だけ持ち、PDF を閉じるか入れ替えたら終わらせる。`Detect` の時間の上限は `DETECT_TIMEOUT`（60 秒。最初のモデルの読み込みを含む）。ページの表示、写真の一覧、重なりの判定、書き出しは、ほかの機能と同じくプールのワーカーで行う。
 - アプリの終了時には、すべてのワーカーを終了させる。
 
 ### 5.3 メモリの上限
@@ -265,7 +314,7 @@
 ### 5.4 ワーカーの見つけ方
 
 - メインプロセスは `std::env::current_exe()` を `--pdf-worker` 付きで起動する。別の実行ファイルを同梱しない。
-- ワーカーは、同梱した pdfium のライブラリ（§8.2）の場所を引数で受け取る。Tauri のリソースのフォルダはメインプロセスだけが知っているため。
+- ワーカーは、同梱した pdfium のライブラリ（§8.2）の場所を引数で受け取る。Tauri のリソースのフォルダはメインプロセスだけが知っているため。onnxruntime のライブラリとモデル（§8.5）の場所も同じく引数で受け取る。
 
 ## 6. 各機能の設計
 
@@ -320,13 +369,16 @@ SVG Tracer の §5.3 と同じ規則にする。
 - 重なりの判定は大文字小文字を区別しない。名前は**開始時に全件分まとめて決める**。
 - 保存の瞬間に他のプロセスが同名のファイルを作っていたら、上書きせずに次の番号で保存し直す。
 - 純粋関数として `naming.rs` に置き、単体テストで網羅する。
+- 切り出し（FR-11）: `元の名前_p{ページ}_{番号}.{png|jpg|webp}`（例: `catalog_p03_2.png`）。ページの番号は PDF → 画像と同じく PDF のページ数の桁数で 0 を詰める。範囲の番号は、そのページで書き出す範囲を位置の順に並べて 1 から振り、そのページで書き出す範囲の数の桁数で 0 を詰める（9 個までは `1`〜`9`、10 個以上なら `01`〜）。範囲を選んだ順によらず、同じ範囲の組なら同じ名前になる。
+  - 位置の順: 範囲を上端の座標の順に並べ、先頭から行に分ける。範囲は、今の行の最初の範囲と縦の重なりが、2 つのうち低い方の高さの半分以上あれば同じ行に入り、なければ新しい行を始める。行の中は左端の順。上端も左端も同じ範囲は、範囲の一覧の順（ページを表示したときの追加の順）。
+  - 重なりの番号の付け方（` (1)`）は上と同じ。行の判定と番号は `region.rs` に置く。
 
 ### 6.5 保存とキャンセル
 
 - 保存は、保存先のフォルダに一時ファイルを作って全内容を書き、`persist_noclobber` で最終名にする（SVG Tracer §5.4 と同じ）。書き込みの途中で失敗・中断しても、不完全なファイルは残らない。
 - 一時ファイルは、保存先のフォルダに `.` で始まる名前で作る（ほかのアプリの一覧に途中のファイルが見えないようにするため）。
 - Unix では、一時ファイルを `0666` で作る（OS が umask を引くので、通常は `0644` になる）。`tempfile` の既定は本人だけが読める `0600` で、名前を替えてもそのままなので、保存した PDF や画像を、ほかのアプリや別の利用者が読めなくなるため。設定ファイル（§6.7）は本人だけが読めればよいので、既定のままにする。Windows にはこの指定がない。
-- 保存先のフォルダは、「画像 → PDF」と「PDF → 画像」で 1 つずつ Rust の状態に持つ。`pick_output_dir` と設定の復元（§6.7、T09）が入れ、`start_images_to_pdfs`・`start_pdfs_to_images` はそれを使う。まだ選ばれていなければ `InvalidParams` で拒む。
+- 保存先のフォルダは、「画像 → PDF」「PDF → 画像」「切り出し」で 1 つずつ Rust の状態に持つ。`pick_output_dir` と設定の復元（§6.7、T09）が入れ、`start_images_to_pdfs`・`start_pdfs_to_images`・`start_crop_export` はそれを使う。まだ選ばれていなければ `InvalidParams` で拒む。
 - 画面は、フォルダが未選択のまま「変換を開始」が押されたら、先に `pick_output_dir` でフォルダのダイアログを開き、選ばれたらそのまま変換を始める（選んだフォルダは設定パネルの欄にも出る）。ダイアログを取り消したら何も始めない。ボタンを無効にして先に設定パネルへ行かせるより、手順が 1 つ少ないため。
 - `start_images_to_pdfs` と `start_pdfs_to_images` は、変換中かどうかの確かめのあと、変換を始める前に保存先のフォルダを確かめる。
   - 存在しない、またはフォルダでない: 何も始めず、§6.5 の Rust の状態と設定ファイルの `outputDir` を未選択（`null`）に戻して `OutputDirMissing` を返す。ほかの画面の保存先は変えない。
@@ -367,6 +419,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | InvalidParams | 引数が範囲外（UI からは通常送られない） | 無効な設定です / Invalid settings |
 | OutputDirMissing | 変換を始める前に、保存先のフォルダがない、またはフォルダでない（§6.5） | 保存先のフォルダが見つかりません。フォルダを選び直してください / The output folder can't be found. Choose a folder again. |
 | OutputDirNotWritable | 変換を始める前に、保存先のフォルダに一時ファイルを作れない（§6.5） | 保存先のフォルダに書き込めません / Can't write to the output folder |
+| LayoutUnavailable | 切り出しで、onnxruntime かモデルを読み込めない（§4.7） | 候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます / Can't show suggestions (layout analysis is unavailable). You can still select areas by hand. |
 
 - 「対象のページなし」はエラーではなく、`job-item` の状態 `noPages` で表す（FR-04）。
 - 書き出す PDF のパスワードの誤り（使えない文字、長すぎる、2 回の入力が違う）は、画面がダイアログの中で示す（§10.1）。IPC のエラーコードは足さない。画面と同じ規則を Rust も確かめ（§4.3.1 の `OutputPassword::new`）、届いたら `InvalidParams` で拒む。
@@ -376,11 +429,12 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 ### 6.7 設定の保存（FR-07、FR-10）
 
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
-- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a3" | "a4" | "a5" | "jisB4" | "jisB5" | "letter" | "legal", orientation: "auto" | "portrait" | "landscape", pdfA: boolean, encrypt: boolean, outputDir }`、`pdfToImages: { format: "png" | "jpeg" | "webp", colorMode: "color" | "gray", dpi, outputDir }`。`dpi` は §4.4 の範囲の整数。
-- 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。
-- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、パスワードは付けない（`false`）、PNG、カラー、150 dpi。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
+- 内容: `schemaVersion`、`language`、`imagesToPdf: { output: "merge" | "each", pageSize: "fit" | "a3" | "a4" | "a5" | "jisB4" | "jisB5" | "letter" | "legal", orientation: "auto" | "portrait" | "landscape", pdfA: boolean, encrypt: boolean, outputDir }`、`pdfToImages: { format: "png" | "jpeg" | "webp", colorMode: "color" | "gray", dpi, outputDir }`、`crop: { format, colorMode, dpi, photoNative: boolean, photoOnly: boolean, outputDir }`（`format`・`colorMode`・`dpi` は `pdfToImages` と同じ値）。`dpi` は §4.4 の範囲の整数。
+- 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。切り出しの開いた PDF と範囲も保存しない。
+- `crop` がない設定ファイル（切り出しより前の版が書いたもの）は、欠けた項目として既定値になるので、`schemaVersion` は `1` のままでよい。
+- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、パスワードは付けない（`false`）、PNG、カラー、150 dpi。切り出しは PNG、カラー、150 dpi、写真は元の画素で書き出す（`photoNative: true`）、写真だけを書き出さない（`photoOnly: false`）。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
 - `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
-- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, orientation, pdfA, encrypt, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
+- `get_settings` はパスを返さない。返すのは `{ language, imagesToPdf: { output, pageSize, orientation, pdfA, encrypt, outputDir }, pdfToImages: { format, colorMode, dpi, outputDir }, crop: { format, colorMode, dpi, photoNative, photoOnly, outputDir } }` で、`outputDir` は `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）。`dirLabel` はフォルダの名前（パスの最後の要素）。
 - `save_settings` は、`revision`（数）と、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にある、`pdfA` と `encrypt` がどちらも `true` などの不正な値は `InvalidParams` で拒み、何も保存しない。`encrypt` はパスワードを付けるかどうかだけで、パスワードは保存しない（§6.9）。
   - `async` でないコマンドにし、メインスレッドで受け取った順に、値をメモリの設定に入れるだけにする。ファイルは別のスレッドで、そのときの最新の値を書く（`SettingsStore::flush`）。書き込みは 1 つずつで、ファイルがすでに最新なら書かない。書き込みの失敗は返さず、設定はメモリに残して次の書き込みで再び試す（書くのは応答のあとなので返せない。FR-10 は Should）。メインスレッドはファイルの書き込みを待たない（メモリの設定のロックは写す間しか持たない）。
   - `revision` は、画面が呼ぶたびに 1 つ増やす。Rust は、同じページからすでに受け取ったもの以下の `revision` を捨てる。WebView が要求を `fetch` の順に Rust へ渡すことは保証されておらず、入れ替わると古い値が残るため。ページの読み込みが始まると（`on_page_load` の `Started`。再読み込みを含む）、画面は 1 から数え直すので、Rust も覚えている `revision` を捨てる。
@@ -407,6 +461,16 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - Rust も §4.3.1 の規則で確かめ、外れたら `InvalidParams` で拒んで何も始めない（画面が先に確かめるので、通常は起きない）。
 - パスワード付きの PDF は、このアプリの「PDF → 画像」でも §6.8 のとおり開ける。
 
+### 6.10 切り出し（FR-11）
+
+- **開く**: 「PDF を開く」（ファイルダイアログ、1 つだけ選ぶ）か、切り出しのタブを表示しているときの D&D で、1 つの PDF を開く（`open_crop_pdf`）。D&D で PDF がちょうど 1 つ落とされたときだけ開き、2 つ以上の PDF や画像が混ざっていたときは何も開かず、「切り出しでは PDF を 1 つずつ開きます」/ `Open one PDF at a time to crop` を出す（ほかのタブを表示しているときの D&D は §6.1 のまま）。D&D は Rust が受けるので、画面はタブを切り替えるたびに `set_drop_target` でどちらの扱いかを知らせる。開いた PDF は一覧の表（`items.rs`）に切り出し用の項目として入れ、ほかの一覧には出さない。パスワード付きの PDF は §6.8 と同じダイアログで開く（`unlock_pdf`）。
+- **入れ替え**: PDF を開いているときに別の PDF を開くと、まだ書き出していない範囲（この PDF で一度も書き出していない範囲）があれば、先に「書き出していない範囲を破棄して開きますか？」の確認のダイアログを出す。入れ替えたら、前の PDF の項目と範囲と解析のワーカー（§5.2）を捨てる。
+- **ページの表示**: 左のサムネイル（`THUMBNAIL_SIDE`）でページを選び、中央にそのページを大きく出す（`get_thumbnail` の `maxSide` を表示の大きさと画面の倍率から決め、`PAGE_VIEW_MAX_SIDE` まで）。ページを表示したら、そのページの埋め込み画像の一覧（`list_page_images`）とレイアウトの解析（`detect_layout`）を要求する。どちらもページごとに 1 回だけ要求し、結果は PDF を閉じるまで画面が持つ。解析の結果を待つ間もページは操作できる。
+- **範囲**: 画面の状態で持ち、Rust は書き出すときにだけ受け取る。範囲は `{ key, page, kind, rectPt, imageIndex }`。`kind` は `photo`（写真の範囲）・`figure`・`chart`・`table`（候補から）・`manual`（手で選んだもの）。写真の枠のクリックと、`photo` の候補は `photo` になる。`photo` の範囲を手で動かしたり大きさを変えたりしたら `manual` になる（元の画素の格子から外れるため）。範囲を追加したときに、`photo` なら `check_on_top` で重なりの印を求める。
+- **全ページの候補**: 「全ページの候補をすべて追加」は変換の 1 つとして扱う（`start_detect_all`。同時に 1 つだけ、§7.1）。解析のワーカーで 1 ページ目から順に解析し、まだ解析していないページだけを処理する。ページごとに `layout-page` で候補を返し、画面はそのページの候補のうち、すでにある範囲と IoU が 0.9 以上のもの以外を範囲に加える。キャンセルは次のページの前に確かめる。
+- **書き出し**: 「書き出す」で、チェックの入った範囲と、形式・色・解像度・写真の 2 つの選択肢を `start_crop_export` に渡す。保存先は §6.5 のとおり確かめる。名前は §6.4 の規則で、開始のときに全部を決める。範囲ごとにプールのワーカーで `RenderRegion` を行い、§6.5 の方式で保存する。並列にはしない（1 つの PDF なので）。進捗は範囲で数え、範囲ごとに `job-item`（`id` は範囲の `key`）を送る。失敗した範囲（`RenderTooLarge` など）は飛ばして続け、`WriteFailed` は §6.5 のとおり打ち切る。キャンセルは次の範囲の前に確かめる。書き出した範囲は「書き出し済み」とし、入れ替えの確認の対象から外す。
+- タブを切り替えても、開いた PDF と範囲は残る（画面の状態に持つ）。アプリを終えると捨てる。
+
 ## 7. IPC
 
 ### 7.1 コマンド
@@ -417,28 +481,38 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `add_images` | `source: "files" \| "folder"` | `{ added: ImageItem[], skipped: { unsupported, folders, duplicates } } \| null` |
 | `add_pdfs` | `source: "files" \| "folder"` | `{ added: PdfItem[], skipped: … } \| null` |
 | `remove_items` | `ids` | – |
-| `get_thumbnail` | `id, page?` | PNG のバイナリ（`tauri::ipc::Response`） |
-| `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages"` | `{ dirLabel } \| null` |
+| `get_thumbnail` | `id, page?, maxSide?` | PNG のバイナリ（`tauri::ipc::Response`）。`maxSide` は省略で `THUMBNAIL_SIDE`、`PAGE_VIEW_MAX_SIDE` を超えると `InvalidParams` |
+| `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages" \| "crop"` | `{ dirLabel } \| null` |
 | `save_merged_pdf` | `ids, pageSize, orientation, pdfA, password` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
 | `start_images_to_pdfs` | `ids, pageSize, orientation, pdfA, password` | –（§6.2 の「1 枚ずつ」）。`orientation` は `pageSize` が用紙のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ）。`password` は `string \| null` で、`null` ならパスワードを付けない。`pdfA` が `true` で `password` が `null` でない、または `password` が §4.3.1 の規則に合わないときは `InvalidParams`（`save_merged_pdf` も同じ。保存ダイアログを開く前に拒む） |
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][], lastPage }` または `InvalidPageRange` |
 | `start_pdfs_to_images` | `ids, range, format, colorMode, dpi` | –（`dpi` が §4.4 の範囲の外なら `InvalidParams`） |
 | `unlock_pdf` | `id, password` | `{ items: PdfItem[] }`（§6.8）。パスワードの誤りは `PasswordProtected`。対象が `PasswordProtected` の PDF でない、またはパスワードが空なら `InvalidParams` |
+| `open_crop_pdf` | – | `CropPdf \| null`（ファイルダイアログ。取り消したら `null`）。D&D で開くときは `items-dropped` の `cropPdf` で返す |
+| `close_crop_pdf` | – | –（開いている切り出しの PDF と解析のワーカーを捨てる） |
+| `set_drop_target` | `target: "lists" \| "crop"` | –（D&D の扱い。§6.10） |
+| `list_page_images` | `id, page` | `PageImage[]`（§5.1 の `PageImages`） |
+| `detect_layout` | `id, page` | `Candidate[]`（§5.1 の `Detect`）。変換中でも受け付ける（解析のワーカーはプールと別のため）。`LayoutUnavailable` はこのコマンドのエラーで返す |
+| `check_on_top` | `id, page, imageIndex` | `boolean` |
+| `start_detect_all` | `id` | –（§6.10。`job-progress` はページで数え、ページごとに `layout-page` を送る） |
+| `start_crop_export` | `id, regions, format, colorMode, dpi, photoNative, photoOnly` | –（§6.10。`regions` は `{ key, page, rectPt, imageIndex? }[]`（写真の範囲は `imageIndex` を持ち、`rectPt` は画像の枠）。`photoNative` が `false` のときは、写真の範囲も `rectPt` を dpi で描く（`photoOnly` は効く）。`dpi` が §4.4 の範囲の外、範囲がページの外、`imageIndex` がそのページにない、のどれかなら `InvalidParams`） |
 | `cancel_job` | – | – |
 | `get_about` | – | `{ version, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか。pdfium の版は返さず、「このアプリについて」の第三者ライセンスの一覧に出る） |
 
+- `CropPdf`: `{ id, name, pageCount, pages: [{ widthPt, heightPt }], error }`（`widthPt`・`heightPt` は表示する向きの大きさ）。`PageImage`: `{ imageIndex, rectPt, pxWidth, pxHeight, native }`。`Candidate`: `{ kind, score, rectPt, imageIndex }`。`rectPt` は `[x0, y0, x1, y1]`（§4.6 の座標）。
 - `ImageItem`: `{ id, name, width, height, format, pageCount, bytes, error }`。`width` と `height` は EXIF（TIFF）の向きを反映した表示上の画素の数（サムネイルと同じ向き）で、TIFF では最初のページのもの。`format` は `png`・`jpeg`・`webp`・`bmp`・`tiff`。`pageCount` は TIFF のページ数で、ほかの形式は 1。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。失敗した項目では、`width`・`height`・`pageCount`（`ImageItem` と `PdfItem` の両方）は 0、`format`・`firstPageSizePt` は `null`。
 - どのコマンドもパスを引数に取らない。`dirLabel` は表示用で、送り返されない。
-- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items`、`unlock_pdf` は `ConversionRunning` で拒む。
+- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items`、`unlock_pdf`、`open_crop_pdf`、`close_crop_pdf` は `ConversionRunning` で拒む（`start_detect_all` と `start_crop_export` も変換に数える）。
 
 ### 7.2 イベント（Rust → フロントエンド）
 
 | イベント | ペイロード |
 | --- | --- |
-| `items-dropped` | `{ images: ImageItem[], pdfs: PdfItem[], skipped, error: IpcError \| null }`（変換中に落とされたときは何も加えず、`error` を `ConversionRunning` にする） |
+| `items-dropped` | `{ images: ImageItem[], pdfs: PdfItem[], cropPdf: CropPdf \| null, skipped, error: IpcError \| null }`（`cropPdf` は切り出しのタブで PDF を 1 つ落としたとき。§6.10）（変換中に落とされたときは何も加えず、`error` を `ConversionRunning` にする） |
 | `job-progress` | `{ done, total, current: string \| null }`（`total` はどちらもページの合計。画像 → PDF では TIFF の全ページを数える。§6.2） |
 | `job-item` | `{ id, status: "ok" \| "failed" \| "partial" \| "noPages" \| "cancelled", outputs: string[], error?, failedPages? }` |
 | `job-finished` | `{ succeeded, failed, noPages, unprocessed, cancelled }` |
+| `layout-page` | `{ id, page, candidates: Candidate[] }`（`start_detect_all` の 1 ページごと） |
 
 - `failedPages` は、PDF → 画像で書き込みやページの描画に失敗したページの番号。`partial` と `failed` のほか、キャンセルした PDF の `cancelled` にも、それまでに失敗したページがあれば入る。PDF を開けないなど PDF ごとの失敗では入らない。
 
@@ -467,6 +541,16 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - 更新は手で行う: 版とハッシュを書き換え、`pdfium-render` の `pdfium_NNNN` 機能を §2 の規則で選び直し、§11 のテストを通してから PR にする。
 - pdfium の脆弱性は、Chromium のセキュリティ修正として公開される。月 1 回の更新で取り込む。
 
+### 8.5 onnxruntime とレイアウトの解析のモデル（FR-11）
+
+- **取得**: `scripts/fetch-layout.ts` が、`scripts/layout-version.json` に置いた版と SHA-256 で次を取得・照合し、`src-tauri/onnxruntime/<os>/` と `src-tauri/layout-model/` に置く。`npm run pdfium:fetch` と同じく開発者・CI・release.yml が実行し、取得したものはコミットしない。アプリは通信しない（NFR-01）。
+  - onnxruntime: microsoft/onnxruntime の GitHub Releases の `onnxruntime-win-x64-1.26.0.zip`（`sha256:6ebe99b5564bf4d029b6e93eac9ff423682b6212eade769e9ca3f685eaf500b4`）と `onnxruntime-linux-x64-1.26.0.tgz`（`sha256:1254da24fb389cf39dc0ff3451ab48301740ffbfcbaf646849df92f80ee92c57`）から、`onnxruntime.dll` / `libonnxruntime.so.1.26.0` と `LICENSE`・`ThirdPartyNotices.txt` を取り出す。
+  - モデル: このリポジトリの GitHub Releases に置いた int8 のモデル（`layout-model-1` のタグ、`PP-DocLayout_plus-L-int8.onnx`、`sha256:bf1e0bf6bac5471155af68c47c3b82b6486eb580e226c10ae9d9c4dd3d1b4fba`）と、モデルの `LICENSE`（Apache-2.0）・改変の表示。
+- **量子化**: int8 のモデルは `scripts/quantize-layout-model.py` で作る（維持する人が一度だけ実行し、Release に置く）。元は Hugging Face の `PaddlePaddle/PP-DocLayout_plus-L_onnx` の `inference.onnx`（コミットを固定し、`sha256:77afb2caa74dd13240d087d2eced91d7fcd2caebd16006a0a66162fc8707ff0e` で照合）。onnxruntime 1.26.0 の `quant_pre_process`（`skip_symbolic_shape=True`）のあと `quantize_dynamic`（重みを UInt8、すべての種類の演算）。ネットワークを切ったコンテナで実行する（外から来たモデルを読むため）。同じ版の onnxruntime なら、何度実行しても同じファイルになった（試作）。ビルドのたびに量子化しないのは、CI に Python と onnxruntime の量子化の道具を入れずに済ませるため。
+- **同梱**: pdfium と同じく、`tauri.<os>.conf.json` の `bundle.resources` で同梱し、`resource_dir()` から場所を求めてワーカーに渡す（§5.4）。インストーラーは、モデル（xz で約 23 MB）と onnxruntime（Windows の DLL は xz で約 4 MB）のぶん大きくなり、Windows の NSIS で約 34 MB、MSI で約 39 MB の見込み（見積もり。実際のインストーラーでは測っていない）。
+- **ライセンス**: `scripts/generate-licenses.ts` が、onnxruntime の `LICENSE`（MIT）と `ThirdPartyNotices.txt`、モデルの `LICENSE`（Apache-2.0）と改変の表示（「PaddlePaddle の PP-DocLayout_plus-L を int8 に量子化した」）を第三者ライセンス一覧に加える。版は `layout-version.json` から入れる。
+- **更新**: onnxruntime の版は、§8.4 の `pdfium-update.yml` と同じ月 1 回の確認に加える（新しい版があれば Issue を作る）。更新は手で行い、`ort` の `api-NN` 機能を合わせ、§11 のテストを通す。モデルの更新（新しい版のモデル）は、下調べと同じ比べ方で精度を確かめてから、`layout-model-N` を作って行う。
+
 ## 9. セキュリティ（NFR-01）
 
 SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、CSP、HTTP クライアントを `cargo-deny` の `bans` で禁止、WebView2 の起動オプション、止められない通信の README への記載、既知の脆弱性の検査）。加えて次のとおり。
@@ -474,8 +558,9 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - **依存の入手経路**: 悪意のある版が公開されても、多くは数日のうちに見つかって取り下げられる。そこで、公開から 7 日たっていない版は入れない（Dependabot の `cooldown`、npm の `min-release-age`。Dependabot のセキュリティ更新は待たない）。Tauri の crate と `@tauri-apps/*` の PR が同時に出るよう、cargo と npm の日数はそろえる。npm の依存のインストール時スクリプトは実行しない（`ignore-scripts`）。Rust の `build.rs` と proc-macro はビルドのたびに実行され、止められないため、入口を絞って補う。crate は crates.io からだけ取る（`cargo-deny` の `sources`）。CI とインストーラーのビルドは `Cargo.lock` と `package-lock.json` のとおりに入れる（`--locked`、`npm ci`）。pdfium は §8.1 のとおり SHA-256 で照合する。
 - **リリースの書き込みの権限**: `release.yml` で Release を書ける権限を持つのは、下書きを作る最後のジョブだけにする。検査とビルドのジョブは外部の action と依存のビルドのコード（`build.rs`、npm のパッケージ）を実行するので、読み取りの権限だけで動かし、`actions/checkout` にもトークンを残させない（`persist-credentials: false`）。最後のジョブは GitHub CLI だけを実行し、ビルドの成果物を受け取って下書きに添付する。下書きは、検査と両 OS のビルドがすべて通ってから作る。タグは main にあるコミットに限る（main は両 OS の CI を通った PR からしか変わらないため）。
 - 画像（TIFF を含む）はメインプロセスで読む。読み込みは純 Rust の crate（`image`、`tiff`）だけで行い、寸法と展開の大きさに上限を置く（§4.1、§4.1.1）。C のライブラリで読む PDF と違い、壊れたファイルで異常終了するおそれが小さいため、ワーカーに分けない。
-- PDF はワーカーでだけ開く（§1、§5）。メインプロセスに pdfium を読み込まない。`crates/worker` 以外の crate が `pdfium-render` に依存していないことを、`cargo-deny` の `bans`（`wrappers` の指定）で確かめる。
-- ワーカーには、開く PDF のパス、利用者が入れたパスワード（§6.8）、pdfium の場所だけを渡す。ワーカーはファイルを書かない。
+- PDF はワーカーでだけ開く（§1、§5）。メインプロセスに pdfium を読み込まない。`crates/worker` 以外の crate が `pdfium-render` に依存していないことを、`cargo-deny` の `bans`（`wrappers` の指定）で確かめる。`ort`（onnxruntime）も同じく `crates/worker` だけに置き、同じ方法で確かめる。
+- onnxruntime とモデルは §8.5 のとおり版と SHA-256 で照合して取得し、同梱する。モデルを読むのはワーカーだけで、入力は PDF を描いた画素だけ（モデルのファイルを利用者が差し替える手段は設けない）。
+- ワーカーには、開く PDF のパス、利用者が入れたパスワード（§6.8）、pdfium・onnxruntime・モデルの場所だけを渡す。ワーカーはファイルを書かない。
 - 書き出す PDF の暗号化（§4.3.1）はメインプロセスの `lopdf`（純 Rust）で行う。`lopdf` が読むのは krilla がその場で書いた PDF だけで、利用者が追加した PDF は読まない。書き出しのパスワードは §6.9 のとおり扱う。
 - サムネイルと描画した画像は、`blob:` URL にして `<img>` で表示する。
 - WebView2 の起動オプションの `--host-resolver-rules` は、SVG Tracer の `MAP * ~NOTFOUND` に `EXCLUDE localhost` を加える。`tauri dev` の画面は Vite（`devUrl` の `http://localhost:5173`）から読むので、`localhost` の名前解決まで失敗させると Windows で開発用の画面が開かない（`ERR_NAME_NOT_RESOLVED`）。製品版で `localhost` の名前解決が通っても、CSP が許す接続先は画面自身（`'self'`）と IPC だけなので、画面から `localhost` には接続できない。PAC や外部のサーバーへの名前解決は、これまでどおりすべて失敗する。
@@ -487,7 +572,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 見た目と配置はモックアップに従う。要点:
 
 - アプリ名は「PDF Converter」。ウィンドウの既定の大きさは 1200×800、最小は 960×640。
-- 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像）、言語の切り替え、「このアプリについて」。
+- 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像 / 切り出し）、言語の切り替え、「このアプリについて」。タブの名前は「切り出し」/ `Crop`。
 - 左の設定パネル: 画像 → PDF は「出力」「ページの大きさ」「向き」（自動 / 縦 / 横）と、「1 枚ずつ」のときの保存先フォルダ。「向き」はいつも出し、「画像と同じ大きさ」の間は押せなくして、下に「用紙を選ぶと使えます」/ `Available when a paper size is chosen` と出す（「自動」のヒントはこの間は出さない）。選んだ値は状態と設定に残し、押せない間も選んだ選択肢を示す。用紙を選んだときだけ出すと、ドロップダウンの一覧が閉じた所に欄が現れて一覧の残像のように見え、下の欄も動くため。PDF → 画像は「ページ」「形式」（PNG / JPEG / WebP）「色」（カラー / グレースケール）「解像度」「保存先フォルダ」。ページのサムネイルは、グレースケールのときもカラーのまま出す（ページの確認と選択のためのもので、出力の見本ではないため）。
 - 画像 → PDF の「向き」の下に、チェックボックス「長期保存用（PDF/A）」/ `Archival (PDF/A)` を置く（既定はオフ）。規格の種類（2b）は画面に出さない。オンの間は、下に灰色の補足で「CMYK の画像は使えません」/ `CMYK images can't be used` と出す（変換を始めてから失敗を知るより前に気づけるように）。選んだ値は状態と設定に残す。チェックボックスは 16px の四角で、チェックの色はアクセントの色（`accent-color`）にし、文字は欄の見出し（`.label`）と同じ大きさと太さにする。切り替えのボタンにしないのは、多くの人が触らない付け足しの選択肢を、出力やページの大きさと同じ重さで見せないためと、設定パネルが長くなったときに、まとめて「詳しい設定」のような場所へ移しやすいため。
 - PDF/A のすぐ下（間は 12px）に、同じ形のチェックボックス「パスワードを付ける」/ `Password-protect` を置く（既定はオフ。§6.7 の `encrypt`）。オンの間は、下に灰色の補足で「保存するときにパスワードを入れます」/ `You'll enter the password when saving` と出す。選んだ値は状態と設定に残す（パスワードは残さない。§6.9）。
@@ -515,6 +600,17 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - 「パスワードを入力」のボタンは変換中は押せない。押すとアプリ内のダイアログを開く。追加したときに自動では開かない（フォルダから多数の PDF を追加すると、ダイアログが続くため）。
 - パスワードのダイアログ: 見出し「パスワードを入力」/ `Enter password`、ファイル名、ラベル「パスワード」/ `Password` の入力欄（`type="password"`、開いたときにフォーカス）、入力欄の枠の中の右端に「表示」/ `Show` と「隠す」/ `Hide` を切り替えるボタン（`aria-pressed`。枠も地の色も持たない小さな文字のボタンにし、入力した文字がボタンの下に隠れないよう、入力欄の右の内側の余白をボタンの幅だけ空ける）、「開く」/ `Open` と「キャンセル」/ `Cancel`。Enter で「開く」、Esc で取り消す。入力が空の間と問い合わせの間は「開く」を押せない。パスワードが違うときはダイアログを閉じず、入力欄の下に `.error-text` で「パスワードが違います」/ `Incorrect password` を出し、入力欄の文字を選択した状態でフォーカスを戻す（入れ直しやすくするため）。入力を変えたら誤りを消す。ほかのエラー（`WorkerCrashed` など）は同じ場所に §6.6 の文言で出す。開けたら閉じる。ボタンがなくなるので、フォーカスは PDF → 画像の一覧の領域に移す（`body` に落とさない）。入れたパスワードは、閉じたら画面の状態から捨てる（次に開いたときは空）。ほかの PDF もあわせて開いたことは、別に知らせない（行の表示が変わるため）。ダイアログは見出しからボタンまでを区切り線のない 1 枚のカードにし（幅は最大 400px、内側の余白は 24px）、高さは中身に合わせる（`.modal-dialog` の固定の高さを受け継がない）。中身が少ないので、「このアプリについて」の見出し・本文・ボタンの 3 段の形にすると、区切り線ばかりが目立つため。
 - 下部バー: 状態の説明と、実行のボタン（「PDF を保存」または「変換を開始」）。変換中は進捗バーと「キャンセル」。
+- **切り出しのタブ**（FR-11、§6.10）。見た目と配置はモックアップ（`CropEmpty`・`CropA`・`CropA960`）に従う。要素と振る舞い:
+  - 配置: 左にページのサムネイルの縦の列、中央にページ、右に範囲の一覧と、その下に書き出しの設定。設定パネルをほかのタブのように左に置き、サムネイルをページの下の帯にする形（案 B）も描いたが、最小のウィンドウ（960×640）でページと一覧が小さくなりすぎたので採らなかった（オーナー、2026-10-16）。
+  - 書き出しの設定（右の一覧の下）: 見出しの「書き出しの設定」/ `Export settings` のボタンで開閉し、閉じているときはボタンの中に今の設定を 1 行で出す（「PNG · カラー · 150 dpi · 写真は元の画素」。「写真だけ」がオンなら「 · 写真だけ」を足す）。中身は「形式」「色」「解像度」（PDF → 画像と同じ部品）、チェックボックス「写真は元の画素で書き出す」/ `Export photos at original pixels`（既定オン。下に灰色で「写真は解像度によらず、元の画素の数で書き出します」）、「写真だけを書き出す」/ `Photos only`（既定オフ。下に灰色で「写真に重なった文字や枠を除きます」）、「保存先フォルダ」。チェックボックスの形は PDF/A と同じ。開閉の状態は画面だけが持ち、保存しない。起動したときは、ウィンドウの高さが `CROP_SETTINGS_OPEN_MIN_HEIGHT`（720 px）以上なら開き、未満なら閉じておく（範囲の一覧が見えなくならないように）。
+  - サムネイルの列: 範囲のあるページには、右上にその数をアクセントの地の小さな印で出す。表示中のページは枠をアクセントの色にする。
+  - 空のとき: 中央をドロップ領域にし、「PDF をドロップするか、「PDF を開く」を押してください」と短い説明と「PDF を開く」のボタンを出す（サムネイルの列と右の一覧は出さない）。下部バーは「PDF が開かれていません」で、「書き出す」は押せない。開いているときは、ページの上の帯にファイル名と「3 / 12」（表示中のページ / ページ数）と「別の PDF を開く」を出す。
+  - 中央のページ: 表示の大きさは「幅」（幅に合わせる）と「全体」（ページ全体を表示）の切り替えと、−・＋（今の倍率を % で出す）、Ctrl+ホイール。既定は「全体」（ページのどこに何があるかを一目で見て範囲を選ぶため）。ページの上に、埋め込み画像の枠（点線。ポインターを乗せると強調し、押すと写真の範囲を加える）、候補の枠（種類の語の小さな札を添えた細い線。押すとその範囲を加える）、範囲（アクセントの色の実線と種類の札。選ぶと 8 つの取っ手で大きさを変え、内側のドラッグで動かす）を重ねる。空いた所をドラッグすると手で選ぶ範囲を描く。解析を待つ間は「候補を探しています…」を出す。「候補」のチェックボックス（既定オン）で候補の枠を隠せる。
+  - 「範囲を追加 ▾」/ `Add areas ▾` のメニューに「このページの候補をすべて追加」「全ページの候補をすべて追加」「ページ全体を範囲にする」を入れる（3 つのボタンを並べると、ツールバーが 2 段になったため）。
+  - キーボード（NFR-07）: Tab で写真の枠・候補・範囲を順に移り、Enter で加える・選ぶ。範囲を選んでいるときは、矢印で 1 pt、Shift+矢印で 10 pt 動かし、Alt+矢印で右下の角を動かして大きさを変え、Delete で消す。ドラッグできない利用者は「範囲を追加」の「ページ全体を範囲にする」で加え、矢印で縮める。
+  - 範囲の一覧の行: 書き出すかのチェック、小さなプレビュー（範囲を描いたもの。サムネイルと同じく要素が見えてから要求する）、「p.3」、種類（写真 / 図 / グラフ / 表 / 手で選んだ範囲）、書き出す大きさ（写真で元の画素なら「元の画素 1241 × 964」、ほかは「300 dpi · 1650 × 1200」、縮小した写真は「元の画素を縮小 …」）、上に何か載っている写真には「重なりあり」/ `Overlaid` の印（「写真だけを書き出す」がオフのときも出す）、消すボタン。行を押すとそのページに移ってその範囲を選ぶ。
+  - 下部バーの予告: 「5 個の範囲を PNG で書き出します」。実行のボタンは「書き出す」/ `Export`。チェックの入った範囲がなければ押せない。結果の帯と行の状態は、ほかのタブと同じ形（件で数える）。
+  - `LayoutUnavailable` は、中央の上に `NoticeDisplay` で出す（エラーではなく、手で選べることを伝える）。1 ページの解析が `WorkerCrashed`・`WorkerTimeout` になったときは、そのページの「候補を探しています…」の場所に §6.6 の文言を出し、ほかのページの解析は続ける。
 - 下部バーの左には、変換していない間、その画面で実行のボタンを押すと何が起きるかを 1 行で出す（「3 ページの PDF になります」「24 ページを PNG で保存します」など。数えるのはエラーのない項目だけ。画像 → PDF の「1 つの PDF」のページ数は `pageCount` の合計で、「1 枚ずつ」の PDF の数はファイルの数）。一覧が空なら「画像（PDF）が選ばれていません」、一覧はあるがすべて読み込めない項目なら赤で「変換できる画像（PDF）がありません。読み込めない画像（PDF）を外してください」と出す（実行のボタンは押せず、「選ばれていません」では一覧に見えている行と食い違うため）。「範囲を指定」のページ数は `check_page_range` の `totalPages` を使い、画面で範囲を数えない（§4.5）。保存するファイル名の例は出さない（名前の規則は §6.4 の `naming.rs` だけに置くため）。変換中・変換のあと・エラーのときは、その表示が優先される。変換のあとは結果を色と記号で示す（すべて成功なら緑の「✓ すべて完了しました」、失敗が 1 件でもあれば赤の「✕ 失敗があります」、キャンセルや対象のページなしだけなら記号なし）。変換を始められなかったときなど、結果より後に起きたエラーは結果より優先する。
 - 一覧の上（見出しより上）には、その画面の最後の変換の結果を `JobSummaryBanner` で出す（件数の 1 行）。両方の画面で同じ部品・同じ位置にする。0 件の分類は出さない（「成功 0 件」も出さない）。数え方は 4 つある（`formatJobSummary`）。先頭の「変換が終わりました：」「キャンセルしました：」は共通。
   - 件で数える（複数の PDF、画像 → PDF の「1 枚ずつ」、全部の画像が失敗して PDF を書かなかった「1 つの PDF」）: 「成功 3 件 · 失敗 2 件」。
@@ -527,7 +623,9 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 
 ### 10.2 状態管理、多言語
 
-SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基準にした型付きの辞書）。reducer は「画像 → PDF」「PDF → 画像」「変換の実行」「言語」に分ける。
+SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基準にした型付きの辞書）。reducer は「画像 → PDF」「PDF → 画像」「切り出し」「変換の実行」「言語」に分ける。
+
+「切り出し」の状態は `state/crop.ts` に置く。開いた PDF（`CropPdf`）、ページごとの埋め込み画像の一覧と候補（要求したページだけ）、範囲（`key` の順）、選んでいる範囲、書き出し済みの範囲の `key`。範囲の `key` は画面が振る通し番号の文字列。
 
 「変換の実行」は両方の画面で共通にする（変換は同時に 1 つだけで、タブを切り替えても続くため）。
 
@@ -599,12 +697,15 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | `too_large_page2.tif` | 2 ページ目の IFD の寸法が `MAX_IMAGE_PIXELS` を超える（画素のデータは持たない） | ページごとの `TooLarge` |
 | `too_many_pages.tif` | 1×1 画素の `MAX_TIFF_PAGES` + 1 ページ | `TooManyPages` |
 | `shapes_150dpi_p1.png`〜`p3.png` | `shapes.pdf` の各ページを 150 dpi で描いたときの期待の画像（`gen_fixtures` が同じ図形から計算する） | §11.2 の PDF → 画像の比較 |
+| `crop_align.pdf` | 3 ページ（`/Rotate` が 0・90・270）。どのページも 595.276×841.89 pt で、`CropBox` は原点からずれている。決まった模様の Flate の RGB の画像（元の画素が分かるもの）を、小数の位置と倍率、左右の反転、90 度の回転、回転とせん断の 4 通りに置き、1 つには上に四角を重ねる。ソフトマスク付きの画像、切り抜き（クリップ）の画像、2 段のフォームの中の画像、2×2 px の小さな画像を含む。`gen_fixtures` が PDF の構文を直接書く（krilla は `/Rotate`・`CropBox`・せん断の行列を書けないため） | §4.6 の写真の範囲、写真だけ、透明、重なりの判定、画像の一覧の除外 |
+| `crop_layout.pdf` | 1 ページ。大きな写真（`photo.jpg`）と、図形で描いた棒グラフ | §4.7 の解析（写真が `photo`、棒グラフが `chart` か `figure` になること。モデルがこのページで期待どおりに返すことを、実装の最初に確かめてから固定する） |
 
 - 書き出す PDF の暗号化（§4.3.1）のテストは、フィクスチャをコミットしない。暗号化は乱数を使い、毎回違うバイト列になるため。テストの中で §11.1 の画像から PDF を作って暗号化する。
 - 暗号化された PDF は、標準のセキュリティハンドラー（revision 3、128 ビットの RC4）を `gen_fixtures` に自前で書いて作る。`lopdf` の暗号化は乱数を使うので、生成し直すと同じファイルにならないため（T02 で決定）。
 - TIFF は、`gen_fixtures` に小さな TIFF の書き手を自前で書いて作る（`tiff` の書き出しは G4 と JPEG の圧縮を持たず、読まない種類（G3、CMYK など）や壊れたファイルも作る必要があるため）。G4 の圧縮は `fax` の符号化を使う。
 - `crates/core/tests/fixtures.rs` が、生成し直したバイト列とコミット済みのファイルを比べる。生成プログラムとフィクスチャがずれないようにするため。
 - 文字を含む PDF はフォントのライセンスの扱いが要るので、フィクスチャには入れない。文字の描画の確認は手動の確認（§11.3）で行う。
+- レイアウトの解析のテストは、§8.5 で取得したモデルを使う。CI も `fetch-layout.ts` を実行する（モデルの Release を先に作っておく）。
 
 ### 11.2 品質テスト（NFR-03）
 
@@ -619,6 +720,8 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 - **PDF → 画像**: `shapes.pdf` を描画し、`gen_fixtures` が同じ図形から計算した期待の画像と比べる。図形の縁のぼかし方の差を許すため、`COLOR_TOLERANCE_RENDER`（32）、`MAX_MISMATCH_RATIO_RENDER`（0.5%）とする。T02 の実測では最も悪いページで 0.12% だった（pdfium は画像を x 方向に 1 画素ずらして描く、A4 の高さが整数の画素にならない、などの 1 画素の差が図形の縁に出る）。4 倍の余裕を残しつつ、描画の劣化を見逃しにくい値にしている。
 - **PDF → 画像のグレースケールと WebP**: グレースケールは、同じページを同じ dpi のカラーで描いた画像から BT.601 の輝度（`0.299R + 0.587G + 0.114B` を四捨五入）を求め、グレーの画像と全画素で差が `COLOR_TOLERANCE_GRAY`（8）以内であること、画像が 1 チャンネルであること。U09 の前の試作では、`shapes.pdf` と写真を入れた PDF で差の最大が 3 だった（`image` の `to_luma8` は BT.709 の係数で、差が最大 28 になるので基準にしない）。WebP は、同じページを PNG で書いたものと、復号した画素が完全に一致すること（可逆）。
 - 出力した PDF が一般的なビューアーで開けること（NFR-03）は、手動の確認でブラウザー内蔵のビューアーで開いて確かめる。
+- **切り出しの写真の範囲（NFR-03）**: `crop_align.pdf` の 0 度・90 度・反転の置き方の画像を、元の画素で書き出し（PNG）、`gen_fixtures` が書いた模様を、置き方の向きに並べ替えたものと全画素で一致すること（不透明な画素の差が 0）。3 ページすべて（`/Rotate` 0・90・270）で同じ結果になること。回転とせん断の画像は写真の範囲にならず（`native` が `false`）、外接矩形を dpi で描くこと。上に四角を重ねた画像は、ふつうに書き出すと四角が入り、「写真だけ」では入らないこと、`ImageOnTop` が前者で `true`、ほかで `false`。ソフトマスク付きの画像を「写真だけ」の PNG で書くと、アルファがマスクの値と一致すること。
+- **切り出しの範囲（NFR-03）**: 手で選んだ範囲を書き出した画像が、同じ dpi の `Render`（§4.4）の画像から同じ矩形を切り取ったものと、`COLOR_TOLERANCE_RENDER`・`MAX_MISMATCH_RATIO_RENDER` の基準で一致すること。
 
 - **PDF/A**: §11.1 の画像のうち CMYK の JPEG と読まない種類・壊れた TIFF を除くものを、PDF/A で「画像と同じ大きさ」と A4 にし、`finish` が成功することと、上の画像 → PDF の比較に通常の PDF と同じ基準で合格することを確かめる。通常の PDF には `/Interpolate true` があり、PDF/A にはないこと。CMYK の JPEG は PDF/A で `CmykNotAllowedInPdfA` になり、「1 つの PDF」ではほかの画像のページが作られること。通常の PDF では CMYK の JPEG も今までどおり入ること。
 - **パスワード付きの PDF**: §11.1 の画像のうち読める画像を「画像と同じ大きさ」と A4 で結合し、通常の PDF と、同じ PDF を §4.3.1 で暗号化したものを作る。pdfium で、パスワードなしと違うパスワードでは `PasswordError` になり、正しいパスワードでは全ページの描画が通常の PDF の描画と画素まで一致すること（試作では 21 ページすべてで一致）。暗号化の辞書が `/V 5`・`/R 6`・`/Length 256`、`StdCF` が `/CFM /AESV3`・`/Length 32` で、カタログに §4.3.1 の `/Extensions` があること。暗号化した PDF のバイト列に、作成ソフトの文字（`PDF Converter`）がそのまま現れないこと。同じ PDF を同じパスワードで 2 回暗号化すると、違うバイト列になること（鍵とソルトが毎回作られること）。
@@ -638,8 +741,12 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 | crates/worker | 品質 | §11.2 の PDF → 画像 |
 | crates/worker | 単体 | メッセージの読み書き、`Open` / `Render`（形式、色、範囲の端の dpi）/ `Thumbnail`、パスワード（なし・誤り・閲覧・所有者・ASCII 以外の文字）、壊れた PDF、ページ数の上限、描画の上限 |
 | crates/worker | 結合 | 単独のワーカー（`pdfconv-worker`）を起動し、テスト用の要求（`test-hooks` 機能の `CrashForTest`、`HangForTest`、`AllocateForTest`）で、異常終了、時間切れ、メモリの上限のあとにメインプロセスの側が続けて動くこと、新しいワーカーが起動することを確かめる（T01） |
+| crates/core | 単体 | 切り出しの範囲（`region.rs`）: 行の判定（重なりが半分ちょうど・未満、上端の同じ範囲）、位置の順の番号と桁数、写真の範囲との一致（IoU のしきい値の前後）、出力名（`_p03_2`、重なりの番号） |
+| crates/worker | 単体 | 切り出し: `PageImages`（小さい画像・注釈の中の画像を除くこと、`native` の判定）、`RenderRegion`（§11.2 の切り出し、`RenderTooLarge`、元の画素が上限を超える写真の縮小と `scaledDown`）、`ImageOnTop`、`Detect`（`crop_layout.pdf`、モデルの場所が違うときの `LayoutUnavailable` と、そのあとほかの要求が通ること） |
+| src-tauri | 単体 | 切り出し: 書き出しの名前と順、範囲ごとの失敗とキャンセル、`WriteFailed` の打ち切り、`start_detect_all` の `layout-page` とキャンセル、`set_drop_target` と D&D（1 つの PDF、複数、画像の混在）、解析のワーカーを PDF の入れ替えで終わらせること。 |
 | src-tauri | 単体 | ワーカーの数の管理（T06）。変換: 成功・失敗・対象のページなしの混在、キャンセル後に一時ファイルが残らないこと。画像 → PDF の TIFF: 進捗がページで数えられること、途中のページが読めない TIFF は「1 つの PDF」でそのページも前のページも入らず、「1 枚ずつ」で PDF を残さないこと、TIFF の途中のキャンセル。設定の読み書き（`pdfA` と `encrypt` がどちらも `true` の設定ファイルと `save_settings`）。パスワードの解除（誤り、ほかの項目への適用、パスワードを使ったサムネイルと変換）。書き出す PDF のパスワード（「1 つの PDF」と「1 枚ずつ」で暗号化されること、`pdfA` と一緒・規則に合わないパスワードの `InvalidParams`） |
 | フロントエンド | 単体 | 一覧の追加・並べ替え・削除、TIFF の行のページ数、下部バーと結果の帯のページ数（`pageCount` の合計）、範囲の入力と開始ボタンの有効・無効、変換中の無効化、エラーコードから文言、状態の色と記号。PDF/A と「パスワードを付ける」の片方がオンのときもう片方が押せないこと、書き出しのパスワードのダイアログ（条件の 3 つの状態、127 文字と 128 文字、主のボタンの有効・無効、表示の切り替えが両方の欄に効くこと、取り消しで何も始まらず、閉じたらパスワードが残らないこと、`save_merged_pdf`・`start_images_to_pdfs` に渡す `password`） |
+| フロントエンド | 単体 | 切り出し: 範囲の追加（写真の枠、候補、ドラッグ、ページ全体）、写真の範囲を動かすと「手で選んだ範囲」になること、キーボードの操作、範囲の一覧の行（種類、大きさ、重なりの印）、書き出していない範囲があるときの入れ替えの確認、全ページの候補の追加で重複を加えないこと、`LayoutUnavailable` の表示 |
 | 全体 | 手動 | 受け入れ基準（両 OS でインストーラーから）。文字を含む実際の PDF の描画、ブラウザーでの PDF の表示。パスワード付きの PDF を Edge と Adobe Acrobat Reader（Windows）、Evince（Linux）で開くこと。`docs/manual-test.md` |
 
 - 一括変換の中で特定の PDF だけでワーカーが落ちる状況は、`test-hooks` 機能のときだけ、ワーカーが名前 `CRASH_ON_OPEN_FILE_NAME`（`crash-on-open-for-test.pdf`）の PDF の `Open` で異常終了することで作る（T08）。機能を付けないビルドには含まれない。
