@@ -69,7 +69,7 @@
 │   │   ├── pdf_encrypt.rs    書き出す PDF の暗号化とパスワードの規則（§4.3.1）
 │   │   ├── page_range.rs     ページの範囲の解釈（§4.5）
 │   │   ├── naming.rs         出力名の決定（§6.4）
-│   │   ├── region.rs         切り出しの範囲の幾何（座標、行の判定と番号、写真の範囲との一致。§4.6、§6.4）
+│   │   ├── region.rs         切り出しの範囲の幾何（座標、行の判定と番号、写真の範囲との一致。§4.6、§6.4）。crates/worker の layout.rs も写真との一致に使う
 │   │   └── error.rs
 │   ├── examples/gen_fixtures.rs   フィクスチャの生成（§11.1）
 │   └── tests/
@@ -262,8 +262,8 @@
 
 - モデルは PP-DocLayout_plus-L を int8 に量子化したもの（§8.5）。入力は 800×800、出力は 20 種類の箱。onnxruntime は §8.5 の版を実行時に読み込む。
 - **前処理**: ページを長い辺 `LAYOUT_RENDER_LONG_SIDE`（1600 px）で白の背景に描き（PDF → 画像と同じ pdfium の描画）、`image` の `CatmullRom` で 800×800 に縮め（縦横比は保たない）、RGB を 0〜1 にする。入力は `image`（1×3×800×800）、`im_shape`（800, 800）、`scale_factor`（800 ÷ 描いた高さ, 800 ÷ 描いた幅）。PaddleX の既定（PIL の bicubic）と描画のエンジンの版は違うが、試作で Python の結果との一致は 99.0 %、目で全部が合うと判定した 15 本では 100 % だった。
-- **後処理**: 出力の各行（種類、スコア、左上と右下の座標。描いた画像の画素）から、種類が `image`・`chart`・`table` で、スコアが `LAYOUT_SCORE_MIN`（0.48）以上のものを残す。0.48 は、int8 にしたモデルで元のモデル（しきい値 0.5）と箱が最もよく一致した値。重なりは PaddleX の `layout_nms` と同じく、同じ種類で IoU が 0.6 以上、違う種類で 0.98 以上のとき、スコアの低い方を除く。短い辺が `LAYOUT_MIN_SIDE_PT`（24 pt）未満の箱も除く。下調べの 36 本で、24 pt 未満の箱はほとんどがアイコン・番号・ロゴだった。24〜36 pt はアイコン・QR コードとカタログの小さな絵が混ざるので残す（候補は押すまで範囲に入らない）。
-- **種類**: `chart` はグラフ、`table` は表。`image` は、埋め込み画像（§4.6 の一覧）の枠（見える範囲）と IoU が `PHOTO_MATCH_IOU`（0.85）以上のものがあれば、その画像の写真の範囲（枠はモデルの箱でなく画像の枠）にし、なければ図（図形で描かれた絵）にする。下調べでは IoU は 0.9 以上に山があるが、0.3〜0.85 にも散らばった（キャプションを含む箱など）。下げると、写真を含む図解が写真だけに縮むおそれがあるので、高めに置く（下回った写真は図として dpi で描かれる）。
+- **後処理**: 出力の各行（種類、スコア、左上と右下の座標。描いた画像の画素）から、種類が `image`・`chart`・`table` で、スコアが `LAYOUT_SCORE_MIN`（0.48）以上のものを残す。0.48 は、int8 にしたモデルで元のモデル（しきい値 0.5）と箱が最もよく一致した値。箱は描いた画像の範囲で切り詰める。重なりは PaddleX の `layout_nms` と同じく、同じ種類で IoU が 0.6 以上、違う種類で 0.98 以上のとき、スコアの低い方を除く（スコアの高い順に見て、残したどれかと重なる箱を除く）。重なりの判定は、種類で絞る前に、スコアが `LAYOUT_SCORE_MIN` 以上のすべての種類（文章や見出しを含む 20 種類）の箱で行う（試作の比べ方と同じ）。短い辺が `LAYOUT_MIN_SIDE_PT`（24 pt）未満の箱も除く。下調べの 36 本で、24 pt 未満の箱はほとんどがアイコン・番号・ロゴだった。24〜36 pt はアイコン・QR コードとカタログの小さな絵が混ざるので残す（候補は押すまで範囲に入らない）。
+- **種類**: `chart` はグラフ、`table` は表。`image` は、埋め込み画像（§4.6 の一覧）の枠（見える範囲）と IoU が `PHOTO_MATCH_IOU`（0.85）以上のものがあれば、その画像の写真の範囲（枠はモデルの箱でなく画像の枠）にし、なければ図（図形で描かれた絵）にする。1 つの埋め込み画像に 2 つ以上の箱が一致したときは、スコアの最も高い箱だけを写真にし、ほかは除く（同じ範囲の候補を 2 つ出さないため）。候補はスコアの高い順に返す。写真の候補のスコアはモデルの箱のスコア。下調べでは IoU は 0.9 以上に山があるが、0.3〜0.85 にも散らばった（キャプションを含む箱など）。下げると、写真を含む図解が写真だけに縮むおそれがあるので、高めに置く（下回った写真は図として dpi で描かれる）。
 - **セッション**: 最適化は最大（`GraphOptimizationLevel::Level3`）、スレッドは `min(LAYOUT_THREADS（6）, 論理 CPU 数 - 1)`、プールのスレッドの空回りを止める（`with_intra_op_spinning(false)`。止めないと同じ検出器が約 4 倍遅く出た（ocr-bench））。モデルは最初の解析のときに読み込み（約 0.5 秒、読み込み直後のメモリ約 365 MB）、そのワーカーが終わるまで持つ。
 - **速さとメモリ（試作）**: 推論は 1 ページ 0.42 秒（元のモデル、Python、6 コアに固定）、int8 で 0.58 秒、Windows の `ort` で 0.62 秒（コアの固定なし）。Python でのピークのメモリは 0.56 GB。Rust のワーカーでのメモリは測っていない（作業計画のタスクで `WORKER_MEMORY_LIMIT` に収まることを確かめる）。
 - **使えないとき**: onnxruntime かモデルを読み込めない（配布物が壊れている）ときは `LayoutUnavailable`（§6.6）。その PDF を開いている間は候補を出さず、手で選ぶ範囲と写真の範囲は使える（FR-09）。
@@ -315,7 +315,7 @@
 ### 5.4 ワーカーの見つけ方
 
 - メインプロセスは `std::env::current_exe()` を `--pdf-worker` 付きで起動する。別の実行ファイルを同梱しない。
-- ワーカーは、同梱した pdfium のライブラリ（§8.2）の場所を引数で受け取る。Tauri のリソースのフォルダはメインプロセスだけが知っているため。onnxruntime のライブラリとモデル（§8.5）の場所も同じく引数で受け取る。
+- ワーカーは、同梱した pdfium のライブラリ（§8.2）の場所を引数で受け取る。Tauri のリソースのフォルダはメインプロセスだけが知っているため。onnxruntime のライブラリとモデル（§8.5）の場所も同じく引数で受け取る。引数は `--pdf-worker <pdfium のフォルダ> <onnxruntime のライブラリのファイル> <モデルのファイル>` の順。onnxruntime はファイルの完全なパスで読み込む（Windows 11 には別の版の `onnxruntime.dll` が `System32` にあり、名前だけで読み込むとそちらを使うおそれがあるため）。ファイルの有無はメインプロセスでは確かめず、最初の `Detect` で読み込めなければ `LayoutUnavailable` にする（§5.1）。
 
 ## 6. 各機能の設計
 
@@ -548,7 +548,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
   - onnxruntime: microsoft/onnxruntime の GitHub Releases の `onnxruntime-win-x64-1.26.0.zip`（`sha256:6ebe99b5564bf4d029b6e93eac9ff423682b6212eade769e9ca3f685eaf500b4`）と `onnxruntime-linux-x64-1.26.0.tgz`（`sha256:1254da24fb389cf39dc0ff3451ab48301740ffbfcbaf646849df92f80ee92c57`）から、`onnxruntime.dll` / `libonnxruntime.so.1.26.0` と `LICENSE`・`ThirdPartyNotices.txt` を取り出す。
   - モデル: このリポジトリの GitHub Releases に置いた int8 のモデル（`layout-model-1` のタグ、`PP-DocLayout_plus-L-int8.onnx`、`sha256:bf1e0bf6bac5471155af68c47c3b82b6486eb580e226c10ae9d9c4dd3d1b4fba`）。モデルの `LICENSE`（Apache-2.0 の全文）と改変の表示（`NOTICE`）は、Release には置かず `scripts/layout-model/` にコミットする（取得するものではなく、版ごとに変わらないため）。
 - **量子化**: int8 のモデルは `scripts/quantize-layout-model.py` で作る（維持する人が一度だけ実行し、Release に置く）。元は Hugging Face の `PaddlePaddle/PP-DocLayout_plus-L_onnx` の `inference.onnx`（コミット `feb74619326f634e0e883218598096a3733ad9f7` に固定し、`sha256:77afb2caa74dd13240d087d2eced91d7fcd2caebd16006a0a66162fc8707ff0e` で照合）。onnxruntime 1.26.0 の `quant_pre_process`（`skip_symbolic_shape=True`）のあと `quantize_dynamic`（重みを UInt8、すべての種類の演算）。ネットワークを切ったコンテナで実行する（外から来たモデルを読むため）。同じ版の onnxruntime なら、何度実行しても同じファイルになった（試作）。ビルドのたびに量子化しないのは、CI に Python と onnxruntime の量子化の道具を入れずに済ませるため。
-- **同梱**: pdfium と同じく、`tauri.<os>.conf.json` の `bundle.resources` で同梱し、`resource_dir()` から場所を求めてワーカーに渡す（§5.4）。インストーラーは、モデル（xz で約 23 MB）と onnxruntime（Windows の DLL は xz で約 4 MB）のぶん大きくなり、Windows の NSIS で約 34 MB、MSI で約 39 MB の見込み（見積もり。実際のインストーラーでは測っていない）。
+- **同梱**: pdfium と同じく、`tauri.<os>.conf.json` の `bundle.resources` で同梱し、`resource_dir()` から場所を求めてワーカーに渡す（§5.4）。インストーラーは、モデル（xz で約 23 MB）と onnxruntime（Windows の DLL は xz で約 4 MB）のぶん大きくなる。Windows の NSIS は 34.1 MB、MSI は 39.4 MB だった（PR #54 の Bundle check。`ort` を入れる前の実測で、`ort` の Rust のコードのぶん少し増える）。
 - **ライセンス**: `scripts/generate-licenses.ts` が、onnxruntime の `LICENSE`（MIT）と `ThirdPartyNotices.txt`、モデルの `LICENSE`（Apache-2.0）と改変の表示（「PaddlePaddle の PP-DocLayout_plus-L を int8 に量子化した」。どちらも `scripts/layout-model/`）を第三者ライセンス一覧に加える。版は `layout-version.json` から入れる。
 - **更新**: onnxruntime の版は、§8.4 の `pdfium-update.yml` と同じ月 1 回の確認に加える（新しい版があれば Issue を作る）。更新は手で行い、`ort` の `api-NN` 機能を合わせ、§11 のテストを通す。モデルの更新（新しい版のモデル）は、下調べと同じ比べ方で精度を確かめてから、`layout-model-N` を作って行う。
 
