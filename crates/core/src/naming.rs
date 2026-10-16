@@ -1,6 +1,8 @@
 //! Output filename resolution for batch conversion (design §6.3, §6.4).
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+
+use crate::region::{PageRect, position_order};
 
 /// Splits a filename into its stem and extension based on the last period.
 ///
@@ -151,6 +153,60 @@ pub fn resolve_pdf_to_image_names(
             allocate_unique_name(&base_stem, ext, &mut used_lower);
     }
 
+    result
+}
+
+/// One range to be written out by a crop: the 1-based page it lies on and its
+/// rectangle on that page (design §4.6, §6.4).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CropRegion {
+    pub page: u32,
+    pub rect: PageRect,
+}
+
+/// Resolves output image filenames for the ranges of a crop (design §6.4):
+/// `name_p{page}_{number}.{ext}`.
+///
+/// The page number is zero-padded to the width of `total_pages`, like
+/// [`resolve_pdf_to_image_names`]. The range number counts the ranges
+/// written from that page in position order ([`position_order`]) from 1, and
+/// is zero-padded to the width of that count: `1`..`9` for up to nine ranges,
+/// `01`.. for ten or more.
+///
+/// Returns one name per entry of `regions`, in the same order. The same set
+/// of ranges gets the same names whatever order it is passed in, apart from
+/// ranges whose top and left edges are equal, which keep the given order.
+/// Collisions with `existing` or another assigned name get ` (n)`, compared
+/// case-insensitively, as for the other conversions.
+pub fn resolve_crop_names(
+    filename: &str,
+    total_pages: u32,
+    regions: &[CropRegion],
+    extension: &str,
+    existing: &HashSet<String>,
+) -> Vec<String> {
+    let ext = extension.trim_start_matches('.');
+    let (stem, _) = split_stem_and_ext(filename);
+    let page_width = page_number_width(total_pages);
+
+    let mut by_page: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    for (index, region) in regions.iter().enumerate() {
+        by_page.entry(region.page).or_default().push(index);
+    }
+
+    let mut used_lower: HashSet<String> = existing.iter().map(|s| s.to_lowercase()).collect();
+    let mut result = vec![String::new(); regions.len()];
+    for (page, indices) in by_page {
+        let rects: Vec<PageRect> = indices.iter().map(|&i| regions[i].rect).collect();
+        let number_width = page_number_width(rects.len() as u32);
+        for (rank, &local) in position_order(&rects).iter().enumerate() {
+            let base_stem = format!(
+                "{stem}_p{page:0page_width$}_{number:0number_width$}",
+                number = rank + 1
+            );
+            result[indices[local]] = allocate_unique_name(&base_stem, ext, &mut used_lower);
+        }
+    }
     result
 }
 
@@ -436,5 +492,134 @@ mod tests {
         let order_ba = resolve_pdf_to_image_names(&[pdf_b, pdf_a], "png", &existing);
         assert_eq!(order_ba[0], vec!["report_p1 (2).png"]);
         assert_eq!(order_ba[1], vec!["REPORT_p1 (1).png"]);
+    }
+
+    fn region(page: u32, x0: f64, y0: f64) -> CropRegion {
+        CropRegion {
+            page,
+            rect: PageRect {
+                x0,
+                y0,
+                x1: x0 + 40.0,
+                y1: y0 + 20.0,
+            },
+        }
+    }
+
+    #[test]
+    fn crop_names_have_page_and_position_number() {
+        // 12 pages: two digits for the page. Two ranges on page 3, the lower
+        // one given first, so it is number 2.
+        let regions = [region(3, 0.0, 300.0), region(3, 0.0, 10.0)];
+        let names = resolve_crop_names("catalog.pdf", 12, &regions, "png", &HashSet::new());
+        assert_eq!(names, vec!["catalog_p03_2.png", "catalog_p03_1.png"]);
+    }
+
+    #[test]
+    fn crop_names_count_in_position_order_across_rows() {
+        let regions = [
+            region(1, 200.0, 200.0),
+            region(1, 0.0, 200.0),
+            region(1, 200.0, 0.0),
+            region(1, 0.0, 0.0),
+        ];
+        let names = resolve_crop_names("a.pdf", 1, &regions, "webp", &HashSet::new());
+        assert_eq!(
+            names,
+            vec!["a_p1_4.webp", "a_p1_3.webp", "a_p1_2.webp", "a_p1_1.webp"]
+        );
+    }
+
+    #[test]
+    fn crop_number_width_follows_the_ranges_on_that_page() {
+        let nine: Vec<CropRegion> = (0..9)
+            .map(|i| region(1, 0.0, f64::from(i) * 50.0))
+            .collect();
+        let names = resolve_crop_names("a.pdf", 1, &nine, "png", &HashSet::new());
+        assert_eq!(names[0], "a_p1_1.png");
+        assert_eq!(names[8], "a_p1_9.png");
+
+        let ten: Vec<CropRegion> = (0..10)
+            .map(|i| region(1, 0.0, f64::from(i) * 50.0))
+            .collect();
+        let names = resolve_crop_names("a.pdf", 1, &ten, "png", &HashSet::new());
+        assert_eq!(names[0], "a_p1_01.png");
+        assert_eq!(names[9], "a_p1_10.png");
+    }
+
+    #[test]
+    fn crop_number_width_is_not_decided_by_other_pages() {
+        // Page 1 has two ranges and page 2 has ten: only page 2 is padded.
+        let mut regions = vec![region(1, 0.0, 0.0), region(1, 0.0, 100.0)];
+        regions.extend((0..10).map(|i| region(2, 0.0, f64::from(i) * 50.0)));
+        let names = resolve_crop_names("a.pdf", 2, &regions, "png", &HashSet::new());
+        assert_eq!(names[0], "a_p1_1.png");
+        assert_eq!(names[1], "a_p1_2.png");
+        assert_eq!(names[2], "a_p2_01.png");
+        assert_eq!(names[11], "a_p2_10.png");
+    }
+
+    #[test]
+    fn crop_page_width_follows_the_page_count_of_the_pdf() {
+        let regions = [region(7, 0.0, 0.0)];
+        let names = resolve_crop_names("a.pdf", 120, &regions, "png", &HashSet::new());
+        assert_eq!(names, vec!["a_p007_1.png"]);
+    }
+
+    #[test]
+    fn crop_names_do_not_depend_on_the_order_ranges_are_given() {
+        let regions = [
+            region(2, 100.0, 5.0),
+            region(1, 0.0, 400.0),
+            region(2, 0.0, 0.0),
+            region(1, 300.0, 0.0),
+            region(2, 50.0, 200.0),
+        ];
+        let names = resolve_crop_names("doc.pdf", 5, &regions, "jpg", &HashSet::new());
+        let by_region: Vec<(CropRegion, String)> =
+            regions.iter().copied().zip(names.iter().cloned()).collect();
+
+        let mut reversed = regions;
+        reversed.reverse();
+        let mut rotated = regions;
+        rotated.rotate_left(2);
+        for permuted in [reversed, rotated] {
+            let permuted_names =
+                resolve_crop_names("doc.pdf", 5, &permuted, "jpg", &HashSet::new());
+            for (region, name) in permuted.iter().zip(&permuted_names) {
+                let expected = &by_region.iter().find(|(r, _)| r == region).unwrap().1;
+                assert_eq!(name, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn crop_names_that_collide_get_a_number_regardless_of_case() {
+        let mut existing = HashSet::new();
+        existing.insert("DOC_P1_1.PNG".to_string());
+        let regions = [region(1, 0.0, 0.0), region(1, 0.0, 100.0)];
+        let names = resolve_crop_names("doc.pdf", 1, &regions, "png", &existing);
+        assert_eq!(names, vec!["doc_p1_1 (1).png", "doc_p1_2.png"]);
+    }
+
+    #[test]
+    fn crop_names_number_a_collision_on_the_range_that_lands_on_it() {
+        let mut existing = HashSet::new();
+        existing.insert("doc_p1_2.png".to_string());
+        let regions = [region(1, 0.0, 100.0), region(1, 0.0, 0.0)];
+        let names = resolve_crop_names("doc.pdf", 1, &regions, "png", &existing);
+        assert_eq!(names, vec!["doc_p1_2 (1).png", "doc_p1_1.png"]);
+    }
+
+    #[test]
+    fn crop_names_keep_dots_in_the_stem_and_accept_a_dotted_extension() {
+        let regions = [region(1, 0.0, 0.0)];
+        let names = resolve_crop_names("a.b.pdf", 1, &regions, ".png", &HashSet::new());
+        assert_eq!(names, vec!["a.b_p1_1.png"]);
+    }
+
+    #[test]
+    fn no_crop_regions_gives_no_names() {
+        assert!(resolve_crop_names("a.pdf", 1, &[], "png", &HashSet::new()).is_empty());
     }
 }
