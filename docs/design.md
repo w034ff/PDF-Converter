@@ -106,7 +106,7 @@
 │   ├── i18n/
 │   ├── licenses/
 │   └── styles/
-├── scripts/                  fetch-pdfium.ts、fetch-layout.ts、quantize-layout-model.py、generate-licenses.ts
+├── scripts/                  fetch-pdfium.ts、fetch-layout.ts、quantize-layout-model.py、generate-licenses.ts、layout-model/（モデルのライセンス）
 ├── docs/
 ├── about.toml / deny.toml
 ├── GEMINI.md
@@ -546,10 +546,10 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 
 - **取得**: `scripts/fetch-layout.ts` が、`scripts/layout-version.json` に置いた版と SHA-256 で次を取得・照合し、`src-tauri/onnxruntime/<os>/` と `src-tauri/layout-model/` に置く。`npm run pdfium:fetch` と同じく開発者・CI・release.yml が実行し、取得したものはコミットしない。アプリは通信しない（NFR-01）。
   - onnxruntime: microsoft/onnxruntime の GitHub Releases の `onnxruntime-win-x64-1.26.0.zip`（`sha256:6ebe99b5564bf4d029b6e93eac9ff423682b6212eade769e9ca3f685eaf500b4`）と `onnxruntime-linux-x64-1.26.0.tgz`（`sha256:1254da24fb389cf39dc0ff3451ab48301740ffbfcbaf646849df92f80ee92c57`）から、`onnxruntime.dll` / `libonnxruntime.so.1.26.0` と `LICENSE`・`ThirdPartyNotices.txt` を取り出す。
-  - モデル: このリポジトリの GitHub Releases に置いた int8 のモデル（`layout-model-1` のタグ、`PP-DocLayout_plus-L-int8.onnx`、`sha256:bf1e0bf6bac5471155af68c47c3b82b6486eb580e226c10ae9d9c4dd3d1b4fba`）と、モデルの `LICENSE`（Apache-2.0）・改変の表示。
-- **量子化**: int8 のモデルは `scripts/quantize-layout-model.py` で作る（維持する人が一度だけ実行し、Release に置く）。元は Hugging Face の `PaddlePaddle/PP-DocLayout_plus-L_onnx` の `inference.onnx`（コミットを固定し、`sha256:77afb2caa74dd13240d087d2eced91d7fcd2caebd16006a0a66162fc8707ff0e` で照合）。onnxruntime 1.26.0 の `quant_pre_process`（`skip_symbolic_shape=True`）のあと `quantize_dynamic`（重みを UInt8、すべての種類の演算）。ネットワークを切ったコンテナで実行する（外から来たモデルを読むため）。同じ版の onnxruntime なら、何度実行しても同じファイルになった（試作）。ビルドのたびに量子化しないのは、CI に Python と onnxruntime の量子化の道具を入れずに済ませるため。
+  - モデル: このリポジトリの GitHub Releases に置いた int8 のモデル（`layout-model-1` のタグ、`PP-DocLayout_plus-L-int8.onnx`、`sha256:bf1e0bf6bac5471155af68c47c3b82b6486eb580e226c10ae9d9c4dd3d1b4fba`）。モデルの `LICENSE`（Apache-2.0 の全文）と改変の表示（`NOTICE`）は、Release には置かず `scripts/layout-model/` にコミットする（取得するものではなく、版ごとに変わらないため）。
+- **量子化**: int8 のモデルは `scripts/quantize-layout-model.py` で作る（維持する人が一度だけ実行し、Release に置く）。元は Hugging Face の `PaddlePaddle/PP-DocLayout_plus-L_onnx` の `inference.onnx`（コミット `feb74619326f634e0e883218598096a3733ad9f7` に固定し、`sha256:77afb2caa74dd13240d087d2eced91d7fcd2caebd16006a0a66162fc8707ff0e` で照合）。onnxruntime 1.26.0 の `quant_pre_process`（`skip_symbolic_shape=True`）のあと `quantize_dynamic`（重みを UInt8、すべての種類の演算）。ネットワークを切ったコンテナで実行する（外から来たモデルを読むため）。同じ版の onnxruntime なら、何度実行しても同じファイルになった（試作）。ビルドのたびに量子化しないのは、CI に Python と onnxruntime の量子化の道具を入れずに済ませるため。
 - **同梱**: pdfium と同じく、`tauri.<os>.conf.json` の `bundle.resources` で同梱し、`resource_dir()` から場所を求めてワーカーに渡す（§5.4）。インストーラーは、モデル（xz で約 23 MB）と onnxruntime（Windows の DLL は xz で約 4 MB）のぶん大きくなり、Windows の NSIS で約 34 MB、MSI で約 39 MB の見込み（見積もり。実際のインストーラーでは測っていない）。
-- **ライセンス**: `scripts/generate-licenses.ts` が、onnxruntime の `LICENSE`（MIT）と `ThirdPartyNotices.txt`、モデルの `LICENSE`（Apache-2.0）と改変の表示（「PaddlePaddle の PP-DocLayout_plus-L を int8 に量子化した」）を第三者ライセンス一覧に加える。版は `layout-version.json` から入れる。
+- **ライセンス**: `scripts/generate-licenses.ts` が、onnxruntime の `LICENSE`（MIT）と `ThirdPartyNotices.txt`、モデルの `LICENSE`（Apache-2.0）と改変の表示（「PaddlePaddle の PP-DocLayout_plus-L を int8 に量子化した」。どちらも `scripts/layout-model/`）を第三者ライセンス一覧に加える。版は `layout-version.json` から入れる。
 - **更新**: onnxruntime の版は、§8.4 の `pdfium-update.yml` と同じ月 1 回の確認に加える（新しい版があれば Issue を作る）。更新は手で行い、`ort` の `api-NN` 機能を合わせ、§11 のテストを通す。モデルの更新（新しい版のモデル）は、下調べと同じ比べ方で精度を確かめてから、`layout-model-N` を作って行う。
 
 ## 9. セキュリティ（NFR-01）

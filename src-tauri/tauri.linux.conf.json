@@ -1,7 +1,9 @@
 {
   "bundle": {
     "resources": {
-      "pdfium/linux/lib/libpdfium.so": "pdfium/libpdfium.so"
+      "pdfium/linux/lib/libpdfium.so": "pdfium/libpdfium.so",
+      "onnxruntime/linux/libonnxruntime.so": "onnxruntime/libonnxruntime.so",
+      "layout-model/PP-DocLayout_plus-L-int8.onnx": "layout-model/PP-DocLayout_plus-L-int8.onnx"
     }
   }
 }

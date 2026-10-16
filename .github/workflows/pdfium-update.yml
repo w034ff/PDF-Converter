@@ -1,8 +1,11 @@
 name: pdfium update
 
 # Dependabot does not see the pdfium build pinned in scripts/pdfium-version.json
-# (design §8.4), so this workflow opens an Issue when bblanchon/pdfium-binaries
-# has published a newer release. The update itself is done by hand.
+# (design §8.4) or the onnxruntime version pinned in scripts/layout-version.json
+# (design §8.5), so this workflow opens an Issue when bblanchon/pdfium-binaries
+# or microsoft/onnxruntime has published a newer release. The updates
+# themselves are done by hand. The layout model is not checked: a new model is
+# tried for accuracy first and then put in by hand.
 on:
   schedule:
     - cron: "0 0 1 * *"
@@ -23,6 +26,9 @@ env:
   PDFIUM_BINARIES_REPO: bblanchon/pdfium-binaries
   VERSION_FILE: scripts/pdfium-version.json
   RELEASE_TAG_PREFIX: "chromium/"
+  ONNXRUNTIME_REPO: microsoft/onnxruntime
+  LAYOUT_VERSION_FILE: scripts/layout-version.json
+  ONNXRUNTIME_TAG_PREFIX: "v"
 
 jobs:
   check:
@@ -97,6 +103,82 @@ jobs:
 
           - [ ] Rewrite the release and the SHA-256 hashes in \`scripts/pdfium-version.json\`.
           - [ ] Pick the \`pdfium_NNNN\` feature of \`pdfium-render\` again (design §2).
+          - [ ] Run \`npm run licenses:generate\` and commit the list.
+          - [ ] Run the tests of design §11 on both OSes.
+          EOF
+          )"
+
+  check-onnxruntime:
+    name: Check for a newer onnxruntime
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Compare the pinned and the latest release
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pinned=$(jq -r .onnxruntime.version "$LAYOUT_VERSION_FILE")
+          latest_tag=$(gh api "repos/$ONNXRUNTIME_REPO/releases/latest" --jq .tag_name)
+          latest=${latest_tag#"$ONNXRUNTIME_TAG_PREFIX"}
+          pinned_tag="$ONNXRUNTIME_TAG_PREFIX$pinned"
+          echo "Pinned: $pinned_tag, latest: $latest_tag"
+
+          # A tag that is not "v<number>.<number>.<number>" must fail the run
+          # rather than compare oddly and silence the check.
+          if ! printf '%s' "$latest_tag" | grep -Eq "^$ONNXRUNTIME_TAG_PREFIX[0-9]+\.[0-9]+\.[0-9]+$" ||
+            ! printf '%s' "$pinned" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Unexpected release tag: $pinned_tag / $latest_tag"
+            exit 1
+          fi
+
+          # Compared number by number: as text, 1.9.0 would be newer than 1.10.0.
+          highest=$(printf '%s\n%s\n' "$pinned" "$latest" | sort -V | tail -n 1)
+          if [ "$latest" != "$pinned" ] && [ "$highest" = "$latest" ]; then
+            echo "newer=true" >> "$GITHUB_OUTPUT"
+            echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+            echo "pinned_tag=$pinned_tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "newer=false" >> "$GITHUB_OUTPUT"
+            echo "onnxruntime is up to date; no Issue is created."
+          fi
+
+      # Closed Issues count too: closing one declines that version, and the
+      # next run must not open it again.
+      - name: Look for an Issue of that version
+        id: existing
+        if: steps.compare.outputs.newer == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Update onnxruntime to ${{ steps.compare.outputs.latest_tag }}
+        run: |
+          count=$(gh issue list --state all --limit 200 --json title \
+            --jq "[.[] | select(.title == env.TITLE)] | length")
+          echo "Issues titled \"$TITLE\": $count"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Create the Issue
+        if: >-
+          steps.compare.outputs.newer == 'true'
+          && steps.existing.outputs.count == '0'
+          && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Update onnxruntime to ${{ steps.compare.outputs.latest_tag }}
+          LATEST_TAG: ${{ steps.compare.outputs.latest_tag }}
+          PINNED_TAG: ${{ steps.compare.outputs.pinned_tag }}
+        run: |
+          gh issue create --title "$TITLE" --body "$(cat <<EOF
+          microsoft/onnxruntime has published \`$LATEST_TAG\`; this repository bundles \`$PINNED_TAG\`.
+
+          Release notes: https://github.com/$ONNXRUNTIME_REPO/releases/tag/$LATEST_TAG
+
+          Steps (design §8.5):
+
+          - [ ] Rewrite the version, the SHA-256 hashes and the paths inside the archives (their folder names carry the version) in \`scripts/layout-version.json\`.
+          - [ ] Match the \`api-NN\` feature of \`ort\` to the new version (design §8.5).
           - [ ] Run \`npm run licenses:generate\` and commit the list.
           - [ ] Run the tests of design §11 on both OSes.
           EOF

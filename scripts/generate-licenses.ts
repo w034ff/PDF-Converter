@@ -1,8 +1,10 @@
 // Writes the third-party license list shipped in the app (requirements NFR-05).
 // Rust crates come from cargo-about (configured by about.toml), npm packages from
 // license-checker-rseidelsohn (production dependencies only, because dev tools are
-// not bundled), and the bundled pdfium from the license files of its Linux build
-// (design §8.3). Run with `npm run licenses:generate`; CI fails when the
+// not bundled), the bundled pdfium from the license files of its Linux build
+// (design §8.3), the bundled onnxruntime from the license files of its Linux
+// build, and the layout model from the files in scripts/layout-model
+// (design §8.5). Run with `npm run licenses:generate`; CI fails when the
 // committed output differs from a fresh run.
 
 import { execFileSync } from "node:child_process";
@@ -24,6 +26,43 @@ const PDFIUM_COMPONENT_LICENSE_DIR = "licenses";
 const PDFIUM_RELEASE_MARKER_FILE = ".release";
 const PDFIUM_ENTRY_PREFIX = "pdfium";
 const PDFIUM_PACKAGE_NAME = "pdfium-binaries";
+const LAYOUT_VERSION_FILE = path.join(ROOT, "scripts/layout-version.json");
+// Same reason as PDFIUM_DIR: the Linux build that `npm run layout:fetch`
+// unpacks is the one read.
+const ONNXRUNTIME_DIR = path.join(ROOT, "src-tauri/onnxruntime/linux");
+// Written by scripts/fetch-layout.ts: which version is unpacked.
+const ONNXRUNTIME_VERSION_MARKER_FILE = ".release";
+const ONNXRUNTIME_ENTRIES = [
+  {
+    id: "onnxruntime",
+    name: "onnxruntime (MIT License)",
+    packageName: "onnxruntime",
+    file: "LICENSE",
+  },
+  {
+    id: "onnxruntime/ThirdPartyNotices",
+    name: "onnxruntime third-party notices",
+    packageName: "onnxruntime third-party notices",
+    file: "ThirdPartyNotices.txt",
+  },
+];
+// The model's own files are committed, not fetched: they do not change with
+// the model's release.
+const LAYOUT_MODEL_DIR = path.join(ROOT, "scripts/layout-model");
+const LAYOUT_MODEL_ENTRIES = [
+  {
+    id: "PP-DocLayout_plus-L",
+    name: "PP-DocLayout_plus-L (Apache License 2.0)",
+    packageName: "PP-DocLayout_plus-L-int8",
+    file: "LICENSE",
+  },
+  {
+    id: "PP-DocLayout_plus-L/NOTICE",
+    name: "PP-DocLayout_plus-L-int8 modification notice",
+    packageName: "PP-DocLayout_plus-L-int8 modification notice",
+    file: "NOTICE",
+  },
+];
 const LICENSE_CHECKER_BIN = path.join(
   ROOT,
   "node_modules/license-checker-rseidelsohn/bin/license-checker-rseidelsohn.js",
@@ -246,6 +285,70 @@ function collectPdfiumLicenses(): LicenseEntry[] {
   }));
 }
 
+function readLayoutVersion(): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(readFileSync(LAYOUT_VERSION_FILE, "utf8"));
+  if (!isRecord(parsed)) {
+    throw new Error(`${LAYOUT_VERSION_FILE} does not have the expected shape`);
+  }
+  return parsed;
+}
+
+function requireRecord(
+  record: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
+  const value = record[key];
+  if (!isRecord(value)) {
+    throw new Error(`Expected object field "${key}" in ${LAYOUT_VERSION_FILE}`);
+  }
+  return value;
+}
+
+function collectOnnxruntimeLicenses(): LicenseEntry[] {
+  const version = requireString(
+    requireRecord(readLayoutVersion(), "onnxruntime"),
+    "version",
+  );
+  let unpacked: string;
+  try {
+    unpacked = readFileSync(
+      path.join(ONNXRUNTIME_DIR, ONNXRUNTIME_VERSION_MARKER_FILE),
+      "utf8",
+    ).trim();
+  } catch {
+    throw new Error(
+      `onnxruntime ${version} is not unpacked in ${path.relative(ROOT, ONNXRUNTIME_DIR)}; run "npm run layout:fetch" on Linux first`,
+    );
+  }
+  if (unpacked !== version) {
+    throw new Error(
+      `${path.relative(ROOT, ONNXRUNTIME_DIR)} holds ${unpacked} but ${path.relative(ROOT, LAYOUT_VERSION_FILE)} pins ${version}; run "npm run layout:fetch" again`,
+    );
+  }
+
+  return ONNXRUNTIME_ENTRIES.map(({ id, name, packageName, file }) => ({
+    id,
+    name,
+    text: readFileSync(path.join(ONNXRUNTIME_DIR, file), "utf8"),
+    packages: [{ name: packageName, version, ecosystem: "native" as const }],
+  }));
+}
+
+function collectLayoutModelLicenses(): LicenseEntry[] {
+  const release = requireString(
+    requireRecord(readLayoutVersion(), "model"),
+    "release",
+  );
+  return LAYOUT_MODEL_ENTRIES.map(({ id, name, packageName, file }) => ({
+    id,
+    name,
+    text: readFileSync(path.join(LAYOUT_MODEL_DIR, file), "utf8"),
+    packages: [
+      { name: packageName, version: release, ecosystem: "native" as const },
+    ],
+  }));
+}
+
 function comparePackages(a: LicensedPackage, b: LicensedPackage): number {
   return (
     a.ecosystem.localeCompare(b.ecosystem, "en") ||
@@ -284,7 +387,15 @@ function main(): void {
   const cargo = collectCargoLicenses(names);
   const npm = collectNpmLicenses(names);
   const pdfium = collectPdfiumLicenses();
-  const licenses = mergeByText([...cargo, ...npm, ...pdfium]);
+  const onnxruntime = collectOnnxruntimeLicenses();
+  const layoutModel = collectLayoutModelLicenses();
+  const licenses = mergeByText([
+    ...cargo,
+    ...npm,
+    ...pdfium,
+    ...onnxruntime,
+    ...layoutModel,
+  ]);
   writeFileSync(OUTPUT_PATH, `${JSON.stringify({ licenses }, null, 2)}\n`);
   const packageCount = licenses.reduce(
     (count, entry) => count + entry.packages.length,

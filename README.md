@@ -85,13 +85,19 @@ Download the appropriate installer or package for your operating system from the
    npm run pdfium:fetch
    ```
 
-3. Start the application in development mode:
+3. Fetch onnxruntime and the layout analysis model (also downloaded only at build time):
+
+   ```bash
+   npm run layout:fetch
+   ```
+
+4. Start the application in development mode:
 
    ```bash
    npm run tauri dev
    ```
 
-4. Build production release packages:
+5. Build production release packages:
 
    ```bash
    npm run tauri build

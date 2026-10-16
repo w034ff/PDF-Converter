@@ -10,6 +10,8 @@ on:
     paths:
       - "scripts/pdfium-version.json"
       - "scripts/fetch-pdfium.ts"
+      - "scripts/layout-version.json"
+      - "scripts/fetch-layout.ts"
       - "src-tauri/tauri*.json"
       - "crates/worker/**"
       - ".github/workflows/bundle-check.yml"
@@ -59,6 +61,9 @@ jobs:
 
       - name: Fetch pdfium
         run: npm run pdfium:fetch
+
+      - name: Fetch onnxruntime and the layout model
+        run: npm run layout:fetch
 
       # `tauri build` runs cargo without --locked; fail here instead of letting it
       # resolve versions that differ from the reviewed Cargo.lock.
