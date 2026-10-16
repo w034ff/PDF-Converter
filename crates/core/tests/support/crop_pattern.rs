@@ -36,11 +36,19 @@ pub fn picture_rgb() -> Vec<u8> {
         .collect()
 }
 
-/// The soft mask's value at column `x`, row `y`: transparent at the left,
-/// graded over the first columns and opaque from column 32 on, with a
-/// row-dependent step so the grade is not constant down a column.
+/// The first column of the picture that its soft mask lets show.
+pub const SOFT_MASK_FIRST_VISIBLE_COLUMN: u32 = 4;
+
+/// The soft mask's value at column `x`, row `y`: fully transparent in the
+/// first [`SOFT_MASK_FIRST_VISIBLE_COLUMN`] columns, then graded and opaque
+/// from column 36 on, with a row-dependent step so the grade is not constant
+/// down a column.
 pub fn soft_mask_alpha(x: u32, y: u32) -> u8 {
-    (x * 8 + y).min(255) as u8
+    if x < SOFT_MASK_FIRST_VISIBLE_COLUMN {
+        0
+    } else {
+        ((x - SOFT_MASK_FIRST_VISIBLE_COLUMN) * 8 + y).min(255) as u8
+    }
 }
 
 /// The soft mask as the bytes of a gray image stream, row by row.
