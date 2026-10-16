@@ -66,6 +66,8 @@ const SHAPES_RENDER_DPI: f32 = 150.0;
 const CHECKER_CELL_PX: u32 = 25;
 const CHECKER_CELLS: u32 = 8;
 
+#[path = "../tests/support/crop_pattern.rs"]
+mod crop_pattern;
 #[path = "../tests/support/fixture_passwords.rs"]
 mod fixture_passwords;
 
@@ -286,6 +288,8 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
         "restricted.pdf",
         encrypted_pdf("restricted", b"", PERMISSIONS_RESTRICTED)?,
     );
+
+    add("crop_align.pdf", crop_align_pdf());
 
     let aniso_picture = dpi_rgb(300, 150);
     add(
@@ -1893,6 +1897,233 @@ fn md5(data: &[u8]) -> [u8; 16] {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect()
+}
+
+// ---------------------------------------------------------------------------
+// crop_align.pdf (design §11.1, §4.6)
+
+/// Object numbers of `crop_align.pdf`. The three pages share the content, the
+/// resources and the pictures; only the page dictionary and the annotation
+/// differ.
+mod crop_obj {
+    pub const PAGES: u32 = 2;
+    pub const FIRST_PAGE: u32 = 3;
+    pub const CONTENT: u32 = 6;
+    pub const RESOURCES: u32 = 7;
+    pub const PICTURE: u32 = 8;
+    pub const MASKED_PICTURE: u32 = 9;
+    pub const SOFT_MASK: u32 = 10;
+    pub const TINY_PICTURE: u32 = 11;
+    pub const OUTER_FORM: u32 = 12;
+    pub const INNER_FORM: u32 = 13;
+    pub const APPEARANCE: u32 = 14;
+    pub const FIRST_ANNOTATION: u32 = 15;
+}
+
+/// The `cm` operands of a matrix.
+fn cm(m: crop_pattern::Matrix) -> String {
+    format!("{} {} {} {} {} {}", m[0], m[1], m[2], m[3], m[4], m[5])
+}
+
+/// A stream object: `entries` (without `/Length`) and the stream data.
+fn pdf_stream(entries: &str, data: &[u8]) -> Vec<u8> {
+    [
+        format!("<< {entries} /Length {} >>\nstream\n", data.len()).into_bytes(),
+        data.to_vec(),
+        b"\nendstream".to_vec(),
+    ]
+    .concat()
+}
+
+/// A classic PDF file of `objects` (object 1 first), `/Root 1 0 R`.
+fn assemble_pdf(objects: &[Vec<u8>]) -> Vec<u8> {
+    let mut pdf = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n".to_vec();
+    let mut offsets = Vec::new();
+    for (index, body) in objects.iter().enumerate() {
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(format!("{} 0 obj\n", index + 1).as_bytes());
+        pdf.extend_from_slice(body);
+        pdf.extend_from_slice(b"\nendobj\n");
+    }
+    let xref_offset = pdf.len();
+    pdf.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
+    for offset in offsets {
+        pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+    }
+    pdf.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    pdf
+}
+
+/// Three pages with the same content and `/Rotate` 0, 90 and 270, each on a
+/// `CropBox` away from the origin and a `MediaBox` of a fractional size. The
+/// content is one picture (`crop_pattern::picture_pixel`) placed in several
+/// ways; see `crop_pattern` for the placements and design §11.1 for why each
+/// is there. Written by hand: krilla cannot write `/Rotate`, `CropBox` or a
+/// sheared matrix.
+fn crop_align_pdf() -> Vec<u8> {
+    use crop_pattern::*;
+
+    let content = format!(
+        "q {fractional} cm /Im1 Do Q\n\
+         0.85 0.1 0.1 rg {ox} {oy} {ow} {oh} re f\n\
+         q {tiny} cm /ImTiny Do Q\n\
+         q {mirrored} cm /Im1 Do Q\n\
+         q {turned} cm /Im1 Do Q\n\
+         q {sheared} cm /Im1 Do Q\n\
+         0.2 0.7 0.2 rg {sx} {sy} {sw} {sh} re f\n\
+         q {masked} cm /ImMasked Do Q\n\
+         0.1 0.5 0.9 rg {px} {py} {pw} {ph} re f\n\
+         q {small} cm /Im1 Do Q\n\
+         q {cx} {cy} {cw} {ch} re W n {clipped} cm /Im1 Do Q\n\
+         q {outer} cm /Fm1 Do Q\n",
+        fractional = cm(FRACTIONAL),
+        ox = OVERLAY_RECT[0],
+        oy = OVERLAY_RECT[1],
+        ow = OVERLAY_RECT[2],
+        oh = OVERLAY_RECT[3],
+        tiny = cm(TINY_IMAGE),
+        mirrored = cm(MIRRORED),
+        turned = cm(TURNED),
+        sheared = cm(SHEARED),
+        sx = SHEAR_OVERLAY_RECT[0],
+        sy = SHEAR_OVERLAY_RECT[1],
+        sw = SHEAR_OVERLAY_RECT[2],
+        sh = SHEAR_OVERLAY_RECT[3],
+        masked = cm(SOFT_MASKED),
+        px = PARTIAL_OVERLAY_RECT[0],
+        py = PARTIAL_OVERLAY_RECT[1],
+        pw = PARTIAL_OVERLAY_RECT[2],
+        ph = PARTIAL_OVERLAY_RECT[3],
+        small = cm(SMALL_FRAME),
+        cx = CLIP_RECT[0],
+        cy = CLIP_RECT[1],
+        cw = CLIP_RECT[2],
+        ch = CLIP_RECT[3],
+        clipped = cm(CLIPPED),
+        outer = cm(OUTER_FORM_CM),
+    );
+
+    let picture_entries = format!(
+        "/Type /XObject /Subtype /Image /Width {PICTURE_WIDTH} /Height {PICTURE_HEIGHT} \
+         /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"
+    );
+    let picture = encode_deflate(&picture_rgb());
+    let soft_mask = encode_deflate(&soft_mask_gray());
+
+    let form_entries = |matrix: Matrix, resources: &str| {
+        format!(
+            "/Type /XObject /Subtype /Form /BBox [0 0 700 800] /Matrix [{}] \
+             /Resources << /XObject << {resources} >> >>",
+            matrix.map(|v| v.to_string()).join(" ")
+        )
+    };
+
+    let mut objects = vec![
+        format!("<< /Type /Catalog /Pages {} 0 R >>", crop_obj::PAGES).into_bytes(),
+        format!(
+            "<< /Type /Pages /Kids [{} 0 R {} 0 R {} 0 R] /Count 3 >>",
+            crop_obj::FIRST_PAGE,
+            crop_obj::FIRST_PAGE + 1,
+            crop_obj::FIRST_PAGE + 2
+        )
+        .into_bytes(),
+    ];
+    for (index, rotation) in PAGE_ROTATIONS.iter().enumerate() {
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent {} 0 R /MediaBox [0 0 {} {}] /CropBox [{} {} {} {}] \
+                 /Rotate {rotation} /Resources {} 0 R /Contents {} 0 R /Annots [{} 0 R] >>",
+                crop_obj::PAGES,
+                MEDIA_BOX_PT.0,
+                MEDIA_BOX_PT.1,
+                CROP_BOX_PT[0],
+                CROP_BOX_PT[1],
+                CROP_BOX_PT[2],
+                CROP_BOX_PT[3],
+                crop_obj::RESOURCES,
+                crop_obj::CONTENT,
+                crop_obj::FIRST_ANNOTATION + index as u32,
+            )
+            .into_bytes(),
+        );
+    }
+    objects.push(pdf_stream("", content.as_bytes()));
+    objects.push(
+        format!(
+            "<< /XObject << /Im1 {} 0 R /ImMasked {} 0 R /ImTiny {} 0 R /Fm1 {} 0 R >> >>",
+            crop_obj::PICTURE,
+            crop_obj::MASKED_PICTURE,
+            crop_obj::TINY_PICTURE,
+            crop_obj::OUTER_FORM
+        )
+        .into_bytes(),
+    );
+    objects.push(pdf_stream(&picture_entries, &picture));
+    objects.push(pdf_stream(
+        &format!("{picture_entries} /SMask {} 0 R", crop_obj::SOFT_MASK),
+        &picture,
+    ));
+    objects.push(pdf_stream(
+        &format!(
+            "/Type /XObject /Subtype /Image /Width {PICTURE_WIDTH} /Height {PICTURE_HEIGHT} \
+             /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode"
+        ),
+        &soft_mask,
+    ));
+    // 2 × 2 pixels, RGB, unfiltered: red, green, blue, white.
+    objects.push(pdf_stream(
+        "/Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB \
+         /BitsPerComponent 8",
+        &[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255],
+    ));
+    objects.push(pdf_stream(
+        &form_entries(
+            OUTER_FORM_MATRIX,
+            &format!("/Fm2 {} 0 R", crop_obj::INNER_FORM),
+        ),
+        format!("q {} cm /Fm2 Do Q\n", cm(INNER_FORM_CM)).as_bytes(),
+    ));
+    objects.push(pdf_stream(
+        &form_entries(
+            INNER_FORM_MATRIX,
+            &format!("/Im1 {} 0 R", crop_obj::PICTURE),
+        ),
+        format!("q {} cm /Im1 Do Q\n", cm(NESTED_IMAGE)).as_bytes(),
+    ));
+    // The stamp's appearance stream holds the picture too: a picture in an
+    // annotation is not an embedded image of the page.
+    objects.push(pdf_stream(
+        &format!(
+            "/Type /XObject /Subtype /Form /BBox [0 0 100 60] \
+             /Resources << /XObject << /Im1 {} 0 R >> >>",
+            crop_obj::PICTURE
+        ),
+        format!("q {} cm /Im1 Do Q\n", cm(ANNOTATION_IMAGE)).as_bytes(),
+    ));
+    for index in 0..PAGE_ROTATIONS.len() as u32 {
+        objects.push(
+            format!(
+                "<< /Type /Annot /Subtype /Stamp /Rect [{} {} {} {}] /F 4 /P {} 0 R \
+                 /AP << /N {} 0 R >> >>",
+                ANNOTATION_RECT[0],
+                ANNOTATION_RECT[1],
+                ANNOTATION_RECT[2],
+                ANNOTATION_RECT[3],
+                crop_obj::FIRST_PAGE + index,
+                crop_obj::APPEARANCE
+            )
+            .into_bytes(),
+        );
+    }
+    assemble_pdf(&objects)
 }
 
 // ---------------------------------------------------------------------------
