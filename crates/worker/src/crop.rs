@@ -52,6 +52,10 @@ pub const ON_TOP_MIN_PIXELS: usize = 20;
 /// §4.6).
 pub const ON_TOP_CHECK_PIXELS: u64 = 4_000_000;
 
+/// Upper bound on the pixels of the two renders that find the part of an
+/// image that shows (design §4.6), so listing a page stays fast.
+pub const VISIBLE_CHECK_PIXELS: u64 = 250_000;
+
 /// How far outside the page a range may reach, in points (design §4.6).
 pub const RANGE_OUTSIDE_TOLERANCE_PT: f64 = 0.5;
 
@@ -255,31 +259,33 @@ fn is_quarter_turn_placement(m: Matrix) -> bool {
     (negligible(m[1]) && negligible(m[2])) || (negligible(m[0]) && negligible(m[3]))
 }
 
-/// An image that [`page_images`] lists, with its placement.
+/// An image of a page with its placement. Until [`visible_image`] has run,
+/// `info.rect_pt` is the whole frame.
 struct ListedImage {
     placed: PlacedImage,
     info: EmbeddedImage,
+    /// The frame of the whole image on the shown page, cut to the page.
+    frame: RectPt,
     /// Image pixel (column, row from the top) → shown page, 1 pt = 1.
     pixel_to_display: Matrix,
 }
 
-/// The images [`page_images`] lists on a page, with their placements.
-fn listed_images(page: &PdfPage<'_>) -> Result<Vec<ListedImage>, Response> {
+/// The images of a page that are large enough in pixels and lie on the page,
+/// with their whole frames. Which of them show, and where, is decided by
+/// [`visible_image`].
+fn candidate_images(page: &PdfPage<'_>) -> Result<Vec<ListedImage>, Response> {
     let display = display_matrix(page)?;
     let page_width = f64::from(page.width().value);
     let page_height = f64::from(page.height().value);
-    let mut listed = Vec::new();
+    let mut candidates = Vec::new();
     for placed in walk_images(page) {
         if placed.px_width < MIN_PHOTO_SIDE_PX || placed.px_height < MIN_PHOTO_SIDE_PX {
             continue;
         }
         let unit_to_display = then(placed.unit_to_page, display);
-        let Some(rect_pt) = frame_on_page(unit_to_display, page_width, page_height) else {
+        let Some(frame) = frame_on_page(unit_to_display, page_width, page_height) else {
             continue;
         };
-        if (rect_pt.x1 - rect_pt.x0).min(rect_pt.y1 - rect_pt.y0) < MIN_PHOTO_SIDE_PT {
-            continue;
-        }
         let pixel_to_unit = [
             1.0 / f64::from(placed.px_width),
             0.0,
@@ -291,29 +297,232 @@ fn listed_images(page: &PdfPage<'_>) -> Result<Vec<ListedImage>, Response> {
         let pixel_to_display = then(pixel_to_unit, unit_to_display);
         let info = EmbeddedImage {
             image_index: placed.image_index,
-            rect_pt,
+            rect_pt: frame,
             px_width: placed.px_width,
             px_height: placed.px_height,
             native: is_quarter_turn_placement(pixel_to_display),
         };
-        listed.push(ListedImage {
+        candidates.push(ListedImage {
             placed,
             info,
+            frame,
             pixel_to_display,
         });
     }
-    Ok(listed)
+    Ok(candidates)
 }
 
-/// The embedded images of page `page` (1-based), in drawing order (design
-/// §4.6).
+/// A bitmap the size of a render and the matrix (applied after the display
+/// matrix) that draws an image into it.
+struct Grid {
+    width: u32,
+    height: u32,
+    matrix: Matrix,
+    /// The image's own pixels did not fit in `max_pixels`, so the grid is
+    /// smaller than the image.
+    scaled_down: bool,
+}
+
+/// The grid to render `image` into with at most `max_pixels` pixels: its own
+/// pixel grid (design §4.6, 1 and 2) if it is placed by flips and quarter
+/// turns, otherwise the bounding box of its frame at the image's own density.
+fn image_grid(image: &ListedImage, max_pixels: u64) -> Result<Grid, Response> {
+    if image.info.native {
+        let (px_width, px_height) = (image.placed.px_width, image.placed.px_height);
+        let (width, height, scaled_down) = photo_output_size(px_width, px_height, max_pixels);
+        let matrix = photo_grid_matrix(image.pixel_to_display, px_width, px_height, width, height)
+            .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+        return Ok(Grid {
+            width,
+            height,
+            matrix,
+            scaled_down,
+        });
+    }
+    let frame = image.frame;
+    let (frame_width, frame_height) = (frame.x1 - frame.x0, frame.y1 - frame.y0);
+    let density =
+        frame_density(image).min((max_pixels as f64 / (frame_width * frame_height)).sqrt());
+    Ok(Grid {
+        // Rounded up so that the grid covers the whole frame.
+        width: (frame_width * density).ceil().max(1.0) as u32,
+        height: (frame_height * density).ceil().max(1.0) as u32,
+        matrix: [
+            density,
+            0.0,
+            0.0,
+            density,
+            -frame.x0 * density,
+            -frame.y0 * density,
+        ],
+        scaled_down: false,
+    })
+}
+
+/// A box of whole pixels of a grid; `right` and `bottom` are exclusive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PixelBox {
+    left: u32,
+    top: u32,
+    right: u32,
+    bottom: u32,
+}
+
+/// The box around the pixels that the image touches at all: those that are
+/// not plain background on both a white and a black render. `None` when there
+/// are none. `white` and `black` are RGBA with `width` pixels per row.
+///
+/// A pixel the image only half covers is touched, so a translucent photo or a
+/// feathered edge keeps its range; only fully transparent pixels, which show
+/// the background unchanged on both, are left out.
+fn touched_box(white: &[u8], black: &[u8], width: u32) -> Option<PixelBox> {
+    let mut found: Option<PixelBox> = None;
+    for (index, (white, black)) in white
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(black.as_chunks::<4>().0)
+        .enumerate()
+    {
+        if white[..3] == [255, 255, 255] && black[..3] == [0, 0, 0] {
+            continue;
+        }
+        let (x, y) = (index as u32 % width, index as u32 / width);
+        found = Some(match found {
+            None => PixelBox {
+                left: x,
+                top: y,
+                right: x + 1,
+                bottom: y + 1,
+            },
+            Some(b) => PixelBox {
+                left: b.left.min(x),
+                top: b.top.min(y),
+                right: b.right.max(x + 1),
+                bottom: b.bottom.max(y + 1),
+            },
+        });
+    }
+    found
+}
+
+/// The box of pixels of `grid` in which the isolated image shows (design
+/// §4.6, 埋め込み画像の一覧).
+fn visible_box(isolated: &PdfPage<'_>, grid: &Grid) -> Result<Option<PixelBox>, Response> {
+    let draw = |background| {
+        render_rgba(&Draw {
+            page: isolated,
+            width: grid.width,
+            height: grid.height,
+            matrix: grid.matrix,
+            background,
+            gray: false,
+            annotations: false,
+        })
+    };
+    let white = draw(PdfColor::WHITE)?;
+    let black = draw(PdfColor::BLACK)?;
+    Ok(touched_box(&white, &black, grid.width))
+}
+
+/// The part of the image's frame that shows, on the shown page: the visible
+/// box of a grid of at most [`VISIBLE_CHECK_PIXELS`], one grid pixel wider on
+/// each side, cut to the whole frame. `None` when nothing shows.
+fn visible_rect(
+    doc: &PdfDocument<'_>,
+    page_number: u32,
+    image: &ListedImage,
+) -> Result<Option<RectPt>, Response> {
+    let grid = image_grid(image, VISIBLE_CHECK_PIXELS)?;
+    let isolated = isolated_page(doc, page_number, &image.placed.path)?;
+    let Some(visible) = visible_box(&isolated, &grid)? else {
+        return Ok(None);
+    };
+    let to_display =
+        invert(grid.matrix).ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+    let (left, top) = (
+        visible.left.saturating_sub(1),
+        visible.top.saturating_sub(1),
+    );
+    let (right, bottom) = (
+        (visible.right + 1).min(grid.width),
+        (visible.bottom + 1).min(grid.height),
+    );
+    let corners = [(left, top), (right, top), (left, bottom), (right, bottom)]
+        .map(|(x, y)| apply(to_display, f64::from(x), f64::from(y)));
+    let rect = RectPt {
+        x0: corners
+            .iter()
+            .map(|c| c.0)
+            .fold(f64::INFINITY, f64::min)
+            .max(image.frame.x0),
+        y0: corners
+            .iter()
+            .map(|c| c.1)
+            .fold(f64::INFINITY, f64::min)
+            .max(image.frame.y0),
+        x1: corners
+            .iter()
+            .map(|c| c.0)
+            .fold(f64::NEG_INFINITY, f64::max)
+            .min(image.frame.x1),
+        y1: corners
+            .iter()
+            .map(|c| c.1)
+            .fold(f64::NEG_INFINITY, f64::max)
+            .min(image.frame.y1),
+    };
+    Ok((rect.x1 > rect.x0 && rect.y1 > rect.y0).then_some(rect))
+}
+
+/// `image` with its range set to the part that shows, or `None` when nothing
+/// shows or the visible part is shorter than [`MIN_PHOTO_SIDE_PT`] on a side.
+fn visible_image(
+    doc: &PdfDocument<'_>,
+    page_number: u32,
+    mut image: ListedImage,
+) -> Result<Option<ListedImage>, Response> {
+    let Some(rect) = visible_rect(doc, page_number, &image)? else {
+        return Ok(None);
+    };
+    if (rect.x1 - rect.x0).min(rect.y1 - rect.y0) < MIN_PHOTO_SIDE_PT {
+        return Ok(None);
+    }
+    image.info.rect_pt = rect;
+    Ok(Some(image))
+}
+
+/// The listed image with `image_index`, or `InvalidParams` when `PageImages`
+/// does not list one.
+fn listed_image(
+    doc: &PdfDocument<'_>,
+    page: &PdfPage<'_>,
+    page_number: u32,
+    image_index: u32,
+) -> Result<ListedImage, Response> {
+    candidate_images(page)?
+        .into_iter()
+        .find(|image| image.info.image_index == image_index)
+        .map(|image| visible_image(doc, page_number, image))
+        .transpose()?
+        .flatten()
+        .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))
+}
+
+/// The embedded images of page `page` (1-based), in drawing order, each with
+/// the range that shows (design §4.6).
 pub(crate) fn page_images(
     doc: &PdfDocument<'_>,
-    page: u32,
+    page_number: u32,
 ) -> Result<Vec<EmbeddedImage>, Response> {
-    let page = load_page(doc, page)?;
-    let listed = listed_images(&page)?;
-    Ok(listed.into_iter().map(|image| image.info).collect())
+    let page = load_page(doc, page_number)?;
+    let mut images = Vec::new();
+    for candidate in candidate_images(&page)? {
+        if let Some(image) = visible_image(doc, page_number, candidate)? {
+            images.push(image.info);
+        }
+    }
+    Ok(images)
 }
 
 /// How the stored pixels of an image sit in the shown page.
@@ -520,15 +729,6 @@ fn render_rgba(draw: &Draw<'_, '_>) -> Result<Vec<u8>, Response> {
     Ok(bitmap.as_rgba_bytes())
 }
 
-/// The listed image with `image_index`, or `InvalidParams` when `PageImages`
-/// does not list one.
-fn find_listed(listed: Vec<ListedImage>, image_index: u32) -> Result<ListedImage, Response> {
-    listed
-        .into_iter()
-        .find(|image| image.info.image_index == image_index)
-        .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))
-}
-
 /// How many pixels per point to render an image's frame at when its pixels do
 /// not line up with the page: the image's own density.
 fn frame_density(image: &ListedImage) -> f64 {
@@ -573,40 +773,13 @@ pub(crate) fn image_on_top(
     check_pixels: u64,
 ) -> Result<bool, Response> {
     let page = load_page(doc, page_number)?;
-    let image = find_listed(listed_images(&page)?, image_index)?;
-
-    let (width, height, matrix) = if image.info.native {
-        let (width, height, _) =
-            photo_output_size(image.placed.px_width, image.placed.px_height, check_pixels);
-        let matrix = photo_grid_matrix(
-            image.pixel_to_display,
-            image.placed.px_width,
-            image.placed.px_height,
-            width,
-            height,
-        )
-        .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
-        (width, height, matrix)
-    } else {
-        let frame = image.info.rect_pt;
-        let (frame_width, frame_height) = (frame.x1 - frame.x0, frame.y1 - frame.y0);
-        let density =
-            frame_density(&image).min((check_pixels as f64 / (frame_width * frame_height)).sqrt());
-        let width = (frame_width * density).round().max(1.0) as u32;
-        let height = (frame_height * density).round().max(1.0) as u32;
-        (
-            width,
-            height,
-            [
-                density,
-                0.0,
-                0.0,
-                density,
-                -frame.x0 * density,
-                -frame.y0 * density,
-            ],
-        )
-    };
+    let image = listed_image(doc, &page, page_number, image_index)?;
+    let Grid {
+        width,
+        height,
+        matrix,
+        ..
+    } = image_grid(&image, check_pixels)?;
 
     let isolated = isolated_page(doc, page_number, &image.placed.path)?;
     let draw = |page: &PdfPage<'_>, background, annotations| {
@@ -661,7 +834,7 @@ pub(crate) fn render_region(
     }
 
     let photo = match request.image_index {
-        Some(index) => Some(find_listed(listed_images(&page)?, index)?),
+        Some(index) => Some(listed_image(doc, &page, request.page, index)?),
         None => None,
     };
     let own_pixels = photo
@@ -672,13 +845,19 @@ pub(crate) fn render_region(
     }
 
     // Everything but the photo is left out of a photo-only render, and the
-    // background stays transparent where the format can keep that.
+    // background stays transparent where the format can keep that. A photo in
+    // its own pixels needs the image alone in any case, to find what shows.
     let photo_only = photo.is_some() && request.photo_only;
-    let isolated = match (&photo, photo_only) {
-        (Some(image), true) => Some(isolated_page(doc, request.page, &image.placed.path)?),
+    let isolated = match &photo {
+        Some(image) if photo_only || own_pixels.is_some() => {
+            Some(isolated_page(doc, request.page, &image.placed.path)?)
+        }
         _ => None,
     };
-    let source = isolated.as_ref().unwrap_or(&page);
+    let source = match &isolated {
+        Some(isolated) if photo_only => isolated,
+        _ => &page,
+    };
     let transparent =
         photo_only && matches!(request.format, RenderFormat::Png | RenderFormat::Webp);
     let background = if transparent {
@@ -688,70 +867,85 @@ pub(crate) fn render_region(
     };
     let gray = request.color == RenderColor::Gray;
 
-    let (width, height, matrix, scaled_down, orientation) = match own_pixels {
-        Some(image) => {
-            let (px_width, px_height) = (image.placed.px_width, image.placed.px_height);
-            let (width, height, scaled_down) = photo_output_size(px_width, px_height, max_pixels);
-            let matrix =
-                photo_grid_matrix(image.pixel_to_display, px_width, px_height, width, height)
-                    .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
-            (
-                width,
-                height,
-                matrix,
-                scaled_down,
-                Orientation::of(image.pixel_to_display),
-            )
+    let (grid, orientation, visible) = match (own_pixels, &isolated) {
+        (Some(image), Some(isolated)) => {
+            let grid = image_grid(image, max_pixels)?;
+            let visible = visible_box(isolated, &grid)?;
+            (grid, Orientation::of(image.pixel_to_display), visible)
         }
-        None => {
+        _ => {
             let scale = f64::from(request.dpi) / 72.0;
             let width = ((rect.x1 - rect.x0) * scale).round().max(1.0) as u64;
             let height = ((rect.y1 - rect.y0) * scale).round().max(1.0) as u64;
             if width.saturating_mul(height) > max_pixels {
                 return Err(error_response(CODE_RENDER_TOO_LARGE, None));
             }
-            (
-                width as u32,
-                height as u32,
-                [scale, 0.0, 0.0, scale, -rect.x0 * scale, -rect.y0 * scale],
-                false,
-                Orientation {
-                    transposed: false,
-                    flip_x: false,
-                    flip_y: false,
-                },
-            )
+            let grid = Grid {
+                width: width as u32,
+                height: height as u32,
+                matrix: [scale, 0.0, 0.0, scale, -rect.x0 * scale, -rect.y0 * scale],
+                scaled_down: false,
+            };
+            let upright = Orientation {
+                transposed: false,
+                flip_x: false,
+                flip_y: false,
+            };
+            (grid, upright, None)
         }
     };
 
     let rgba = render_rgba(&Draw {
         page: source,
-        width,
-        height,
-        matrix,
+        width: grid.width,
+        height: grid.height,
+        matrix: grid.matrix,
         background,
         gray,
         annotations: !photo_only,
     })?;
+    // Cut to what shows while the pixels are still in the image's own
+    // orientation, which is the one `visible` was measured in.
+    let (rgba, width, height) = crop(rgba, grid.width as usize, grid.height as usize, 4, visible);
     let (pixels, color_type) = pixels_from_rgba(rgba, request.color, transparent);
     let channels = color_type.bits_per_pixel() as usize / 8;
-    let (pixels, out_width, out_height) = reorient(
-        pixels,
-        width as usize,
-        height as usize,
-        channels,
-        orientation,
-    );
+    let (pixels, out_width, out_height) = reorient(pixels, width, height, channels, orientation);
     let (out_width, out_height) = (out_width as u32, out_height as u32);
     let bytes = encode_pixels(&pixels, out_width, out_height, color_type, request.format)?;
     Ok((
         Response::RenderRegion {
             width: out_width,
             height: out_height,
-            scaled_down,
+            scaled_down: grid.scaled_down,
         },
         bytes,
     ))
+}
+
+/// The pixels of `region` out of `source`, `width` × `height` pixels of
+/// `channels` bytes; all of it when `region` is `None` or covers it. Returns
+/// the pixels and their width and height.
+fn crop(
+    source: Vec<u8>,
+    width: usize,
+    height: usize,
+    channels: usize,
+    region: Option<PixelBox>,
+) -> (Vec<u8>, usize, usize) {
+    let Some(region) = region else {
+        return (source, width, height);
+    };
+    let (left, top) = (region.left as usize, region.top as usize);
+    let (right, bottom) = (region.right as usize, region.bottom as usize);
+    if (left, top, right, bottom) == (0, 0, width, height) {
+        return (source, width, height);
+    }
+    let mut out = Vec::with_capacity((right - left) * (bottom - top) * channels);
+    for row in top..bottom {
+        let start = (row * width + left) * channels;
+        out.extend_from_slice(&source[start..start + (right - left) * channels]);
+    }
+    (out, right - left, bottom - top)
 }
 
 #[cfg(test)]
@@ -961,6 +1155,68 @@ mod tests {
         ]
         .concat();
         assert_eq!(count_covered_pixels(&page, &white, &black), 1);
+    }
+
+    #[test]
+    fn the_touched_box_leaves_out_only_plain_background() {
+        const PLAIN_WHITE: [u8; 4] = [255, 255, 255, 255];
+        const PLAIN_BLACK: [u8; 4] = [0, 0, 0, 255];
+        // 3 × 2 pixels; only the middle of the top row and the last of the
+        // bottom row are touched: one half covered, one translucent.
+        let mut white = [PLAIN_WHITE; 6];
+        let mut black = [PLAIN_BLACK; 6];
+        white[1] = [128, 128, 128, 255];
+        black[1] = [128, 128, 128, 255];
+        white[5] = [200, 200, 200, 255];
+        black[5] = [30, 30, 30, 255];
+        let box_of =
+            |white: &[[u8; 4]], black: &[[u8; 4]]| touched_box(&white.concat(), &black.concat(), 3);
+        assert_eq!(
+            box_of(&white, &black),
+            Some(PixelBox {
+                left: 1,
+                top: 0,
+                right: 3,
+                bottom: 2
+            })
+        );
+        assert_eq!(box_of(&[PLAIN_WHITE; 6], &[PLAIN_BLACK; 6]), None);
+        // A pixel that only the black render shows is touched too.
+        let mut only_black = [PLAIN_BLACK; 6];
+        only_black[3] = [10, 0, 0, 255];
+        assert_eq!(
+            box_of(&[PLAIN_WHITE; 6], &only_black),
+            Some(PixelBox {
+                left: 0,
+                top: 1,
+                right: 1,
+                bottom: 2
+            })
+        );
+    }
+
+    #[test]
+    fn cropping_keeps_the_box_and_all_of_a_pixel() {
+        // 4 × 3 pixels of two bytes each, numbered in reading order.
+        let source: Vec<u8> = (0..12u8).flat_map(|p| [p, p + 100]).collect();
+        let window = PixelBox {
+            left: 1,
+            top: 1,
+            right: 3,
+            bottom: 3,
+        };
+        let (cropped, width, height) = crop(source.clone(), 4, 3, 2, Some(window));
+        assert_eq!((width, height), (2, 2));
+        assert_eq!(cropped, [5, 105, 6, 106, 9, 109, 10, 110]);
+
+        let whole = PixelBox {
+            left: 0,
+            top: 0,
+            right: 4,
+            bottom: 3,
+        };
+        assert_eq!(crop(source.clone(), 4, 3, 2, Some(whole)).0, source);
+        assert_eq!(crop(source.clone(), 4, 3, 2, None).0, source);
     }
 
     fn pdfium_library_dir() -> PathBuf {

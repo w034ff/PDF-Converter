@@ -269,6 +269,21 @@ fn expected_view(
     view
 }
 
+/// `view` cut to the box around its pixels that are not fully transparent:
+/// what a photo range holds when the image alone touches only those.
+fn trimmed(view: &RgbaImage) -> RgbaImage {
+    let touched = |x: u32, y: u32| view.get_pixel(x, y)[3] != 0;
+    let columns: Vec<u32> = (0..view.width())
+        .filter(|&x| (0..view.height()).any(|y| touched(x, y)))
+        .collect();
+    let rows: Vec<u32> = (0..view.height())
+        .filter(|&y| (0..view.width()).any(|x| touched(x, y)))
+        .collect();
+    let (left, top) = (columns[0], rows[0]);
+    let (right, bottom) = (columns[columns.len() - 1] + 1, rows[rows.len() - 1] + 1);
+    image::imageops::crop_imm(view, left, top, right - left, bottom - top).to_image()
+}
+
 fn picture_value(column: u32, row: u32) -> [u8; 4] {
     let [r, g, b] = crop_pattern::picture_pixel(column, row);
     [r, g, b, 255]
@@ -282,6 +297,57 @@ fn differing_pixels(actual: &RgbaImage, expected: &RgbaImage) -> usize {
         .zip(expected.pixels())
         .filter(|(a, e)| a != e)
         .count()
+}
+
+/// The grid the clip and the mask are measured on is the image's own 61 × 43
+/// pixels, 2.46 × 2.34 pt each for the clipped image. A pixel the clip edge
+/// cuts is touched and the box then grows by one more pixel, so the range may
+/// reach two pixels past the clip.
+const CLIPPED_RANGE_TOLERANCE_PT: f64 = 2.0 * 2.5;
+
+/// The range `PageImages` should give for a listed image, as [x0, y0, x1, y1]
+/// on shown page `page_index`, and how far it may be off: the whole frame, but
+/// for the clipped image the part inside the clip and for the soft-masked one
+/// the columns its mask lets show, widened by one pixel.
+fn visible_frame(page_index: usize, image: &crop_pattern::ListedImage) -> ([f64; 4], f64) {
+    const EXACT_PT: f64 = 0.01;
+    let bounds = |points: &[(f64, f64)]| {
+        let shown: Vec<(f64, f64)> = points
+            .iter()
+            .map(|&(x, y)| crop_pattern::to_shown_page(page_index, x, y))
+            .collect();
+        let pick = |f: fn(&(f64, f64)) -> f64, init: f64, g: fn(f64, f64) -> f64| {
+            shown.iter().map(f).fold(init, g)
+        };
+        [
+            pick(|c| c.0, f64::INFINITY, f64::min),
+            pick(|c| c.1, f64::INFINITY, f64::min),
+            pick(|c| c.0, f64::NEG_INFINITY, f64::max),
+            pick(|c| c.1, f64::NEG_INFINITY, f64::max),
+        ]
+    };
+    match image.image_index {
+        7 => {
+            let [x, y, width, height] = crop_pattern::CLIP_RECT;
+            let corners = [
+                (x, y),
+                (x + width, y),
+                (x, y + height),
+                (x + width, y + height),
+            ];
+            (bounds(&corners), CLIPPED_RANGE_TOLERANCE_PT)
+        }
+        5 => {
+            // The first columns of the mask are 0, so they do not show; the
+            // column before the first one that does is added.
+            let first = f64::from(crop_pattern::SOFT_MASK_FIRST_VISIBLE_COLUMN - 1);
+            let left = first / f64::from(PICTURE_WIDTH);
+            let corners = [(left, 0.0), (1.0, 0.0), (left, 1.0), (1.0, 1.0)]
+                .map(|(u, v)| crop_pattern::apply(image.matrix, u, v));
+            (bounds(&corners), EXACT_PT)
+        }
+        _ => (expected_frame(page_index, image.matrix), EXACT_PT),
+    }
 }
 
 #[test]
@@ -305,11 +371,11 @@ fn page_images_lists_the_images_with_their_frames_on_every_page() {
                 "native of {}",
                 image.image_index
             );
-            let frame = expected_frame(page_index, expected.matrix);
+            let (frame, tolerance) = visible_frame(page_index, expected);
             let rect = image.rect_pt;
             for (got, want) in [rect.x0, rect.y0, rect.x1, rect.y1].iter().zip(frame) {
                 assert!(
-                    (got - want).abs() < 0.01,
+                    (got - want).abs() < tolerance,
                     "page {} image {}: frame {rect:?} against {frame:?}",
                     page_index + 1,
                     image.image_index
@@ -396,6 +462,62 @@ fn only_the_photo_inside_nested_forms_and_under_a_clip_is_found() {
     assert_eq!(differing_pixels(&written.decode().to_rgba8(), &expected), 0);
 }
 
+/// The columns and rows (from the top) of the clipped image's picture that
+/// the clip path touches: every pixel the clip rectangle overlaps at all.
+fn clipped_window() -> (std::ops::Range<u32>, std::ops::Range<u32>) {
+    let [clip_x, clip_y, clip_width, clip_height] = crop_pattern::CLIP_RECT;
+    let m = crop_pattern::CLIPPED;
+    let to_unit_x = |x: f64| (x - m[4]) / m[0];
+    let to_unit_y = |y: f64| (y - m[5]) / m[3];
+    let columns = |low: f64, high: f64| {
+        let width = f64::from(PICTURE_WIDTH);
+        (low * width).floor() as u32..(high * width).ceil() as u32
+    };
+    let rows = |low: f64, high: f64| {
+        // Row 0 is the top of the picture, the largest y.
+        let height = f64::from(PICTURE_HEIGHT);
+        ((1.0 - high) * height).floor() as u32..((1.0 - low) * height).ceil() as u32
+    };
+    (
+        columns(to_unit_x(clip_x), to_unit_x(clip_x + clip_width)),
+        rows(to_unit_y(clip_y), to_unit_y(clip_y + clip_height)),
+    )
+}
+
+#[test]
+fn a_clipped_photo_is_written_as_the_part_the_clip_shows() {
+    let mut worker = crop_align();
+    let listed = crop_pattern::listed_images();
+    let clipped = listed.iter().position(|i| i.image_index == 7).unwrap();
+    let (columns, rows) = clipped_window();
+    // Fewer than all of the picture's columns and rows.
+    assert!(columns.len() < PICTURE_WIDTH as usize && rows.len() < PICTURE_HEIGHT as usize);
+    let window = |column: u32, row: u32| {
+        if columns.contains(&column) && rows.contains(&row) {
+            picture_value(column, row)
+        } else {
+            [0, 0, 0, 0]
+        }
+    };
+    for page_index in 0..PAGE_COUNT {
+        let page = page_index as u32 + 1;
+        let images = page_images(&mut worker, page);
+        let image = images.iter().find(|i| i.image_index == 7).unwrap();
+        let expected = trimmed(&expected_view(page_index, listed[clipped].matrix, window));
+        for photo_only in [false, true] {
+            let mut region = Region::photo(page, image);
+            region.photo_only = photo_only;
+            let written = render(&mut worker, &region);
+            assert_eq!((written.width, written.height), expected.dimensions());
+            assert_eq!(
+                differing_pixels(&written.decode().to_rgba8(), &expected),
+                0,
+                "page {page} photo_only {photo_only}"
+            );
+        }
+    }
+}
+
 #[test]
 fn a_sheared_image_is_not_native_and_is_drawn_as_its_frame_at_the_dpi() {
     let mut worker = crop_align();
@@ -464,7 +586,11 @@ fn a_soft_masked_photo_keeps_its_alpha_in_png_and_webp() {
         let page = page_index as u32 + 1;
         let images = page_images(&mut worker, page);
         let masked = images.iter().position(|i| i.image_index == 5).unwrap();
-        let expected = expected_view(page_index, listed[masked].matrix, soft_masked_value);
+        let expected = trimmed(&expected_view(
+            page_index,
+            listed[masked].matrix,
+            soft_masked_value,
+        ));
 
         let mut decoded = Vec::new();
         for format in [RenderFormat::Png, RenderFormat::Webp] {
@@ -526,7 +652,7 @@ fn a_gray_photo_only_png_has_gray_and_alpha_channels() {
     let written = render(&mut worker, &region);
     let decoded = written.decode();
     assert_eq!(decoded.color(), image::ColorType::La8);
-    let expected = expected_view(0, listed[masked].matrix, soft_masked_value);
+    let expected = trimmed(&expected_view(0, listed[masked].matrix, soft_masked_value));
     let actual = decoded.to_luma_alpha8();
     let alpha_off = actual
         .pixels()
@@ -542,7 +668,7 @@ fn every_format_and_colour_writes_a_photo_and_a_rectangle() {
     let listed = crop_pattern::listed_images();
     let images = page_images(&mut worker, 1);
     let masked = images.iter().position(|i| i.image_index == 5).unwrap();
-    let expected = expected_view(0, listed[masked].matrix, soft_masked_value);
+    let expected = trimmed(&expected_view(0, listed[masked].matrix, soft_masked_value));
     for format in [RenderFormat::Png, RenderFormat::Jpeg, RenderFormat::Webp] {
         for color in [RenderColor::Color, RenderColor::Gray] {
             let photo = Region::photo(1, &images[masked])
@@ -950,5 +1076,264 @@ fn thumbnails_are_limited_to_the_page_view_size() {
     expect_error(
         worker.request(&at(PAGE_VIEW_MAX_SIDE + 1), RENDER_TIMEOUT),
         "InvalidParams",
+    );
+}
+
+/// Packs bits into bytes, least significant bit first, as deflate does.
+struct BitWriter {
+    bytes: Vec<u8>,
+    used_bits: u32,
+}
+
+impl BitWriter {
+    fn new() -> Self {
+        Self {
+            bytes: Vec::new(),
+            used_bits: 0,
+        }
+    }
+
+    /// Writes the `count` low bits of `value`, lowest first.
+    fn bits(&mut self, value: u32, count: u32) {
+        for index in 0..count {
+            if self.used_bits == 0 {
+                self.bytes.push(0);
+            }
+            let last = self.bytes.len() - 1;
+            self.bytes[last] |= (((value >> index) & 1) as u8) << self.used_bits;
+            self.used_bits = (self.used_bits + 1) % 8;
+        }
+    }
+
+    /// Writes a Huffman code of `count` bits, which deflate packs highest first.
+    fn code(&mut self, code: u32, count: u32) {
+        for index in (0..count).rev() {
+            self.bits((code >> index) & 1, 1);
+        }
+    }
+}
+
+/// A zlib stream of `length` zero bytes, written by hand with fixed Huffman
+/// codes so that a test can make a huge blank image without a compressor: one
+/// literal, then runs of 258 copies of the byte before it.
+fn zero_zlib_stream(length: u64) -> Vec<u8> {
+    const MAX_RUN: u64 = 258;
+    const ADLER_MODULUS: u64 = 65_521;
+    let mut writer = BitWriter::new();
+    writer.bits(1, 1); // the last block
+    writer.bits(1, 2); // fixed Huffman codes
+    let literal_zero = |writer: &mut BitWriter| writer.code(0b0011_0000, 8);
+    literal_zero(&mut writer);
+    let after_first = length - 1;
+    for _ in 0..after_first / MAX_RUN {
+        writer.code(0b1100_0101, 8); // length 258
+        writer.code(0, 5); // distance 1
+    }
+    for _ in 0..after_first % MAX_RUN {
+        literal_zero(&mut writer);
+    }
+    writer.code(0, 7); // end of block
+    let adler = (((length % ADLER_MODULUS) as u32) << 16) | 1;
+    let mut stream = vec![0x78, 0x01];
+    stream.extend(writer.bytes);
+    stream.extend(adler.to_be_bytes());
+    stream
+}
+
+/// A one-page PDF (612 × 792 pt) that draws one black RGB image of
+/// `width` × `height` pixels at each of `placements` (`cm` operands).
+fn blank_image_pdf(width: u32, height: u32, placements: &[Matrix]) -> Vec<u8> {
+    let content: String = placements
+        .iter()
+        .map(|m| {
+            format!(
+                "q {} {} {} {} {} {} cm /Im Do Q\n",
+                m[0], m[1], m[2], m[3], m[4], m[5]
+            )
+        })
+        .collect();
+    let image = zero_zlib_stream(u64::from(width) * u64::from(height) * 3);
+    let stream = |entries: &str, data: &[u8]| {
+        [
+            format!("<< {entries} /Length {} >>\nstream\n", data.len()).into_bytes(),
+            data.to_vec(),
+            b"\nendstream".to_vec(),
+        ]
+        .concat()
+    };
+    let objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R \
+          /Resources << /XObject << /Im 5 0 R >> >> >>"
+            .to_vec(),
+        stream("", content.as_bytes()),
+        stream(
+            &format!(
+                "/Type /XObject /Subtype /Image /Width {width} /Height {height} \
+                 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"
+            ),
+            &image,
+        ),
+    ];
+    let mut pdf = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (index, body) in objects.iter().enumerate() {
+        offsets.push(pdf.len());
+        pdf.extend(format!("{} 0 obj\n", index + 1).into_bytes());
+        pdf.extend(body);
+        pdf.extend(b"\nendobj\n");
+    }
+    let xref_offset = pdf.len();
+    pdf.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).into_bytes());
+    for offset in offsets {
+        pdf.extend(format!("{offset:010} 00000 n \n").into_bytes());
+    }
+    pdf.extend(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .into_bytes(),
+    );
+    pdf
+}
+
+/// Writes `pdf` to a file of its own in the temporary directory and opens it
+/// in a new worker. The file goes when the value does.
+struct TemporaryPdf {
+    path: PathBuf,
+    worker: WorkerProcess,
+}
+
+impl TemporaryPdf {
+    fn open(name: &str, pdf: &[u8]) -> Self {
+        let path = std::env::temp_dir().join(format!("pdfconv-{name}-{}.pdf", std::process::id()));
+        std::fs::write(&path, pdf).expect("the temporary PDF should be written");
+        let mut worker = start();
+        let opened = worker.request(
+            &Request::Open {
+                path: path.clone(),
+                password: None,
+            },
+            RENDER_TIMEOUT,
+        );
+        assert!(opened.is_ok(), "opening {name}: {opened:?}");
+        Self { path, worker }
+    }
+}
+
+impl Drop for TemporaryPdf {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[test]
+fn a_zero_image_stream_decodes_to_zeros() {
+    // The hand-made deflate stream is what the large-photo test stands on.
+    let mut pdf = TemporaryPdf::open(
+        "zero-stream",
+        &blank_image_pdf(300, 200, &[[300.0, 0.0, 0.0, 200.0, 100.0, 100.0]]),
+    );
+    let images = page_images(&mut pdf.worker, 1);
+    assert_eq!(
+        images
+            .iter()
+            .map(|i| (i.px_width, i.px_height))
+            .collect::<Vec<_>>(),
+        [(300, 200)]
+    );
+    let photo = render(&mut pdf.worker, &Region::photo(1, &images[0]).photo_only());
+    let pixels = photo.decode().to_rgba8();
+    assert_eq!(pixels.dimensions(), (300, 200));
+    assert!(pixels.pixels().all(|p| p.0 == [0, 0, 0, 255]));
+}
+
+/// The peak resident memory of a process so far, in bytes, where the
+/// operating system tells (`VmHWM` in `/proc/<pid>/status` on Linux).
+fn peak_memory(process_id: u32) -> Option<u64> {
+    let status = std::fs::read_to_string(format!("/proc/{process_id}/status")).ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM:"))?;
+    let kibibytes: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kibibytes * 1024)
+}
+
+/// Run with
+/// `cargo test -p pdfconv-worker --test crop --release -- --ignored --nocapture a_photo_near_the_pixel_limit`
+/// to see the times and the memory it prints.
+#[test]
+#[ignore = "builds and renders a 90 million pixel image, which takes a while and a lot of memory"]
+fn a_photo_near_the_pixel_limit_fits_in_the_worker_memory_limit() {
+    const SIDE: u32 = 9_500;
+    let mut pdf = TemporaryPdf::open(
+        "big-photo",
+        &blank_image_pdf(SIDE, SIDE, &[[500.0, 0.0, 0.0, 500.0, 50.0, 100.0]]),
+    );
+    let report = |what: &str, started: std::time::Instant, worker: &WorkerProcess| {
+        println!(
+            "{what}: {:.1} s, worker peak {} MiB",
+            started.elapsed().as_secs_f64(),
+            peak_memory(worker.id()).map_or(-1, |bytes| (bytes / (1024 * 1024)) as i64)
+        );
+    };
+
+    let started = std::time::Instant::now();
+    let images = page_images(&mut pdf.worker, 1);
+    report("PageImages", started, &pdf.worker);
+    assert_eq!(images.len(), 1);
+    assert_eq!((images[0].px_width, images[0].px_height), (SIDE, SIDE));
+
+    for photo_only in [false, true] {
+        let mut region = Region::photo(1, &images[0]);
+        region.photo_only = photo_only;
+        let started = std::time::Instant::now();
+        let written = try_render(&mut pdf.worker, &region);
+        report(
+            &format!("RenderRegion photo_only={photo_only}"),
+            started,
+            &pdf.worker,
+        );
+        let written = written.expect("the worker should survive the photo");
+        assert_eq!((written.width, written.height), (SIDE, SIDE));
+        assert!(!written.scaled_down);
+    }
+}
+
+#[test]
+fn a_page_of_a_hundred_small_images_is_listed() {
+    // Twenty by twenty pixels and points, ten to a row: all large enough to be listed.
+    let placements: Vec<Matrix> = (0..100)
+        .map(|i| {
+            let (column, row) = (f64::from(i % 10), f64::from(i / 10));
+            [
+                20.0,
+                0.0,
+                0.0,
+                20.0,
+                30.0 + column * 40.0,
+                30.0 + row * 40.0,
+            ]
+        })
+        .collect();
+    let mut pdf = TemporaryPdf::open("hundred", &blank_image_pdf(20, 20, &placements));
+    let started = std::time::Instant::now();
+    let images = page_images(&mut pdf.worker, 1);
+    println!(
+        "PageImages of 100 images: {:.1} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    assert_eq!(images.len(), 100);
+    assert_eq!(
+        images.iter().map(|i| i.image_index).collect::<Vec<_>>(),
+        (0..100).collect::<Vec<_>>()
+    );
+
+    let mut worker = crop_align();
+    let started = std::time::Instant::now();
+    page_images(&mut worker, 1);
+    println!(
+        "PageImages of crop_align.pdf page 1: {:.1} ms",
+        started.elapsed().as_secs_f64() * 1000.0
     );
 }

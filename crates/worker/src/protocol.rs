@@ -144,7 +144,8 @@ pub struct EmbeddedImage {
     /// order, including those left out of the list, so it does not change
     /// when the list is filtered.
     pub image_index: u32,
-    /// The image's frame on the page, cut to the page.
+    /// The part of the image's frame that shows on the page, cut to the
+    /// page: a clip or a mask can hide the rest (design §4.6).
     pub rect_pt: RectPt,
     pub px_width: u32,
     pub px_height: u32,
