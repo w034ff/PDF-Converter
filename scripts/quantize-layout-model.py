@@ -11,10 +11,12 @@ EXPECTED_INPUT_SHA256 before anything reads it.
 
 Quantization: the `quant_pre_process` step (skip_symbolic_shape=True), then
 dynamic quantization with UInt8 weights for every supported operator type.
-The same onnxruntime version gives the same output file, so the Python package
-must be onnxruntime 1.26.0 (the version pinned in scripts/layout-version.json):
+The same packages give the same output file, so they are pinned:
+onnxruntime 1.26.0 (the version pinned in scripts/layout-version.json), and
+onnx and sympy, which the pre-processing step imports. With these versions the
+output matched the SHA-256 in layout-version.json:
 
-    pip install onnxruntime==1.26.0 onnx
+    pip install onnxruntime==1.26.0 onnx==1.23.2 sympy==1.14.0
 
 The input is a file from outside the repository, so run the script in a
 container without a network. Build the image once (this step needs the
@@ -22,10 +24,11 @@ network), then run it from the repository root with `inference.onnx` in it:
 
     docker build -t layout-quantize - <<'EOF'
     FROM python:3.12-slim
-    RUN pip install onnxruntime==1.26.0 onnx
+    RUN pip install onnxruntime==1.26.0 onnx==1.23.2 sympy==1.14.0
     EOF
 
-    docker run --rm --network none -v "$PWD:/work" -w /work layout-quantize \
+    docker run --rm --network none --user "$(id -u):$(id -g)" \
+      -v "$PWD:/work" -w /work layout-quantize \
       python scripts/quantize-layout-model.py \
         inference.onnx PP-DocLayout_plus-L-int8.onnx
 
