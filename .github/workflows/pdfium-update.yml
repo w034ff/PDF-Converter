@@ -177,7 +177,7 @@ jobs:
 
           Steps (design §8.5):
 
-          - [ ] Rewrite the version and the SHA-256 hashes in \`scripts/layout-version.json\`.
+          - [ ] Rewrite the version, the SHA-256 hashes and the paths inside the archives (their folder names carry the version) in \`scripts/layout-version.json\`.
           - [ ] Match the \`api-NN\` feature of \`ort\` to the new version (design §8.5).
           - [ ] Run \`npm run licenses:generate\` and commit the list.
           - [ ] Run the tests of design §11 on both OSes.
