@@ -8,8 +8,12 @@ use std::time::{Duration, Instant};
 
 #[path = "../../core/tests/support/fixture_passwords.rs"]
 mod fixture_passwords;
+#[path = "support/worker_paths.rs"]
+mod worker_paths;
 
-use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError, WorkerProcess};
+use worker_paths::start;
+
+use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError};
 use pdfconv_worker::protocol::{Password, RenderColor, RenderFormat, Request, Response};
 use pdfconv_worker::{RENDER_DPI_MAX, RENDER_DPI_MIN};
 
@@ -31,27 +35,8 @@ const COLOR_TOLERANCE_GRAY: i16 = 8;
 /// Maximum allowable ratio of mismatched pixels for render tests (design §11.2: 0.5%).
 const MAX_MISMATCH_RATIO_RENDER: f64 = 0.005;
 
-fn library_dir() -> PathBuf {
-    let os_dir = if cfg!(windows) {
-        "windows/bin"
-    } else {
-        "linux/lib"
-    };
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../src-tauri/pdfium")
-        .join(os_dir)
-}
-
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../core/tests/fixtures")
-}
-
-fn start() -> WorkerProcess {
-    WorkerProcess::spawn(
-        env!("CARGO_BIN_EXE_pdfconv-worker").as_ref(),
-        [library_dir()],
-    )
-    .expect("worker should start")
 }
 
 fn compare_images(actual_bytes: &[u8], expected_bytes: &[u8]) -> f64 {
@@ -100,9 +85,9 @@ fn loads_pdfium_and_answers_repeatedly() {
 
 #[test]
 fn reports_a_missing_library_as_an_error_without_crashing() {
+    let [_, onnxruntime, model] = worker_paths::worker_args();
     let empty = std::env::temp_dir().join("pdfconv-no-pdfium-here");
-    let mut worker =
-        WorkerProcess::spawn(env!("CARGO_BIN_EXE_pdfconv-worker").as_ref(), [&empty]).unwrap();
+    let mut worker = worker_paths::start_with([empty.into(), onnxruntime, model]);
     match worker.request(&Request::Hello, ANSWER_TIMEOUT) {
         Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PdfiumUnavailable"),
         other => panic!("expected PdfiumUnavailable, got {other:?}"),
@@ -115,9 +100,28 @@ fn reports_a_missing_library_as_an_error_without_crashing() {
 }
 
 #[test]
+fn fails_without_all_three_arguments() {
+    let [library_dir, onnxruntime, _] = worker_paths::worker_args();
+    for args in [
+        vec![],
+        vec![library_dir.clone()],
+        vec![library_dir, onnxruntime],
+    ] {
+        let status = Command::new(env!("CARGO_BIN_EXE_pdfconv-worker"))
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(!status.success(), "{args:?}");
+    }
+}
+
+#[test]
 fn exits_when_the_main_process_closes_stdin() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_pdfconv-worker"))
-        .arg(library_dir())
+        .args(worker_paths::worker_args())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()

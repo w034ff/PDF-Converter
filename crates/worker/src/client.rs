@@ -33,6 +33,10 @@ pub const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long to wait for a worker to render a page or thumbnail (design §5.2).
 pub const RENDER_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// How long to wait for a worker to detect a page's layout, including loading
+/// onnxruntime and the model on the first `Detect` (design §5.2).
+pub const DETECT_TIMEOUT: Duration = Duration::from_secs(60);
+
 type Message = io::Result<Option<(Response, Vec<u8>)>>;
 
 /// One running worker process. Dropping it kills the process.

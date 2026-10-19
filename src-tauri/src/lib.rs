@@ -13,6 +13,7 @@ pub mod commands;
 pub mod error;
 pub mod items;
 pub mod jobs;
+pub mod layout_files;
 pub mod pdfium;
 pub mod settings;
 pub mod worker_pool;
@@ -69,9 +70,16 @@ pub fn run() {
         .setup(|app| {
             let exe = std::env::current_exe()?;
             let library_dir = pdfium::library_dir(app.handle())?;
+            let onnxruntime = layout_files::onnxruntime_file(app.handle())?;
+            let model = layout_files::model_file(app.handle())?;
             let config = WorkerPoolConfig::new(
                 exe,
-                [OsString::from(WORKER_FLAG), library_dir.into_os_string()],
+                [
+                    OsString::from(WORKER_FLAG),
+                    library_dir.into_os_string(),
+                    onnxruntime.into_os_string(),
+                    model.into_os_string(),
+                ],
             );
             let state = AppState::new(WorkerPool::new(config));
             // Without a settings folder the app still starts, with the
