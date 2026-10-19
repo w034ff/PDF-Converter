@@ -50,6 +50,8 @@ type Rgb = [u8; 3];
 pub const FIXTURES_DIR: &str = "tests/fixtures";
 
 const JPEG_QUALITY: u8 = 90;
+/// Pixel size of `photo.jpg`, which `crop_layout.pdf` embeds as it is.
+const PHOTO_SIZE_PX: (u32, u32) = (480, 320);
 /// The resolution written into `dpi300.png` and `dpi300.jpg`.
 const FIXTURE_DPI: u16 = 300;
 const MICROMETERS_PER_INCH: u32 = 25_400;
@@ -133,17 +135,16 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
     add("logo_alpha.png", logo_png);
     add("logo_alpha.webp", encode_webp(256, 256, &logo)?);
 
-    add(
-        "photo.jpg",
-        encode_jpeg(
-            480,
-            320,
-            jpeg_encoder::ColorType::Rgb,
-            &photo_rgb(480, 320),
-            None,
-            None,
-        )?,
-    );
+    let photo_jpg = encode_jpeg(
+        PHOTO_SIZE_PX.0,
+        PHOTO_SIZE_PX.1,
+        jpeg_encoder::ColorType::Rgb,
+        &photo_rgb(PHOTO_SIZE_PX.0, PHOTO_SIZE_PX.1),
+        None,
+        None,
+    )?;
+    add("crop_layout.pdf", crop_layout_pdf(&photo_jpg)?);
+    add("photo.jpg", photo_jpg);
     add("exif_gps.jpg", encode_exif_gps_jpeg()?);
     add(
         "photo_cmyk.jpg",
@@ -1897,6 +1898,73 @@ fn md5(data: &[u8]) -> [u8; 16] {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect()
+}
+
+// ---------------------------------------------------------------------------
+// crop_layout.pdf (design §11.1, §4.7)
+
+/// Where `crop_layout.pdf` places `photo.jpg`: left, top, right, bottom in pt
+/// from the page's top-left corner, one point per pixel.
+const LAYOUT_PHOTO_PT: [f32; 4] = [58.0, 130.0, 538.0, 450.0];
+/// The bar chart's axes: the vertical axis runs down the left of
+/// [`LAYOUT_CHART_PT`] and the horizontal one along its bottom.
+const LAYOUT_CHART_PT: [f32; 4] = [98.0, 520.0, 498.0, 810.0];
+const LAYOUT_AXIS_WIDTH_PT: f32 = 2.0;
+/// Left edge and height of each bar, standing on the horizontal axis.
+const LAYOUT_BARS_PT: [(f32, f32); 4] = [
+    (125.0, 150.0),
+    (215.0, 240.0),
+    (305.0, 100.0),
+    (395.0, 270.0),
+];
+const LAYOUT_BAR_WIDTH_PT: f32 = 70.0;
+
+/// One A4 page with a large photo and a bar chart drawn with shapes, for
+/// layout detection. The chart has no text: a PDF with text would render
+/// with whatever fonts the system has (design §11.1).
+fn crop_layout_pdf(photo_jpg: &[u8]) -> Result<Vec<u8>> {
+    let mut document = Document::new();
+    let settings = PageSettings::from_wh(A4_PT.0, A4_PT.1).ok_or("invalid page size")?;
+    let mut page = document.start_page_with(settings);
+    let mut surface = page.surface();
+
+    let [left, top, right, bottom] = LAYOUT_PHOTO_PT;
+    let photo = Image::from_jpeg(photo_jpg.to_vec().into(), true)?;
+    surface.push_transform(&Transform::from_translate(left, top));
+    surface.draw_image(
+        photo,
+        Size::from_wh(right - left, bottom - top).ok_or("invalid image size")?,
+    );
+    surface.pop();
+
+    let mut fill_rect = |ltrb: [f32; 4], colour: Rgb| -> Result<()> {
+        let mut builder = PathBuilder::new();
+        builder.push_rect(
+            Rect::from_ltrb(ltrb[0], ltrb[1], ltrb[2], ltrb[3]).ok_or("invalid rectangle")?,
+        );
+        surface.set_fill(Some(solid(colour, 1.0)?));
+        surface.draw_path(&builder.finish().ok_or("empty path")?);
+        Ok(())
+    };
+    let [left, top, right, bottom] = LAYOUT_CHART_PT;
+    let axis_top = bottom - LAYOUT_AXIS_WIDTH_PT;
+    for (bar_left, height) in LAYOUT_BARS_PT {
+        fill_rect(
+            [
+                bar_left,
+                axis_top - height,
+                bar_left + LAYOUT_BAR_WIDTH_PT,
+                axis_top,
+            ],
+            BLUE,
+        )?;
+    }
+    fill_rect([left, top, left + LAYOUT_AXIS_WIDTH_PT, bottom], BLACK)?;
+    fill_rect([left, axis_top, right, bottom], BLACK)?;
+
+    surface.finish();
+    page.finish();
+    Ok(document.finish()?)
 }
 
 // ---------------------------------------------------------------------------
