@@ -6,8 +6,7 @@ use tauri::{AppHandle, Manager};
 
 /// The onnxruntime library under the resource directory on Linux, one path
 /// component per entry so that the path is built with the platform's
-/// separator (Windows' loader does not take `/`). Joined with `/`, it is the
-/// target in `tauri.linux.conf.json`.
+/// separator. Joined with `/`, it is the target in `tauri.linux.conf.json`.
 const ONNXRUNTIME_RESOURCE_LINUX: [&str; 2] = ["onnxruntime", "libonnxruntime.so"];
 
 /// As [`ONNXRUNTIME_RESOURCE_LINUX`], for `tauri.windows.conf.json`.

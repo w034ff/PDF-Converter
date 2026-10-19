@@ -107,7 +107,9 @@ enum SessionState {
     NotLoaded,
     Loaded(Box<Session>),
     /// Loading failed once; every later `Detect` gets the same error rather
-    /// than trying again (design §5.1).
+    /// than trying again (design §5.1). Trying again would also end the
+    /// worker: a second `ort::init_from` after one that failed to load the
+    /// library brings the process down.
     Unavailable(String),
 }
 
