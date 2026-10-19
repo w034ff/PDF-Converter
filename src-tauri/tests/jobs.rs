@@ -48,13 +48,31 @@ fn library_dir() -> PathBuf {
         .join(os_dir)
 }
 
+/// The onnxruntime library and the layout model fetched by
+/// `npm run layout:fetch`, the worker's last two arguments (design §5.4).
+fn layout_args() -> [String; 2] {
+    let onnxruntime = if cfg!(windows) {
+        "onnxruntime/windows/onnxruntime.dll"
+    } else {
+        "onnxruntime/linux/libonnxruntime.so"
+    };
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    [
+        manifest_dir.join(onnxruntime),
+        manifest_dir.join("layout-model/PP-DocLayout_plus-L-int8.onnx"),
+    ]
+    .map(|path| path.to_string_lossy().into_owned())
+}
+
 fn state() -> AppState {
     let config = WorkerPoolConfig::new(
         env!("CARGO_BIN_EXE_pdf-converter"),
         [
             WORKER_FLAG.to_string(),
             library_dir().to_string_lossy().into_owned(),
-        ],
+        ]
+        .into_iter()
+        .chain(layout_args()),
     )
     .with_max_workers(2)
     .with_open_timeout(Duration::from_secs(30))

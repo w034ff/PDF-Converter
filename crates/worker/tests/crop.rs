@@ -18,30 +18,14 @@ use pdfconv_worker::protocol::{
 
 #[path = "../../core/tests/support/crop_pattern.rs"]
 mod crop_pattern;
+#[path = "support/worker_paths.rs"]
+mod worker_paths;
 
 use crop_pattern::{Matrix, PICTURE_HEIGHT, PICTURE_WIDTH};
-
-fn library_dir() -> PathBuf {
-    let os_dir = if cfg!(windows) {
-        "windows/bin"
-    } else {
-        "linux/lib"
-    };
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../src-tauri/pdfium")
-        .join(os_dir)
-}
+use worker_paths::start;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../core/tests/fixtures")
-}
-
-fn start() -> WorkerProcess {
-    WorkerProcess::spawn(
-        env!("CARGO_BIN_EXE_pdfconv-worker").as_ref(),
-        [library_dir()],
-    )
-    .expect("worker should start")
 }
 
 fn started_with(fixture: &str) -> WorkerProcess {

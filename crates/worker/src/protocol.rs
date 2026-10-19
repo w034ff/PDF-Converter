@@ -154,6 +154,31 @@ pub struct EmbeddedImage {
     pub native: bool,
 }
 
+/// What a layout candidate is (design §4.7, §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CandidateKind {
+    /// An embedded image; the rectangle is the image's visible frame.
+    Photo,
+    /// A picture drawn with shapes rather than an embedded image.
+    Figure,
+    Chart,
+    Table,
+}
+
+/// One region that layout detection suggests cropping (design §4.7, §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutCandidate {
+    pub kind: CandidateKind,
+    /// The model's confidence in the box, also for a photo.
+    pub score: f32,
+    pub rect_pt: RectPt,
+    /// The matched embedded image; set only for [`CandidateKind::Photo`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_index: Option<u32>,
+}
+
 /// A request from the main process.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -184,6 +209,9 @@ pub enum Request {
     /// Whether anything is drawn over the embedded image `image_index` of
     /// page `page` (design §4.6, §5.1).
     ImageOnTop { page: u32, image_index: u32 },
+    /// Detects the photos, figures, charts and tables of page `page`
+    /// (design §4.7, §5.1).
+    Detect { page: u32 },
     /// Renders one range of page `page` (design §4.6, §5.1). `image_index`
     /// is set for a photo range; then `photo_native` writes the image's own
     /// pixels and `photo_only` leaves out everything but the image.
@@ -234,6 +262,8 @@ pub enum Response {
     PageImages { images: Vec<EmbeddedImage> },
     /// Whether anything is drawn over the image (design §5.1).
     ImageOnTop { on_top: bool },
+    /// The layout candidates of the page, highest score first (design §4.7).
+    Detect { candidates: Vec<LayoutCandidate> },
     /// A range was rendered; the image bytes are in the message body.
     /// `width` and `height` are the written image's size; `scaled_down` is
     /// set when a photo had to be written smaller than its own pixels to stay
@@ -602,5 +632,56 @@ mod tests {
             .unwrap(),
             r#"{"type":"renderRegion","width":10,"height":20,"scaledDown":false}"#
         );
+    }
+
+    #[test]
+    fn detect_uses_the_names_of_design_5_1() {
+        assert_eq!(
+            serde_json::to_string(&Request::Detect { page: 3 }).unwrap(),
+            r#"{"type":"detect","page":3}"#
+        );
+        let rect_pt = RectPt {
+            x0: 1.0,
+            y0: 2.0,
+            x1: 3.0,
+            y1: 4.0,
+        };
+        let detected = Response::Detect {
+            candidates: vec![
+                LayoutCandidate {
+                    kind: CandidateKind::Photo,
+                    score: 0.5,
+                    rect_pt,
+                    image_index: Some(2),
+                },
+                LayoutCandidate {
+                    kind: CandidateKind::Figure,
+                    score: 0.75,
+                    rect_pt,
+                    image_index: None,
+                },
+                LayoutCandidate {
+                    kind: CandidateKind::Chart,
+                    score: 0.25,
+                    rect_pt,
+                    image_index: None,
+                },
+                LayoutCandidate {
+                    kind: CandidateKind::Table,
+                    score: 1.0,
+                    rect_pt,
+                    image_index: None,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&detected).unwrap();
+        let rect = r#""rectPt":{"x0":1.0,"y0":2.0,"x1":3.0,"y1":4.0}"#;
+        assert_eq!(
+            json,
+            format!(
+                r#"{{"type":"detect","candidates":[{{"kind":"photo","score":0.5,{rect},"imageIndex":2}},{{"kind":"figure","score":0.75,{rect}}},{{"kind":"chart","score":0.25,{rect}}},{{"kind":"table","score":1.0,{rect}}}]}}"#
+            )
+        );
+        assert_eq!(serde_json::from_str::<Response>(&json).unwrap(), detected);
     }
 }

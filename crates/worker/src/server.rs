@@ -14,6 +14,7 @@ use pdfium_render::prelude::{
 };
 
 use crate::crop::{self, RegionRequest};
+use crate::layout::Detector;
 use crate::protocol::{
     PageDimensions, RenderColor, RenderFormat, Request, Response, read_message, write_message,
 };
@@ -50,14 +51,16 @@ pub(crate) const CODE_RENDER_TOO_LARGE: &str = "RenderTooLarge";
 /// Error code when arguments are out of range or no document is open.
 pub(crate) const CODE_INVALID_PARAMS: &str = "InvalidParams";
 
-/// Runs the worker loop. `library_dir` is the folder holding the bundled
-/// pdfium library; pdfium is loaded on the first request that needs it.
+/// Runs the worker loop (design §5.4 for the arguments). `library_dir` is
+/// the folder holding the bundled pdfium library, loaded on the first request
+/// that needs it. `onnxruntime` is the onnxruntime library file and `model`
+/// the layout model file, both loaded on the first `Detect`.
 ///
 /// # Errors
 ///
 /// Returns an I/O error when stdin or stdout fails. A clean end of stdin
 /// (the main process closed the pipe or exited) returns `Ok(())`.
-pub fn run(library_dir: &Path) -> io::Result<()> {
+pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<()> {
     apply_memory_limit()?;
     let mut input = BufReader::new(io::stdin().lock());
     let mut output = BufWriter::new(io::stdout().lock());
@@ -65,6 +68,7 @@ pub fn run(library_dir: &Path) -> io::Result<()> {
         library_dir: library_dir.to_path_buf(),
         pdfium: None,
         document: None,
+        detector: Detector::new(onnxruntime, model),
     };
     while let Some((request, _body)) = read_message::<_, Request>(&mut input)? {
         let (response, body) = state.handle(request);
@@ -102,6 +106,8 @@ struct State {
     library_dir: PathBuf,
     pdfium: Option<&'static Pdfium>,
     document: Option<PdfDocument<'static>>,
+    /// Outlives `Open` and `Close`: the model stays loaded until the worker ends.
+    detector: Detector,
 }
 
 impl State {
@@ -217,30 +223,11 @@ impl State {
                     Ok(p) => p,
                     Err(resp) => return (resp, Vec::new()),
                 };
-                let width_pt = f64::from(pdf_page.width().value);
-                let height_pt = f64::from(pdf_page.height().value);
-
-                let (target_w, target_h) = if width_pt >= height_pt {
-                    let w = max_side;
-                    let h = if width_pt > 0.0 {
-                        (f64::from(max_side) * height_pt / width_pt)
-                            .round()
-                            .max(1.0) as u32
-                    } else {
-                        1
-                    };
-                    (w, h)
-                } else {
-                    let h = max_side;
-                    let w = if height_pt > 0.0 {
-                        (f64::from(max_side) * width_pt / height_pt)
-                            .round()
-                            .max(1.0) as u32
-                    } else {
-                        1
-                    };
-                    (w, h)
-                };
+                let (target_w, target_h) = size_for_long_side(
+                    f64::from(pdf_page.width().value),
+                    f64::from(pdf_page.height().value),
+                    max_side,
+                );
 
                 let total_pixels = (target_w as u64).saturating_mul(target_h as u64);
                 if total_pixels > MAX_RENDER_PIXELS {
@@ -286,6 +273,16 @@ impl State {
                 });
                 match result {
                     Ok(on_top) => (Response::ImageOnTop { on_top }, Vec::new()),
+                    Err(response) => (response, Vec::new()),
+                }
+            }
+            Request::Detect { page } => {
+                let result = match &self.document {
+                    Some(doc) => self.detector.detect(doc, page),
+                    None => Err(error_response(CODE_INVALID_PARAMS, None)),
+                };
+                match result {
+                    Ok(candidates) => (Response::Detect { candidates }, Vec::new()),
                     Err(response) => (response, Vec::new()),
                 }
             }
@@ -457,7 +454,26 @@ fn map_pdfium_open_error(error: &PdfiumError) -> Response {
     }
 }
 
-fn render_page_pixels(
+/// The pixel size of a page of `width_pt` × `height_pt` drawn with its longer
+/// side at `long_side`; the shorter side is rounded and at least 1.
+pub(crate) fn size_for_long_side(width_pt: f64, height_pt: f64, long_side: u32) -> (u32, u32) {
+    let shorter = |short_pt: f64, long_pt: f64| {
+        if long_pt > 0.0 {
+            (f64::from(long_side) * short_pt / long_pt).round().max(1.0) as u32
+        } else {
+            1
+        }
+    };
+    if width_pt >= height_pt {
+        (long_side, shorter(height_pt, width_pt))
+    } else {
+        (shorter(width_pt, height_pt), long_side)
+    }
+}
+
+/// Renders `page` at exactly `target_width` × `target_height` on white, as
+/// RGB or gray pixels (design §4.4).
+pub(crate) fn render_page_pixels(
     page: &PdfPage<'_>,
     target_width: u32,
     target_height: u32,
