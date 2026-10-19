@@ -60,6 +60,9 @@ deny = [
     # PDFs are opened only in the worker process (design §9): a crate that links
     # pdfium into the main process would defeat the isolation.
     { name = "pdfium-render", wrappers = ["pdfconv-worker"] },
+    # onnxruntime runs layout detection on page images rendered from PDFs, so it
+    # stays in the worker process for the same reason.
+    { name = "ort", wrappers = ["pdfconv-worker"] },
 ]
 # Duplicate versions are common in the Tauri graph and are not a policy concern here.
 multiple-versions = "allow"

@@ -14,6 +14,13 @@ workspace = true
 test-hooks = []
 
 [dependencies]
+# Layout detection for crop candidates (design §4.7). Only release candidates of
+# 2.0 exist, so the version is pinned exactly. `load-dynamic` loads the
+# onnxruntime bundled per design §8.5 at run time instead of downloading one at
+# build time; `api-26` matches that onnxruntime 1.26.0.
+ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "load-dynamic", "api-26"] }
+# Matches detected regions against embedded photos with `region` (design §4.7).
+pdfconv-core = { path = "../core" }
 # Encodes rendered pages as PNG, JPEG or lossless WebP (design §2, §4.4).
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # pdfium_7881 is the newest API the bundled pdfium (chromium/8076) supports
