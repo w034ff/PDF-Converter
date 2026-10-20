@@ -4,7 +4,11 @@ import { isPageSizeChoice } from "../state/imagesToPdf";
 import { RENDER_DPI_MAX, RENDER_DPI_MIN } from "../state/pdfToImages";
 import type { AddResult } from "./generated/AddResult";
 import type { AddSource } from "./generated/AddSource";
+import type { Candidate } from "./generated/Candidate";
 import type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
+import type { CropDropped } from "./generated/CropDropped";
+import type { CropPdf } from "./generated/CropPdf";
+import type { DropTarget } from "./generated/DropTarget";
 import type { ErrorCode } from "./generated/ErrorCode";
 import type { ImageItem } from "./generated/ImageItem";
 import type { IpcError } from "./generated/IpcError";
@@ -14,6 +18,7 @@ import type { JobItemPayload } from "./generated/JobItemPayload";
 import type { JobProgressPayload } from "./generated/JobProgressPayload";
 import type { OutputDirLabel } from "./generated/OutputDirLabel";
 import type { OutputKind } from "./generated/OutputKind";
+import type { PageImage } from "./generated/PageImage";
 import type { PageOrientationChoice } from "./generated/PageOrientationChoice";
 import type { PageSizeChoice } from "./generated/PageSizeChoice";
 import type { PageSizePt } from "./generated/PageSizePt";
@@ -28,7 +33,12 @@ import type { UnlockResult } from "./generated/UnlockResult";
 export type { AboutInfo } from "./generated/AboutInfo";
 export type { AddResult } from "./generated/AddResult";
 export type { AddSource } from "./generated/AddSource";
+export type { Candidate } from "./generated/Candidate";
+export type { CandidateKind } from "./generated/CandidateKind";
 export type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
+export type { CropDropped } from "./generated/CropDropped";
+export type { CropPdf } from "./generated/CropPdf";
+export type { DropTarget } from "./generated/DropTarget";
 export type { ErrorCode } from "./generated/ErrorCode";
 export type { ImageFormatName } from "./generated/ImageFormatName";
 export type { ImageItem } from "./generated/ImageItem";
@@ -44,6 +54,7 @@ export type { Language } from "./generated/Language";
 export type { OutputDirLabel } from "./generated/OutputDirLabel";
 export type { OutputKind } from "./generated/OutputKind";
 export type { OutputMode } from "./generated/OutputMode";
+export type { PageImage } from "./generated/PageImage";
 export type { PageOrientationChoice } from "./generated/PageOrientationChoice";
 export type { PageSizeChoice } from "./generated/PageSizeChoice";
 export type { PageSizePt } from "./generated/PageSizePt";
@@ -61,6 +72,9 @@ export type { UnlistenFn };
 
 /** Name of the event Rust emits after a drop (design §7.2). */
 export const ITEMS_DROPPED_EVENT = "items-dropped";
+
+/** Name of the event Rust emits after a drop in the crop tab (design §7.2). */
+export const CROP_DROPPED_EVENT = "crop-dropped";
 
 /** Name of the event Rust emits during conversion progress (design §7.2). */
 export const JOB_PROGRESS_EVENT = "job-progress";
@@ -90,6 +104,7 @@ const ERROR_CODES = {
   OutputDirMissing: true,
   OutputDirNotWritable: true,
   CmykNotAllowedInPdfA: true,
+  LayoutUnavailable: true,
 } satisfies Record<ErrorCode, true>;
 
 /** Whether a value is one of the error codes of design §6.6. */
@@ -309,14 +324,91 @@ export async function unlockPdf(
 }
 
 /**
- * Fetches the PNG thumbnail of an item. `page` (from 1) is used for a PDF
- * only and defaults to the first page.
+ * Asks Rust to open a dialog for one PDF and hold it as the pending crop PDF
+ * (design §6.10). Resolves to `null` when the dialog was cancelled. The open
+ * crop PDF stays as it is until `activateCropPdf`.
+ */
+export async function openCropPdf(): Promise<CropPdf | null> {
+  return invokeWrapped<CropPdf | null>("open_crop_pdf");
+}
+
+/**
+ * Makes the pending crop PDF the open one and drops the one before with its
+ * analysis worker. Rejects with `UnknownHandle` unless `id` is the pending PDF.
+ */
+export async function activateCropPdf(id: number): Promise<void> {
+  return invokeWrapped<void>("activate_crop_pdf", { id });
+}
+
+/** Drops the pending crop PDF if it is `id`; any other ID is ignored. */
+export async function discardCropPdf(id: number): Promise<void> {
+  return invokeWrapped<void>("discard_crop_pdf", { id });
+}
+
+/** Drops the open crop PDF and the pending one. */
+export async function closeCropPdf(): Promise<void> {
+  return invokeWrapped<void>("close_crop_pdf");
+}
+
+/**
+ * Opens the open crop PDF again with its password (design §6.8, §6.10). Rejects
+ * with `PasswordProtected` for a wrong password.
+ */
+export async function unlockCropPdf(
+  id: number,
+  password: string,
+): Promise<CropPdf> {
+  return invokeWrapped<CropPdf>("unlock_crop_pdf", { id, password });
+}
+
+/** Tells Rust where a drop goes: the lists or the crop tab (design §6.10). */
+export async function setDropTarget(target: DropTarget): Promise<void> {
+  return invokeWrapped<void>("set_drop_target", { target });
+}
+
+/** Lists the embedded images of a page of the open crop PDF (design §7.1). */
+export async function listPageImages(
+  id: number,
+  page: number,
+): Promise<PageImage[]> {
+  return invokeWrapped<PageImage[]>("list_page_images", { id, page });
+}
+
+/**
+ * Whether anything is drawn over an embedded image of a page of the open crop
+ * PDF (design §7.1).
+ */
+export async function checkOnTop(
+  id: number,
+  page: number,
+  imageIndex: number,
+): Promise<boolean> {
+  return invokeWrapped<boolean>("check_on_top", { id, page, imageIndex });
+}
+
+/**
+ * The candidates for cropping on a page of the open crop PDF (design §7.1).
+ * Rejects with `LayoutUnavailable` when the layout analysis cannot run.
+ */
+export async function detectLayout(
+  id: number,
+  page: number,
+): Promise<Candidate[]> {
+  return invokeWrapped<Candidate[]>("detect_layout", { id, page });
+}
+
+/**
+ * Fetches the PNG thumbnail of an item of a list or of the open crop PDF.
+ * `page` (from 1) is used for a PDF only and defaults to the first page.
+ * `maxSide` is the length of the longer side of a PDF page in pixels; it
+ * defaults to the thumbnail size and is refused for an image.
  */
 export async function getThumbnail(
   id: number,
   page?: number,
+  maxSide?: number,
 ): Promise<ArrayBuffer> {
-  return invokeWrapped<ArrayBuffer>("get_thumbnail", { id, page });
+  return invokeWrapped<ArrayBuffer>("get_thumbnail", { id, page, maxSide });
 }
 
 /** Subscribes to what a drop added to the lists (design §7.2). */
@@ -324,6 +416,15 @@ export async function onItemsDropped(
   handler: (payload: ItemsDropped) => void,
 ): Promise<UnlistenFn> {
   return listen<ItemsDropped>(ITEMS_DROPPED_EVENT, (event) => {
+    handler(event.payload);
+  });
+}
+
+/** Subscribes to what a drop in the crop tab opened (design §7.2). */
+export async function onCropDropped(
+  handler: (payload: CropDropped) => void,
+): Promise<UnlistenFn> {
+  return listen<CropDropped>(CROP_DROPPED_EVENT, (event) => {
     handler(event.payload);
   });
 }

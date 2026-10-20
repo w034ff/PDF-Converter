@@ -2,9 +2,15 @@ import { emit } from "@tauri-apps/api/event";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import {
   addImages,
+  activateCropPdf,
   addPdfs,
   cancelJob,
+  checkOnTop,
   checkPageRange,
+  closeCropPdf,
+  CROP_DROPPED_EVENT,
+  detectLayout,
+  discardCropPdf,
   getSettings,
   getThumbnail,
   isErrorCode,
@@ -17,24 +23,33 @@ import {
   JOB_FINISHED_EVENT,
   JOB_ITEM_EVENT,
   JOB_PROGRESS_EVENT,
+  listPageImages,
   normalizeIpcError,
+  onCropDropped,
   onItemsDropped,
   onJobFinished,
   onJobItem,
   onJobProgress,
+  openCropPdf,
   pickOutputDir,
   removeItems,
   saveMergedPdf,
   saveSettings,
+  setDropTarget,
   startImagesToPdfs,
   startPdfsToImages,
+  unlockCropPdf,
   unlockPdf,
   type AddResult,
+  type Candidate,
+  type CropDropped,
+  type CropPdf,
   type ImageItem,
   type ItemsDropped,
   type JobFinishedPayload,
   type JobItemPayload,
   type JobProgressPayload,
+  type PageImage,
   type PageSizeChoice,
   type PdfItem,
   type Settings,
@@ -145,6 +160,167 @@ describe("ipc", () => {
         ["get_thumbnail", { id: 5, page: 2 }],
         ["get_thumbnail", { id: 5, page: undefined }],
       ]);
+    });
+
+    it("sends maxSide to get_thumbnail only when it is given", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return new ArrayBuffer(4);
+      });
+
+      await getThumbnail(5, 2, 1200);
+      expect(calls).toEqual([
+        ["get_thumbnail", { id: 5, page: 2, maxSide: 1200 }],
+      ]);
+    });
+
+    it("asks open_crop_pdf for the pending PDF and returns null when cancelled", async () => {
+      const cropPdf: CropPdf = {
+        id: 7,
+        name: "a.pdf",
+        pageCount: 1,
+        pages: [{ widthPt: 595.28, heightPt: 841.89 }],
+        error: null,
+      };
+      const calls: unknown[] = [];
+      let answer: CropPdf | null = cropPdf;
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return answer;
+      });
+
+      expect(await openCropPdf()).toEqual(cropPdf);
+      answer = null;
+      expect(await openCropPdf()).toBeNull();
+      expect(calls).toEqual([
+        ["open_crop_pdf", {}],
+        ["open_crop_pdf", {}],
+      ]);
+    });
+
+    it("sends only the ID to activate_crop_pdf, discard_crop_pdf and close_crop_pdf", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await activateCropPdf(3);
+      await discardCropPdf(4);
+      await closeCropPdf();
+      expect(calls).toEqual([
+        ["activate_crop_pdf", { id: 3 }],
+        ["discard_crop_pdf", { id: 4 }],
+        ["close_crop_pdf", {}],
+      ]);
+    });
+
+    it("sends id and password to unlock_crop_pdf and returns the PDF", async () => {
+      const cropPdf: CropPdf = {
+        id: 3,
+        name: "encrypted.pdf",
+        pageCount: 2,
+        pages: [
+          { widthPt: 595.28, heightPt: 841.89 },
+          { widthPt: 595.28, heightPt: 841.89 },
+        ],
+        error: null,
+      };
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return cropPdf;
+      });
+
+      expect(await unlockCropPdf(3, "secret password")).toEqual(cropPdf);
+      expect(calls).toEqual([
+        ["unlock_crop_pdf", { id: 3, password: "secret password" }],
+      ]);
+    });
+
+    it("sends the target to set_drop_target", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await setDropTarget("crop");
+      await setDropTarget("lists");
+      expect(calls).toEqual([
+        ["set_drop_target", { target: "crop" }],
+        ["set_drop_target", { target: "lists" }],
+      ]);
+    });
+
+    it("asks list_page_images for the page and returns the images", async () => {
+      const images: PageImage[] = [
+        {
+          imageIndex: 0,
+          rectPt: [10, 20, 110, 220],
+          pxWidth: 400,
+          pxHeight: 800,
+          native: true,
+        },
+      ];
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return images;
+      });
+
+      expect(await listPageImages(3, 2)).toEqual(images);
+      expect(calls).toEqual([["list_page_images", { id: 3, page: 2 }]]);
+    });
+
+    it("sends imageIndex in camelCase to check_on_top", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return false;
+      });
+
+      expect(await checkOnTop(3, 2, 5)).toBe(false);
+      expect(calls).toEqual([
+        ["check_on_top", { id: 3, page: 2, imageIndex: 5 }],
+      ]);
+    });
+
+    it("asks detect_layout for the page and returns the candidates", async () => {
+      const candidates: Candidate[] = [
+        {
+          kind: "photo",
+          score: 0.9,
+          rectPt: [10, 20, 110, 220],
+          imageIndex: 0,
+        },
+        {
+          kind: "chart",
+          score: 0.8,
+          rectPt: [10, 300, 110, 400],
+          imageIndex: null,
+        },
+      ];
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return candidates;
+      });
+
+      expect(await detectLayout(3, 1)).toEqual(candidates);
+      expect(calls).toEqual([["detect_layout", { id: 3, page: 1 }]]);
+    });
+
+    it("rejects detect_layout with LayoutUnavailable as Rust sent it", async () => {
+      mockIPC(() => {
+        throw { code: "LayoutUnavailable", detail: "model missing" };
+      });
+
+      await expect(detectLayout(3, 1)).rejects.toEqual({
+        code: "LayoutUnavailable",
+        detail: "model missing",
+      });
     });
 
     it("rejects with the { code, detail } Rust returned", async () => {
@@ -402,6 +578,7 @@ describe("ipc", () => {
     it("knows the codes of design §6.6", () => {
       expect(isErrorCode("PasswordProtected")).toBe(true);
       expect(isErrorCode("ConversionRunning")).toBe(true);
+      expect(isErrorCode("LayoutUnavailable")).toBe(true);
       expect(isErrorCode("PdfiumUnavailable")).toBe(false);
       expect(isErrorCode("toString")).toBe(false);
       expect(isErrorCode(1)).toBe(false);
@@ -732,6 +909,42 @@ describe("ipc", () => {
       await emit(ITEMS_DROPPED_EVENT, payload);
 
       expect(received).toEqual([payload]);
+    });
+
+    it("passes the payload of crop-dropped to the handler", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: CropDropped[] = [];
+      const unlisten = await onCropDropped((payload) => {
+        received.push(payload);
+      });
+      const payload: CropDropped = {
+        cropPdf: null,
+        notOnePdf: true,
+        error: null,
+      };
+
+      await emit(CROP_DROPPED_EVENT, payload);
+      unlisten();
+      await emit(CROP_DROPPED_EVENT, payload);
+
+      expect(received).toEqual([payload]);
+    });
+
+    it("keeps crop-dropped apart from items-dropped", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: ItemsDropped[] = [];
+      const unlisten = await onItemsDropped((payload) => {
+        received.push(payload);
+      });
+
+      await emit(CROP_DROPPED_EVENT, {
+        cropPdf: null,
+        notOnePdf: true,
+        error: null,
+      });
+      unlisten();
+
+      expect(received).toEqual([]);
     });
 
     it("handles job-progress events", async () => {

@@ -25,6 +25,8 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
     "保存先のフォルダが見つかりません。フォルダを選び直してください",
   OutputDirNotWritable: "保存先のフォルダに書き込めません",
   CmykNotAllowedInPdfA: "PDF/A では CMYK の画像を使えません",
+  LayoutUnavailable:
+    "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
 };
 
 export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
@@ -47,6 +49,8 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
   OutputDirMissing: "The output folder can't be found. Choose a folder again.",
   OutputDirNotWritable: "Can't write to the output folder",
   CmykNotAllowedInPdfA: "CMYK images can't be used in PDF/A",
+  LayoutUnavailable:
+    "Can't show suggestions (layout analysis is unavailable). You can still select areas by hand.",
 };
 
 /**
