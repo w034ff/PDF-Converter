@@ -57,12 +57,15 @@ function CropNotices() {
       />,
     );
   } else if (openNotice?.kind === "notOnePdf") {
-    notices.push(<NoticeDisplay key="open" message={t.crop.notOnePdf} />);
+    notices.push(
+      <NoticeDisplay key="open" icon="info" message={t.crop.notOnePdf} />,
+    );
   }
   if (crop.layoutUnavailable) {
     notices.push(
       <NoticeDisplay
         key="layout"
+        icon="info"
         message={formatErrorMessage(
           "LayoutUnavailable",
           null,
