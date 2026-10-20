@@ -409,6 +409,14 @@ describe("state reducers", () => {
           dpi: 300,
           outputDir: null,
         },
+        crop: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          photoNative: true,
+          photoOnly: false,
+          outputDir: null,
+        },
       });
       expect(statePreset.imagesToPdf.orientation).toBe("portrait");
       expect(statePreset.imagesToPdf.pdfA).toBe(true);
@@ -432,6 +440,14 @@ describe("state reducers", () => {
           format: "webp",
           colorMode: "color",
           dpi: 600,
+          outputDir: null,
+        },
+        crop: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          photoNative: true,
+          photoOnly: false,
           outputDir: null,
         },
       });

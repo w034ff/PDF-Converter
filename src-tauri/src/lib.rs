@@ -11,6 +11,7 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
 pub mod commands;
 pub mod crop;
+pub mod crop_export;
 pub mod error;
 pub mod items;
 pub mod jobs;
@@ -47,6 +48,8 @@ pub struct AppState {
     pub images_output_dir: Arc<Mutex<Option<PathBuf>>>,
     /// Output folder for PDF to images conversion (design §6.5).
     pub pdfs_output_dir: Arc<Mutex<Option<PathBuf>>>,
+    /// Output folder for crop exports (design §6.5).
+    pub crop_output_dir: Arc<Mutex<Option<PathBuf>>>,
     /// The settings in memory and the file they are written to (design §6.7).
     pub settings: Arc<SettingsStore>,
 }
@@ -62,6 +65,7 @@ impl AppState {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             images_output_dir: Arc::new(Mutex::new(None)),
             pdfs_output_dir: Arc::new(Mutex::new(None)),
+            crop_output_dir: Arc::new(Mutex::new(None)),
             settings: Arc::new(SettingsStore::default()),
         }
     }
@@ -121,6 +125,8 @@ pub fn run() {
             commands::list_page_images,
             commands::check_on_top,
             commands::detect_layout,
+            commands::start_detect_all,
+            commands::start_crop_export,
             commands::cancel_job,
         ])
         .on_window_event(|window, event| {

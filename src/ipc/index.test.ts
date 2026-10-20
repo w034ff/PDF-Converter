@@ -23,6 +23,7 @@ import {
   JOB_FINISHED_EVENT,
   JOB_ITEM_EVENT,
   JOB_PROGRESS_EVENT,
+  LAYOUT_PAGE_EVENT,
   listPageImages,
   normalizeIpcError,
   onCropDropped,
@@ -30,12 +31,15 @@ import {
   onJobFinished,
   onJobItem,
   onJobProgress,
+  onLayoutPage,
   openCropPdf,
   pickOutputDir,
   removeItems,
   saveMergedPdf,
   saveSettings,
   setDropTarget,
+  startCropExport,
+  startDetectAll,
   startImagesToPdfs,
   startPdfsToImages,
   unlockCropPdf,
@@ -44,11 +48,13 @@ import {
   type Candidate,
   type CropDropped,
   type CropPdf,
+  type CropRegionInput,
   type ImageItem,
   type ItemsDropped,
   type JobFinishedPayload,
   type JobItemPayload,
   type JobProgressPayload,
+  type LayoutPagePayload,
   type PageImage,
   type PageSizeChoice,
   type PdfItem,
@@ -390,6 +396,14 @@ describe("ipc", () => {
           dpi: 150,
           outputDir: null,
         },
+        crop: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          photoNative: true,
+          photoOnly: false,
+          outputDir: null,
+        },
       };
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
@@ -476,6 +490,17 @@ describe("ipc", () => {
 
       expect(await pickOutputDir("pdfToImages")).toEqual({ dirLabel: "out" });
       expect(calls).toEqual([["pick_output_dir", { kind: "pdfToImages" }]]);
+    });
+
+    it("asks pick_output_dir for the crop folder", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return { dirLabel: "crops" };
+      });
+
+      expect(await pickOutputDir("crop")).toEqual({ dirLabel: "crops" });
+      expect(calls).toEqual([["pick_output_dir", { kind: "crop" }]]);
     });
 
     it("returns null from pick_output_dir when the dialog was cancelled", async () => {
@@ -574,6 +599,68 @@ describe("ipc", () => {
     });
   });
 
+  describe("crop commands", () => {
+    it("calls startDetectAll with the id", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await startDetectAll(3);
+      expect(calls).toEqual([["start_detect_all", { id: 3 }]]);
+    });
+
+    it("rejects startDetectAll with the { code, detail } Rust returned", async () => {
+      mockIPC(() => {
+        throw { code: "ConversionRunning", detail: null };
+      });
+
+      await expect(startDetectAll(3)).rejects.toEqual({
+        code: "ConversionRunning",
+        detail: null,
+      });
+    });
+
+    it("calls startCropExport with camelCase arguments and the ranges as they are", async () => {
+      const regions: CropRegionInput[] = [
+        { key: 1, page: 1, rectPt: [10, 20, 110, 220], imageIndex: 0 },
+        { key: 2, page: 2, rectPt: [0, 0, 50, 60], imageIndex: null },
+      ];
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await startCropExport(3, regions, "webp", "gray", 300, false, true);
+      expect(calls).toEqual([
+        [
+          "start_crop_export",
+          {
+            id: 3,
+            regions,
+            format: "webp",
+            colorMode: "gray",
+            dpi: 300,
+            photoNative: false,
+            photoOnly: true,
+          },
+        ],
+      ]);
+    });
+
+    it("rejects startCropExport with InvalidParams as Rust returned it", async () => {
+      mockIPC(() => {
+        throw { code: "InvalidParams", detail: null };
+      });
+
+      await expect(
+        startCropExport(3, [], "png", "color", 150, true, false),
+      ).rejects.toEqual({ code: "InvalidParams", detail: null });
+    });
+  });
+
   describe("errors", () => {
     it("knows the codes of design §6.6", () => {
       expect(isErrorCode("PasswordProtected")).toBe(true);
@@ -626,6 +713,14 @@ describe("ipc", () => {
           format: "png",
           colorMode: "color",
           dpi: 150,
+          outputDir: null,
+        },
+        crop: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          photoNative: true,
+          photoOnly: false,
           outputDir: null,
         },
       };
@@ -805,6 +900,30 @@ describe("ipc", () => {
           pdfToImages: { ...valid.pdfToImages, dpi: 150.5 },
         }),
       ).toBe(false);
+
+      // The crop part is checked as deeply as the others, and must be there
+      const withCrop = (change: Record<string, unknown>) => ({
+        ...valid,
+        crop: { ...valid.crop, ...change },
+      });
+      expect(isSettings(withCrop({ format: "webp", dpi: 1000 }))).toBe(true);
+      expect(isSettings(withCrop({ colorMode: "gray", dpi: 36 }))).toBe(true);
+      expect(
+        isSettings(withCrop({ photoNative: false, photoOnly: true })),
+      ).toBe(true);
+      expect(isSettings(withCrop({ outputDir: { dirLabel: "crops" } }))).toBe(
+        true,
+      );
+      expect(isSettings({ ...valid, crop: undefined })).toBe(false);
+      expect(isSettings({ ...valid, crop: null })).toBe(false);
+      expect(isSettings(withCrop({ format: "gif" }))).toBe(false);
+      expect(isSettings(withCrop({ colorMode: "sepia" }))).toBe(false);
+      expect(isSettings(withCrop({ dpi: 35 }))).toBe(false);
+      expect(isSettings(withCrop({ dpi: 1001 }))).toBe(false);
+      expect(isSettings(withCrop({ dpi: 150.5 }))).toBe(false);
+      expect(isSettings(withCrop({ photoNative: "true" }))).toBe(false);
+      expect(isSettings(withCrop({ photoOnly: 0 }))).toBe(false);
+      expect(isSettings(withCrop({ outputDir: "crops" }))).toBe(false);
     });
 
     describe("isPageSizePt", () => {
@@ -1008,6 +1127,58 @@ describe("ipc", () => {
         detail: "too large",
       });
       expect(received[0].failedPages).toEqual([2]);
+    });
+
+    it("passes the payload of layout-page to the handler", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: LayoutPagePayload[] = [];
+      const unlisten = await onLayoutPage((payload) => {
+        received.push(payload);
+      });
+      const found: LayoutPagePayload = {
+        id: 3,
+        page: 1,
+        candidates: [
+          {
+            kind: "chart",
+            score: 0.8,
+            rectPt: [10, 300, 110, 400],
+            imageIndex: null,
+          },
+        ],
+        error: null,
+      };
+      const failed: LayoutPagePayload = {
+        id: 3,
+        page: 2,
+        candidates: [],
+        error: { code: "WorkerTimeout", detail: null },
+      };
+
+      await emit(LAYOUT_PAGE_EVENT, found);
+      await emit(LAYOUT_PAGE_EVENT, failed);
+      unlisten();
+      await emit(LAYOUT_PAGE_EVENT, found);
+
+      expect(received).toEqual([found, failed]);
+    });
+
+    it("keeps layout-page apart from job-item", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: JobItemPayload[] = [];
+      const unlisten = await onJobItem((payload) => {
+        received.push(payload);
+      });
+
+      await emit(LAYOUT_PAGE_EVENT, {
+        id: 3,
+        page: 1,
+        candidates: [],
+        error: null,
+      });
+      unlisten();
+
+      expect(received).toEqual([]);
     });
 
     it("handles job-finished events", async () => {

@@ -6,8 +6,9 @@
 //! second copy of a file, which would keep a PDF that is in the list from being
 //! cropped, and the commands of the lists must not act on a crop PDF.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[cfg(feature = "test-hooks")]
@@ -29,7 +30,12 @@ use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
     kind_of_extension, open_in_pool, pdf_thumbnail, request_on_pdf, unexpected_response,
 };
+use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload};
 use crate::worker_pool::{WorkerPool, WorkerPoolError};
+
+/// Name of the event that carries the candidates of one page of
+/// `start_detect_all` (design §7.2).
+pub const LAYOUT_PAGE_EVENT: &str = "layout-page";
 
 /// Where the next drop goes: the lists of the other tabs or the crop tab
 /// (design §6.10). It is a value of its own rather than a flag so that a third
@@ -92,6 +98,20 @@ pub struct Candidate {
     pub rect_pt: [f64; 4],
     /// The embedded image behind a photo; `null` for the other kinds.
     pub image_index: Option<u32>,
+}
+
+/// The payload of the `layout-page` event: what `start_detect_all` found on
+/// one page, or why it could not (design §7.2).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutPagePayload {
+    /// The crop PDF the page belongs to.
+    #[ts(type = "number")]
+    pub id: u64,
+    pub page: u32,
+    /// Empty when `error` is set.
+    pub candidates: Vec<Candidate>,
+    pub error: Option<IpcError>,
 }
 
 /// The payload of the `crop-dropped` event (design §7.2).
@@ -203,8 +223,17 @@ struct Slots {
 /// lock is not held while a worker answers.
 struct Snapshot {
     open: Request,
+    name: String,
     page_count: u32,
     analyzer: Arc<Analyzer>,
+}
+
+/// What a crop export needs of the open PDF (design §6.10).
+pub(crate) struct ExportTarget {
+    pub(crate) open: Request,
+    pub(crate) name: String,
+    pub(crate) page_count: u32,
+    pub(crate) pages: Vec<PageSizePt>,
 }
 
 /// The crop tab's part of [`AppState`]: the open PDF, the pending PDF, and
@@ -289,13 +318,13 @@ impl CropState {
         drop(pending);
     }
 
-    /// The open PDF `id`, ready to be asked about.
+    /// Reads the open PDF `id` under the lock, if it can be asked about.
     ///
     /// # Errors
     ///
     /// `UnknownHandle` unless `id` is the open PDF, and the PDF's own error if
     /// it could not be opened or needs its password.
-    fn snapshot(&self, id: u64) -> Result<Snapshot, IpcError> {
+    fn read_usable<T>(&self, id: u64, read: impl FnOnce(&OpenPdf) -> T) -> Result<T, IpcError> {
         let slots = self.lock();
         let open = slots
             .open
@@ -305,10 +334,34 @@ impl CropState {
         if let Some(error) = &open.entry.error {
             return Err(error.clone());
         }
-        Ok(Snapshot {
+        Ok(read(open))
+    }
+
+    /// The open PDF `id`, ready to be asked about.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::read_usable`].
+    fn snapshot(&self, id: u64) -> Result<Snapshot, IpcError> {
+        self.read_usable(id, |open| Snapshot {
             open: open.entry.open_request(),
+            name: open.entry.name.clone(),
             page_count: open.entry.page_count,
             analyzer: Arc::clone(&open.analyzer),
+        })
+    }
+
+    /// The open PDF `id`, ready to be exported.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::read_usable`].
+    pub(crate) fn export_target(&self, id: u64) -> Result<ExportTarget, IpcError> {
+        self.read_usable(id, |open| ExportTarget {
+            open: open.entry.open_request(),
+            name: open.entry.name.clone(),
+            page_count: open.entry.page_count,
+            pages: open.entry.pages.clone(),
         })
     }
 
@@ -395,6 +448,11 @@ impl CropState {
 struct Analyzer {
     pool: WorkerPool,
     state: Mutex<AnalyzerState>,
+    /// The pages that have been analyzed without an error, by
+    /// [`Self::detect`]. It is not in `state`, which is locked while a worker
+    /// answers, so that asking for it never waits for an analysis. It lives and
+    /// dies with the analyzer, that is with the PDF it belongs to.
+    analyzed: Mutex<BTreeSet<u32>>,
     #[cfg(feature = "test-hooks")]
     spawns: Arc<AtomicUsize>,
 }
@@ -448,6 +506,7 @@ impl Analyzer {
         Self {
             pool,
             state: Mutex::new(AnalyzerState::default()),
+            analyzed: Mutex::new(BTreeSet::new()),
             #[cfg(feature = "test-hooks")]
             spawns,
         }
@@ -472,8 +531,23 @@ impl Analyzer {
             None => self.start()?,
         };
         let candidates = self.exchange(&mut running, open, page);
-        settle(&mut state, running, candidates)
-            .map(|candidates| candidates.iter().map(Candidate::from).collect())
+        let candidates = settle(&mut state, running, candidates)?;
+        self.analyzed
+            .lock()
+            .expect("the analyzed pages are never locked across a panic")
+            .insert(page);
+        Ok(candidates.iter().map(Candidate::from).collect())
+    }
+
+    /// The pages of 1..=`page_count` that [`Self::detect`] has not answered.
+    fn pending_pages(&self, page_count: u32) -> Vec<u32> {
+        let analyzed = self
+            .analyzed
+            .lock()
+            .expect("the analyzed pages are never locked across a panic");
+        (1..=page_count)
+            .filter(|page| !analyzed.contains(page))
+            .collect()
     }
 
     fn start(&self) -> Result<Running, IpcError> {
@@ -689,6 +763,132 @@ pub fn detect_layout(state: &AppState, id: u64, page: u32) -> Result<Vec<Candida
     let snapshot = state.crop.snapshot(id)?;
     let page = checked_page(Some(page), snapshot.page_count)?;
     snapshot.analyzer.detect(&snapshot.open, page)
+}
+
+/// What `start_detect_all` reports through: the progress, the answer for each
+/// page (`layout-page`) and the end of the job.
+pub struct DetectAllCallbacks<FProg, FPage, FFin> {
+    pub on_progress: FProg,
+    pub on_page: FPage,
+    pub on_finished: FFin,
+}
+
+/// Starts the layout analysis of every page of the open PDF `id` that has not
+/// been analyzed, in the background, as a conversion (design §6.10, §7.1).
+///
+/// The pages go through the analysis worker of the PDF one at a time, in page
+/// order, taking turns with [`detect_layout`] for its lock. A page that
+/// `detect_layout` answered, or an earlier run did, is left out: the screen
+/// has its candidates. `LayoutUnavailable` ends the run, since the worker
+/// keeps answering it; any other error fails the page and the run goes on.
+///
+/// # Errors
+///
+/// `ConversionRunning` during a conversion, `UnknownHandle` unless `id` is the
+/// open PDF, and its own error if it could not be opened. Nothing starts then.
+pub fn start_detect_all_internal<FProg, FPage, FFin>(
+    state: &AppState,
+    id: u64,
+    callbacks: DetectAllCallbacks<FProg, FPage, FFin>,
+) -> Result<(), IpcError>
+where
+    FProg: Fn(JobProgressPayload) + Send + 'static,
+    FPage: Fn(LayoutPagePayload) + Send + 'static,
+    FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
+{
+    let guard = jobs::begin_conversion(state)?;
+    let snapshot = state.crop.snapshot(id)?;
+    let pages = snapshot.analyzer.pending_pages(snapshot.page_count);
+    let failed_if_it_panics = u32::try_from(pages.len()).unwrap_or(u32::MAX);
+    let DetectAllCallbacks {
+        on_progress,
+        on_page,
+        on_finished,
+    } = callbacks;
+    jobs::spawn_conversion(
+        state,
+        guard,
+        on_finished,
+        failed_if_it_panics,
+        move |state, finish| {
+            run_detect_all(
+                &state.cancel_flag,
+                id,
+                &snapshot,
+                &pages,
+                &on_progress,
+                &on_page,
+                finish,
+            );
+        },
+    );
+    Ok(())
+}
+
+fn run_detect_all(
+    cancel_flag: &AtomicBool,
+    id: u64,
+    snapshot: &Snapshot,
+    pages: &[u32],
+    on_progress: &dyn Fn(JobProgressPayload),
+    on_page: &dyn Fn(LayoutPagePayload),
+    finish: FinishJob,
+) {
+    let total = u32::try_from(pages.len()).unwrap_or(u32::MAX);
+    let progress = |done: u32| {
+        on_progress(JobProgressPayload {
+            done,
+            total,
+            current: Some(snapshot.name.clone()),
+        });
+    };
+    let (mut succeeded, mut failed, mut reached, mut cancelled) = (0, 0, 0, false);
+    if total > 0 {
+        progress(0);
+    }
+    for &page in pages {
+        if cancel_flag.load(Ordering::SeqCst) {
+            cancelled = true;
+            break;
+        }
+        let answer = snapshot.analyzer.detect(&snapshot.open, page);
+        reached += 1;
+        let (payload, unavailable) = match answer {
+            Ok(candidates) => {
+                succeeded += 1;
+                let payload = LayoutPagePayload {
+                    id,
+                    page,
+                    candidates,
+                    error: None,
+                };
+                (payload, false)
+            }
+            Err(error) => {
+                failed += 1;
+                let unavailable = error.code == ErrorCode::LayoutUnavailable;
+                let payload = LayoutPagePayload {
+                    id,
+                    page,
+                    candidates: Vec::new(),
+                    error: Some(error),
+                };
+                (payload, unavailable)
+            }
+        };
+        on_page(payload);
+        progress(reached);
+        if unavailable {
+            break;
+        }
+    }
+    finish(JobFinishedPayload {
+        succeeded,
+        failed,
+        no_pages: 0,
+        unprocessed: total - reached,
+        cancelled,
+    });
 }
 
 /// What a drop in the crop tab opens (design §6.10, §7.2): the one PDF file

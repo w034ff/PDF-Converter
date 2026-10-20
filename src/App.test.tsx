@@ -41,6 +41,14 @@ const SAVED_SETTINGS: Settings = {
     dpi: 300,
     outputDir: { dirLabel: "Rendered" },
   },
+  crop: {
+    format: "png",
+    colorMode: "color",
+    dpi: 150,
+    photoNative: true,
+    photoOnly: false,
+    outputDir: null,
+  },
 };
 
 const ABOUT_READY = {

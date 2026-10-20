@@ -329,6 +329,76 @@ impl Drop for RunningGuard {
     }
 }
 
+/// Marks a conversion as running and clears the cancel flag (design §6.5,
+/// §7.1). The guard puts `is_running` back when it is dropped, so a start that
+/// is refused afterwards needs no cleanup of its own.
+///
+/// # Errors
+///
+/// `ConversionRunning` if a conversion is running already.
+pub(crate) fn begin_conversion(state: &AppState) -> Result<RunningGuard, IpcError> {
+    if state
+        .is_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
+    state.cancel_flag.store(false, Ordering::SeqCst);
+    Ok(RunningGuard::new(Arc::clone(&state.is_running)))
+}
+
+/// Sends the `job-finished` of a conversion, once.
+pub(crate) type FinishJob = Box<dyn FnOnce(JobFinishedPayload) + Send + Sync>;
+
+/// Runs `run` on a thread of its own as the conversion that `guard` marks.
+/// `run` must send the end of the job through the [`FinishJob`] it is given;
+/// `is_running` is put back before the callback is called. If `run` panics, a
+/// `job-finished` with `failed_if_it_panics` failures is sent instead, so the
+/// screen never waits for a job that is gone.
+pub(crate) fn spawn_conversion<FFin, Run>(
+    state: &AppState,
+    guard: RunningGuard,
+    on_finished: FFin,
+    failed_if_it_panics: u32,
+    run: Run,
+) where
+    FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
+    Run: FnOnce(&AppState, FinishJob) + Send + 'static,
+{
+    let state = state.clone();
+    std::thread::spawn(move || {
+        let pending = Arc::new(Mutex::new(Some(guard.wrap_on_finished(on_finished))));
+        let finish: FinishJob = {
+            let pending = Arc::clone(&pending);
+            Box::new(move |payload| {
+                if let Ok(mut slot) = pending.lock()
+                    && let Some(finish) = slot.take()
+                {
+                    finish(payload);
+                }
+            })
+        };
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run(&state, finish);
+        }));
+        if outcome.is_err()
+            && let Ok(mut slot) = pending.lock()
+            && let Some(finish) = slot.take()
+        {
+            finish(JobFinishedPayload {
+                succeeded: 0,
+                failed: failed_if_it_panics,
+                no_pages: 0,
+                unprocessed: 0,
+                cancelled: state.cancel_flag.load(Ordering::SeqCst),
+            });
+        }
+        // Dropping the guard puts `is_running` back if `run` never finished.
+        drop(guard);
+    });
+}
+
 /// Lists existing file and directory names directly under `dir` (design §5.2, §6.4).
 pub fn list_existing_files(dir: &Path) -> Result<HashSet<String>, IpcError> {
     let mut set = HashSet::new();
