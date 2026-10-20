@@ -8,6 +8,7 @@ import type { Candidate } from "./generated/Candidate";
 import type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
 import type { CropDropped } from "./generated/CropDropped";
 import type { CropPdf } from "./generated/CropPdf";
+import type { CropRegionInput } from "./generated/CropRegionInput";
 import type { DropTarget } from "./generated/DropTarget";
 import type { ErrorCode } from "./generated/ErrorCode";
 import type { ImageItem } from "./generated/ImageItem";
@@ -16,6 +17,7 @@ import type { ItemsDropped } from "./generated/ItemsDropped";
 import type { JobFinishedPayload } from "./generated/JobFinishedPayload";
 import type { JobItemPayload } from "./generated/JobItemPayload";
 import type { JobProgressPayload } from "./generated/JobProgressPayload";
+import type { LayoutPagePayload } from "./generated/LayoutPagePayload";
 import type { OutputDirLabel } from "./generated/OutputDirLabel";
 import type { OutputKind } from "./generated/OutputKind";
 import type { PageImage } from "./generated/PageImage";
@@ -37,7 +39,10 @@ export type { Candidate } from "./generated/Candidate";
 export type { CandidateKind } from "./generated/CandidateKind";
 export type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
 export type { CropDropped } from "./generated/CropDropped";
+export type { CropOptions } from "./generated/CropOptions";
 export type { CropPdf } from "./generated/CropPdf";
+export type { CropRegionInput } from "./generated/CropRegionInput";
+export type { CropSettings } from "./generated/CropSettings";
 export type { DropTarget } from "./generated/DropTarget";
 export type { ErrorCode } from "./generated/ErrorCode";
 export type { ImageFormatName } from "./generated/ImageFormatName";
@@ -51,6 +56,7 @@ export type { JobItemPayload } from "./generated/JobItemPayload";
 export type { JobItemStatus } from "./generated/JobItemStatus";
 export type { JobProgressPayload } from "./generated/JobProgressPayload";
 export type { Language } from "./generated/Language";
+export type { LayoutPagePayload } from "./generated/LayoutPagePayload";
 export type { OutputDirLabel } from "./generated/OutputDirLabel";
 export type { OutputKind } from "./generated/OutputKind";
 export type { OutputMode } from "./generated/OutputMode";
@@ -84,6 +90,9 @@ export const JOB_ITEM_EVENT = "job-item";
 
 /** Name of the event Rust emits when a job finishes (design §7.2). */
 export const JOB_FINISHED_EVENT = "job-finished";
+
+/** Name of the event Rust emits for each page of `startDetectAll` (design §7.2). */
+export const LAYOUT_PAGE_EVENT = "layout-page";
 
 const ERROR_CODES = {
   UnsupportedFormat: true,
@@ -417,6 +426,42 @@ export async function detectLayout(
 }
 
 /**
+ * Starts the layout analysis of every page of the open crop PDF that has not
+ * been analyzed, as a conversion (design §6.10, §7.1). Each page is reported by
+ * `layout-page`, the progress and the end by the `job-*` events. Rejects with
+ * `ConversionRunning` during a conversion.
+ */
+export async function startDetectAll(id: number): Promise<void> {
+  return invokeWrapped<void>("start_detect_all", { id });
+}
+
+/**
+ * Starts writing ranges of the open crop PDF as image files into the crop
+ * output folder, in the background (design §6.10, §7.1). Each range is
+ * reported by `job-item` with its `key` as the `id`. Nothing starts, and it
+ * rejects with `InvalidParams`, when a value is out of range (design §7.1).
+ */
+export async function startCropExport(
+  id: number,
+  regions: CropRegionInput[],
+  format: RenderFormatChoice,
+  colorMode: RenderColorChoice,
+  dpi: number,
+  photoNative: boolean,
+  photoOnly: boolean,
+): Promise<void> {
+  return invokeWrapped<void>("start_crop_export", {
+    id,
+    regions,
+    format,
+    colorMode,
+    dpi,
+    photoNative,
+    photoOnly,
+  });
+}
+
+/**
  * Fetches the PNG thumbnail of an item of a list or of the open crop PDF.
  * `page` (from 1) is used for a PDF only and defaults to the first page.
  * `maxSide` is the length of the longer side of a PDF page in pixels; it
@@ -541,6 +586,15 @@ export async function onJobFinished(
   handler: (payload: JobFinishedPayload) => void,
 ): Promise<UnlistenFn> {
   return listen<JobFinishedPayload>(JOB_FINISHED_EVENT, (event) => {
+    handler(event.payload);
+  });
+}
+
+/** Subscribes to the answer for each page of `startDetectAll` (design §7.2). */
+export async function onLayoutPage(
+  handler: (payload: LayoutPagePayload) => void,
+): Promise<UnlistenFn> {
+  return listen<LayoutPagePayload>(LAYOUT_PAGE_EVENT, (event) => {
     handler(event.payload);
   });
 }
