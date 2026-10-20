@@ -176,3 +176,9 @@ fn recovers_after_worker_times_out() {
         .expect("Hello should succeed on fresh worker");
     assert_eq!(resp, Response::Hello);
 }
+
+#[test]
+fn the_about_check_starts_a_worker_that_loads_pdfium() {
+    let pool = WorkerPool::new(test_pool_config(1));
+    assert_eq!(pdf_converter_lib::commands::check_worker(&pool), Ok(()));
+}

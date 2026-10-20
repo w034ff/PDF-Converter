@@ -5,11 +5,10 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use pdfconv_core::IMAGE_EXTENSIONS;
-use pdfconv_worker::WORKER_FLAG;
-use pdfconv_worker::client::{OPEN_TIMEOUT, WorkerError, WorkerProcess};
+use pdfconv_worker::client::WorkerError;
 use pdfconv_worker::protocol::Request;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use ts_rs::TS;
 
@@ -22,6 +21,7 @@ use crate::jobs::{
     RenderFormatChoice, SaveMergedPdfResult, pdf_conformance,
 };
 use crate::settings::{self, OutputDirLabel, OutputKind, Settings, SettingsInput};
+use crate::worker_pool::WorkerPool;
 
 /// Name of the image filter of the file dialog.
 const IMAGE_FILTER_NAME: &str = "Images";
@@ -46,7 +46,8 @@ pub struct AboutInfo {
 #[tauri::command]
 pub async fn get_about(app: AppHandle) -> AboutInfo {
     let version = app.package_info().version.to_string();
-    let check = tauri::async_runtime::spawn_blocking(move || check_worker(&app)).await;
+    let pool = app.state::<AppState>().pool.clone();
+    let check = tauri::async_runtime::spawn_blocking(move || check_worker(&pool)).await;
     let pdfium_error = match check {
         Ok(Ok(())) => None,
         Ok(Err(e)) => Some(e),
@@ -59,15 +60,17 @@ pub async fn get_about(app: AppHandle) -> AboutInfo {
     }
 }
 
-fn check_worker(app: &AppHandle) -> Result<(), String> {
-    let library_dir = crate::pdfium::library_dir(app).map_err(|e| e.to_string())?;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut worker = WorkerProcess::spawn(
-        exe.as_os_str(),
-        [WORKER_FLAG.as_ref(), library_dir.as_os_str()],
-    )
-    .map_err(|e| format!("{e:?}"))?;
-    match worker.request(&Request::Hello, OPEN_TIMEOUT) {
+/// Starts a worker with the pool's arguments, outside the pool, and asks it to
+/// load pdfium. The arguments are the pool's so that the check cannot fall
+/// behind what a worker needs to start (design §5.4).
+///
+/// # Errors
+///
+/// Returns why the worker could not start or load pdfium.
+pub fn check_worker(pool: &WorkerPool) -> Result<(), String> {
+    let mut worker = pool.spawn_dedicated().map_err(|e| e.to_string())?;
+    let hello = Request::Hello;
+    match worker.request(&hello, pool.timeout_for(&hello)) {
         Ok(_) => Ok(()),
         Err(WorkerError::Remote { code, detail }) => {
             Err(format!("{code}: {}", detail.unwrap_or_default()))
