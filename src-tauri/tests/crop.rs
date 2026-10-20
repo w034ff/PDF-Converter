@@ -1258,6 +1258,9 @@ fn a_page_that_times_out_has_its_error_and_the_run_goes_on_with_a_new_worker() {
         }
     );
     assert_eq!(spawns(&state), 3, "each page started a worker again");
+
+    // A page that failed was not answered, so the next run takes it up again.
+    assert_eq!(detect_all(&state, pdf.id).page_numbers(), [1, 2, 3]);
 }
 
 #[cfg(feature = "test-hooks")]
