@@ -1,0 +1,307 @@
+/* The crop tab (design §10.1, mockups CropEmpty, CropA, CropA960). Its body
+   has three columns instead of the settings panel and the list. */
+
+.crop-thumbs {
+  flex: none;
+  width: 124px;
+  background: var(--color-bg-surface);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.crop-thumb-list {
+  list-style: none;
+  margin: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.crop-thumb {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  color: var(--color-text-primary);
+}
+
+/* The border is always 2px, so the page shown does not shift the others;
+   only its color tells which page it is. */
+.crop-thumb-frame {
+  width: 100%;
+  display: block;
+  overflow: hidden;
+  background: var(--color-page-bg);
+  border: 2px solid var(--color-border);
+  border-radius: 3px;
+}
+
+.crop-thumb-frame.is-current {
+  border-color: var(--color-accent);
+}
+
+.crop-thumb-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.crop-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.crop-main-empty {
+  padding: 24px;
+  gap: 12px;
+}
+
+.crop-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crop-main:not(.crop-main-empty) > .crop-notices {
+  padding: 12px 16px 0;
+}
+
+.crop-band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex: none;
+}
+
+.crop-band-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crop-band-counter {
+  white-space: nowrap;
+}
+
+.crop-band-open {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 12px;
+  flex: none;
+}
+
+.crop-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  flex: none;
+}
+
+.crop-size-seg {
+  flex: none;
+}
+
+.crop-size-seg button {
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.crop-zoom-percent {
+  min-width: 3ch;
+  text-align: center;
+}
+
+.crop-candidates-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.crop-candidates-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* The padding is not part of the room the page is fitted into (the view
+   measures its content box). */
+.crop-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 16px 16px;
+}
+
+.crop-viewport:focus-visible {
+  outline-offset: -2px;
+}
+
+/* The page's auto margins center it when it is narrower than the view, and
+   fall to zero when it is wider, so the whole page can be scrolled to. */
+.crop-page {
+  position: relative;
+  flex: none;
+  margin: 0 auto;
+  background: var(--color-page-bg);
+  box-shadow: 0 1px 3px var(--color-page-shadow);
+}
+
+.crop-page-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.crop-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.crop-photo-frame,
+.crop-candidate {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.crop-photo-frame {
+  border: 1.5px dashed var(--color-page-frame);
+}
+
+.crop-photo-frame:hover {
+  border: 2px solid var(--color-page-frame-hover);
+}
+
+.crop-candidate {
+  border: 1px solid var(--color-page-candidate);
+}
+
+.crop-tag {
+  position: absolute;
+  left: -1px;
+  top: -18px;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
+  border: 1px solid var(--color-page-candidate);
+  border-radius: var(--radius-sm);
+  background: var(--color-page-bg);
+  color: var(--color-page-candidate);
+  white-space: nowrap;
+}
+
+.crop-side {
+  flex: none;
+  width: 340px;
+  background: var(--color-bg-surface);
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.crop-ranges-header {
+  padding: 12px 16px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: none;
+}
+
+.crop-ranges {
+  flex: 1 1 0;
+  min-height: 72px;
+  overflow-y: auto;
+  padding: 0 16px 12px;
+}
+
+.crop-ranges p {
+  margin: 0;
+}
+
+/* Taller than the column on a short window: it scrolls on its own and the
+   list above keeps its room. */
+.crop-settings {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-border);
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.crop-settings-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.crop-settings-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.crop-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.crop-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Like the PDF/A box of "images to PDF": the label is the click target. */
+.crop-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.crop-settings-checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.crop-settings-hint {
+  padding-left: 24px;
+}

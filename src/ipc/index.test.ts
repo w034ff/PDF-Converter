@@ -426,6 +426,13 @@ describe("ipc", () => {
           encrypt: false,
         },
         pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+        crop: {
+          format: "webp",
+          colorMode: "gray",
+          dpi: 72,
+          photoNative: false,
+          photoOnly: true,
+        },
       };
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
@@ -453,6 +460,13 @@ describe("ipc", () => {
             encrypt: false,
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 100 },
+          crop: {
+            format: "png",
+            colorMode: "color",
+            dpi: 150,
+            photoNative: true,
+            photoOnly: false,
+          },
         }),
       ).rejects.toEqual({ code: "InvalidParams", detail: null });
     });
@@ -473,6 +487,13 @@ describe("ipc", () => {
             encrypt: false,
           },
           pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
+          crop: {
+            format: "png",
+            colorMode: "color",
+            dpi: 150,
+            photoNative: true,
+            photoOnly: false,
+          },
         }),
       ).rejects.toEqual({
         code: "InvalidParams",

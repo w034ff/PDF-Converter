@@ -6,6 +6,7 @@ export const ja = {
     tabs: {
       imagesToPdf: "画像 → PDF",
       pdfToImages: "PDF → 画像",
+      crop: "切り出し",
     },
     navAria: "変換の種類",
   },
@@ -236,6 +237,55 @@ export const ja = {
     tableActions: "操作",
     remove: "外す",
     noOutputYet: "—",
+  },
+  crop: {
+    empty: {
+      title: "PDF をドロップするか、「PDF を開く」を押してください",
+      description:
+        "ページの図・グラフ・表・写真を選んで、画像として書き出します。写真は元の画素のまま書き出せます。",
+      open: "PDF を開く",
+    },
+    openAnother: "別の PDF を開く",
+    pageCounter: "{page} / {total}",
+    notOnePdf: "切り出しでは PDF を 1 つずつ開きます",
+    pagesAria: "ページ",
+    pageAria: "ページ {page}",
+    pageAlt: "{name} の {page} ページ",
+    toolbar: {
+      sizeLabel: "表示の大きさ",
+      fitWidth: "幅",
+      fitPage: "全体",
+      zoomOut: "縮小",
+      zoomIn: "拡大",
+      candidates: "候補",
+    },
+    searching: "候補を探しています…",
+    candidateKinds: {
+      photo: "写真",
+      figure: "図",
+      chart: "グラフ",
+      table: "表",
+    },
+    ranges: {
+      sectionAria: "範囲と書き出しの設定",
+      title: "範囲",
+      empty: "範囲はまだありません",
+    },
+    settings: {
+      title: "書き出しの設定",
+      photoNative: "写真は元の画素で書き出す",
+      photoNativeHint: "写真は解像度によらず、元の画素の数で書き出します",
+      photoOnly: "写真だけを書き出す",
+      photoOnlyHint: "写真に重なった文字や枠を除きます",
+      summaryPhotoNative: "写真は元の画素",
+      summaryPhotoOnly: "写真だけ",
+      summarySeparator: " · ",
+    },
+    footer: {
+      noPdf: "PDF が開かれていません",
+      noRanges: "範囲が選ばれていません",
+      export: "書き出す",
+    },
   },
   about: {
     title: "このアプリについて",

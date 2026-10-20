@@ -8,6 +8,7 @@ export const en: Translations = {
     tabs: {
       imagesToPdf: "Images → PDF",
       pdfToImages: "PDF → Images",
+      crop: "Crop",
     },
     navAria: "Conversion kind",
   },
@@ -237,6 +238,56 @@ export const en: Translations = {
     tableActions: "Actions",
     remove: "Remove",
     noOutputYet: "—",
+  },
+  crop: {
+    empty: {
+      title: 'Drop a PDF here or press "Open PDF"',
+      description:
+        "Pick the figures, charts, tables and photos on a page and export them as images. Photos can be exported at their original pixels.",
+      open: "Open PDF",
+    },
+    openAnother: "Open another PDF",
+    pageCounter: "{page} / {total}",
+    notOnePdf: "Open one PDF at a time to crop",
+    pagesAria: "Pages",
+    pageAria: "Page {page}",
+    pageAlt: "Page {page} of {name}",
+    toolbar: {
+      sizeLabel: "Display size",
+      fitWidth: "Width",
+      fitPage: "Page",
+      zoomOut: "Zoom out",
+      zoomIn: "Zoom in",
+      candidates: "Suggestions",
+    },
+    searching: "Looking for suggestions…",
+    candidateKinds: {
+      photo: "Photo",
+      figure: "Figure",
+      chart: "Chart",
+      table: "Table",
+    },
+    ranges: {
+      sectionAria: "Areas and export settings",
+      title: "Areas",
+      empty: "No areas yet",
+    },
+    settings: {
+      title: "Export settings",
+      photoNative: "Export photos at original pixels",
+      photoNativeHint:
+        "Photos are written in their own number of pixels, whatever the resolution",
+      photoOnly: "Photos only",
+      photoOnlyHint: "Leaves out text and frames drawn over a photo",
+      summaryPhotoNative: "Photos at original pixels",
+      summaryPhotoOnly: "Photos only",
+      summarySeparator: " · ",
+    },
+    footer: {
+      noPdf: "No PDF is open",
+      noRanges: "No areas selected",
+      export: "Export",
+    },
   },
   about: {
     title: "About this app",

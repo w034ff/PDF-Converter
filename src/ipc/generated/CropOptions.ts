@@ -3,8 +3,7 @@ import type { RenderColorChoice } from "./RenderColorChoice";
 import type { RenderFormatChoice } from "./RenderFormatChoice";
 
 /**
- * The crop options the user can change (design §6.7). `save_settings` does not
- * take them yet: the file keeps what it was read with.
+ * The crop options the user can change (design §6.7).
  */
 export type CropOptions = { format: RenderFormatChoice, colorMode: RenderColorChoice, dpi: number, 
 /**

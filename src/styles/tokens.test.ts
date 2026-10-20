@@ -129,6 +129,25 @@ describe("design tokens and CSS rules", () => {
     expect(rule?.[1]).not.toMatch(/(^|[\s;])height\s*:/);
   });
 
+  it("keeps the colors laid over a page readable on the page's white", () => {
+    // The page is white in both themes, and the frames and the kind tags
+    // drawn on it do not change with the theme (see tokens.css).
+    const tokens = readThemeTokens("dark");
+    for (const fg of [
+      "--color-page-frame",
+      "--color-page-frame-hover",
+      "--color-page-candidate",
+    ]) {
+      expect(
+        contrastRatio(
+          tokenValue(tokens, fg),
+          tokenValue(tokens, "--color-page-bg"),
+        ),
+        `${fg} on the page`,
+      ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
+    }
+  });
+
   it.each(["light", "dark"] as const)(
     "meets WCAG AA contrast for accent and status pairs in the %s theme",
     (theme) => {

@@ -1,3 +1,4 @@
+import { createInitialCropState, cropReducer } from "./crop";
 import { createInitialLanguageState, languageReducer } from "./language";
 import { imagesToPdfReducer, initialImagesToPdfState } from "./imagesToPdf";
 import { initialJobState, jobReducer } from "./job";
@@ -24,6 +25,7 @@ export function createInitialAppState(
       language: createInitialLanguageState(initialNavLang),
       imagesToPdf: { ...initialImagesToPdfState },
       pdfToImages: { ...initialPdfToImagesState },
+      crop: createInitialCropState(),
       job: { ...initialJobState },
     };
   }
@@ -49,6 +51,7 @@ export function createInitialAppState(
       customDpiText: String(dpi),
       outputDir: settings.pdfToImages.outputDir,
     },
+    crop: createInitialCropState(settings.crop),
     job: { ...initialJobState },
   };
 }
@@ -114,6 +117,32 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return pdfToImages === state.pdfToImages
         ? state
         : dropStaleResult(state, { ...state, pdfToImages }, "pdfToImages");
+    }
+    case "CROP_PDF_ACTIVATED":
+    case "CROP_PDF_UNLOCKED":
+    case "CROP_PDF_CLOSED":
+    case "CROP_PASSWORD_DIALOG":
+    case "CROP_OPEN_NOTICE":
+    case "CROP_PAGE_SELECTED":
+    case "CROP_VIEW_SET":
+    case "CROP_CANDIDATES_SHOWN":
+    case "CROP_PAGE_IMAGES_STARTED":
+    case "CROP_PAGE_IMAGES_DONE":
+    case "CROP_PAGE_IMAGES_FAILED":
+    case "CROP_LAYOUT_STARTED":
+    case "CROP_LAYOUT_DONE":
+    case "CROP_LAYOUT_FAILED":
+    case "SET_CROP_FORMAT":
+    case "SET_CROP_COLOR_MODE":
+    case "SET_CROP_DPI":
+    case "SET_CROP_IS_CUSTOM_DPI":
+    case "SET_CROP_CUSTOM_DPI_TEXT":
+    case "SET_CROP_PHOTO_NATIVE":
+    case "SET_CROP_PHOTO_ONLY":
+    case "SET_CROP_OUTPUT_DIR":
+    case "SET_CROP_SETTINGS_OPEN": {
+      const crop = cropReducer(state.crop, action);
+      return crop === state.crop ? state : { ...state, crop };
     }
     // The answers to a range check follow the user's edit; the edit itself
     // already dropped the result.

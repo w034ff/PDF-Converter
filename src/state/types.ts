@@ -1,10 +1,13 @@
 import type { Language } from "../i18n";
 import type {
+  Candidate,
   CheckPageRangeResult,
+  CropPdf,
   ImageItem,
   IpcError,
   OutputDirLabel,
   OutputMode,
+  PageImage,
   PageOrientationChoice,
   PageSizeChoice,
   PdfItem,
@@ -13,7 +16,7 @@ import type {
 } from "../ipc";
 import type { JobAction, JobState } from "./job";
 
-export type ActiveTab = "imagesToPdf" | "pdfToImages";
+export type ActiveTab = "imagesToPdf" | "pdfToImages" | "crop";
 
 export interface LanguageState {
   /** The language the screen is shown in. */
@@ -88,12 +91,109 @@ export type PdfToImagesAction =
   | { type: "CHECK_RANGE_FAILURE"; error: IpcError }
   | { type: "CHECK_RANGE_RESET" };
 
+/**
+ * How big the open page is shown (design §10.1): fitted to the width or to
+ * the whole page, which follow the size of the view, or a fixed scale where
+ * 100 % is the actual size.
+ */
+export type CropViewSize =
+  | { kind: "fitWidth" }
+  | { kind: "fitPage" }
+  | { kind: "zoom"; percent: number };
+
+/**
+ * What the screen has asked of Rust for one page, and what came back. A page
+ * that is not in the table has not been asked about yet.
+ */
+export type CropPageResult<T> =
+  | { status: "pending" }
+  | { status: "done"; value: T }
+  | { status: "failed"; error: IpcError };
+
+/** Why the last attempt to open a PDF opened nothing (design §10.1). */
+export type CropOpenNotice =
+  { kind: "error"; error: IpcError } | { kind: "notOnePdf" };
+
+export interface CropState {
+  /** The open PDF; its `error` is `PasswordProtected` until it is unlocked. */
+  pdf: CropPdf | null;
+  /** The page shown, from 1. */
+  page: number;
+  view: CropViewSize;
+  showCandidates: boolean;
+  /** The embedded images of the pages asked about, by page. */
+  pageImages: Partial<Record<number, CropPageResult<PageImage[]>>>;
+  /** The layout candidates of the pages asked about, by page. */
+  layouts: Partial<Record<number, CropPageResult<Candidate[]>>>;
+  /** Set once an analysis fails with `LayoutUnavailable`: Rust answers the same for every page. */
+  layoutUnavailable: boolean;
+  passwordDialogOpen: boolean;
+  openNotice: CropOpenNotice | null;
+  format: RenderFormatChoice;
+  colorMode: RenderColorChoice;
+  dpi: number;
+  isCustomDpi: boolean;
+  customDpiText: string;
+  /** Whether a photo range is written in the pixels of its embedded image. */
+  photoNative: boolean;
+  /** Whether a photo range leaves out everything but the photo. */
+  photoOnly: boolean;
+  outputDir: OutputDirLabel | null;
+  /** Whether the export settings are open; only the screen keeps it (design §10.1). */
+  settingsOpen: boolean;
+}
+
+export type CropAction =
+  | { type: "CROP_PDF_ACTIVATED"; pdf: CropPdf }
+  | { type: "CROP_PDF_UNLOCKED"; pdf: CropPdf }
+  | { type: "CROP_PDF_CLOSED" }
+  | { type: "CROP_PASSWORD_DIALOG"; open: boolean }
+  | { type: "CROP_OPEN_NOTICE"; notice: CropOpenNotice | null }
+  | { type: "CROP_PAGE_SELECTED"; page: number }
+  | { type: "CROP_VIEW_SET"; view: CropViewSize }
+  | { type: "CROP_CANDIDATES_SHOWN"; shown: boolean }
+  | { type: "CROP_PAGE_IMAGES_STARTED"; id: number; page: number }
+  | {
+      type: "CROP_PAGE_IMAGES_DONE";
+      id: number;
+      page: number;
+      images: PageImage[];
+    }
+  | {
+      type: "CROP_PAGE_IMAGES_FAILED";
+      id: number;
+      page: number;
+      error: IpcError;
+    }
+  | { type: "CROP_LAYOUT_STARTED"; id: number; page: number }
+  | {
+      type: "CROP_LAYOUT_DONE";
+      id: number;
+      page: number;
+      candidates: Candidate[];
+    }
+  | { type: "CROP_LAYOUT_FAILED"; id: number; page: number; error: IpcError }
+  | { type: "SET_CROP_FORMAT"; format: RenderFormatChoice }
+  | { type: "SET_CROP_COLOR_MODE"; colorMode: RenderColorChoice }
+  | { type: "SET_CROP_DPI"; dpi: number }
+  | { type: "SET_CROP_IS_CUSTOM_DPI"; isCustom: boolean }
+  | { type: "SET_CROP_CUSTOM_DPI_TEXT"; text: string }
+  | { type: "SET_CROP_PHOTO_NATIVE"; photoNative: boolean }
+  | { type: "SET_CROP_PHOTO_ONLY"; photoOnly: boolean }
+  | { type: "SET_CROP_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
+  | { type: "SET_CROP_SETTINGS_OPEN"; open: boolean };
+
 export interface AppState {
   language: LanguageState;
   imagesToPdf: ImagesToPdfState;
   pdfToImages: PdfToImagesState;
+  crop: CropState;
   job: JobState;
 }
 
 export type AppAction =
-  LanguageAction | ImagesToPdfAction | PdfToImagesAction | JobAction;
+  | LanguageAction
+  | ImagesToPdfAction
+  | PdfToImagesAction
+  | CropAction
+  | JobAction;

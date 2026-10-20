@@ -1,9 +1,21 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { ErrorDisplay } from "./components";
 import { AboutDialog } from "./features/about/AboutDialog";
 import { ImagesToPdfAction } from "./features/images-to-pdf/ImagesToPdfAction";
 import { ImagesToPdfSettings } from "./features/images-to-pdf/ImagesToPdfSettings";
 import { ImagesToPdfStatus } from "./features/images-to-pdf/ImagesToPdfStatus";
+import { CropAction } from "./features/crop/CropAction";
+import { CropScreen } from "./features/crop/CropScreen";
+import { CropStatus } from "./features/crop/CropStatus";
+import { useCropDropped } from "./features/crop/useCropDropped";
+import { useCropPageData } from "./features/crop/useCropPageData";
+import { useDropTarget } from "./features/crop/useDropTarget";
 import { ImagesToPdfView } from "./features/images-to-pdf/ImagesToPdfView";
 import { useItemsDropped } from "./features/items/useItemsDropped";
 import { JobFooter } from "./features/job/JobFooter";
@@ -25,6 +37,9 @@ import {
 } from "./state";
 import "./styles/app.css";
 
+/** The tabs in the order the header shows them. */
+const TABS: readonly ActiveTab[] = ["imagesToPdf", "pdfToImages", "crop"];
+
 function AppShell() {
   const { language } = useAppState();
   const dispatch = useAppDispatch();
@@ -33,6 +48,9 @@ function AppShell() {
   useSettingsAutoSave();
   useBlockBrowserShortcuts();
   const dropError = useItemsDropped();
+  useCropDropped();
+  useDropTarget(language.activeTab);
+  useCropPageData(language.activeTab === "crop");
 
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const aboutButtonRef = useRef<HTMLButtonElement>(null);
@@ -55,7 +73,18 @@ function AppShell() {
     dispatch({ type: "SET_LANGUAGE", language: nextLang });
   }
 
-  const isImages = language.activeTab === "imagesToPdf";
+  const activeTab = language.activeTab;
+  const footerParts = {
+    imagesToPdf: {
+      idleStatus: <ImagesToPdfStatus />,
+      action: <ImagesToPdfAction />,
+    },
+    pdfToImages: {
+      idleStatus: <PdfToImagesStatus />,
+      action: <PdfToImagesAction />,
+    },
+    crop: { idleStatus: <CropStatus />, action: <CropAction /> },
+  } satisfies Record<ActiveTab, { idleStatus: ReactNode; action: ReactNode }>;
 
   return (
     <>
@@ -80,24 +109,18 @@ function AppShell() {
           </h1>
 
           <nav className="app-nav" aria-label={t.app.navAria} role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={isImages}
-              className="app-nav-tab"
-              onClick={() => handleTabChange("imagesToPdf")}
-            >
-              {t.app.tabs.imagesToPdf}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={!isImages}
-              className="app-nav-tab"
-              onClick={() => handleTabChange("pdfToImages")}
-            >
-              {t.app.tabs.pdfToImages}
-            </button>
+            {TABS.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab}
+                className="app-nav-tab"
+                onClick={() => handleTabChange(tab)}
+              >
+                {t.app.tabs[tab]}
+              </button>
+            ))}
           </nav>
 
           <div className="app-header-actions">
@@ -136,33 +159,45 @@ function AppShell() {
         </header>
 
         <div className="app-body">
-          <aside className="app-sidebar">
-            {isImages ? <ImagesToPdfSettings /> : <PdfToImagesSettings />}
-          </aside>
-
-          <main className="app-main">
-            {dropError.error !== null && (
-              <ErrorDisplay
-                message={formatErrorMessage(
-                  dropError.error.code,
-                  dropError.error.detail,
-                  language.language,
+          {activeTab === "crop" ? (
+            <CropScreen />
+          ) : (
+            <>
+              <aside className="app-sidebar">
+                {activeTab === "imagesToPdf" ? (
+                  <ImagesToPdfSettings />
+                ) : (
+                  <PdfToImagesSettings />
                 )}
-                onDismiss={dropError.dismiss}
-                dismissLabel={t.errors.dismiss}
-              />
-            )}
-            {isImages ? <ImagesToPdfView /> : <PdfToImagesView />}
-          </main>
+              </aside>
+
+              <main className="app-main">
+                {dropError.error !== null && (
+                  <ErrorDisplay
+                    message={formatErrorMessage(
+                      dropError.error.code,
+                      dropError.error.detail,
+                      language.language,
+                    )}
+                    onDismiss={dropError.dismiss}
+                    dismissLabel={t.errors.dismiss}
+                  />
+                )}
+                {activeTab === "imagesToPdf" ? (
+                  <ImagesToPdfView />
+                ) : (
+                  <PdfToImagesView />
+                )}
+              </main>
+            </>
+          )}
         </div>
 
         <footer className="app-footer">
           <JobFooter
-            tab={language.activeTab}
-            idleStatus={
-              isImages ? <ImagesToPdfStatus /> : <PdfToImagesStatus />
-            }
-            action={isImages ? <ImagesToPdfAction /> : <PdfToImagesAction />}
+            tab={activeTab}
+            idleStatus={footerParts[activeTab].idleStatus}
+            action={footerParts[activeTab].action}
           />
         </footer>
       </div>

@@ -100,6 +100,7 @@ fn input() -> SettingsInput {
             color_mode: RenderColorChoice::Gray,
             dpi: 72,
         },
+        crop: crop_options(),
     }
 }
 
@@ -1534,26 +1535,17 @@ fn a_picked_crop_folder_goes_to_the_state_and_the_file_and_leaves_the_others() {
 }
 
 #[test]
-fn save_settings_keeps_the_crop_options_and_folder_in_the_file() {
+fn save_settings_saves_the_crop_options_and_keeps_the_crop_folder() {
     let temp = TempDir::new().expect("temp dir");
     let crop_dir = new_dir(temp.path(), "crop-out");
     let config_dir = new_dir(temp.path(), "config");
     write_settings(
         &config_dir,
-        &json!({
-            "schemaVersion": 1,
-            "crop": {
-                "format": "webp",
-                "colorMode": "gray",
-                "dpi": 72,
-                "photoNative": false,
-                "photoOnly": true,
-                "outputDir": crop_dir,
-            },
-        }),
+        &json!({ "schemaVersion": 1, "crop": { "outputDir": crop_dir } }),
     );
     let state = state();
     restore_settings(&state, &config_dir);
+    assert_eq!(state.settings.file().crop.options, defaults().crop.options);
 
     save(&state, &input()).expect("saving");
 
@@ -1563,6 +1555,48 @@ fn save_settings_keeps_the_crop_options_and_folder_in_the_file() {
     assert_eq!(loaded.crop.output_dir, Some(crop_dir.clone()));
     assert_eq!(state.settings.file(), loaded);
     assert_eq!(*state.crop_output_dir.lock().unwrap(), Some(crop_dir));
+}
+
+#[test]
+fn save_settings_rejects_an_out_of_range_crop_dpi_and_changes_nothing() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    save(&state, &input()).expect("saving");
+    let before = fs::read(config_dir.join(SETTINGS_FILE_NAME)).expect("reading the file");
+    let held = state.settings.file();
+
+    for dpi in [0, 35, 1001, u32::MAX] {
+        let mut bad = input();
+        bad.language = None;
+        bad.crop.photo_only = !bad.crop.photo_only;
+        bad.crop.dpi = dpi;
+        assert_eq!(
+            save(&state, &bad),
+            Err(IpcError::from_code(ErrorCode::InvalidParams)),
+            "for {dpi}"
+        );
+    }
+
+    assert_eq!(
+        fs::read(config_dir.join(SETTINGS_FILE_NAME)).expect("reading the file"),
+        before
+    );
+    assert_eq!(state.settings.file(), held);
+}
+
+#[test]
+fn save_settings_accepts_valid_crop_dpis() {
+    let temp = TempDir::new().expect("temp dir");
+    let state = state();
+    restore_settings(&state, temp.path());
+    for dpi in [RENDER_DPI_MIN, RENDER_DPI_MAX, 600, 72, 150, 300] {
+        let mut valid = input();
+        valid.crop.dpi = dpi;
+        save(&state, &valid).expect("saving");
+        assert_eq!(load_settings(temp.path()).crop.options.dpi, dpi);
+    }
 }
 
 #[test]

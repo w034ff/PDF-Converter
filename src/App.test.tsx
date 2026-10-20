@@ -51,6 +51,15 @@ const SAVED_SETTINGS: Settings = {
   },
 };
 
+/** What `save_settings` carries for the crop tab until it is touched. */
+const DEFAULT_CROP_OPTIONS = {
+  format: "png",
+  colorMode: "color",
+  dpi: 150,
+  photoNative: true,
+  photoOnly: false,
+};
+
 const ABOUT_READY = {
   version: "0.1.0",
   pdfiumReady: true,
@@ -339,6 +348,7 @@ describe("App", () => {
             language: null,
             imagesToPdf,
             pdfToImages: { format: "png", colorMode: "color", dpi: 300 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
         {
@@ -347,6 +357,7 @@ describe("App", () => {
             language: null,
             imagesToPdf,
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
       ]);
@@ -382,6 +393,7 @@ describe("App", () => {
               encrypt: false,
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
       ]);
@@ -408,6 +420,7 @@ describe("App", () => {
               encrypt: false,
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
       ]);
@@ -434,6 +447,7 @@ describe("App", () => {
               encrypt: true,
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
       ]);
@@ -459,6 +473,7 @@ describe("App", () => {
               encrypt: false,
             },
             pdfToImages: { format: "jpeg", colorMode: "color", dpi: 300 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
       ]);
@@ -487,6 +502,7 @@ describe("App", () => {
               encrypt: false,
             },
             pdfToImages: { format: "jpeg", colorMode: "gray", dpi: 300 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
       ]);
@@ -513,6 +529,7 @@ describe("App", () => {
               encrypt: false,
             },
             pdfToImages: { format: "png", colorMode: "color", dpi: 150 },
+            crop: DEFAULT_CROP_OPTIONS,
           },
         },
       ]);
