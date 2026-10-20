@@ -6,19 +6,21 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::crop::{
-    Candidate, CandidateKind, CropDropped, CropPdf, DropTarget, Dropped, activate_crop_pdf,
-    check_on_top, close_crop_pdf, crop_dropped, detect_layout, discard_crop_pdf, handle_drop,
-    list_page_images, open_pdf, unlock_crop_pdf,
+    Candidate, CandidateKind, CropDropped, CropPdf, DetectAllCallbacks, DropTarget, Dropped,
+    LayoutPagePayload, activate_crop_pdf, check_on_top, close_crop_pdf, crop_dropped,
+    detect_layout, discard_crop_pdf, handle_drop, list_page_images, open_pdf,
+    start_detect_all_internal, unlock_crop_pdf,
 };
 use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{add_images, add_pdfs, make_thumbnail, remove_items, unlock_pdf};
 use pdf_converter_lib::jobs::{
-    JobCallbacks, RenderColorChoice, RenderFormatChoice, check_page_range_internal,
-    start_pdfs_to_images_internal,
+    JobCallbacks, JobFinishedPayload, JobProgressPayload, RenderColorChoice, RenderFormatChoice,
+    check_page_range_internal, start_pdfs_to_images_internal,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_core::THUMBNAIL_SIDE;
@@ -998,4 +1000,353 @@ fn the_password_of_a_crop_pdf_does_not_open_a_list_item() {
     assert_eq!(error_code(&item.error), Some(ErrorCode::PasswordProtected));
     assert!(item.password.is_none());
     assert!(list_page_images(&state, cropped.id, 1).is_ok());
+}
+
+// ---- Every page (`start_detect_all`) ----
+
+/// What a finished `start_detect_all` reported.
+struct Detected {
+    pages: Vec<LayoutPagePayload>,
+    progress: Vec<JobProgressPayload>,
+    finished: JobFinishedPayload,
+}
+
+impl Detected {
+    fn page_numbers(&self) -> Vec<u32> {
+        self.pages.iter().map(|page| page.page).collect()
+    }
+}
+
+const NOTHING_DONE: JobFinishedPayload = JobFinishedPayload {
+    succeeded: 0,
+    failed: 0,
+    no_pages: 0,
+    unprocessed: 0,
+    cancelled: false,
+};
+
+/// Starts the analysis of every page and waits for its `job-finished`.
+/// `after_page` runs on the job's thread after each `layout-page`.
+fn detect_all_with(
+    state: &AppState,
+    id: u64,
+    after_page: impl Fn(&LayoutPagePayload) + Send + 'static,
+) -> Result<Detected, IpcError> {
+    let pages = Arc::new(Mutex::new(Vec::new()));
+    let progress = Arc::new(Mutex::new(Vec::new()));
+    let finished = Arc::new(Mutex::new(None));
+    let callbacks = DetectAllCallbacks {
+        on_progress: {
+            let progress = Arc::clone(&progress);
+            move |payload| progress.lock().expect("progress lock").push(payload)
+        },
+        on_page: {
+            let pages = Arc::clone(&pages);
+            move |payload: LayoutPagePayload| {
+                after_page(&payload);
+                pages.lock().expect("pages lock").push(payload);
+            }
+        },
+        on_finished: {
+            let finished = Arc::clone(&finished);
+            move |payload| *finished.lock().expect("finished lock") = Some(payload)
+        },
+    };
+    start_detect_all_internal(state, id, callbacks)?;
+
+    let started = Instant::now();
+    let finished = loop {
+        if let Some(payload) = finished.lock().expect("finished lock").clone() {
+            break payload;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(120),
+            "the analysis did not finish"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert!(
+        !state.is_running.load(Ordering::SeqCst),
+        "is_running must be back when job-finished arrives"
+    );
+    let pages = pages.lock().expect("pages lock").clone();
+    let progress = progress.lock().expect("progress lock").clone();
+    Ok(Detected {
+        pages,
+        progress,
+        finished,
+    })
+}
+
+fn detect_all(state: &AppState, id: u64) -> Detected {
+    detect_all_with(state, id, |_| {}).expect("starting")
+}
+
+#[test]
+fn the_one_page_of_crop_layout_is_answered_with_its_photo_and_chart() {
+    let state = state();
+    let pdf = open_active(&state, "crop_layout.pdf");
+
+    let detected = detect_all(&state, pdf.id);
+
+    assert_eq!(detected.pages.len(), 1);
+    let page = &detected.pages[0];
+    assert_eq!((page.id, page.page), (pdf.id, 1));
+    assert_eq!(page.error, None);
+    assert_eq!(photos(&page.candidates).len(), 1, "{:?}", page.candidates);
+    assert_eq!(charts(&page.candidates).len(), 1, "{:?}", page.candidates);
+    assert_eq!(
+        detected.finished,
+        JobFinishedPayload {
+            succeeded: 1,
+            ..NOTHING_DONE
+        }
+    );
+    let done: Vec<u32> = detected.progress.iter().map(|p| p.done).collect();
+    assert_eq!(done, [0, 1]);
+    for progress in &detected.progress {
+        assert_eq!(progress.total, 1);
+        assert_eq!(progress.current.as_deref(), Some("crop_layout.pdf"));
+    }
+}
+
+#[test]
+fn the_pages_are_answered_in_page_order() {
+    let state = state();
+    let pdf = open_active(&state, "shapes.pdf");
+
+    let detected = detect_all(&state, pdf.id);
+
+    assert_eq!(detected.page_numbers(), [1, 2, 3]);
+    assert!(detected.pages.iter().all(|page| page.error.is_none()));
+    assert_eq!(
+        detected.finished,
+        JobFinishedPayload {
+            succeeded: 3,
+            ..NOTHING_DONE
+        }
+    );
+}
+
+#[cfg(feature = "test-hooks")]
+#[test]
+fn a_page_that_detect_layout_answered_is_not_analyzed_again() {
+    let state = state();
+    let pdf = open_active(&state, "crop_layout.pdf");
+    detect_layout(&state, pdf.id, 1).expect("detecting the layout");
+    assert_eq!(spawns(&state), 1);
+
+    let detected = detect_all(&state, pdf.id);
+
+    assert_eq!(detected.pages, []);
+    assert_eq!(detected.progress, []);
+    assert_eq!(detected.finished, NOTHING_DONE);
+    assert_eq!(spawns(&state), 1, "no worker was asked");
+}
+
+#[cfg(feature = "test-hooks")]
+#[test]
+fn only_the_pages_that_were_not_answered_are_analyzed() {
+    let state = state();
+    let pdf = open_active(&state, "shapes.pdf");
+    detect_layout(&state, pdf.id, 2).expect("detecting the layout");
+
+    let first = detect_all(&state, pdf.id);
+
+    assert_eq!(first.page_numbers(), [1, 3]);
+    assert_eq!(
+        first.progress.last().map(|p| (p.done, p.total)),
+        Some((2, 2))
+    );
+    // Every page is answered now, by either.
+    let second = detect_all(&state, pdf.id);
+    assert_eq!(second.pages, []);
+    assert_eq!(second.finished, NOTHING_DONE);
+    assert_eq!(spawns(&state), 1);
+}
+
+#[test]
+fn cancelling_after_a_page_leaves_the_rest_unprocessed() {
+    let state = state();
+    let pdf = open_active(&state, "shapes.pdf");
+    let cancel = Arc::clone(&state.cancel_flag);
+
+    let detected = detect_all_with(&state, pdf.id, move |_| {
+        cancel.store(true, Ordering::SeqCst);
+    })
+    .expect("starting");
+
+    assert_eq!(detected.page_numbers(), [1]);
+    assert_eq!(
+        detected.finished,
+        JobFinishedPayload {
+            succeeded: 1,
+            unprocessed: 2,
+            cancelled: true,
+            ..NOTHING_DONE
+        }
+    );
+}
+
+#[test]
+fn the_pages_a_cancelled_run_did_not_reach_are_analyzed_by_the_next() {
+    let state = state();
+    let pdf = open_active(&state, "shapes.pdf");
+    let cancel = Arc::clone(&state.cancel_flag);
+    detect_all_with(&state, pdf.id, move |_| {
+        cancel.store(true, Ordering::SeqCst);
+    })
+    .expect("starting");
+
+    let detected = detect_all(&state, pdf.id);
+
+    assert_eq!(detected.page_numbers(), [2, 3]);
+    assert!(!detected.finished.cancelled);
+}
+
+#[cfg(feature = "test-hooks")]
+#[test]
+fn without_the_model_the_first_page_says_so_and_the_run_ends() {
+    let state = state_with(config_with([
+        layout_args()[0].clone(),
+        missing("model.onnx"),
+    ]));
+    let pdf = open_active(&state, "shapes.pdf");
+
+    let detected = detect_all(&state, pdf.id);
+
+    assert_eq!(detected.page_numbers(), [1]);
+    let page = &detected.pages[0];
+    assert_eq!(error_code(&page.error), Some(ErrorCode::LayoutUnavailable));
+    assert_eq!(page.candidates, []);
+    assert_eq!(
+        detected.finished,
+        JobFinishedPayload {
+            failed: 1,
+            unprocessed: 2,
+            ..NOTHING_DONE
+        }
+    );
+    assert_eq!(spawns(&state), 1);
+    // A page that failed is not remembered as answered.
+    assert_eq!(
+        code(detect_layout(&state, pdf.id, 2)),
+        ErrorCode::LayoutUnavailable
+    );
+}
+
+#[cfg(feature = "test-hooks")]
+#[test]
+fn a_page_that_times_out_has_its_error_and_the_run_goes_on_with_a_new_worker() {
+    let state =
+        state_with(config_with(layout_args()).with_detect_timeout(Duration::from_millis(1)));
+    let pdf = open_active(&state, "shapes.pdf");
+
+    let detected = detect_all(&state, pdf.id);
+
+    // Loading the model alone takes far longer than a millisecond.
+    assert_eq!(detected.page_numbers(), [1, 2, 3]);
+    for page in &detected.pages {
+        assert_eq!(error_code(&page.error), Some(ErrorCode::WorkerTimeout));
+        assert_eq!(page.candidates, []);
+    }
+    assert_eq!(
+        detected.finished,
+        JobFinishedPayload {
+            failed: 3,
+            ..NOTHING_DONE
+        }
+    );
+    assert_eq!(spawns(&state), 3, "each page started a worker again");
+}
+
+#[cfg(feature = "test-hooks")]
+#[test]
+fn opening_another_pdf_forgets_the_pages_that_were_answered() {
+    let state = state();
+    let first = open_active(&state, "crop_layout.pdf");
+    detect_layout(&state, first.id, 1).expect("detecting the layout");
+    assert_eq!(detect_all(&state, first.id).pages, []);
+
+    let second = open_active(&state, "crop_layout.pdf");
+    let detected = detect_all(&state, second.id);
+
+    assert_eq!(detected.page_numbers(), [1]);
+    assert_eq!(detected.pages[0].id, second.id);
+    assert_eq!(
+        detected.finished,
+        JobFinishedPayload {
+            succeeded: 1,
+            ..NOTHING_DONE
+        }
+    );
+    assert_eq!(spawns(&state), 2);
+}
+
+#[test]
+fn the_analysis_of_every_page_is_refused_during_a_conversion() {
+    let state = state();
+    let pdf = open_active(&state, "crop_layout.pdf");
+    state.is_running.store(true, Ordering::SeqCst);
+
+    let refused = detect_all_with(&state, pdf.id, |_| {})
+        .err()
+        .expect("refused");
+
+    assert_eq!(refused.code, ErrorCode::ConversionRunning);
+    assert!(
+        state.is_running.load(Ordering::SeqCst),
+        "the other conversion is still running"
+    );
+}
+
+#[test]
+fn the_analysis_of_every_page_needs_the_open_pdf() {
+    let state = state();
+    let open = open_active(&state, "crop_layout.pdf");
+    let pending = open_pdf(&state, &fixture("shapes.pdf"));
+    let broken = without_workers(&state);
+
+    for id in [pending.id, open.id + 1000] {
+        let refused = detect_all_with(&broken, id, |_| {}).err().expect("refused");
+        assert_eq!(refused.code, ErrorCode::UnknownHandle);
+        assert!(!broken.is_running.load(Ordering::SeqCst));
+    }
+}
+
+#[test]
+fn the_analysis_of_every_page_answers_a_pdf_that_could_not_be_opened_with_its_error() {
+    let state = state();
+    let pdf = open_active(&state, "corrupt.pdf");
+    assert!(pdf.error.is_some());
+
+    let refused = detect_all_with(&state, pdf.id, |_| {})
+        .err()
+        .expect("refused");
+
+    assert_eq!(Some(refused), pdf.error);
+    assert!(!state.is_running.load(Ordering::SeqCst));
+}
+
+#[test]
+fn a_detection_by_hand_is_allowed_while_every_page_is_being_analyzed() {
+    let state = state();
+    let pdf = open_active(&state, "shapes.pdf");
+    let asked = Arc::new(Mutex::new(None));
+    let during = {
+        let state = state.clone();
+        let asked = Arc::clone(&asked);
+        let id = pdf.id;
+        // Runs on the job's thread, after the first page: it takes its turn
+        // for the analysis worker like the pages do.
+        move |_: &LayoutPagePayload| {
+            let answer = detect_layout(&state, id, 3);
+            *asked.lock().expect("asked lock") = Some(answer.is_ok());
+        }
+    };
+
+    let detected = detect_all_with(&state, pdf.id, during).expect("starting");
+
+    assert_eq!(*asked.lock().expect("asked lock"), Some(true));
+    assert_eq!(detected.page_numbers(), [1, 2, 3]);
 }

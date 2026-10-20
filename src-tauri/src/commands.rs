@@ -13,14 +13,17 @@ use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::crop::{self, Candidate, CropPdf, DropTarget, PageImage};
+use crate::crop::{
+    self, Candidate, CropPdf, DetectAllCallbacks, DropTarget, LAYOUT_PAGE_EVENT, PageImage,
+};
+use crate::crop_export::{self, CropRegionInput};
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
     self, CheckPageRangeResult, PageOrientationChoice, PageSizeChoice, RenderColorChoice,
     RenderFormatChoice, SaveMergedPdfResult, pdf_conformance,
 };
-use crate::settings::{self, OutputDirLabel, OutputKind, Settings, SettingsInput};
+use crate::settings::{self, CropOptions, OutputDirLabel, OutputKind, Settings, SettingsInput};
 use crate::worker_pool::WorkerPool;
 
 /// Name of the image filter of the file dialog.
@@ -308,6 +311,83 @@ pub async fn detect_layout(
     tauri::async_runtime::spawn_blocking(move || crop::detect_layout(&state, id, page))
         .await
         .map_err(task_failed)?
+}
+
+/// Starts the layout analysis of every page of the open crop PDF that has not
+/// been analyzed, as a conversion (design §6.10, §7.1). Each page is reported
+/// by `layout-page`.
+#[tauri::command]
+pub async fn start_detect_all(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    id: u64,
+) -> Result<(), IpcError> {
+    let w1 = window.clone();
+    let w2 = window.clone();
+    let w3 = window.clone();
+
+    let callbacks = DetectAllCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_page: move |page| {
+            let _ = w2.emit(LAYOUT_PAGE_EVENT, &page);
+        },
+        on_finished: move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        },
+    };
+
+    crop::start_detect_all_internal(&state, id, callbacks)
+}
+
+/// Starts writing ranges of the open crop PDF as image files in the background
+/// (design §6.10, §7.1).
+// The parameters are the IPC arguments of design §7.1, so they cannot be grouped.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn start_crop_export(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    regions: Vec<CropRegionInput>,
+    format: RenderFormatChoice,
+    color_mode: RenderColorChoice,
+    dpi: u32,
+    photo_native: bool,
+    photo_only: bool,
+) -> Result<(), IpcError> {
+    let w1 = window.clone();
+    let w2 = window.clone();
+    let w3 = window.clone();
+
+    let callbacks = jobs::JobCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_item: move |item| {
+            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
+        },
+        on_finished: move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        },
+    };
+    let options = CropOptions {
+        format,
+        color_mode,
+        dpi,
+        photo_native,
+        photo_only,
+    };
+
+    // Listing the images of the pages takes workers, which do not belong on
+    // the async runtime's threads.
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crop_export::start_crop_export_internal(&state, id, &regions, options, callbacks)
+    })
+    .await
+    .map_err(task_failed)?
 }
 
 /// Validates a page range string and counts matching pages across the specified PDF items (design §7.1).

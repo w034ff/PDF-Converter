@@ -5,8 +5,9 @@ use std::path::Path;
 
 use pdf_converter_lib::commands::{AboutInfo, AddSource};
 use pdf_converter_lib::crop::{
-    Candidate, CandidateKind, CropDropped, CropPdf, DropTarget, PageImage,
+    Candidate, CandidateKind, CropDropped, CropPdf, DropTarget, LayoutPagePayload, PageImage,
 };
+use pdf_converter_lib::crop_export::CropRegionInput;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{
     AddResult, ImageFormatName, ImageItem, ItemsDropped, PageSizePt, PdfItem, Skipped, UnlockResult,
@@ -46,6 +47,8 @@ fn export_typescript_bindings() {
     PageImage::export_all(&cfg).expect("exporting PageImage");
     CandidateKind::export_all(&cfg).expect("exporting CandidateKind");
     Candidate::export_all(&cfg).expect("exporting Candidate");
+    LayoutPagePayload::export_all(&cfg).expect("exporting LayoutPagePayload");
+    CropRegionInput::export_all(&cfg).expect("exporting CropRegionInput");
     PageSizeChoice::export_all(&cfg).expect("exporting PageSizeChoice");
     PageOrientationChoice::export_all(&cfg).expect("exporting PageOrientationChoice");
     RenderColorChoice::export_all(&cfg).expect("exporting RenderColorChoice");

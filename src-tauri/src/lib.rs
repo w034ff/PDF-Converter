@@ -11,6 +11,7 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
 pub mod commands;
 pub mod crop;
+pub mod crop_export;
 pub mod error;
 pub mod items;
 pub mod jobs;
@@ -124,6 +125,8 @@ pub fn run() {
             commands::list_page_images,
             commands::check_on_top,
             commands::detect_layout,
+            commands::start_detect_all,
+            commands::start_crop_export,
             commands::cancel_job,
         ])
         .on_window_event(|window, event| {
