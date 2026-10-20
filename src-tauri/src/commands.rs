@@ -5,15 +5,15 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use pdfconv_core::IMAGE_EXTENSIONS;
-use pdfconv_worker::WORKER_FLAG;
-use pdfconv_worker::client::{OPEN_TIMEOUT, WorkerError, WorkerProcess};
+use pdfconv_worker::client::WorkerError;
 use pdfconv_worker::protocol::Request;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use ts_rs::TS;
 
 use crate::AppState;
+use crate::crop::{self, Candidate, CropPdf, DropTarget, PageImage};
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
@@ -21,6 +21,7 @@ use crate::jobs::{
     RenderFormatChoice, SaveMergedPdfResult, pdf_conformance,
 };
 use crate::settings::{self, OutputDirLabel, OutputKind, Settings, SettingsInput};
+use crate::worker_pool::WorkerPool;
 
 /// Name of the image filter of the file dialog.
 const IMAGE_FILTER_NAME: &str = "Images";
@@ -45,7 +46,8 @@ pub struct AboutInfo {
 #[tauri::command]
 pub async fn get_about(app: AppHandle) -> AboutInfo {
     let version = app.package_info().version.to_string();
-    let check = tauri::async_runtime::spawn_blocking(move || check_worker(&app)).await;
+    let pool = app.state::<AppState>().pool.clone();
+    let check = tauri::async_runtime::spawn_blocking(move || check_worker(&pool)).await;
     let pdfium_error = match check {
         Ok(Ok(())) => None,
         Ok(Err(e)) => Some(e),
@@ -58,15 +60,17 @@ pub async fn get_about(app: AppHandle) -> AboutInfo {
     }
 }
 
-fn check_worker(app: &AppHandle) -> Result<(), String> {
-    let library_dir = crate::pdfium::library_dir(app).map_err(|e| e.to_string())?;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut worker = WorkerProcess::spawn(
-        exe.as_os_str(),
-        [WORKER_FLAG.as_ref(), library_dir.as_os_str()],
-    )
-    .map_err(|e| format!("{e:?}"))?;
-    match worker.request(&Request::Hello, OPEN_TIMEOUT) {
+/// Starts a worker with the pool's arguments, outside the pool, and asks it to
+/// load pdfium. The arguments are the pool's so that the check cannot fall
+/// behind what a worker needs to start (design §5.4).
+///
+/// # Errors
+///
+/// Returns why the worker could not start or load pdfium.
+pub fn check_worker(pool: &WorkerPool) -> Result<(), String> {
+    let mut worker = pool.spawn_dedicated().map_err(|e| e.to_string())?;
+    let hello = Request::Hello;
+    match worker.request(&hello, pool.timeout_for(&hello)) {
         Ok(_) => Ok(()),
         Err(WorkerError::Remote { code, detail }) => {
             Err(format!("{code}: {}", detail.unwrap_or_default()))
@@ -203,6 +207,105 @@ pub async fn unlock_pdf(
 ) -> Result<items::UnlockResult, IpcError> {
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || items::unlock_pdf(&state, id, &password))
+        .await
+        .map_err(task_failed)?
+}
+
+/// Asks for one PDF and holds it as the pending crop PDF (design §6.10, §7.1).
+/// Returns `None` if the dialog was cancelled. The open crop PDF is not
+/// touched until [`activate_crop_pdf`].
+#[tauri::command]
+pub async fn open_crop_pdf(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<CropPdf>, IpcError> {
+    if state.is_running.load(Ordering::SeqCst) {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(pick_file(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
+            .map(|path| crop::open_pdf(&state, &path)))
+    })
+    .await
+    .map_err(task_failed)?
+}
+
+/// Makes the pending crop PDF `id` the open one (design §6.10, §7.1).
+#[tauri::command]
+pub fn activate_crop_pdf(state: tauri::State<'_, AppState>, id: u64) -> Result<(), IpcError> {
+    crop::activate_crop_pdf(&state, id)
+}
+
+/// Drops the pending crop PDF if it is `id` (design §6.10, §7.1).
+#[tauri::command]
+pub fn discard_crop_pdf(state: tauri::State<'_, AppState>, id: u64) {
+    crop::discard_crop_pdf(&state, id);
+}
+
+/// Drops the open and the pending crop PDF (design §6.10, §7.1).
+#[tauri::command]
+pub fn close_crop_pdf(state: tauri::State<'_, AppState>) -> Result<(), IpcError> {
+    crop::close_crop_pdf(&state)
+}
+
+/// Opens the open crop PDF again with a password (design §6.8, §6.10, §7.1).
+#[tauri::command]
+pub async fn unlock_crop_pdf(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    password: String,
+) -> Result<CropPdf, IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crop::unlock_crop_pdf(&state, id, &password))
+        .await
+        .map_err(task_failed)?
+}
+
+/// Tells Rust where a drop goes: the lists or the crop tab (design §6.10, §7.1).
+#[tauri::command]
+pub fn set_drop_target(state: tauri::State<'_, AppState>, target: DropTarget) {
+    state.crop.set_drop_target(target);
+}
+
+/// Lists the embedded images of a page of the open crop PDF (design §7.1).
+#[tauri::command]
+pub async fn list_page_images(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    page: u32,
+) -> Result<Vec<PageImage>, IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crop::list_page_images(&state, id, page))
+        .await
+        .map_err(task_failed)?
+}
+
+/// Whether anything is drawn over an embedded image of the open crop PDF
+/// (design §7.1).
+#[tauri::command]
+pub async fn check_on_top(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    page: u32,
+    image_index: u32,
+) -> Result<bool, IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crop::check_on_top(&state, id, page, image_index))
+        .await
+        .map_err(task_failed)?
+}
+
+/// The candidates for cropping on a page of the open crop PDF. Allowed during
+/// a conversion (design §7.1).
+#[tauri::command]
+pub async fn detect_layout(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    page: u32,
+) -> Result<Vec<Candidate>, IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crop::detect_layout(&state, id, page))
         .await
         .map_err(task_failed)?
 }
@@ -392,19 +495,43 @@ pub async fn start_pdfs_to_images(
     jobs::start_pdfs_to_images_internal(&state, &ids, &range, format, color_mode, dpi, callbacks)
 }
 
-/// Returns the PNG thumbnail of an item. `page` is used for a PDF only and
-/// defaults to 1.
+/// Returns the PNG thumbnail of an item of a list or of the open crop PDF.
+/// `page` is used for a PDF only and defaults to 1; `max_side` sets the longer
+/// side of a PDF page (design §7.1).
 #[tauri::command]
 pub async fn get_thumbnail(
     state: tauri::State<'_, AppState>,
     id: u64,
     page: Option<u32>,
+    max_side: Option<u32>,
 ) -> Result<tauri::ipc::Response, IpcError> {
     let state = state.inner().clone();
-    let png = tauri::async_runtime::spawn_blocking(move || items::make_thumbnail(&state, id, page))
-        .await
-        .map_err(task_failed)??;
+    let png = tauri::async_runtime::spawn_blocking(move || {
+        items::make_thumbnail(&state, id, page, max_side)
+    })
+    .await
+    .map_err(task_failed)??;
     Ok(tauri::ipc::Response::new(png))
+}
+
+/// Opens a dialog, a child of `window`, to pick one file with one of
+/// `extensions`. Blocks until it is closed, so it must not run on the main
+/// thread.
+fn pick_file(
+    window: &tauri::Window,
+    filter_name: &str,
+    extensions: &[&str],
+) -> Result<Option<PathBuf>, IpcError> {
+    let patterns = filter_extensions(extensions);
+    let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
+    window
+        .dialog()
+        .file()
+        .set_parent(window)
+        .add_filter(filter_name, &patterns)
+        .blocking_pick_file()
+        .map(dialog_path)
+        .transpose()
 }
 
 /// Opens a dialog, a child of `window`, to pick several files with one of

@@ -27,6 +27,7 @@ const ALL_ERROR_CODES: ErrorCode[] = [
   "OutputDirMissing",
   "OutputDirNotWritable",
   "CmykNotAllowedInPdfA",
+  "LayoutUnavailable",
 ];
 
 describe("i18n", () => {
@@ -50,7 +51,7 @@ describe("i18n", () => {
   });
 
   describe("formatErrorMessage", () => {
-    it("formats all 18 error codes in Japanese", () => {
+    it("formats all 19 error codes in Japanese", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "ja")).toBe(
         "対応していない形式です",
       );
@@ -105,9 +106,12 @@ describe("i18n", () => {
       expect(formatErrorMessage("CmykNotAllowedInPdfA", null, "ja")).toBe(
         "PDF/A では CMYK の画像を使えません",
       );
+      expect(formatErrorMessage("LayoutUnavailable", null, "ja")).toBe(
+        "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
+      );
     });
 
-    it("formats all 18 error codes in English", () => {
+    it("formats all 19 error codes in English", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "en")).toBe(
         "Unsupported file format",
       );
@@ -161,6 +165,9 @@ describe("i18n", () => {
       );
       expect(formatErrorMessage("CmykNotAllowedInPdfA", null, "en")).toBe(
         "CMYK images can't be used in PDF/A",
+      );
+      expect(formatErrorMessage("LayoutUnavailable", null, "en")).toBe(
+        "Can't show suggestions (layout analysis is unavailable). You can still select areas by hand.",
       );
     });
 

@@ -14,11 +14,13 @@ use pdfconv_core::{
     IMAGE_EXTENSIONS, ImageFormat, ImageInfo, THUMBNAIL_SIDE, orientation_swaps_dimensions, probe,
     thumbnail_png,
 };
+use pdfconv_worker::PAGE_VIEW_MAX_SIDE;
 use pdfconv_worker::protocol::{PageDimensions, Password, PasswordError, Request, Response};
 use serde::Serialize;
 use ts_rs::TS;
 
 use crate::AppState;
+use crate::crop;
 use crate::error::{ErrorCode, IpcError};
 use crate::worker_pool::PooledWorker;
 
@@ -87,6 +89,8 @@ struct Table {
 
 /// The table that maps IDs to files (design §1, §6.1). An ID is a number that
 /// only grows, so the ID of a removed item is never given to another file.
+/// The crop PDFs (design §6.10) take their IDs from the same count but are not
+/// kept here.
 #[derive(Debug, Default)]
 pub struct ItemTable {
     table: Mutex<Table>,
@@ -116,10 +120,16 @@ impl ItemTable {
         if table.by_canonical.contains_key(&entry.canonical) {
             return None;
         }
-        let id = self.last_id.fetch_add(1, Ordering::Relaxed) + 1;
+        let id = self.next_id();
         table.by_canonical.insert(entry.canonical.clone(), id);
         table.entries.insert(id, entry);
         Some(id)
+    }
+
+    /// Takes the next ID without putting anything in the table, so that a
+    /// crop PDF (design §6.10) gets an ID that no list item has or will have.
+    pub fn next_id(&self) -> u64 {
+        self.last_id.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     pub fn get(&self, id: u64) -> Option<Entry> {
@@ -402,7 +412,7 @@ fn add_files<I>(
     (added, skipped)
 }
 
-fn file_name(path: &Path) -> String {
+pub(crate) fn file_name(path: &Path) -> String {
     path.file_name()
         .unwrap_or_default()
         .to_string_lossy()
@@ -514,18 +524,29 @@ pub fn add_pdfs(state: &AppState, paths: &[PathBuf]) -> AddResult<PdfItem> {
     AddResult { added, skipped }
 }
 
-fn load_pdf(
+/// Opens the PDF at `path` in a pooled worker and returns its page count and
+/// the size of every page (design §5.1).
+pub(crate) fn open_in_pool(
     state: &AppState,
     path: &Path,
     password: Option<&Password>,
-) -> Result<PdfInfo, IpcError> {
+) -> Result<(u32, Vec<PageDimensions>), IpcError> {
     let mut worker = state.pool.acquire()?;
     let req = Request::Open {
         path: path.to_path_buf(),
         password: password.cloned(),
     };
-    let (page_count, pages) = send_open(&mut worker, &req)?;
+    let opened = send_open(&mut worker, &req)?;
     close_pdf(&mut worker);
+    Ok(opened)
+}
+
+fn load_pdf(
+    state: &AppState,
+    path: &Path,
+    password: Option<&Password>,
+) -> Result<PdfInfo, IpcError> {
+    let (page_count, pages) = open_in_pool(state, path, password)?;
     Ok(PdfInfo {
         page_count,
         first_page_size_pt: pages.first().map(|page| PageSizePt {
@@ -535,7 +556,7 @@ fn load_pdf(
     })
 }
 
-fn send_open(
+pub(crate) fn send_open(
     worker: &mut PooledWorker,
     req: &Request,
 ) -> Result<(u32, Vec<PageDimensions>), IpcError> {
@@ -561,11 +582,11 @@ fn load_pdf_item(
 /// Lets the worker release the file, which on Windows would otherwise stay
 /// locked until the worker opens another PDF. A worker that cannot answer is
 /// discarded by the pool, so the result is not needed.
-fn close_pdf(worker: &mut PooledWorker) {
+pub(crate) fn close_pdf(worker: &mut PooledWorker) {
     let _ = worker.send(&Request::Close);
 }
 
-fn unexpected_response() -> IpcError {
+pub(crate) fn unexpected_response() -> IpcError {
     IpcError::new(
         ErrorCode::WorkerCrashed,
         "the worker answered with an unexpected message",
@@ -686,46 +707,93 @@ pub fn remove_items(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
     Ok(())
 }
 
-/// Makes the PNG thumbnail of an item (design §6.1).
+/// Makes the PNG thumbnail of an item (design §6.1, §7.1).
 ///
-/// `page` is used for a PDF only; it defaults to 1.
+/// `id` is an item of a list or the open crop PDF (design §6.10). `page` is
+/// used for a PDF only; it defaults to 1. `max_side` is the length of the
+/// longer side of a PDF page, up to `PAGE_VIEW_MAX_SIDE`; it defaults to
+/// `THUMBNAIL_SIDE` and is not accepted for an image, whose thumbnail has a
+/// fixed size.
 ///
 /// # Errors
 ///
-/// Returns `UnknownHandle` for an ID that is not in the table, the item's own
-/// error if it could not be read, and `InvalidParams` when `page` is not a
-/// page of the PDF.
-pub fn make_thumbnail(state: &AppState, id: u64, page: Option<u32>) -> Result<Vec<u8>, IpcError> {
-    let entry = state
-        .items
-        .get(id)
-        .ok_or_else(|| IpcError::from_code(ErrorCode::UnknownHandle))?;
+/// Returns `UnknownHandle` for an ID that is neither in the table nor the open
+/// crop PDF, the item's own error if it could not be read, and `InvalidParams`
+/// when `page` is not a page of the PDF, `max_side` is 0 or above
+/// `PAGE_VIEW_MAX_SIDE`, or `max_side` is given for an image.
+pub fn make_thumbnail(
+    state: &AppState,
+    id: u64,
+    page: Option<u32>,
+    max_side: Option<u32>,
+) -> Result<Vec<u8>, IpcError> {
+    let Some(entry) = state.items.get(id) else {
+        return crop::crop_thumbnail(state, id, page, max_side);
+    };
     if let Some(error) = entry.error {
         return Err(error);
     }
     match entry.kind {
         ItemKind::Image => {
+            if max_side.is_some() {
+                return Err(IpcError::from_code(ErrorCode::InvalidParams));
+            }
             let bytes = std::fs::read(&entry.path)
                 .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))?;
             Ok(thumbnail_png(&bytes)?)
         }
         ItemKind::Pdf => {
-            let page = page.unwrap_or(1);
-            if page == 0 || page > entry.page_count {
-                return Err(IpcError::from_code(ErrorCode::InvalidParams));
-            }
-            let mut worker = state.pool.acquire()?;
-            send_open(&mut worker, &entry.open_request())?;
-            let thumbnail = worker.send(&Request::Thumbnail {
-                page,
-                max_side: THUMBNAIL_SIDE,
-            });
-            close_pdf(&mut worker);
-            match thumbnail? {
-                (Response::Thumbnail, png) => Ok(png),
-                _ => Err(unexpected_response()),
-            }
+            let page = checked_page(page, entry.page_count)?;
+            let max_side = checked_max_side(max_side)?;
+            pdf_thumbnail(state, &entry.open_request(), page, max_side)
         }
+    }
+}
+
+/// `page`, which defaults to 1, if it is a page of a PDF with `page_count` pages.
+pub(crate) fn checked_page(page: Option<u32>, page_count: u32) -> Result<u32, IpcError> {
+    let page = page.unwrap_or(1);
+    if page == 0 || page > page_count {
+        return Err(IpcError::from_code(ErrorCode::InvalidParams));
+    }
+    Ok(page)
+}
+
+/// `max_side`, which defaults to `THUMBNAIL_SIDE`, if the worker will take it.
+/// The worker checks it too; checking here keeps a bad value from taking a
+/// worker for a PDF that has to be opened first.
+pub(crate) fn checked_max_side(max_side: Option<u32>) -> Result<u32, IpcError> {
+    let max_side = max_side.unwrap_or(THUMBNAIL_SIDE);
+    if max_side == 0 || max_side > PAGE_VIEW_MAX_SIDE {
+        return Err(IpcError::from_code(ErrorCode::InvalidParams));
+    }
+    Ok(max_side)
+}
+
+/// Opens the PDF that `open` names in a pooled worker, sends `request` and
+/// closes the PDF again.
+pub(crate) fn request_on_pdf(
+    state: &AppState,
+    open: &Request,
+    request: &Request,
+) -> Result<(Response, Vec<u8>), IpcError> {
+    let mut worker = state.pool.acquire()?;
+    send_open(&mut worker, open)?;
+    let answer = worker.send(request);
+    close_pdf(&mut worker);
+    Ok(answer?)
+}
+
+/// Renders `page` of the PDF that `open` names as a PNG, in a pooled worker.
+pub(crate) fn pdf_thumbnail(
+    state: &AppState,
+    open: &Request,
+    page: u32,
+    max_side: u32,
+) -> Result<Vec<u8>, IpcError> {
+    match request_on_pdf(state, open, &Request::Thumbnail { page, max_side })? {
+        (Response::Thumbnail, png) => Ok(png),
+        _ => Err(unexpected_response()),
     }
 }
 

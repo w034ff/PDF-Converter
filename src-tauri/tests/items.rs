@@ -461,11 +461,11 @@ fn an_image_thumbnail_is_a_png_with_the_longer_side_fixed() {
     let state = state();
     let id = add_images(&state, &[path]).added[0].id;
 
-    let png = make_thumbnail(&state, id, None).expect("making the thumbnail");
+    let png = make_thumbnail(&state, id, None, None).expect("making the thumbnail");
     assert_eq!(png_size(&png), (THUMBNAIL_SIDE, 107));
 
     // `page` is for PDFs only.
-    let png = make_thumbnail(&state, id, Some(99)).expect("making the thumbnail");
+    let png = make_thumbnail(&state, id, Some(99), None).expect("making the thumbnail");
     assert_eq!(png_size(&png), (THUMBNAIL_SIDE, 107));
 }
 
@@ -477,7 +477,7 @@ fn a_pdf_thumbnail_is_made_by_the_worker() {
     let id = add_pdfs(&state, &[path]).added[0].id;
 
     for page in [None, Some(1), Some(3)] {
-        let png = make_thumbnail(&state, id, page).expect("making the thumbnail");
+        let png = make_thumbnail(&state, id, page, None).expect("making the thumbnail");
         let (width, height) = png_size(&png);
         assert_eq!(width.max(height), THUMBNAIL_SIDE, "page {page:?}");
     }
@@ -491,7 +491,7 @@ fn a_page_that_is_not_in_the_pdf_is_invalid() {
     let id = add_pdfs(&state, &[path]).added[0].id;
 
     for page in [0, 4, u32::MAX] {
-        let error = make_thumbnail(&state, id, Some(page)).expect_err("a page out of range");
+        let error = make_thumbnail(&state, id, Some(page), None).expect_err("a page out of range");
         assert_eq!(
             error,
             IpcError::from_code(ErrorCode::InvalidParams),
@@ -512,17 +512,17 @@ fn thumbnails_of_unknown_and_failed_items_are_errors() {
     let image_id = add_images(&state, &[cut]).added[0].id;
 
     assert_eq!(
-        make_thumbnail(&state, 12345, None).expect_err("an ID that is not in the table"),
+        make_thumbnail(&state, 12345, None, None).expect_err("an ID that is not in the table"),
         IpcError::from_code(ErrorCode::UnknownHandle)
     );
     assert_eq!(
-        make_thumbnail(&state, pdf_id, None)
+        make_thumbnail(&state, pdf_id, None, None)
             .expect_err("a PDF that did not open")
             .code,
         ErrorCode::PasswordProtected
     );
     assert_eq!(
-        make_thumbnail(&state, image_id, None)
+        make_thumbnail(&state, image_id, None, None)
             .expect_err("an image that did not load")
             .code,
         ErrorCode::DecodeFailed
@@ -530,7 +530,7 @@ fn thumbnails_of_unknown_and_failed_items_are_errors() {
 
     state.items.remove(&[pdf_id]);
     assert_eq!(
-        make_thumbnail(&state, pdf_id, None)
+        make_thumbnail(&state, pdf_id, None, None)
             .expect_err("a removed item")
             .code,
         ErrorCode::UnknownHandle
@@ -547,7 +547,7 @@ fn a_pdf_that_became_damaged_after_it_was_added_fails_with_a_reason() {
     fs::write(&path, "no longer a PDF").expect("overwriting the file");
 
     assert_eq!(
-        make_thumbnail(&state, id, None)
+        make_thumbnail(&state, id, None, None)
             .expect_err("a PDF that is damaged now")
             .code,
         ErrorCode::PdfOpenFailed
@@ -613,7 +613,7 @@ fn correct_password_populates_metadata_and_enables_thumbnail() {
     assert_eq!(entry.page_count, 1);
     assert_eq!(entry.error, None);
 
-    let png = make_thumbnail(&state, id, None).expect("thumbnail generated");
+    let png = make_thumbnail(&state, id, None, None).expect("thumbnail generated");
     assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
 }
 

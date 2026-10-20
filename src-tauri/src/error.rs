@@ -27,11 +27,12 @@ pub enum ErrorCode {
     OutputDirMissing,
     OutputDirNotWritable,
     CmykNotAllowedInPdfA,
+    LayoutUnavailable,
 }
 
 impl ErrorCode {
     /// Every code, so that [`ErrorCode::from_name`] cannot miss one.
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 19] = [
         Self::UnsupportedFormat,
         Self::DecodeFailed,
         Self::PdfOpenFailed,
@@ -50,6 +51,7 @@ impl ErrorCode {
         Self::OutputDirMissing,
         Self::OutputDirNotWritable,
         Self::CmykNotAllowedInPdfA,
+        Self::LayoutUnavailable,
     ];
 
     /// The name of the code as it appears in design §6.6.
@@ -73,6 +75,7 @@ impl ErrorCode {
             Self::OutputDirMissing => "OutputDirMissing",
             Self::OutputDirNotWritable => "OutputDirNotWritable",
             Self::CmykNotAllowedInPdfA => "CmykNotAllowedInPdfA",
+            Self::LayoutUnavailable => "LayoutUnavailable",
         }
     }
 
@@ -263,6 +266,14 @@ mod tests {
         let err = IpcError::from_worker("PdfiumUnavailable", Some("library not found"));
         assert_eq!(err.code, ErrorCode::WorkerCrashed);
         assert_eq!(err.detail.as_deref(), Some("library not found"));
+    }
+
+    #[test]
+    fn the_workers_layout_unavailable_keeps_its_code_and_detail() {
+        assert_eq!(
+            IpcError::from_worker("LayoutUnavailable", Some("the model is missing")),
+            IpcError::new(ErrorCode::LayoutUnavailable, "the model is missing")
+        );
     }
 
     #[test]
