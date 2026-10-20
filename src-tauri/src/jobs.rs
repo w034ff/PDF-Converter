@@ -353,9 +353,10 @@ pub(crate) type FinishJob = Box<dyn FnOnce(JobFinishedPayload) + Send + Sync>;
 
 /// Runs `run` on a thread of its own as the conversion that `guard` marks.
 /// `run` must send the end of the job through the [`FinishJob`] it is given;
-/// `is_running` is put back before the callback is called. If `run` panics, a
-/// `job-finished` with `failed_if_it_panics` failures is sent instead, so the
-/// screen never waits for a job that is gone.
+/// `is_running` is put back before the callback is called. If `run` panics,
+/// or returns an error without having sent the end, a `job-finished` with
+/// `failed_if_it_panics` failures is sent instead, so the screen never waits
+/// for a job that is gone.
 pub(crate) fn spawn_conversion<FFin, Run>(
     state: &AppState,
     guard: RunningGuard,
@@ -364,7 +365,7 @@ pub(crate) fn spawn_conversion<FFin, Run>(
     run: Run,
 ) where
     FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
-    Run: FnOnce(&AppState, FinishJob) + Send + 'static,
+    Run: FnOnce(&AppState, FinishJob) -> Result<(), IpcError> + Send + 'static,
 {
     let state = state.clone();
     std::thread::spawn(move || {
@@ -379,10 +380,9 @@ pub(crate) fn spawn_conversion<FFin, Run>(
                 }
             })
         };
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run(&state, finish);
-        }));
-        if outcome.is_err()
+        let outcome =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&state, finish)));
+        if !matches!(outcome, Ok(Ok(())))
             && let Ok(mut slot) = pending.lock()
             && let Some(finish) = slot.take()
         {
@@ -1507,92 +1507,43 @@ where
     // Nothing has started yet, so a refused password leaves no state to undo (design §7.1).
     let output = PdfOutput::new(conformance, output_password(conformance, password)?);
 
-    // Check conversion running first per design §6.5, §7.1
-    if state
-        .is_running
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    let guard = begin_conversion(state)?;
+
+    let output_dir = state
+        .images_output_dir
+        .lock()
+        .expect("output_dir lock")
+        .clone()
+        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
+    check_output_dir(state, OutputKind::ImagesToPdf, &output_dir)?;
+    if ids.iter().any(|&id| state.items.get(id).is_none()) {
+        return Err(IpcError::from_code(ErrorCode::UnknownHandle));
     }
-    state.cancel_flag.store(false, Ordering::SeqCst);
+    list_existing_files(&output_dir)?;
 
-    let output_dir = {
-        let lock = state.images_output_dir.lock().expect("output_dir lock");
-        match lock.clone() {
-            Some(dir) => dir,
-            None => {
-                state.is_running.store(false, Ordering::SeqCst);
-                return Err(IpcError::from_code(ErrorCode::InvalidParams));
-            }
-        }
-    };
-
-    if let Err(err) = check_output_dir(state, OutputKind::ImagesToPdf, &output_dir) {
-        state.is_running.store(false, Ordering::SeqCst);
-        return Err(err);
-    }
-
-    for &id in ids {
-        if state.items.get(id).is_none() {
-            state.is_running.store(false, Ordering::SeqCst);
-            return Err(IpcError::from_code(ErrorCode::UnknownHandle));
-        }
-    }
-
-    if let Err(err) = list_existing_files(&output_dir) {
-        state.is_running.store(false, Ordering::SeqCst);
-        return Err(err);
-    }
-
-    let state_clone = state.clone();
-    let ids_owned = ids.to_vec();
-
-    std::thread::spawn(move || {
-        let running_guard = RunningGuard::new(Arc::clone(&state_clone.is_running));
-        let on_finished_cell = Arc::new(Mutex::new(Some(
-            running_guard.wrap_on_finished(callbacks.on_finished),
-        )));
-        let on_finished_for_run = {
-            let cell = Arc::clone(&on_finished_cell);
-            move |finished: JobFinishedPayload| {
-                if let Ok(mut lock) = cell.lock()
-                    && let Some(cb) = lock.take()
-                {
-                    cb(finished);
-                }
-            }
-        };
-        let wrapped_callbacks = JobCallbacks {
-            on_progress: callbacks.on_progress,
-            on_item: callbacks.on_item,
-            on_finished: on_finished_for_run,
-        };
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let ids = ids.to_vec();
+    let failed_if_it_panics = ids.len() as u32;
+    spawn_conversion(
+        state,
+        guard,
+        callbacks.on_finished,
+        failed_if_it_panics,
+        move |state, finish| {
             run_images_to_pdfs(
-                &state_clone,
-                &ids_owned,
+                state,
+                &ids,
                 page_size,
                 orientation,
                 &output,
                 &output_dir,
-                wrapped_callbacks,
+                JobCallbacks {
+                    on_progress: callbacks.on_progress,
+                    on_item: callbacks.on_item,
+                    on_finished: finish,
+                },
             )
-        }));
-        if (res.is_err() || matches!(res, Ok(Err(_))))
-            && let Ok(mut lock) = on_finished_cell.lock()
-            && let Some(cb) = lock.take()
-        {
-            cb(JobFinishedPayload {
-                succeeded: 0,
-                failed: ids_owned.len() as u32,
-                no_pages: 0,
-                unprocessed: 0,
-                cancelled: state_clone.cancel_flag.load(Ordering::SeqCst),
-            });
-        }
-    });
-
+        },
+    );
     Ok(())
 }
 
@@ -1611,105 +1562,49 @@ where
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
     FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
 {
-    // Check conversion running first per design §6.5, §7.1
-    if state
-        .is_running
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
-    state.cancel_flag.store(false, Ordering::SeqCst);
+    let guard = begin_conversion(state)?;
 
     if !is_render_dpi_in_range(dpi) {
-        state.is_running.store(false, Ordering::SeqCst);
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
+    let page_set = parse_page_range(range)
+        .map_err(|e| IpcError::new(ErrorCode::InvalidPageRange, e.detail))?;
 
-    let page_set = match parse_page_range(range) {
-        Ok(ps) => ps,
-        Err(e) => {
-            state.is_running.store(false, Ordering::SeqCst);
-            return Err(IpcError::new(ErrorCode::InvalidPageRange, e.detail));
-        }
-    };
-
-    let output_dir = {
-        let lock = state.pdfs_output_dir.lock().expect("output_dir lock");
-        match lock.clone() {
-            Some(dir) => dir,
-            None => {
-                state.is_running.store(false, Ordering::SeqCst);
-                return Err(IpcError::from_code(ErrorCode::InvalidParams));
-            }
-        }
-    };
-
-    if let Err(err) = check_output_dir(state, OutputKind::PdfToImages, &output_dir) {
-        state.is_running.store(false, Ordering::SeqCst);
-        return Err(err);
+    let output_dir = state
+        .pdfs_output_dir
+        .lock()
+        .expect("output_dir lock")
+        .clone()
+        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
+    check_output_dir(state, OutputKind::PdfToImages, &output_dir)?;
+    if ids.iter().any(|&id| state.items.get(id).is_none()) {
+        return Err(IpcError::from_code(ErrorCode::UnknownHandle));
     }
+    list_existing_files(&output_dir)?;
 
-    for &id in ids {
-        if state.items.get(id).is_none() {
-            state.is_running.store(false, Ordering::SeqCst);
-            return Err(IpcError::from_code(ErrorCode::UnknownHandle));
-        }
-    }
-
-    if let Err(err) = list_existing_files(&output_dir) {
-        state.is_running.store(false, Ordering::SeqCst);
-        return Err(err);
-    }
-
-    let state_clone = state.clone();
-    let ids_owned = ids.to_vec();
-
-    std::thread::spawn(move || {
-        let running_guard = RunningGuard::new(Arc::clone(&state_clone.is_running));
-        let on_finished_cell = Arc::new(Mutex::new(Some(
-            running_guard.wrap_on_finished(callbacks.on_finished),
-        )));
-        let on_finished_for_run = {
-            let cell = Arc::clone(&on_finished_cell);
-            move |finished: JobFinishedPayload| {
-                if let Ok(mut lock) = cell.lock()
-                    && let Some(cb) = lock.take()
-                {
-                    cb(finished);
-                }
-            }
-        };
-        let wrapped_callbacks = JobCallbacks {
-            on_progress: callbacks.on_progress,
-            on_item: callbacks.on_item,
-            on_finished: on_finished_for_run,
-        };
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let ids = ids.to_vec();
+    let failed_if_it_panics = ids.len() as u32;
+    spawn_conversion(
+        state,
+        guard,
+        callbacks.on_finished,
+        failed_if_it_panics,
+        move |state, finish| {
             run_pdfs_to_images(
-                &state_clone,
-                &ids_owned,
+                state,
+                &ids,
                 &page_set,
                 format,
                 color_mode,
                 dpi,
                 &output_dir,
-                wrapped_callbacks,
+                JobCallbacks {
+                    on_progress: callbacks.on_progress,
+                    on_item: callbacks.on_item,
+                    on_finished: finish,
+                },
             )
-        }));
-        if (res.is_err() || matches!(res, Ok(Err(_))))
-            && let Ok(mut lock) = on_finished_cell.lock()
-            && let Some(cb) = lock.take()
-        {
-            cb(JobFinishedPayload {
-                succeeded: 0,
-                failed: ids_owned.len() as u32,
-                no_pages: 0,
-                unprocessed: 0,
-                cancelled: state_clone.cancel_flag.load(Ordering::SeqCst),
-            });
-        }
-    });
-
+        },
+    );
     Ok(())
 }

@@ -285,7 +285,10 @@ where
         guard,
         on_finished,
         failed_if_it_panics,
-        move |state, finish| run_crop_export(state, &plan, &on_progress, &on_item, finish),
+        move |state, finish| {
+            run_crop_export(state, &plan, &on_progress, &on_item, finish);
+            Ok(())
+        },
     );
     Ok(())
 }
