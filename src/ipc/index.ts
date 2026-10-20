@@ -218,12 +218,29 @@ export function isUnlockResult(value: unknown): value is UnlockResult {
   return Array.isArray(items) && items.every(isPdfItem);
 }
 
+function isRenderFormatChoice(value: unknown): value is RenderFormatChoice {
+  return value === "png" || value === "jpeg" || value === "webp";
+}
+
+function isRenderColorChoice(value: unknown): value is RenderColorChoice {
+  return value === "color" || value === "gray";
+}
+
+function isRenderDpi(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= RENDER_DPI_MIN &&
+    value <= RENDER_DPI_MAX
+  );
+}
+
 /** Whether a value has the shape of the `get_settings` answer (design §6.7). */
 export function isSettings(value: unknown): value is Settings {
   if (!isRecord(value)) {
     return false;
   }
-  const { language, imagesToPdf, pdfToImages } = value;
+  const { language, imagesToPdf, pdfToImages, crop } = value;
   return (
     (language === "ja" || language === "en" || language === null) &&
     isRecord(imagesToPdf) &&
@@ -234,15 +251,17 @@ export function isSettings(value: unknown): value is Settings {
     typeof imagesToPdf.encrypt === "boolean" &&
     isOutputDirLabel(imagesToPdf.outputDir) &&
     isRecord(pdfToImages) &&
-    (pdfToImages.format === "png" ||
-      pdfToImages.format === "jpeg" ||
-      pdfToImages.format === "webp") &&
-    (pdfToImages.colorMode === "color" || pdfToImages.colorMode === "gray") &&
-    typeof pdfToImages.dpi === "number" &&
-    Number.isInteger(pdfToImages.dpi) &&
-    pdfToImages.dpi >= RENDER_DPI_MIN &&
-    pdfToImages.dpi <= RENDER_DPI_MAX &&
-    isOutputDirLabel(pdfToImages.outputDir)
+    isRenderFormatChoice(pdfToImages.format) &&
+    isRenderColorChoice(pdfToImages.colorMode) &&
+    isRenderDpi(pdfToImages.dpi) &&
+    isOutputDirLabel(pdfToImages.outputDir) &&
+    isRecord(crop) &&
+    isRenderFormatChoice(crop.format) &&
+    isRenderColorChoice(crop.colorMode) &&
+    isRenderDpi(crop.dpi) &&
+    typeof crop.photoNative === "boolean" &&
+    typeof crop.photoOnly === "boolean" &&
+    isOutputDirLabel(crop.outputDir)
   );
 }
 

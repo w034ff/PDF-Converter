@@ -17,8 +17,8 @@ use pdf_converter_lib::jobs::{
     SaveMergedPdfResult,
 };
 use pdf_converter_lib::settings::{
-    ImagesToPdfOptions, ImagesToPdfSettings, Language, OutputDirLabel, OutputKind, OutputMode,
-    PdfToImagesOptions, PdfToImagesSettings, Settings, SettingsInput,
+    CropOptions, CropSettings, ImagesToPdfOptions, ImagesToPdfSettings, Language, OutputDirLabel,
+    OutputKind, OutputMode, PdfToImagesOptions, PdfToImagesSettings, Settings, SettingsInput,
 };
 use ts_rs::{Config, TS};
 
@@ -62,8 +62,10 @@ fn export_typescript_bindings() {
     OutputDirLabel::export_all(&cfg).expect("exporting OutputDirLabel");
     ImagesToPdfOptions::export_all(&cfg).expect("exporting ImagesToPdfOptions");
     PdfToImagesOptions::export_all(&cfg).expect("exporting PdfToImagesOptions");
+    CropOptions::export_all(&cfg).expect("exporting CropOptions");
     ImagesToPdfSettings::export_all(&cfg).expect("exporting ImagesToPdfSettings");
     PdfToImagesSettings::export_all(&cfg).expect("exporting PdfToImagesSettings");
+    CropSettings::export_all(&cfg).expect("exporting CropSettings");
     Settings::export_all(&cfg).expect("exporting Settings");
     SettingsInput::export_all(&cfg).expect("exporting SettingsInput");
 }

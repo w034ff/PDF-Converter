@@ -11,9 +11,9 @@ use pdf_converter_lib::jobs::{
     PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice,
 };
 use pdf_converter_lib::settings::{
-    ImagesToPdfOptions, Language, OutputKind, OutputMode, PdfToImagesOptions, SETTINGS_FILE_NAME,
-    SettingsFile, SettingsInput, apply_picked_dir, dir_label, get_settings_internal, load_settings,
-    restore_settings, save_settings_to_dir,
+    CropOptions, ImagesToPdfOptions, Language, OutputKind, OutputMode, PdfToImagesOptions,
+    SETTINGS_FILE_NAME, SettingsFile, SettingsInput, apply_picked_dir, dir_label,
+    get_settings_internal, load_settings, restore_settings, save_settings_to_dir,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_worker::{DEFAULT_RENDER_DPI, RENDER_DPI_MAX, RENDER_DPI_MIN};
@@ -50,8 +50,8 @@ fn new_dir(parent: &Path, name: &str) -> PathBuf {
     dir
 }
 
-/// A file whose items differ from the defaults, with folders that exist. `encrypt` stays off:
-/// PDF/A is on, and the two exclude each other.
+/// A file whose items differ from the defaults, with folders that exist (the crop folder is set
+/// by the tests that need one). `encrypt` stays off: PDF/A is on, and the two exclude each other.
 fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
     json!({
         "schemaVersion": 1,
@@ -69,6 +69,14 @@ fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
             "colorMode": "gray",
             "dpi": 300,
             "outputDir": pdfs_dir,
+        },
+        "crop": {
+            "format": "webp",
+            "colorMode": "gray",
+            "dpi": 72,
+            "photoNative": false,
+            "photoOnly": true,
+            "outputDir": null,
         },
     })
 }
@@ -92,6 +100,17 @@ fn input() -> SettingsInput {
             color_mode: RenderColorChoice::Gray,
             dpi: 72,
         },
+    }
+}
+
+/// Crop options that differ from the defaults in every item.
+fn crop_options() -> CropOptions {
+    CropOptions {
+        format: RenderFormatChoice::Webp,
+        color_mode: RenderColorChoice::Gray,
+        dpi: 72,
+        photo_native: false,
+        photo_only: true,
     }
 }
 
@@ -126,6 +145,17 @@ fn the_defaults_are_those_of_the_design() {
     assert_eq!(file.pdf_to_images.options.dpi, 150);
     assert_eq!(file.pdf_to_images.options.dpi, DEFAULT_RENDER_DPI);
     assert_eq!(file.pdf_to_images.output_dir, None);
+    assert_eq!(
+        file.crop.options,
+        CropOptions {
+            format: RenderFormatChoice::Png,
+            color_mode: RenderColorChoice::Color,
+            dpi: 150,
+            photo_native: true,
+            photo_only: false,
+        }
+    );
+    assert_eq!(file.crop.output_dir, None);
 }
 
 #[test]
@@ -146,6 +176,8 @@ fn what_is_saved_is_what_is_loaded() {
     file.pdf_to_images.options = input().pdf_to_images;
     file.images_to_pdf.output_dir = Some(images_dir);
     file.pdf_to_images.output_dir = Some(pdfs_dir);
+    file.crop.options = crop_options();
+    file.crop.output_dir = Some(new_dir(temp.path(), "crop-out"));
 
     save_settings_to_dir(&config_dir, &file).expect("saving");
 
@@ -939,6 +971,14 @@ fn get_settings_has_no_path() {
                 "dpi": 300,
                 "outputDir": { "dirLabel": "pdfs-out" },
             },
+            "crop": {
+                "format": "webp",
+                "colorMode": "gray",
+                "dpi": 72,
+                "photoNative": false,
+                "photoOnly": true,
+                "outputDir": null,
+            },
         })
     );
     assert!(!json.to_string().contains(temp.path().to_str().unwrap()));
@@ -954,6 +994,7 @@ fn get_settings_of_the_defaults_has_no_folders() {
             "language": null,
             "imagesToPdf": { "output": "merge", "pageSize": "fit", "orientation": "auto", "pdfA": false, "encrypt": false, "outputDir": null },
             "pdfToImages": { "format": "png", "colorMode": "color", "dpi": 150, "outputDir": null },
+            "crop": { "format": "png", "colorMode": "color", "dpi": 150, "photoNative": true, "photoOnly": false, "outputDir": null },
         })
     );
 }
@@ -1295,4 +1336,254 @@ fn a_failed_flush_is_tried_again_by_the_next() {
     );
     state.settings.flush().expect("flushing again");
     assert_eq!(load_settings(&config_dir), state.settings.file());
+}
+
+// ---- The crop settings (design §6.7) ----
+
+#[test]
+fn a_file_without_crop_gives_the_crop_defaults_and_keeps_the_rest() {
+    // A file written before the crop tab existed.
+    assert_only_resets(
+        |json| {
+            json.as_object_mut().expect("an object").remove("crop");
+        },
+        |file| file.crop = defaults().crop,
+    );
+}
+
+#[test]
+fn a_crop_that_is_not_an_object_gives_the_crop_defaults() {
+    for wrong in [json!("png"), json!(1), json!(null), json!([1])] {
+        assert_only_resets(
+            |json| json["crop"] = wrong.clone(),
+            |file| file.crop = defaults().crop,
+        );
+    }
+}
+
+#[test]
+fn a_crop_dpi_out_of_range_or_wrong_type_resets_only_that_dpi() {
+    for dpi in [
+        json!(35),
+        json!(1001),
+        json!(0),
+        json!(-150),
+        json!(150.5),
+        json!("150"),
+    ] {
+        assert_only_resets(
+            |json| json["crop"]["dpi"] = dpi.clone(),
+            |file| file.crop.options.dpi = DEFAULT_RENDER_DPI,
+        );
+    }
+    for valid in [RENDER_DPI_MIN, RENDER_DPI_MAX, 600] {
+        assert_only_resets(
+            |json| json["crop"]["dpi"] = json!(valid),
+            |file| file.crop.options.dpi = valid,
+        );
+    }
+}
+
+#[test]
+fn an_unknown_crop_format_or_color_mode_resets_only_that_item() {
+    for bad in [json!("gif"), json!("PNG"), json!(1), json!(null)] {
+        assert_only_resets(
+            |json| json["crop"]["format"] = bad.clone(),
+            |file| file.crop.options.format = RenderFormatChoice::Png,
+        );
+    }
+    for bad in [json!("sepia"), json!(1), json!(null)] {
+        assert_only_resets(
+            |json| json["crop"]["colorMode"] = bad.clone(),
+            |file| file.crop.options.color_mode = RenderColorChoice::Color,
+        );
+    }
+}
+
+#[test]
+fn a_crop_photo_option_of_the_wrong_type_resets_only_that_option() {
+    for wrong in [json!("true"), json!(1), json!(null), json!([true])] {
+        assert_only_resets(
+            |json| json["crop"]["photoNative"] = wrong.clone(),
+            |file| file.crop.options.photo_native = true,
+        );
+        assert_only_resets(
+            |json| json["crop"]["photoOnly"] = wrong.clone(),
+            |file| file.crop.options.photo_only = false,
+        );
+    }
+}
+
+#[test]
+fn a_missing_crop_item_gives_its_default() {
+    type Reset = fn(&mut SettingsFile);
+    let cases: [(&str, Reset); 5] = [
+        ("format", |file| {
+            file.crop.options.format = RenderFormatChoice::Png;
+        }),
+        ("colorMode", |file| {
+            file.crop.options.color_mode = RenderColorChoice::Color;
+        }),
+        ("dpi", |file| file.crop.options.dpi = DEFAULT_RENDER_DPI),
+        ("photoNative", |file| file.crop.options.photo_native = true),
+        ("photoOnly", |file| file.crop.options.photo_only = false),
+    ];
+    for (key, reset) in cases {
+        assert_only_resets(
+            |json| {
+                json["crop"].as_object_mut().expect("section").remove(key);
+            },
+            reset,
+        );
+    }
+}
+
+#[test]
+fn a_missing_crop_folder_resets_only_that_folder() {
+    let temp = TempDir::new().expect("temp dir");
+    let crop_dir = new_dir(temp.path(), "crop-out");
+    let kept = load_from(
+        &temp.path().join("kept"),
+        &with_crop_dir(&temp, json!(crop_dir)),
+    );
+    assert_eq!(kept.crop.output_dir, Some(crop_dir));
+
+    for bad in [
+        json!("/no/such/folder/for/pdf-converter"),
+        json!("src"),
+        json!(1),
+    ] {
+        let loaded = load_from(&temp.path().join("bad"), &with_crop_dir(&temp, bad.clone()));
+        let mut expected = kept.clone();
+        expected.crop.output_dir = None;
+        assert_eq!(loaded, expected, "for {bad}");
+    }
+}
+
+/// `customized` with the crop folder `dir`, with its other folders in `temp`.
+fn with_crop_dir(temp: &TempDir, dir: Value) -> Value {
+    let images_dir = temp.path().join("images-out");
+    let pdfs_dir = temp.path().join("pdfs-out");
+    for dir in [&images_dir, &pdfs_dir] {
+        fs::create_dir_all(dir).expect("creating a folder");
+    }
+    let mut json = customized(&images_dir, &pdfs_dir);
+    json["crop"]["outputDir"] = dir;
+    json
+}
+
+#[test]
+fn the_state_gets_the_crop_folder_if_it_exists_and_nothing_if_it_does_not() {
+    let temp = TempDir::new().expect("temp dir");
+    let crop_dir = new_dir(temp.path(), "crop-out");
+    let config_dir = new_dir(temp.path(), "config");
+    write_settings(
+        &config_dir,
+        &json!({ "schemaVersion": 1, "crop": { "outputDir": crop_dir } }),
+    );
+    let with_folder = state();
+
+    restore_settings(&with_folder, &config_dir);
+
+    assert_eq!(*with_folder.crop_output_dir.lock().unwrap(), Some(crop_dir));
+    assert_eq!(
+        get_settings_internal(&with_folder)
+            .crop
+            .output_dir
+            .map(|d| d.dir_label),
+        Some("crop-out".to_owned())
+    );
+
+    write_settings(
+        &config_dir,
+        &json!({ "schemaVersion": 1, "crop": { "outputDir": temp.path().join("gone") } }),
+    );
+    let after_it_is_gone = state();
+
+    restore_settings(&after_it_is_gone, &config_dir);
+
+    assert_eq!(*after_it_is_gone.crop_output_dir.lock().unwrap(), None);
+    assert_eq!(
+        get_settings_internal(&after_it_is_gone).crop.output_dir,
+        None
+    );
+}
+
+#[test]
+fn a_picked_crop_folder_goes_to_the_state_and_the_file_and_leaves_the_others() {
+    let temp = TempDir::new().expect("temp dir");
+    let crop_dir = new_dir(temp.path(), "for-crops");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+
+    let (label, persisted) = apply_picked_dir(&state, OutputKind::Crop, crop_dir.clone());
+
+    assert_eq!(label.dir_label, "for-crops");
+    assert_eq!(persisted, Ok(()));
+    assert_eq!(
+        *state.crop_output_dir.lock().unwrap(),
+        Some(crop_dir.clone())
+    );
+    assert_eq!(*state.images_output_dir.lock().unwrap(), None);
+    assert_eq!(*state.pdfs_output_dir.lock().unwrap(), None);
+    let loaded = load_settings(&config_dir);
+    assert_eq!(loaded.crop.output_dir, Some(crop_dir));
+    assert_eq!(loaded.images_to_pdf.output_dir, None);
+    assert_eq!(loaded.pdf_to_images.output_dir, None);
+}
+
+#[test]
+fn save_settings_keeps_the_crop_options_and_folder_in_the_file() {
+    let temp = TempDir::new().expect("temp dir");
+    let crop_dir = new_dir(temp.path(), "crop-out");
+    let config_dir = new_dir(temp.path(), "config");
+    write_settings(
+        &config_dir,
+        &json!({
+            "schemaVersion": 1,
+            "crop": {
+                "format": "webp",
+                "colorMode": "gray",
+                "dpi": 72,
+                "photoNative": false,
+                "photoOnly": true,
+                "outputDir": crop_dir,
+            },
+        }),
+    );
+    let state = state();
+    restore_settings(&state, &config_dir);
+
+    save(&state, &input()).expect("saving");
+
+    let loaded = load_settings(&config_dir);
+    assert_eq!(loaded.language, Some(Language::En));
+    assert_eq!(loaded.crop.options, crop_options());
+    assert_eq!(loaded.crop.output_dir, Some(crop_dir.clone()));
+    assert_eq!(state.settings.file(), loaded);
+    assert_eq!(*state.crop_output_dir.lock().unwrap(), Some(crop_dir));
+}
+
+#[test]
+fn a_folder_that_is_gone_is_cleared_for_crops_without_touching_the_others() {
+    let temp = TempDir::new().expect("temp dir");
+    let images_dir = new_dir(temp.path(), "images-out");
+    let crop_dir = new_dir(temp.path(), "crop-out");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    let _ = apply_picked_dir(&state, OutputKind::ImagesToPdf, images_dir.clone());
+    let _ = apply_picked_dir(&state, OutputKind::Crop, crop_dir);
+
+    pdf_converter_lib::settings::clear_output_dir(&state, OutputKind::Crop).expect("clearing");
+
+    assert_eq!(*state.crop_output_dir.lock().unwrap(), None);
+    assert_eq!(
+        *state.images_output_dir.lock().unwrap(),
+        Some(images_dir.clone())
+    );
+    let loaded = load_settings(&config_dir);
+    assert_eq!(loaded.crop.output_dir, None);
+    assert_eq!(loaded.images_to_pdf.output_dir, Some(images_dir));
 }

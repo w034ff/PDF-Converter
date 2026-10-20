@@ -390,6 +390,14 @@ describe("ipc", () => {
           dpi: 150,
           outputDir: null,
         },
+        crop: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          photoNative: true,
+          photoOnly: false,
+          outputDir: null,
+        },
       };
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
@@ -628,6 +636,14 @@ describe("ipc", () => {
           dpi: 150,
           outputDir: null,
         },
+        crop: {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          photoNative: true,
+          photoOnly: false,
+          outputDir: null,
+        },
       };
       expect(isSettings(valid)).toBe(true);
 
@@ -805,6 +821,30 @@ describe("ipc", () => {
           pdfToImages: { ...valid.pdfToImages, dpi: 150.5 },
         }),
       ).toBe(false);
+
+      // The crop part is checked as deeply as the others, and must be there
+      const withCrop = (change: Record<string, unknown>) => ({
+        ...valid,
+        crop: { ...valid.crop, ...change },
+      });
+      expect(isSettings(withCrop({ format: "webp", dpi: 1000 }))).toBe(true);
+      expect(isSettings(withCrop({ colorMode: "gray", dpi: 36 }))).toBe(true);
+      expect(
+        isSettings(withCrop({ photoNative: false, photoOnly: true })),
+      ).toBe(true);
+      expect(isSettings(withCrop({ outputDir: { dirLabel: "crops" } }))).toBe(
+        true,
+      );
+      expect(isSettings({ ...valid, crop: undefined })).toBe(false);
+      expect(isSettings({ ...valid, crop: null })).toBe(false);
+      expect(isSettings(withCrop({ format: "gif" }))).toBe(false);
+      expect(isSettings(withCrop({ colorMode: "sepia" }))).toBe(false);
+      expect(isSettings(withCrop({ dpi: 35 }))).toBe(false);
+      expect(isSettings(withCrop({ dpi: 1001 }))).toBe(false);
+      expect(isSettings(withCrop({ dpi: 150.5 }))).toBe(false);
+      expect(isSettings(withCrop({ photoNative: "true" }))).toBe(false);
+      expect(isSettings(withCrop({ photoOnly: 0 }))).toBe(false);
+      expect(isSettings(withCrop({ outputDir: "crops" }))).toBe(false);
     });
 
     describe("isPageSizePt", () => {
