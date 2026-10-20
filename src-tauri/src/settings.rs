@@ -87,8 +87,7 @@ pub struct PdfToImagesOptions {
     pub dpi: u32,
 }
 
-/// The crop options the user can change (design §6.7). `save_settings` does not
-/// take them yet: the file keeps what it was read with.
+/// The crop options the user can change (design §6.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CropOptions {
@@ -109,6 +108,7 @@ pub struct SettingsInput {
     pub language: Option<Language>,
     pub images_to_pdf: ImagesToPdfOptions,
     pub pdf_to_images: PdfToImagesOptions,
+    pub crop: CropOptions,
 }
 
 impl SettingsInput {
@@ -116,11 +116,15 @@ impl SettingsInput {
     ///
     /// # Errors
     ///
-    /// `InvalidParams` if `dpi` is not within [`pdfconv_worker::RENDER_DPI_MIN`]..=[`pdfconv_worker::RENDER_DPI_MAX`],
+    /// `InvalidParams` if a `dpi` (of "PDF to images" or of the crop options) is not within
+    /// [`pdfconv_worker::RENDER_DPI_MIN`]..=[`pdfconv_worker::RENDER_DPI_MAX`],
     /// or if `pdf_a` and `encrypt` are both on (PDF/A forbids encryption, design §4.3.1).
     pub fn validate(&self) -> Result<(), IpcError> {
         let images = &self.images_to_pdf;
-        if is_render_dpi_in_range(self.pdf_to_images.dpi) && !(images.pdf_a && images.encrypt) {
+        if is_render_dpi_in_range(self.pdf_to_images.dpi)
+            && is_render_dpi_in_range(self.crop.dpi)
+            && !(images.pdf_a && images.encrypt)
+        {
             Ok(())
         } else {
             Err(IpcError::from_code(ErrorCode::InvalidParams))
@@ -418,8 +422,7 @@ impl SettingsStore {
         *self.written.lock().unwrap_or_else(PoisonError::into_inner) = 0;
     }
 
-    /// Takes `input` over in memory, folders and the crop options excluded
-    /// (`SettingsInput` has no crop options yet), unless `revision` is
+    /// Takes `input` over in memory, folders excluded, unless `revision` is
     /// not higher than one already taken from this page; such a call was
     /// overtaken by a newer one and is ignored. The file is written by a
     /// later [`Self::flush`].
@@ -438,6 +441,7 @@ impl SettingsStore {
         stored.file.language = input.language;
         stored.file.images_to_pdf.options = input.images_to_pdf;
         stored.file.pdf_to_images.options = input.pdf_to_images;
+        stored.file.crop.options = input.crop;
         stored.changes += 1;
         Ok(())
     }

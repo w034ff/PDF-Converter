@@ -12,7 +12,12 @@ function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
     a.imagesToPdf.encrypt === b.imagesToPdf.encrypt &&
     a.pdfToImages.format === b.pdfToImages.format &&
     a.pdfToImages.colorMode === b.pdfToImages.colorMode &&
-    a.pdfToImages.dpi === b.pdfToImages.dpi
+    a.pdfToImages.dpi === b.pdfToImages.dpi &&
+    a.crop.format === b.crop.format &&
+    a.crop.colorMode === b.crop.colorMode &&
+    a.crop.dpi === b.crop.dpi &&
+    a.crop.photoNative === b.crop.photoNative &&
+    a.crop.photoOnly === b.crop.photoOnly
   );
 }
 
@@ -29,15 +34,29 @@ function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
  * get in the way of converting.
  */
 export function useSettingsAutoSave(): void {
-  const { language, imagesToPdf, pdfToImages } = useAppState();
+  const { language, imagesToPdf, pdfToImages, crop } = useAppState();
   const preference = language.preference;
   const { output, pageSize, orientation, pdfA, encrypt } = imagesToPdf;
   const { format, colorMode, dpi } = pdfToImages;
+  const {
+    format: cropFormat,
+    colorMode: cropColorMode,
+    dpi: cropDpi,
+    photoNative,
+    photoOnly,
+  } = crop;
 
   const sentRef = useRef<SettingsInput>({
     language: preference,
     imagesToPdf: { output, pageSize, orientation, pdfA, encrypt },
     pdfToImages: { format, colorMode, dpi },
+    crop: {
+      format: cropFormat,
+      colorMode: cropColorMode,
+      dpi: cropDpi,
+      photoNative,
+      photoOnly,
+    },
   });
   const revisionRef = useRef(0);
 
@@ -46,6 +65,13 @@ export function useSettingsAutoSave(): void {
       language: preference,
       imagesToPdf: { output, pageSize, orientation, pdfA, encrypt },
       pdfToImages: { format, colorMode, dpi },
+      crop: {
+        format: cropFormat,
+        colorMode: cropColorMode,
+        dpi: cropDpi,
+        photoNative,
+        photoOnly,
+      },
     };
     if (sameSettings(next, sentRef.current)) {
       return;
@@ -65,5 +91,10 @@ export function useSettingsAutoSave(): void {
     format,
     colorMode,
     dpi,
+    cropFormat,
+    cropColorMode,
+    cropDpi,
+    photoNative,
+    photoOnly,
   ]);
 }

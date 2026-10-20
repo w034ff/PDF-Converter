@@ -1,21 +1,8 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef } from "react";
 import { SegmentedControl, type SegmentedOption } from "../../components";
+import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import { checkPageRange, normalizeIpcError } from "../../ipc";
 import {
-  formatErrorMessage,
-  formatMessage,
-  getTranslations,
-  type Translations,
-} from "../../i18n";
-import {
-  checkPageRange,
-  normalizeIpcError,
-  type RenderColorChoice,
-  type RenderFormatChoice,
-} from "../../ipc";
-import {
-  DPI_CHOICES,
-  RENDER_DPI_MAX,
-  RENDER_DPI_MIN,
   hasInvalidCustomDpi,
   isJobActive,
   useAppDispatch,
@@ -23,43 +10,12 @@ import {
   type PageSelection,
 } from "../../state";
 import { OutputDirField } from "../output/OutputDirField";
+import { RenderOptionFields } from "./RenderOptionFields";
 import { calculateRenderDimensions, formatPaperSize } from "./pdfUtils";
+import { useDelayedReveal } from "./useDelayedReveal";
 import "./pdfToImages.css";
 
-/** How long typing must pause before a field error is shown. */
-export const FIELD_ERROR_REVEAL_DELAY_MS = 600;
-
-const DPI_LABEL_KEYS: Record<
-  number,
-  keyof Translations["pdfToImages"]["settings"]["dpiChoices"]
-> = {
-  72: "dpi72",
-  150: "dpi150",
-  300: "dpi300",
-};
-
-/**
- * Hook to delay revealing an error until typing has paused or the input has blurred.
- */
-function useDelayedReveal(
-  value: string,
-  hasError: boolean,
-  delayMs = FIELD_ERROR_REVEAL_DELAY_MS,
-): [boolean, () => void] {
-  const [revealedFor, setRevealedFor] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!hasError) {
-      return;
-    }
-    const timer = setTimeout(() => setRevealedFor(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, hasError, delayMs]);
-
-  const isRevealed = hasError && revealedFor === value;
-  const reveal = () => setRevealedFor(value);
-  return [isRevealed, reveal];
-}
+export { FIELD_ERROR_REVEAL_DELAY_MS } from "./useDelayedReveal";
 
 /**
  * Settings panel for PDF to Images (mockups `PdfSingle` and `PdfBatch`).
@@ -81,12 +37,7 @@ export function PdfToImagesSettings() {
     hasRangeError,
   );
 
-  // Custom DPI error is delayed in the same manner.
   const isCustomDpiError = hasInvalidCustomDpi(pdfToImages);
-  const [isCustomDpiErrorShown, revealCustomDpiError] = useDelayedReveal(
-    pdfToImages.customDpiText,
-    isCustomDpiError,
-  );
 
   useEffect(() => {
     if (pdfToImages.pageSelection !== "range") {
@@ -132,17 +83,6 @@ export function PdfToImagesSettings() {
     { value: "range", label: t.pdfToImages.settings.pagesRange },
   ];
 
-  const formatOptions: readonly SegmentedOption<RenderFormatChoice>[] = [
-    { value: "png", label: t.pdfToImages.settings.formatPng },
-    { value: "jpeg", label: t.pdfToImages.settings.formatJpeg },
-    { value: "webp", label: t.pdfToImages.settings.formatWebp },
-  ];
-
-  const colorOptions: readonly SegmentedOption<RenderColorChoice>[] = [
-    { value: "color", label: t.pdfToImages.settings.colorFullColor },
-    { value: "gray", label: t.pdfToImages.settings.colorGrayscale },
-  ];
-
   // An empty range selects no page, so switching from "all" to it would
   // start by deselecting everything. Starting from every page lets the user
   // drop the pages they do not want instead (design §6.3).
@@ -159,15 +99,6 @@ export function PdfToImagesSettings() {
     );
     if (maxPages > 0) {
       dispatch({ type: "SET_RANGE_TEXT", rangeText: `1-${maxPages}` });
-    }
-  }
-
-  function handleDpiSelectChange(e: ChangeEvent<HTMLSelectElement>) {
-    if (e.target.value === "custom") {
-      dispatch({ type: "SET_IS_CUSTOM_DPI", isCustom: true });
-    } else {
-      const dpi = Number(e.target.value);
-      dispatch({ type: "SET_RENDER_DPI", dpi });
     }
   }
 
@@ -194,10 +125,6 @@ export function PdfToImagesSettings() {
           });
         })()
       : null;
-
-  const selectDpiValue = pdfToImages.isCustomDpi
-    ? "custom"
-    : String(pdfToImages.dpi);
 
   return (
     <div className="pdf-settings">
@@ -256,95 +183,32 @@ export function PdfToImagesSettings() {
         )}
       </div>
 
-      {/* 形式 */}
-      <div className="pdf-settings-group">
-        <span className="label">{t.pdfToImages.settings.formatTitle}</span>
-        <SegmentedControl<RenderFormatChoice>
-          label={t.pdfToImages.settings.formatTitle}
-          options={formatOptions}
-          value={pdfToImages.format}
-          onChange={(format) => dispatch({ type: "SET_RENDER_FORMAT", format })}
-          disabled={busy}
-        />
-      </div>
-
-      {/* 色 */}
-      <div className="pdf-settings-group">
-        <span className="label">{t.pdfToImages.settings.colorTitle}</span>
-        <SegmentedControl<RenderColorChoice>
-          label={t.pdfToImages.settings.colorTitle}
-          options={colorOptions}
-          value={pdfToImages.colorMode}
-          onChange={(colorMode) =>
-            dispatch({ type: "SET_RENDER_COLOR_MODE", colorMode })
-          }
-          disabled={busy}
-        />
-      </div>
-
-      {/* 解像度 */}
-      <div className="pdf-settings-group">
-        <label className="label" htmlFor="dpi">
-          {t.pdfToImages.settings.dpiLabel}
-        </label>
-        <select
-          id="dpi"
-          className="settings-control"
-          value={selectDpiValue}
-          onChange={handleDpiSelectChange}
-          disabled={busy}
-        >
-          {DPI_CHOICES.map((choice) => {
-            const key = DPI_LABEL_KEYS[choice];
-            const label = key
-              ? t.pdfToImages.settings.dpiChoices[key]
-              : `${choice} dpi`;
-            return (
-              <option key={choice} value={choice}>
-                {label}
-              </option>
-            );
-          })}
-          <option value="custom">
-            {t.pdfToImages.settings.dpiChoices.custom}
-          </option>
-        </select>
-        {pdfToImages.isCustomDpi && (
-          // The box is drawn by the label so that the unit sits inside it and
-          // a click on the unit focuses the input.
-          <label className="settings-control pdf-custom-dpi-field">
-            <input
-              type="text"
-              inputMode="numeric"
-              className="pdf-custom-dpi-input"
-              aria-label={t.pdfToImages.settings.customDpiLabel}
-              value={pdfToImages.customDpiText}
-              onChange={(e) =>
-                dispatch({
-                  type: "SET_CUSTOM_DPI_TEXT",
-                  text: e.target.value,
-                })
-              }
-              onBlur={revealCustomDpiError}
-              disabled={busy}
-            />
-            <span className="pdf-custom-dpi-unit">
-              {t.pdfToImages.settings.customDpiUnit}
-            </span>
-          </label>
-        )}
-        {isCustomDpiErrorShown && (
-          <span className="error-text" role="alert">
-            {formatMessage(t.pdfToImages.settings.customDpiError, {
-              min: RENDER_DPI_MIN,
-              max: RENDER_DPI_MAX,
-            })}
-          </span>
-        )}
-        {renderDimensionHint !== null && (
-          <span className="mono">{renderDimensionHint}</span>
-        )}
-      </div>
+      <RenderOptionFields
+        format={pdfToImages.format}
+        colorMode={pdfToImages.colorMode}
+        dpi={pdfToImages.dpi}
+        isCustomDpi={pdfToImages.isCustomDpi}
+        customDpiText={pdfToImages.customDpiText}
+        onFormatChange={(format) =>
+          dispatch({ type: "SET_RENDER_FORMAT", format })
+        }
+        onColorModeChange={(colorMode) =>
+          dispatch({ type: "SET_RENDER_COLOR_MODE", colorMode })
+        }
+        onDpiChange={(dpi) => dispatch({ type: "SET_RENDER_DPI", dpi })}
+        onCustomDpiSelected={() =>
+          dispatch({ type: "SET_IS_CUSTOM_DPI", isCustom: true })
+        }
+        onCustomDpiTextChange={(text) =>
+          dispatch({ type: "SET_CUSTOM_DPI_TEXT", text })
+        }
+        disabled={busy}
+        dpiNote={
+          renderDimensionHint !== null && (
+            <span className="mono">{renderDimensionHint}</span>
+          )
+        }
+      />
 
       {/* 保存先フォルダ */}
       <OutputDirField

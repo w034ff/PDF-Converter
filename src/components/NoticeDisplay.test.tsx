@@ -25,4 +25,14 @@ describe("NoticeDisplay", () => {
       screen.getByRole("button", { name: "パスワードを入力" }),
     ).toBeInTheDocument();
   });
+
+  it("shows the lock unless asked for the info mark", () => {
+    const { container, rerender } = render(<NoticeDisplay message="a" />);
+    expect(container.querySelector("rect")).not.toBeNull();
+    expect(container.querySelector("circle")).toBeNull();
+
+    rerender(<NoticeDisplay message="a" icon="info" />);
+    expect(container.querySelector("rect")).toBeNull();
+    expect(container.querySelector("circle")).not.toBeNull();
+  });
 });

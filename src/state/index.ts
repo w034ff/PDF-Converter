@@ -1,5 +1,6 @@
 export * from "./appReducer";
 export * from "./context";
+export * from "./crop";
 export * from "./contextBase";
 export * from "./imagesToPdf";
 export * from "./job";

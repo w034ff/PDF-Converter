@@ -1,5 +1,6 @@
 export * from "./DropZone";
 export * from "./ErrorDisplay";
+export * from "./InfoIcon";
 export * from "./ListRow";
 export * from "./LockIcon";
 export * from "./ModalDialog";
