@@ -1,30 +1,36 @@
 import { useRef, useState, type FormEvent, type RefObject } from "react";
 import { ModalDialog } from "../../components";
 import { formatErrorMessage, getTranslations } from "../../i18n";
-import { normalizeIpcError, unlockPdf, type PdfItem } from "../../ipc";
+import { normalizeIpcError } from "../../ipc";
 import { useAppState } from "../../state";
 
-export interface PasswordDialogProps {
-  isOpen: boolean;
-  item: PdfItem | null;
+export interface PasswordDialogProps<T> {
+  /** The file name shown under the title. */
+  name: string;
+  /**
+   * Tries `password` on the file. It resolves with what the caller needs to
+   * show the unlocked file, and rejects with `PasswordProtected` for a wrong
+   * password (design §6.8).
+   */
+  unlock: (password: string) => Promise<T>;
   onClose: () => void;
-  onSuccess: (items: PdfItem[]) => void;
+  onSuccess: (result: T) => void;
   triggerRef?: RefObject<HTMLElement | null>;
 }
 
-interface PasswordDialogInnerProps {
-  item: PdfItem;
-  onClose: () => void;
-  onSuccess: (items: PdfItem[]) => void;
-  triggerRef?: RefObject<HTMLElement | null>;
-}
-
-function PasswordDialogInner({
-  item,
+/**
+ * Dialog for unlocking a password-protected PDF (design §10.1, §6.8), shared
+ * by the lists (`unlock_pdf`) and the crop tab (`unlock_crop_pdf`), which
+ * differ in the command and in what it returns. It is open while it is
+ * rendered; it keeps the password input to itself and drops it on unmount.
+ */
+export function PasswordDialog<T>({
+  name,
+  unlock,
   onClose,
   onSuccess,
   triggerRef,
-}: PasswordDialogInnerProps) {
+}: PasswordDialogProps<T>) {
   const { language } = useAppState();
   const t = getTranslations(language.language);
 
@@ -58,8 +64,8 @@ function PasswordDialogInner({
     setErrorText(null);
 
     try {
-      const result = await unlockPdf(item.id, password);
-      onSuccess(result.items);
+      const result = await unlock(password);
+      onSuccess(result);
     } catch (err: unknown) {
       setBusy(false);
       const ipcErr = normalizeIpcError(err);
@@ -88,7 +94,7 @@ function PasswordDialogInner({
         <h2 id="password-dialog-title" className="modal-title">
           {t.pdfToImages.passwordDialog.title}
         </h2>
-        <div className="password-dialog-filename mono">{item.name}</div>
+        <div className="password-dialog-filename mono">{name}</div>
       </div>
       <form onSubmit={handleSubmit} className="password-dialog-form">
         <div className="password-dialog-body">
@@ -143,30 +149,5 @@ function PasswordDialogInner({
         </div>
       </form>
     </ModalDialog>
-  );
-}
-
-/**
- * Dialog for unlocking a password-protected PDF (design §10.1, §6.8).
- * Manages password input state locally and discards it on close.
- */
-export function PasswordDialog({
-  isOpen,
-  item,
-  onClose,
-  onSuccess,
-  triggerRef,
-}: PasswordDialogProps) {
-  if (!isOpen || item === null) {
-    return null;
-  }
-
-  return (
-    <PasswordDialogInner
-      item={item}
-      onClose={onClose}
-      onSuccess={onSuccess}
-      triggerRef={triggerRef}
-    />
   );
 }

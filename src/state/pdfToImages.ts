@@ -65,6 +65,49 @@ export function hasInvalidCustomDpi(
   return state.isCustomDpi && parseCustomDpi(state.customDpiText) === null;
 }
 
+/** The resolution fields that "PDF to images" and the crop tab share. */
+export type DpiFields = Pick<
+  PdfToImagesState,
+  "dpi" | "isCustomDpi" | "customDpiText"
+>;
+
+/** Picks one of the presets (or any `dpi`) and leaves the custom entry. */
+export function withDpi<T extends DpiFields>(state: T, dpi: number): T {
+  if (state.dpi === dpi && !state.isCustomDpi) {
+    return state;
+  }
+  return { ...state, dpi, isCustomDpi: false, customDpiText: String(dpi) };
+}
+
+/** Turns the custom entry on or off, starting it from the resolution in use. */
+export function withCustomDpiMode<T extends DpiFields>(
+  state: T,
+  isCustom: boolean,
+): T {
+  if (state.isCustomDpi === isCustom) {
+    return state;
+  }
+  return { ...state, isCustomDpi: isCustom, customDpiText: String(state.dpi) };
+}
+
+/**
+ * Takes the text typed in the custom entry; `dpi` follows it only while the
+ * text is valid, so an unfinished entry keeps the last good value.
+ */
+export function withCustomDpiText<T extends DpiFields>(
+  state: T,
+  text: string,
+): T {
+  if (state.customDpiText === text) {
+    return state;
+  }
+  const parsed = parseCustomDpi(text);
+  if (parsed !== null) {
+    return { ...state, customDpiText: text, dpi: parsed };
+  }
+  return { ...state, customDpiText: text };
+}
+
 export const initialPdfToImagesState: PdfToImagesState = {
   items: [],
   pageSelection: "all",
@@ -173,44 +216,12 @@ export function pdfToImagesReducer(
         colorMode: action.colorMode,
       };
     }
-    case "SET_RENDER_DPI": {
-      if (state.dpi === action.dpi && !state.isCustomDpi) {
-        return state;
-      }
-      return {
-        ...state,
-        dpi: action.dpi,
-        isCustomDpi: false,
-        customDpiText: String(action.dpi),
-      };
-    }
-    case "SET_IS_CUSTOM_DPI": {
-      if (state.isCustomDpi === action.isCustom) {
-        return state;
-      }
-      return {
-        ...state,
-        isCustomDpi: action.isCustom,
-        customDpiText: String(state.dpi),
-      };
-    }
-    case "SET_CUSTOM_DPI_TEXT": {
-      if (state.customDpiText === action.text) {
-        return state;
-      }
-      const parsed = parseCustomDpi(action.text);
-      if (parsed !== null) {
-        return {
-          ...state,
-          customDpiText: action.text,
-          dpi: parsed,
-        };
-      }
-      return {
-        ...state,
-        customDpiText: action.text,
-      };
-    }
+    case "SET_RENDER_DPI":
+      return withDpi(state, action.dpi);
+    case "SET_IS_CUSTOM_DPI":
+      return withCustomDpiMode(state, action.isCustom);
+    case "SET_CUSTOM_DPI_TEXT":
+      return withCustomDpiText(state, action.text);
     case "SET_PDFS_OUTPUT_DIR": {
       return {
         ...state,

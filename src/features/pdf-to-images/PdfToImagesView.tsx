@@ -23,6 +23,7 @@ import {
   type PageSizePt,
   type PdfItem,
   type Skipped,
+  unlockPdf,
 } from "../../ipc";
 import {
   isJobActive,
@@ -785,13 +786,15 @@ export function PdfToImagesView() {
         </div>
       )}
 
-      <PasswordDialog
-        isOpen={passwordTargetItem !== null}
-        item={passwordTargetItem}
-        onClose={() => setPasswordTargetItem(null)}
-        onSuccess={handleUnlockSuccess}
-        triggerRef={passwordTriggerRef}
-      />
+      {passwordTargetItem !== null && (
+        <PasswordDialog
+          name={passwordTargetItem.name}
+          unlock={(password) => unlockPdf(passwordTargetItem.id, password)}
+          onClose={() => setPasswordTargetItem(null)}
+          onSuccess={(result) => handleUnlockSuccess(result.items)}
+          triggerRef={passwordTriggerRef}
+        />
+      )}
     </div>
   );
 }
