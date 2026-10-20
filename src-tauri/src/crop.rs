@@ -820,6 +820,7 @@ where
                 &on_page,
                 finish,
             );
+            Ok(())
         },
     );
     Ok(())
