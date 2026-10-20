@@ -9,7 +9,9 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use pdfconv_worker::client::{OPEN_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess};
+use pdfconv_worker::client::{
+    DETECT_TIMEOUT, OPEN_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess,
+};
 use pdfconv_worker::protocol::{Request, Response};
 
 /// Maximum number of concurrent worker processes (design §5.2).
@@ -95,6 +97,7 @@ pub struct WorkerPoolConfig {
     pub max_workers: usize,
     pub open_timeout: Duration,
     pub render_timeout: Duration,
+    pub detect_timeout: Duration,
 }
 
 impl WorkerPoolConfig {
@@ -109,6 +112,7 @@ impl WorkerPoolConfig {
             max_workers: default_worker_limit(),
             open_timeout: OPEN_TIMEOUT,
             render_timeout: RENDER_TIMEOUT,
+            detect_timeout: DETECT_TIMEOUT,
         }
     }
 
@@ -128,6 +132,32 @@ impl WorkerPoolConfig {
     pub fn with_render_timeout(mut self, timeout: Duration) -> Self {
         self.render_timeout = timeout;
         self
+    }
+
+    /// Sets the timeout for detecting a page's layout, which the analysis
+    /// worker uses as well (design §5.2).
+    pub fn with_detect_timeout(mut self, timeout: Duration) -> Self {
+        self.detect_timeout = timeout;
+        self
+    }
+
+    /// How long to wait for the answer to `request` (design §5.2). Every
+    /// request is listed, so that a new one cannot fall to a default value
+    /// without the compiler noticing.
+    pub fn timeout_for(&self, request: &Request) -> Duration {
+        match request {
+            Request::Hello | Request::Open { .. } | Request::Close => self.open_timeout,
+            Request::Render { .. }
+            | Request::Thumbnail { .. }
+            | Request::PageImages { .. }
+            | Request::ImageOnTop { .. }
+            | Request::RenderRegion { .. } => self.render_timeout,
+            Request::Detect { .. } => self.detect_timeout,
+            #[cfg(feature = "test-hooks")]
+            Request::AllocateForTest { .. } | Request::CrashForTest | Request::HangForTest => {
+                self.open_timeout
+            }
+        }
     }
 }
 
@@ -178,6 +208,31 @@ impl WorkerPool {
     /// The timeout for rendering pages or thumbnails.
     pub fn render_timeout(&self) -> Duration {
         self.inner.config.render_timeout
+    }
+
+    /// The timeout for detecting a page's layout.
+    pub fn detect_timeout(&self) -> Duration {
+        self.inner.config.detect_timeout
+    }
+
+    /// How long to wait for the answer to `request`; see
+    /// [`WorkerPoolConfig::timeout_for`].
+    pub fn timeout_for(&self, request: &Request) -> Duration {
+        self.inner.config.timeout_for(request)
+    }
+
+    /// Starts a worker that belongs to the caller instead of the pool, with
+    /// the pool's program and arguments. The pool neither counts nor reuses
+    /// it, so it is not bound by the worker limit (design §5.2, the analysis
+    /// worker).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkerPoolError::WorkerCrashed`] if the process cannot be
+    /// started.
+    pub fn spawn_dedicated(&self) -> Result<WorkerProcess, WorkerPoolError> {
+        WorkerProcess::spawn(&self.inner.config.program, &self.inner.config.args)
+            .map_err(WorkerPoolError::from)
     }
 
     /// Borrows a worker from the pool, blocking if all workers are in use.
@@ -265,12 +320,10 @@ impl PooledWorker {
             .map_err(WorkerPoolError::from)
     }
 
-    /// Sends `request` to the worker using the default timeout for the request type.
+    /// Sends `request` to the worker with the timeout that
+    /// [`WorkerPoolConfig::timeout_for`] gives for its type.
     pub fn send(&mut self, request: &Request) -> Result<(Response, Vec<u8>), WorkerPoolError> {
-        let timeout = match request {
-            Request::Render { .. } | Request::Thumbnail { .. } => self.pool.config.render_timeout,
-            _ => self.pool.config.open_timeout,
-        };
+        let timeout = self.pool.config.timeout_for(request);
         self.request(request, timeout)
     }
 }
@@ -306,7 +359,95 @@ impl Drop for PooledWorker {
 
 #[cfg(test)]
 mod tests {
+    use pdfconv_worker::protocol::{RectPt, RenderColor, RenderFormat};
+
     use super::*;
+
+    const OPEN: Duration = Duration::from_secs(1);
+    const RENDER: Duration = Duration::from_secs(2);
+    const DETECT: Duration = Duration::from_secs(3);
+
+    fn distinct_timeouts() -> WorkerPoolConfig {
+        WorkerPoolConfig::new("worker", ["arg"])
+            .with_open_timeout(OPEN)
+            .with_render_timeout(RENDER)
+            .with_detect_timeout(DETECT)
+    }
+
+    #[test]
+    fn the_timeout_follows_the_kind_of_request() {
+        let config = distinct_timeouts();
+        let open = Request::Open {
+            path: "a.pdf".into(),
+            password: None,
+        };
+        let render = Request::Render {
+            page: 1,
+            dpi: 72,
+            format: RenderFormat::Png,
+            color: RenderColor::Color,
+        };
+        let region = Request::RenderRegion {
+            page: 1,
+            rect_pt: RectPt {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 1.0,
+                y1: 1.0,
+            },
+            image_index: None,
+            dpi: 72,
+            format: RenderFormat::Png,
+            color: RenderColor::Color,
+            photo_native: false,
+            photo_only: false,
+        };
+        let cases = [
+            (Request::Hello, OPEN),
+            (open, OPEN),
+            (Request::Close, OPEN),
+            (render, RENDER),
+            (
+                Request::Thumbnail {
+                    page: 1,
+                    max_side: 10,
+                },
+                RENDER,
+            ),
+            (Request::PageImages { page: 1 }, RENDER),
+            (
+                Request::ImageOnTop {
+                    page: 1,
+                    image_index: 0,
+                },
+                RENDER,
+            ),
+            (region, RENDER),
+            (Request::Detect { page: 1 }, DETECT),
+        ];
+        for (request, expected) in cases {
+            assert_eq!(config.timeout_for(&request), expected, "{request:?}");
+        }
+    }
+
+    #[cfg(feature = "test-hooks")]
+    #[test]
+    fn the_test_requests_wait_as_long_as_an_open() {
+        let config = distinct_timeouts();
+        for request in [
+            Request::AllocateForTest { mebibytes: 1 },
+            Request::CrashForTest,
+            Request::HangForTest,
+        ] {
+            assert_eq!(config.timeout_for(&request), OPEN, "{request:?}");
+        }
+    }
+
+    #[test]
+    fn the_detect_timeout_defaults_to_the_workers_constant() {
+        let config = WorkerPoolConfig::new("worker", ["arg"]);
+        assert_eq!(config.detect_timeout, DETECT_TIMEOUT);
+    }
 
     #[test]
     fn calculates_limits_based_on_cpu_counts() {
