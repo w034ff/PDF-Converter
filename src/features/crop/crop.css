@@ -35,6 +35,7 @@
 /* The border is always 2px, so the page shown does not shift the others;
    only its color tells which page it is. */
 .crop-thumb-frame {
+  position: relative;
   width: 100%;
   display: block;
   overflow: hidden;
@@ -180,9 +181,16 @@
 }
 
 .crop-photo-frame,
-.crop-candidate {
+.crop-candidate,
+.crop-area {
   position: absolute;
   box-sizing: border-box;
+}
+
+/* A frame or a candidate that adds an area when pressed. */
+.crop-photo-frame.is-pressable,
+.crop-candidate.is-pressable {
+  cursor: pointer;
 }
 
 .crop-photo-frame {
@@ -211,6 +219,46 @@
   white-space: nowrap;
 }
 
+/* An area picked on the page (mockup `CropA`): an accent line with the
+   kind's word, and a tinted ground and a filled word when selected. It lies
+   over the frames and candidates it was made from. */
+.crop-area {
+  border: 2px solid var(--color-page-area);
+  cursor: pointer;
+}
+
+.crop-area.is-selected {
+  background: var(--color-page-area-tint);
+}
+
+.crop-area-tag {
+  position: absolute;
+  left: -2px;
+  top: -20px;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
+  border: 1px solid var(--color-page-area);
+  border-radius: var(--radius-sm);
+  background: var(--color-page-bg);
+  color: var(--color-page-area);
+  white-space: nowrap;
+}
+
+.crop-area.is-selected .crop-area-tag {
+  background: var(--color-page-area);
+  color: var(--color-page-area-text);
+}
+
+.crop-toolbar .menu-button {
+  margin-left: auto;
+}
+
+.crop-add-areas {
+  min-height: 32px;
+  padding: 0 12px;
+}
+
 .crop-side {
   flex: none;
   width: 340px;
@@ -219,6 +267,11 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.crop-side > .job-summary {
+  flex: none;
+  margin: 12px 16px 0;
 }
 
 .crop-ranges-header {
@@ -304,4 +357,167 @@
 
 .crop-settings-hint {
   padding-left: 24px;
+}
+
+.crop-badge {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.crop-thumb-count {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+
+.crop-area-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crop-area-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.crop-area-row.is-selected {
+  background: var(--color-accent-subtle);
+  border-color: var(--color-accent);
+}
+
+.crop-area-check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.crop-area-check:disabled {
+  cursor: not-allowed;
+}
+
+.crop-area-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Its size is the box of the preview (`CROP_PREVIEW_WIDTH` and
+   `CROP_PREVIEW_HEIGHT` in cropAreas.ts, set on the element) plus the
+   border, so the picture inside is placed against the box and not the
+   border. The page's white, as the page picture is white whatever the theme. */
+.crop-area-preview {
+  position: relative;
+  flex: none;
+  box-sizing: content-box;
+  overflow: hidden;
+  background: var(--color-page-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+}
+
+/* The area, in the box of the preview: it clips the page's picture to the
+   area, so what lies around the area does not show. */
+.crop-area-preview-window {
+  position: absolute;
+  overflow: hidden;
+}
+
+.crop-area-preview-image {
+  position: absolute;
+  max-width: none;
+  display: block;
+}
+
+.crop-area-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.crop-area-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.crop-area-page {
+  color: var(--color-text-primary);
+}
+
+.crop-area-kind {
+  font-weight: 500;
+}
+
+.crop-area-overlaid {
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning);
+}
+
+.crop-area-size {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crop-area-status {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.crop-area-status.is-ok {
+  color: var(--color-success);
+}
+
+.crop-area-status.is-failed {
+  color: var(--color-error);
+}
+
+.crop-area-status.is-muted {
+  color: var(--color-text-secondary);
+}
+
+.crop-area-reason {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.crop-area-remove {
+  flex: none;
+  width: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.crop-replace-count {
+  margin: 0;
+  font-size: 13px;
 }

@@ -1,8 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { SegmentedControl, type SegmentedOption } from "../../components";
+import {
+  MenuButton,
+  SegmentedControl,
+  type MenuButtonItem,
+  type SegmentedOption,
+} from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
-import { useAppDispatch, useAppState, type CropViewSize } from "../../state";
+import {
+  candidateAreas,
+  isJobActive,
+  useAppDispatch,
+  useAppState,
+  type CropViewSize,
+} from "../../state";
+import { useJobRunner } from "../job/useJobRunner";
 import { CropOverlays } from "./CropOverlays";
 import {
   CSS_PX_PER_PT,
@@ -25,7 +37,7 @@ interface PageSurfaceProps {
 
 /** The page at `scale` with its picture and what is drawn over it. */
 function PageSurface({ pdf, page, scale }: PageSurfaceProps) {
-  const { language, crop } = useAppState();
+  const { language, crop, job } = useAppState();
   const t = getTranslations(language.language);
   const size = pdf.pages[page - 1];
   const widthPx = size.widthPt * CSS_PX_PER_PT * scale;
@@ -37,6 +49,7 @@ function PageSurface({ pdf, page, scale }: PageSurfaceProps) {
   );
   const images = crop.pageImages[page];
   const layout = crop.layouts[page];
+  const locked = isJobActive(job);
 
   return (
     <div
@@ -52,9 +65,13 @@ function PageSurface({ pdf, page, scale }: PageSurfaceProps) {
         />
       )}
       <CropOverlays
+        page={page}
         images={images?.status === "done" ? images.value : []}
         candidates={layout?.status === "done" ? layout.value : []}
+        areas={crop.areas.filter((area) => area.page === page)}
+        selectedKey={crop.selectedKey}
         showCandidates={crop.showCandidates}
+        locked={locked}
         scale={scale}
       />
     </div>
@@ -82,12 +99,48 @@ export function CropPagePane({
   focusRequested,
   onFocused,
 }: CropPagePaneProps) {
-  const { language, crop } = useAppState();
+  const { language, crop, job } = useAppState();
   const dispatch = useAppDispatch();
+  const runner = useJobRunner();
   const t = getTranslations(language.language);
   const { page, view } = crop;
   const size = pdf.pages[page - 1];
+  const busy = isJobActive(job);
 
+  const layout = crop.layouts[page];
+  const pageCandidates = layout?.status === "done" ? layout.value : [];
+  const addItems: MenuButtonItem[] = [
+    {
+      id: "thisPage",
+      label: t.crop.addMenu.thisPage,
+      disabled: pageCandidates.length === 0,
+      onSelect: () =>
+        dispatch({
+          type: "CROP_AREAS_ADDED",
+          areas: candidateAreas(page, pageCandidates),
+        }),
+    },
+    {
+      id: "allPages",
+      label: t.crop.addMenu.allPages,
+      disabled: crop.layoutUnavailable,
+      onSelect: () => void runner.startDetectAll(pdf.id),
+    },
+    {
+      id: "wholePage",
+      label: t.crop.addMenu.wholePage,
+      onSelect: () =>
+        dispatch({
+          type: "CROP_AREA_ADDED",
+          area: {
+            page,
+            kind: "manual",
+            rectPt: [0, 0, size.widthPt, size.heightPt],
+            imageIndex: null,
+          },
+        }),
+    },
+  ];
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [room, setRoom] = useState<ViewportSize | null>(null);
 
@@ -223,6 +276,14 @@ export function CropPagePane({
           />
           {t.crop.toolbar.candidates}
         </label>
+        <MenuButton
+          className="btn btn-ghost crop-add-areas"
+          menuLabel={t.crop.addMenu.label}
+          items={addItems}
+          disabled={busy}
+        >
+          {t.crop.toolbar.addAreas}
+        </MenuButton>
       </div>
 
       <div

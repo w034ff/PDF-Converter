@@ -3,6 +3,7 @@ export * from "./ErrorDisplay";
 export * from "./InfoIcon";
 export * from "./ListRow";
 export * from "./LockIcon";
+export * from "./MenuButton";
 export * from "./ModalDialog";
 export * from "./NoticeDisplay";
 export * from "./ProgressBar";

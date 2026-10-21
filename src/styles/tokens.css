@@ -43,6 +43,11 @@
   --color-page-frame: #5c5a56;
   --color-page-frame-hover: #b4492b;
   --color-page-candidate: #0e6b66;
+  /* The areas picked on the page: the light theme's accent, text on it, and
+     the tint over a selected area. */
+  --color-page-area: #b4492b;
+  --color-page-area-text: #ffffff;
+  --color-page-area-tint: rgba(180, 73, 43, 0.06);
 
   /* Typography */
   --font-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { onCropDropped } from "../../ipc";
 import { useAppDispatch } from "../../state";
 import { receiveCropDropped } from "./cropOpen";
+import { useLatestCrop } from "./useLatestCrop";
 
 /**
  * Opens what Rust reports in `crop-dropped` (design §7.2). Mount it once,
@@ -10,13 +11,14 @@ import { receiveCropDropped } from "./cropOpen";
  */
 export function useCropDropped(): void {
   const dispatch = useAppDispatch();
+  const getCrop = useLatestCrop();
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | null = null;
 
     void onCropDropped((dropped) => {
-      void receiveCropDropped(dispatch, dropped);
+      void receiveCropDropped(dispatch, dropped, getCrop);
     }).then((stop) => {
       // `listen` resolves after the component may already have unmounted.
       if (disposed) {
@@ -30,5 +32,5 @@ export function useCropDropped(): void {
       disposed = true;
       unlisten?.();
     };
-  }, [dispatch]);
+  }, [dispatch, getCrop]);
 }

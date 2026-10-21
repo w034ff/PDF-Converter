@@ -1,6 +1,19 @@
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { createElement } from "react";
 import { vi } from "vitest";
+import { App } from "../../App";
+import {
+  JOB_FINISHED_EVENT,
+  JOB_ITEM_EVENT,
+  JOB_PROGRESS_EVENT,
+  LAYOUT_PAGE_EVENT,
+  type JobFinishedPayload,
+  type JobItemPayload,
+  type JobProgressPayload,
+  type LayoutPagePayload,
+} from "../../ipc";
 import type {
   Candidate,
   CropPdf,
@@ -91,7 +104,10 @@ export function mockCropIpc(handlers: Record<string, Handler> = {}): Call[] {
     set_drop_target: () => undefined,
     get_thumbnail: () => PNG_BYTES,
     list_page_images: () => [],
+    check_on_top: () => false,
     detect_layout: () => [],
+    start_crop_export: () => undefined,
+    start_detect_all: () => undefined,
     activate_crop_pdf: () => undefined,
     discard_crop_pdf: () => undefined,
     save_settings: () => undefined,
@@ -243,4 +259,71 @@ export function installFakeObjectUrls(): ObjectUrls {
 
 export function openCropTab(name = "切り出し") {
   fireEvent.click(screen.getByRole("tab", { name }));
+}
+
+/**
+ * Renders the app, opens the crop tab and a PDF in it (`pdf`, or the one in
+ * `handlers`), and lets what the page asks first settle. Returns the calls.
+ */
+export async function openPdfInCropTab(
+  handlers: Record<string, Handler> = {},
+  pdf: CropPdf = cropPdf(),
+  language: "ja" | "en" = "ja",
+): Promise<Call[]> {
+  const calls = mockCropIpc({ open_crop_pdf: () => pdf, ...handlers });
+  render(
+    createElement(App, { initialNavLang: language, initialSettings: null }),
+  );
+  openCropTab(language === "ja" ? "切り出し" : "Crop");
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: language === "ja" ? "PDF を開く" : "Open PDF",
+    }),
+  );
+  await flush();
+  await flush();
+  return calls;
+}
+
+export async function emitJobProgress(payload: JobProgressPayload) {
+  await act(() => emit(JOB_PROGRESS_EVENT, payload));
+}
+
+export async function emitJobItem(payload: JobItemPayload) {
+  await act(() => emit(JOB_ITEM_EVENT, payload));
+}
+
+export async function emitJobFinished(payload: JobFinishedPayload) {
+  await act(() => emit(JOB_FINISHED_EVENT, payload));
+}
+
+export async function emitLayoutPage(payload: LayoutPagePayload) {
+  await act(() => emit(LAYOUT_PAGE_EVENT, payload));
+}
+
+/** Several `layout-page` events that arrive before the screen draws again. */
+export async function emitLayoutPages(payloads: LayoutPagePayload[]) {
+  await act(async () => {
+    for (const payload of payloads) {
+      await emit(LAYOUT_PAGE_EVENT, payload);
+    }
+  });
+}
+
+export const FINISHED_NONE: JobFinishedPayload = {
+  succeeded: 0,
+  failed: 0,
+  noPages: 0,
+  unprocessed: 0,
+  cancelled: false,
+};
+
+/** The areas' rows of the list, in the order shown. */
+export function areaRows(): HTMLElement[] {
+  return screen.queryAllByTestId("crop-area-row");
+}
+
+/** What a row of the list says, as one line. */
+export function rowText(row: HTMLElement): string {
+  return (row.textContent ?? "").replace(/\s+/g, " ").trim();
 }

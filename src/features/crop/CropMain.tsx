@@ -1,9 +1,10 @@
-import { useRef } from "react";
+import { useRef, type RefObject } from "react";
 import { DropZone, ErrorDisplay, NoticeDisplay } from "../../components";
 import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
 import { unlockCropPdf, type CropPdf, type IpcError } from "../../ipc";
-import { useAppDispatch, useAppState } from "../../state";
+import { isJobActive, useAppDispatch, useAppState } from "../../state";
 import { openCropPdfFromDialog } from "./cropOpen";
+import { useLatestCrop } from "./useLatestCrop";
 import { PasswordDialog } from "../pdf-to-images/PasswordDialog";
 import { CropPagePane } from "./CropPagePane";
 import "./crop.css";
@@ -81,9 +82,16 @@ function CropNotices() {
 }
 
 /** The line above the page: file name, page number, how the page is going. */
-function CropBand({ pdf }: { pdf: CropPdf }) {
-  const { language, crop } = useAppState();
+function CropBand({
+  pdf,
+  openButtonRef,
+}: {
+  pdf: CropPdf;
+  openButtonRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const { language, crop, job } = useAppState();
   const dispatch = useAppDispatch();
+  const getCrop = useLatestCrop();
   const t = getTranslations(language.language);
   const { page, layouts, pageImages, layoutUnavailable } = crop;
 
@@ -123,9 +131,11 @@ function CropBand({ pdf }: { pdf: CropPdf }) {
         </span>
       ))}
       <button
+        ref={openButtonRef}
         type="button"
         className="btn btn-ghost crop-band-open"
-        onClick={() => void openCropPdfFromDialog(dispatch)}
+        disabled={isJobActive(job)}
+        onClick={() => void openCropPdfFromDialog(dispatch, getCrop)}
       >
         {t.crop.openAnother}
       </button>
@@ -134,6 +144,8 @@ function CropBand({ pdf }: { pdf: CropPdf }) {
 }
 
 export interface CropMainProps {
+  /** The band's "別の PDF を開く", where the focus returns after the replace question. */
+  openButtonRef: RefObject<HTMLButtonElement | null>;
   /** Whether the page should take the focus (see `CropPagePane`). */
   focusRequested: boolean;
   /** Called when a password dialog unlocked the PDF. */
@@ -147,6 +159,7 @@ export interface CropMainProps {
  * while no PDF is open, otherwise the PDF's band and its page.
  */
 export function CropMain({
+  openButtonRef,
   focusRequested,
   onUnlocked,
   onFocused,
@@ -156,6 +169,7 @@ export function CropMain({
   const t = getTranslations(language.language);
   const { pdf } = crop;
   const passwordButtonRef = useRef<HTMLButtonElement>(null);
+  const getCrop = useLatestCrop();
 
   if (pdf === null) {
     return (
@@ -165,7 +179,7 @@ export function CropMain({
           title={t.crop.empty.title}
           description={t.crop.empty.description}
           addFilesLabel={t.crop.empty.open}
-          onAddFiles={() => void openCropPdfFromDialog(dispatch)}
+          onAddFiles={() => void openCropPdfFromDialog(dispatch, getCrop)}
           icon={<EmptyIcon />}
         />
       </main>
@@ -176,7 +190,7 @@ export function CropMain({
   return (
     <main className="crop-main">
       <CropNotices />
-      <CropBand pdf={pdf} />
+      <CropBand pdf={pdf} openButtonRef={openButtonRef} />
       {needsPassword && (
         <div className="crop-notices">
           <NoticeDisplay

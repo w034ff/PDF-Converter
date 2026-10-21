@@ -23,15 +23,20 @@ interface Loaded {
  * The thumbnail of item `id` (and `page` of a PDF), requested only once the
  * element `ref` is attached to comes into view (design §6.1), so adding many
  * files does not queue a request for each. Without `IntersectionObserver`
- * the request is sent at once.
+ * the request is sent at once. `maxSide` asks for a PDF page at a size of
+ * its own (the picture of an area of the crop tab).
  *
  * The picture is shown as a `blob:` URL (design §9), released when the item
  * changes or the component unmounts.
  */
-export function useThumbnail(id: number, page?: number): Thumbnail {
+export function useThumbnail(
+  id: number,
+  page?: number,
+  maxSide?: number,
+): Thumbnail {
   // What was seen and loaded is tagged with the item it belongs to, so a
   // change of item drops both without resetting state in an effect.
-  const key = `${id}:${page ?? ""}`;
+  const key = `${id}:${page ?? ""}:${maxSide ?? ""}`;
   const observable = typeof IntersectionObserver !== "undefined";
   const [element, setElement] = useState<Element | null>(null);
   const [seenKey, setSeenKey] = useState<string | null>(null);
@@ -60,7 +65,7 @@ export function useThumbnail(id: number, page?: number): Thumbnail {
     }
     let url: string | null = null;
     let disposed = false;
-    getThumbnail(id, page).then(
+    getThumbnail(id, page, maxSide).then(
       (bytes) => {
         if (disposed) {
           return;
@@ -80,7 +85,7 @@ export function useThumbnail(id: number, page?: number): Thumbnail {
         URL.revokeObjectURL(url);
       }
     };
-  }, [visible, id, page, key]);
+  }, [visible, id, page, maxSide, key]);
 
   const current = loaded?.key === key ? loaded : null;
   return { ref, src: current?.src ?? null, failed: current?.failed ?? false };

@@ -1,6 +1,7 @@
 import type { Language } from "../i18n";
 import type {
   Candidate,
+  CandidateKind,
   CheckPageRangeResult,
   CropPdf,
   ImageItem,
@@ -114,6 +115,47 @@ export type CropPageResult<T> =
 export type CropOpenNotice =
   { kind: "error"; error: IpcError } | { kind: "notOnePdf" };
 
+/** `[x0, y0, x1, y1]` in points, from the top left of the page as shown (design §4.6). */
+export type RectPt = [number, number, number, number];
+
+/** What an area is: a candidate's kind, or `manual` for one picked by hand. */
+export type AreaKind = CandidateKind | "manual";
+
+/** An area to write, as the screen has it before it gets its `key`. */
+export interface NewArea {
+  page: number;
+  kind: AreaKind;
+  rectPt: RectPt;
+  /** The embedded image behind a `photo`; `null` for the other kinds. */
+  imageIndex: number | null;
+}
+
+/** An area of a page chosen for export (design §6.10). */
+export interface CropArea extends NewArea {
+  /** Numbers the areas from 1 in the order they were added; Rust reports a result under it. */
+  key: number;
+  /** Whether "書き出す" writes it. */
+  checked: boolean;
+  /**
+   * Whether something is drawn over a `photo`: `null` until Rust has said
+   * (or if it could not), and always `null` for the other kinds.
+   */
+  onTop: boolean | null;
+}
+
+/** Which conversion of the crop tab started last (design §10.1). */
+export type CropJobKind = "export" | "detectAll";
+
+/** What was asked of `check_on_top` for an area that has no answer yet. */
+export type OnTopRequest = "pending" | "failed";
+
+/** A pending PDF that waits for the user to say whether to drop the areas (design §6.10). */
+export interface CropPendingReplace {
+  pdf: CropPdf;
+  /** Whether the file dialog or a drop brought it; the focus goes back accordingly. */
+  source: "dialog" | "drop";
+}
+
 export interface CropState {
   /** The open PDF; its `error` is `PasswordProtected` until it is unlocked. */
   pdf: CropPdf | null;
@@ -127,6 +169,28 @@ export interface CropState {
   layouts: Partial<Record<number, CropPageResult<Candidate[]>>>;
   /** Set once an analysis fails with `LayoutUnavailable`: Rust answers the same for every page. */
   layoutUnavailable: boolean;
+  /** The areas, in the order of their `key`. */
+  areas: CropArea[];
+  /** The `key` the next area gets. */
+  nextAreaKey: number;
+  /** The `key` of the area that is selected, if any. */
+  selectedKey: number | null;
+  /** The `key`s of the areas an export has written since the PDF was opened. */
+  exportedKeys: number[];
+  /** What was asked of `check_on_top` for the photo areas that have no answer. */
+  onTopRequests: Partial<Record<number, OnTopRequest>>;
+  /** Which conversion of this tab started last; `null` before any. */
+  lastJob: CropJobKind | null;
+  /** How many areas the last "全ページの候補" added, for its summary. */
+  detectAdded: number;
+  /**
+   * The pages whose `detect_layout` was still unanswered when "全ページの候補"
+   * started: Rust may count them as analyzed and send no `layout-page`, so
+   * their candidates are added when that answer comes.
+   */
+  detectAwaiting: number[];
+  /** The PDF waiting for the user to confirm it replaces the areas; `null` when none. */
+  pendingReplace: CropPendingReplace | null;
   passwordDialogOpen: boolean;
   openNotice: CropOpenNotice | null;
   format: RenderFormatChoice;
@@ -173,6 +237,26 @@ export type CropAction =
       candidates: Candidate[];
     }
   | { type: "CROP_LAYOUT_FAILED"; id: number; page: number; error: IpcError }
+  | {
+      type: "CROP_LAYOUT_PAGE";
+      id: number;
+      page: number;
+      candidates: Candidate[];
+      error: IpcError | null;
+    }
+  /** Adds one area and selects it, or selects the one it overlaps. */
+  | { type: "CROP_AREA_ADDED"; area: NewArea }
+  /** Adds several areas without selecting any. */
+  | { type: "CROP_AREAS_ADDED"; areas: NewArea[] }
+  | { type: "CROP_AREA_SELECTED"; key: number | null }
+  | { type: "CROP_AREA_REMOVED"; key: number }
+  | { type: "CROP_AREA_CHECKED"; key: number; checked: boolean }
+  | { type: "CROP_ON_TOP_STARTED"; id: number; key: number }
+  | { type: "CROP_ON_TOP_DONE"; id: number; key: number; onTop: boolean }
+  | { type: "CROP_ON_TOP_FAILED"; id: number; key: number }
+  | { type: "CROP_EXPORT_STARTED" }
+  | { type: "CROP_DETECT_ALL_STARTED" }
+  | { type: "CROP_REPLACE_PENDING"; pending: CropPendingReplace | null }
   | { type: "SET_CROP_FORMAT"; format: RenderFormatChoice }
   | { type: "SET_CROP_COLOR_MODE"; colorMode: RenderColorChoice }
   | { type: "SET_CROP_DPI"; dpi: number }

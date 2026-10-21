@@ -50,8 +50,17 @@ function summaryShape(
   job: JobState,
   imagesToPdf: AppState["imagesToPdf"],
   pdfToImages: AppState["pdfToImages"],
+  crop: AppState["crop"],
   partialCount: number,
 ): JobSummaryShape {
+  if (tab === "crop" && crop.lastJob === "detectAll" && job.finished !== null) {
+    return {
+      kind: "detectAll",
+      added: crop.detectAdded,
+      failed: job.finished.failed,
+      unprocessed: job.finished.unprocessed,
+    };
+  }
   if (tab === "pdfToImages" && job.targets.length === 1) {
     const [target] = job.targets;
     const item = pdfToImages.items.find((pdf) => pdf.id === target.id);
@@ -98,7 +107,7 @@ export function JobSummaryBanner({
   tab,
   partialCount = 0,
 }: JobSummaryBannerProps) {
-  const { language, job, imagesToPdf, pdfToImages } = useAppState();
+  const { language, job, imagesToPdf, pdfToImages, crop } = useAppState();
   if (job.kind !== tab || job.finished === null) {
     return null;
   }
@@ -110,7 +119,7 @@ export function JobSummaryBanner({
         {formatJobSummary(
           t,
           job.finished,
-          summaryShape(tab, job, imagesToPdf, pdfToImages, partialCount),
+          summaryShape(tab, job, imagesToPdf, pdfToImages, crop, partialCount),
         )}
       </span>
     </div>

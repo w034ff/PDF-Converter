@@ -19,8 +19,16 @@ function mockThumbnails(answer: () => unknown = () => PNG_BYTES): Call[] {
   return calls;
 }
 
-function Probe({ id, page }: { id: number; page?: number }) {
-  const { ref, src, failed } = useThumbnail(id, page);
+function Probe({
+  id,
+  page,
+  maxSide,
+}: {
+  id: number;
+  page?: number;
+  maxSide?: number;
+}) {
+  const { ref, src, failed } = useThumbnail(id, page, maxSide);
   return (
     <div ref={ref}>
       <output data-testid="src">{src ?? ""}</output>
@@ -101,6 +109,25 @@ describe("useThumbnail", () => {
     expect(calls).toEqual([{ cmd: "get_thumbnail", args: { id: 4, page: 2 } }]);
     const [blob] = createObjectURL.mock.calls[0];
     expect(blob.type).toBe("image/png");
+  });
+
+  it("asks for the size it is given, and again when the size changes", async () => {
+    const calls = mockThumbnails();
+    const { rerender } = render(<Probe id={4} page={2} maxSide={400} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("src")).toHaveTextContent("blob:thumb-1"),
+    );
+
+    rerender(<Probe id={4} page={2} maxSide={800} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("src")).toHaveTextContent("blob:thumb-2"),
+    );
+    expect(calls.map((call) => call.args)).toEqual([
+      { id: 4, page: 2, maxSide: 400 },
+      { id: 4, page: 2, maxSide: 800 },
+    ]);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:thumb-1");
   });
 
   it("releases the blob URL when it unmounts", async () => {
