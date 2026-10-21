@@ -20,12 +20,18 @@ export type JobSummaryShape =
     }
   | { kind: "pages"; saved: number; failed: number; unprocessed: number }
   | { kind: "mergedPdf"; pages: number; failedImages: number }
-  | { kind: "mergedPdfNotSaved" };
+  | { kind: "mergedPdfNotSaved" }
+  /** The crop tab's "全ページの候補": the areas it added, and the pages by outcome. */
+  | { kind: "detectAll"; added: number; failed: number; unprocessed: number };
 
 const ITEMS_SHAPE: JobSummaryShape = { kind: "items", partial: 0 };
 
 /** `count` with the template for one or for several. */
-function pluralize(count: number, single: string, multiple: string): string {
+export function pluralize(
+  count: number,
+  single: string,
+  multiple: string,
+): string {
   return formatMessage(count === 1 ? single : multiple, { count });
 }
 
@@ -78,6 +84,39 @@ function summaryParts(
     }
     case "mergedPdfNotSaved":
       return [t.job.mergedPdf.notSaved];
+    case "detectAll": {
+      const { detectAll } = t.crop;
+      const { pageCounts } = t.job;
+      const parts =
+        shape.added > 0
+          ? [
+              pluralize(
+                shape.added,
+                detectAll.addedSingle,
+                detectAll.addedMultiple,
+              ),
+            ]
+          : [detectAll.noneAdded];
+      if (shape.failed > 0) {
+        parts.push(
+          pluralize(
+            shape.failed,
+            pageCounts.failedSingle,
+            pageCounts.failedMultiple,
+          ),
+        );
+      }
+      if (shape.unprocessed > 0) {
+        parts.push(
+          pluralize(
+            shape.unprocessed,
+            pageCounts.unprocessedSingle,
+            pageCounts.unprocessedMultiple,
+          ),
+        );
+      }
+      return parts;
+    }
   }
 }
 
@@ -91,9 +130,13 @@ export function formatJobSummary(
   finished: JobFinishedPayload,
   shape: JobSummaryShape = ITEMS_SHAPE,
 ): string {
+  const finishedTemplate =
+    shape.kind === "detectAll"
+      ? t.crop.detectAll.summaryFinished
+      : t.job.summaryFinished;
   const template = finished.cancelled
     ? t.job.summaryCancelled
-    : t.job.summaryFinished;
+    : finishedTemplate;
   return formatMessage(template, {
     counts: summaryParts(t, finished, shape).join(t.job.summarySeparator),
   });

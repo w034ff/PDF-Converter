@@ -38,10 +38,17 @@ export function useEnsureOutputDir(tab: ActiveTab): EnsureOutputDirResult {
     try {
       const picked = await pickOutputDir(tab);
       if (picked !== null) {
-        if (tab === "imagesToPdf") {
-          dispatch({ type: "SET_IMAGES_OUTPUT_DIR", outputDir: picked });
-        } else {
-          dispatch({ type: "SET_PDFS_OUTPUT_DIR", outputDir: picked });
+        // Each tab keeps the folder of its own conversion.
+        switch (tab) {
+          case "imagesToPdf":
+            dispatch({ type: "SET_IMAGES_OUTPUT_DIR", outputDir: picked });
+            break;
+          case "pdfToImages":
+            dispatch({ type: "SET_PDFS_OUTPUT_DIR", outputDir: picked });
+            break;
+          case "crop":
+            dispatch({ type: "SET_CROP_OUTPUT_DIR", outputDir: picked });
+            break;
         }
         await onConfirmed();
       }

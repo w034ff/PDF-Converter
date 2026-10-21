@@ -2,9 +2,12 @@ import { useMemo } from "react";
 import {
   cancelJob,
   normalizeIpcError,
+  type CropRegionInput,
   type IpcError,
   type PageOrientationChoice,
   saveMergedPdf,
+  startCropExport,
+  startDetectAll,
   startImagesToPdfs,
   startPdfsToImages,
   type PageSizeChoice,
@@ -38,6 +41,22 @@ export interface JobRunner {
     colorMode: RenderColorChoice,
     dpi: number,
   ): Promise<void>;
+  /**
+   * Starts writing `regions` of the crop PDF `id` (design §6.10). `targets`
+   * are the areas, each under its `key`.
+   */
+  startCropExport(
+    id: number,
+    targets: JobTarget[],
+    regions: CropRegionInput[],
+    format: RenderFormatChoice,
+    colorMode: RenderColorChoice,
+    dpi: number,
+    photoNative: boolean,
+    photoOnly: boolean,
+  ): Promise<void>;
+  /** Starts the layout analysis of every page of the crop PDF `id` (design §6.10). */
+  startDetectAll(id: number): Promise<void>;
   /** Shows "キャンセル中…" at once and asks the backend to stop (design §6.5). */
   cancel(): Promise<void>;
 }
@@ -72,7 +91,9 @@ export function useJobRunner(): JobRunner {
           dispatch(
             kind === "imagesToPdf"
               ? { type: "SET_IMAGES_OUTPUT_DIR", outputDir: null }
-              : { type: "SET_PDFS_OUTPUT_DIR", outputDir: null },
+              : kind === "crop"
+                ? { type: "SET_CROP_OUTPUT_DIR", outputDir: null }
+                : { type: "SET_PDFS_OUTPUT_DIR", outputDir: null },
           );
         }
         dispatch({ type: "JOB_FAILED", error: ipcError });
@@ -107,6 +128,35 @@ export function useJobRunner(): JobRunner {
         await run("pdfToImages", targets, (ids) =>
           startPdfsToImages(ids, range, format, colorMode, dpi),
         );
+      },
+      async startCropExport(
+        id,
+        targets,
+        regions,
+        format,
+        colorMode,
+        dpi,
+        photoNative,
+        photoOnly,
+      ) {
+        dispatch({ type: "CROP_EXPORT_STARTED" });
+        await run("crop", targets, () =>
+          startCropExport(
+            id,
+            regions,
+            format,
+            colorMode,
+            dpi,
+            photoNative,
+            photoOnly,
+          ),
+        );
+      },
+      async startDetectAll(id) {
+        // The areas of the pages already analyzed are added before Rust
+        // starts, in the same step that marks this as the last conversion.
+        dispatch({ type: "CROP_DETECT_ALL_STARTED" });
+        await run("crop", [], () => startDetectAll(id));
       },
       async cancel() {
         dispatch({ type: "JOB_CANCEL_REQUESTED" });

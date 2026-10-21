@@ -237,6 +237,66 @@ describe("singlePdfPageCounts", () => {
   });
 });
 
+describe("formatJobSummary for all pages' candidates", () => {
+  const detectAll = (added: number, failed = 0, unprocessed = 0) =>
+    ({ kind: "detectAll", added, failed, unprocessed }) as const;
+
+  it("counts the areas added and the pages that failed", () => {
+    expect(
+      formatJobSummary(
+        ja,
+        { ...NOTHING, succeeded: 7, failed: 1 },
+        detectAll(8, 1),
+      ),
+    ).toBe("全ページの候補を探しました：範囲を 8 個追加 · 失敗 1 ページ");
+  });
+
+  it("counts the pages not reached when it was cancelled", () => {
+    expect(
+      formatJobSummary(
+        ja,
+        { ...NOTHING, succeeded: 2, unprocessed: 40, cancelled: true },
+        detectAll(3, 0, 40),
+      ),
+    ).toBe("キャンセルしました：範囲を 3 個追加 · 未処理 40 ページ");
+  });
+
+  it("says no area was added, and leaves out a count of zero", () => {
+    expect(
+      formatJobSummary(ja, { ...NOTHING, succeeded: 4 }, detectAll(0)),
+    ).toBe("全ページの候補を探しました：追加した範囲はありません");
+    expect(
+      formatJobSummary(ja, { ...NOTHING, cancelled: true }, detectAll(0, 0, 5)),
+    ).toBe("キャンセルしました：追加した範囲はありません · 未処理 5 ページ");
+  });
+
+  it("says the counts in the singular and the plural in English", () => {
+    expect(
+      formatJobSummary(
+        en,
+        { ...NOTHING, succeeded: 1, failed: 1 },
+        detectAll(1, 1),
+      ),
+    ).toBe("Searched all pages for suggestions: Added 1 area · 1 page failed");
+    expect(
+      formatJobSummary(
+        en,
+        { ...NOTHING, succeeded: 3, failed: 2 },
+        detectAll(5, 2),
+      ),
+    ).toBe(
+      "Searched all pages for suggestions: Added 5 areas · 2 pages failed",
+    );
+    expect(
+      formatJobSummary(
+        en,
+        { ...NOTHING, cancelled: true, unprocessed: 4 },
+        detectAll(0, 0, 4),
+      ),
+    ).toBe("Cancelled: No areas were added · 4 pages not processed");
+  });
+});
+
 describe("jobOutcome", () => {
   const base = {
     succeeded: 0,

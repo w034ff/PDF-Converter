@@ -62,23 +62,33 @@ function finishedStatus(t: Translations, finished: JobFinishedPayload) {
  * or failed one shows only on the tab that started it.
  */
 export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
-  const { language, job } = useAppState();
+  const { language, job, crop } = useAppState();
   const runner = useJobRunner();
   const t = getTranslations(language.language);
 
   if (isJobActive(job)) {
     const cancelling = job.phase === "cancelling";
+    // The pages are not items with names, so the bar says what is going on.
+    const detecting = job.kind === "crop" && crop.lastJob === "detectAll";
     return (
       <>
         {job.progress === null ? (
-          <span className="hint">{t.job.running}</span>
+          <span className="hint">
+            {detecting ? t.crop.footer.detecting : t.job.running}
+          </span>
         ) : (
           <ProgressBar
             className="app-footer-progress"
             value={job.progress.done}
             max={job.progress.total}
             label={t.footer.progressLabel}
-            statusText={cancelling ? t.footer.cancelling : runningText(t, job)}
+            statusText={
+              cancelling
+                ? t.footer.cancelling
+                : detecting
+                  ? t.crop.footer.detecting
+                  : runningText(t, job)
+            }
             showCount
           />
         )}
