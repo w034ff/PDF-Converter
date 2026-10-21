@@ -261,6 +261,10 @@ export const ja = {
       zoomIn: "拡大",
       candidates: "候補",
       addAreas: "範囲を追加 ▾",
+      undo: "元に戻す",
+      redo: "やり直す",
+      undoTitle: "元に戻す（Ctrl+Z）",
+      redoTitle: "やり直す（Ctrl+Y）",
     },
     addMenu: {
       label: "範囲を追加",

@@ -9,6 +9,8 @@ import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import {
   candidateAreas,
+  canRedo,
+  canUndo,
   isJobActive,
   useAppDispatch,
   useAppState,
@@ -280,6 +282,28 @@ export function CropPagePane({
           />
           {t.crop.toolbar.candidates}
         </label>
+        <div className="crop-history">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t.crop.toolbar.undo}
+            title={t.crop.toolbar.undoTitle}
+            disabled={busy || !canUndo(crop)}
+            onClick={() => dispatch({ type: "CROP_UNDO" })}
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t.crop.toolbar.redo}
+            title={t.crop.toolbar.redoTitle}
+            disabled={busy || !canRedo(crop)}
+            onClick={() => dispatch({ type: "CROP_REDO" })}
+          >
+            ↷
+          </button>
+        </div>
         <MenuButton
           className="btn btn-ghost crop-add-areas"
           menuLabel={t.crop.addMenu.label}

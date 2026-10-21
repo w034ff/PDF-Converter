@@ -262,6 +262,10 @@ export const en: Translations = {
       zoomIn: "Zoom in",
       candidates: "Suggestions",
       addAreas: "Add areas ▾",
+      undo: "Undo",
+      redo: "Redo",
+      undoTitle: "Undo (Ctrl+Z)",
+      redoTitle: "Redo (Ctrl+Y)",
     },
     addMenu: {
       label: "Add areas",

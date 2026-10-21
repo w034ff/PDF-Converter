@@ -328,7 +328,10 @@
   z-index: 2;
 }
 
-.crop-toolbar .menu-button {
+/* Undo and redo, and the menu after them, keep to the right. */
+.crop-history {
+  display: flex;
+  gap: 4px;
   margin-left: auto;
 }
 

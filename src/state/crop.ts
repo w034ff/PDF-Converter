@@ -11,6 +11,7 @@ import {
 import type {
   CropAction,
   CropArea,
+  CropHistory,
   CropPageResult,
   CropState,
   NewArea,
@@ -58,6 +59,11 @@ export const CROP_PAGE_SIDE_STEPS: readonly number[] = [
  */
 export const CROP_DUPLICATE_IOU = 0.9;
 
+/** How many steps "元に戻す" can go back (design §6.10); older ones are dropped. */
+export const CROP_HISTORY_LIMIT = 100;
+
+const EMPTY_HISTORY: CropHistory = { past: [], future: [], keyedKey: null };
+
 /** The crop state before anything is open, from the saved crop `settings` if there are any. */
 export function createInitialCropState(
   settings: CropSettings | null = null,
@@ -91,6 +97,7 @@ export function createInitialCropState(
     photoOnly: settings?.photoOnly ?? false,
     outputDir: settings?.outputDir ?? null,
     settingsOpen: false,
+    history: EMPTY_HISTORY,
   };
 }
 
@@ -109,6 +116,7 @@ function withPdf(state: CropState, pdf: CropPdf | null): CropState {
     exportedKeys: [],
     onTopRequests: {},
     detectAwaiting: [],
+    history: EMPTY_HISTORY,
   };
 }
 
@@ -295,7 +303,7 @@ function withResult<T>(
   return { ...table, [page]: result };
 }
 
-export function cropReducer(state: CropState, action: CropAction): CropState {
+function reduceCropState(state: CropState, action: CropAction): CropState {
   switch (action.type) {
     case "CROP_PDF_ACTIVATED":
       return {
@@ -585,5 +593,174 @@ export function cropReducer(state: CropState, action: CropAction): CropState {
       return state.settingsOpen === action.open
         ? state
         : { ...state, settingsOpen: action.open };
+    // `cropReducer` takes these, as they move through the history.
+    case "CROP_UNDO":
+    case "CROP_REDO":
+      return state;
+  }
+}
+
+/** Whether two areas are the same area in the same place, whatever Rust said of its photo. */
+function sameArea(a: CropArea, b: CropArea): boolean {
+  return (
+    a.key === b.key &&
+    a.page === b.page &&
+    a.kind === b.kind &&
+    a.imageIndex === b.imageIndex &&
+    a.checked === b.checked &&
+    a.rectPt.every((value, index) => value === b.rectPt[index])
+  );
+}
+
+function sameAreas(a: readonly CropArea[], b: readonly CropArea[]): boolean {
+  return (
+    a.length === b.length && a.every((area, index) => sameArea(area, b[index]))
+  );
+}
+
+/**
+ * Where in `steps` the latest list that differs from `areas` is, or -1. A
+ * step can leave the list as it was ("全ページの候補" that found nothing),
+ * and going back to it would seem to do nothing.
+ */
+function latestDifferent(
+  steps: readonly CropArea[][],
+  areas: readonly CropArea[],
+): number {
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    if (!sameAreas(steps[index], areas)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+export function canUndo(state: CropState): boolean {
+  return latestDifferent(state.history.past, state.areas) >= 0;
+}
+
+export function canRedo(state: CropState): boolean {
+  return latestDifferent(state.history.future, state.areas) >= 0;
+}
+
+/**
+ * `state` with the areas of an earlier or undone step (design §6.10). The
+ * keys stay as they were, and `nextAreaKey` does not go back, so no key is
+ * given twice. An area that comes back or changes shape is no longer counted
+ * as exported, and the page of the first area that changed is shown.
+ */
+function restoreAreas(
+  state: CropState,
+  restored: readonly CropArea[],
+  history: CropHistory,
+): CropState {
+  const current = new Map(state.areas.map((area) => [area.key, area]));
+  // An area that is unchanged keeps what Rust has said of it since.
+  const areas = restored.map((area) => {
+    const now = current.get(area.key);
+    return now !== undefined && sameArea(now, area) ? now : area;
+  });
+  const keys = new Set(areas.map((area) => area.key));
+  const changed = areas.filter((area) => current.get(area.key) !== area);
+  const removed = state.areas.filter((area) => !keys.has(area.key));
+  const first = [...changed, ...removed].sort(
+    (a, b) => a.page - b.page || a.key - b.key,
+  )[0];
+  const onTopRequests = { ...state.onTopRequests };
+  for (const key of Object.keys(onTopRequests).map(Number)) {
+    if (!keys.has(key)) {
+      delete onTopRequests[key];
+    }
+  }
+  return {
+    ...state,
+    areas,
+    page: first?.page ?? state.page,
+    selectedKey: changed.length === 1 ? changed[0].key : null,
+    exportedKeys: state.exportedKeys.filter(
+      (key) => keys.has(key) && !changed.some((area) => area.key === key),
+    ),
+    onTopRequests,
+    history,
+  };
+}
+
+/** `after` with the areas of `before` kept as the step "元に戻す" goes back to. */
+function withStep(
+  before: CropState,
+  after: CropState,
+  keyedKey: number | null,
+): CropState {
+  return {
+    ...after,
+    history: {
+      past: [...before.history.past, before.areas].slice(-CROP_HISTORY_LIMIT),
+      future: [],
+      keyedKey,
+    },
+  };
+}
+
+/** Records the step an edit of the areas makes (design §6.10). */
+function recordStep(
+  before: CropState,
+  after: CropState,
+  action: CropAction,
+): CropState {
+  if (after === before) {
+    return after;
+  }
+  switch (action.type) {
+    case "CROP_AREA_ADDED":
+    case "CROP_AREAS_ADDED":
+    case "CROP_AREA_DRAWN":
+    case "CROP_AREA_REMOVED":
+    case "CROP_AREA_CHECKED":
+      return after.areas === before.areas
+        ? after
+        : withStep(before, after, null);
+    case "CROP_AREA_CHANGED": {
+      if (after.areas === before.areas) {
+        return after;
+      }
+      const keyedKey = action.byKeyboard === true ? action.key : null;
+      return keyedKey !== null && before.history.keyedKey === keyedKey
+        ? after
+        : withStep(before, after, keyedKey);
+    }
+    // The areas the search adds later, page by page, belong to this step.
+    case "CROP_DETECT_ALL_STARTED":
+      return withStep(before, after, null);
+    default:
+      return after;
+  }
+}
+
+export function cropReducer(state: CropState, action: CropAction): CropState {
+  switch (action.type) {
+    case "CROP_UNDO": {
+      const { past, future } = state.history;
+      const index = latestDifferent(past, state.areas);
+      return index < 0
+        ? state
+        : restoreAreas(state, past[index], {
+            past: past.slice(0, index),
+            future: [...future, state.areas],
+            keyedKey: null,
+          });
+    }
+    case "CROP_REDO": {
+      const { past, future } = state.history;
+      const index = latestDifferent(future, state.areas);
+      return index < 0
+        ? state
+        : restoreAreas(state, future[index], {
+            past: [...past, state.areas].slice(-CROP_HISTORY_LIMIT),
+            future: future.slice(0, index),
+            keyedKey: null,
+          });
+    }
+    default:
+      return recordStep(state, reduceCropState(state, action), action);
   }
 }

@@ -143,6 +143,19 @@ export interface CropArea extends NewArea {
   onTop: boolean | null;
 }
 
+/** What "元に戻す" and "やり直す" go back to (design §6.10). */
+export interface CropHistory {
+  /** The lists of areas before each step, the latest last. */
+  past: CropArea[][];
+  /** The lists of areas that were undone, the latest undone last. */
+  future: CropArea[][];
+  /**
+   * The area the keyboard moves or resizes as one step until another step
+   * comes between; `null` when the next change is a step of its own.
+   */
+  keyedKey: number | null;
+}
+
 /** Which conversion of the crop tab started last (design §10.1). */
 export type CropJobKind = "export" | "detectAll";
 
@@ -205,6 +218,7 @@ export interface CropState {
   outputDir: OutputDirLabel | null;
   /** Whether the export settings are open; only the screen keeps it (design §10.1). */
   settingsOpen: boolean;
+  history: CropHistory;
 }
 
 export type CropAction =
@@ -250,11 +264,21 @@ export type CropAction =
   | { type: "CROP_AREAS_ADDED"; areas: NewArea[] }
   /** Adds an area drawn by hand and selects it; no overlap makes it a repeat. */
   | { type: "CROP_AREA_DRAWN"; page: number; rectPt: RectPt }
-  /** Replaces the rectangle of an area that was moved or resized. */
-  | { type: "CROP_AREA_CHANGED"; key: number; rectPt: RectPt }
+  /**
+   * Replaces the rectangle of an area that was moved or resized. Changes the
+   * keyboard makes to one area in a row undo as one (`byKeyboard`).
+   */
+  | {
+      type: "CROP_AREA_CHANGED";
+      key: number;
+      rectPt: RectPt;
+      byKeyboard?: boolean;
+    }
   | { type: "CROP_AREA_SELECTED"; key: number | null }
   | { type: "CROP_AREA_REMOVED"; key: number }
   | { type: "CROP_AREA_CHECKED"; key: number; checked: boolean }
+  | { type: "CROP_UNDO" }
+  | { type: "CROP_REDO" }
   | { type: "CROP_ON_TOP_STARTED"; id: number; key: number }
   | { type: "CROP_ON_TOP_DONE"; id: number; key: number; onTop: boolean }
   | { type: "CROP_ON_TOP_FAILED"; id: number; key: number }

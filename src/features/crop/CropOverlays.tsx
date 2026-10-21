@@ -201,7 +201,12 @@ export function CropOverlays({
     if (selectedKey !== area.key) {
       dispatch({ type: "CROP_AREA_SELECTED", key: area.key });
     }
-    dispatch({ type: "CROP_AREA_CHANGED", key: area.key, rectPt });
+    dispatch({
+      type: "CROP_AREA_CHANGED",
+      key: area.key,
+      rectPt,
+      byKeyboard: true,
+    });
   }
 
   function rectOf(area: CropArea): RectPt {

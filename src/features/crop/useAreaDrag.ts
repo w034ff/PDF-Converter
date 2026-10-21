@@ -18,6 +18,7 @@ import {
   type PointPt,
 } from "./cropEdit";
 import { CROP_DRAG_THRESHOLD_PX, CSS_PX_PER_PT } from "./cropView";
+import { historyKeyOf } from "./useCropHistoryKeys";
 
 type DragMode =
   | { kind: "draw"; start: PointPt }
@@ -183,12 +184,18 @@ export function useAreaDrag({
   const dragging = drag !== null && drag.passed && isCurrent(drag);
 
   // Esc calls a drag off. It listens on the window, ahead of everything, so
-  // the same key does not also deselect the area.
+  // the same key does not also deselect the area; Ctrl+Z and Ctrl+Y wait.
   useEffect(() => {
     if (!dragging) {
       return;
     }
     function handleKeyDown(event: KeyboardEvent) {
+      // The areas stay as they are until the drag ends.
+      if (historyKeyOf(event) !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (event.key !== "Escape") {
         return;
       }
