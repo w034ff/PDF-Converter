@@ -331,7 +331,7 @@ export const en: Translations = {
       noRanges: "No areas selected",
       willExportSingle: "Export {count} area as {format}",
       willExportMultiple: "Export {count} areas as {format}",
-      detecting: "Searching all pages for candidates…",
+      detecting: "Searching all pages for suggestions…",
       export: "Export",
     },
   },
