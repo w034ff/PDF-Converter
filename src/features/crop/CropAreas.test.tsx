@@ -10,6 +10,7 @@ import {
   installFakeObjectUrls,
   installFakeResizeObserver,
   openPdfInCropTab,
+  openSettings,
   pageImage,
   rowText,
   type ObjectUrls,
@@ -455,6 +456,7 @@ describe("the list of areas", () => {
   it("names the format the bottom bar will write", async () => {
     await openPdfInCropTab();
     await addWholePage();
+    openSettings();
     fireEvent.click(screen.getByRole("button", { name: "JPEG" }));
     expect(
       screen.getByText("1 個の範囲を JPEG で書き出します"),
@@ -518,6 +520,7 @@ describe("the list of areas", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
     );
+    await flush();
     expect(urls.revoke).toHaveBeenCalledWith(src);
   });
 
@@ -561,6 +564,7 @@ describe("the list of areas", () => {
     await flush();
     expect(rowText(areaRows()[0])).toContain("元の画素 100 × 80");
 
+    openSettings();
     fireEvent.click(
       screen.getByRole("checkbox", { name: "写真は元の画素で書き出す" }),
     );
@@ -570,6 +574,7 @@ describe("the list of areas", () => {
   it("sizes the areas by the resolution of the settings", async () => {
     await openPdfInCropTab();
     await addWholePage();
+    openSettings();
     fireEvent.change(screen.getByLabelText("解像度"), {
       target: { value: "300" },
     });

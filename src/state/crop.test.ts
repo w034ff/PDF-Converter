@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CropPdf, IpcError, Settings } from "../ipc";
 import {
   CROP_PAGE_SIDE_STEPS,
-  CROP_SETTINGS_OPEN_MIN_HEIGHT,
   CROP_ZOOM_STEPS,
   PAGE_VIEW_MAX_SIDE,
   createInitialCropState,
@@ -51,10 +50,6 @@ describe("the constants", () => {
     expect(CROP_ZOOM_STEPS).toEqual([
       25, 33, 50, 67, 75, 90, 100, 125, 150, 200, 300, 400,
     ]);
-  });
-
-  it("open the export settings from a window height of 720", () => {
-    expect(CROP_SETTINGS_OPEN_MIN_HEIGHT).toBe(720);
   });
 });
 
@@ -127,17 +122,34 @@ describe("createInitialCropState", () => {
     });
   });
 
-  it.each([
-    [CROP_SETTINGS_OPEN_MIN_HEIGHT - 1, false],
-    [CROP_SETTINGS_OPEN_MIN_HEIGHT, true],
-    [CROP_SETTINGS_OPEN_MIN_HEIGHT + 200, true],
-  ])(
-    "opens the export settings at a window height of %i: %s",
-    (height, isOpen) => {
+  it.each([400, 720, 1200])(
+    "starts with the export settings closed at a window height of %i",
+    (height) => {
       vi.stubGlobal("innerHeight", height);
-      expect(createInitialCropState().settingsOpen).toBe(isOpen);
+      expect(createInitialCropState().settingsOpen).toBe(false);
     },
   );
+
+  it("keeps the export settings as they are when another PDF is open", () => {
+    const opened = reduce(open(1), {
+      type: "SET_CROP_SETTINGS_OPEN",
+      open: true,
+    });
+    for (const action of [
+      { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) },
+      { type: "CROP_PDF_UNLOCKED", pdf: pdf(2) },
+      { type: "CROP_PDF_CLOSED" },
+    ] satisfies CropAction[]) {
+      expect(reduce(opened, action).settingsOpen).toBe(true);
+    }
+    const closed = reduce(opened, {
+      type: "SET_CROP_SETTINGS_OPEN",
+      open: false,
+    });
+    expect(
+      reduce(closed, { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) }).settingsOpen,
+    ).toBe(false);
+  });
 
   it("is part of the app state, from the saved settings", () => {
     const settings: Settings = {

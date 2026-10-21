@@ -276,6 +276,9 @@ export const ja = {
       manual: "手で選んだ範囲",
     },
     searching: "候補を探しています…",
+    candidateAria: "候補：{kind}",
+    photoFrameAria: "写真の枠",
+    areaAria: "範囲：{kind}",
     candidateKinds: {
       photo: "写真",
       figure: "図",

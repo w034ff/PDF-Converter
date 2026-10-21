@@ -318,6 +318,70 @@ export const FINISHED_NONE: JobFinishedPayload = {
   cancelled: false,
 };
 
+/** CSS pixels the page shows a point at; jsdom lays nothing out, so it is read off the page's width. */
+export function pxPerPt(): number {
+  return parseFloat(screen.getByTestId("crop-page").style.width) / A4.widthPt;
+}
+
+/** The point `[x, y]` of the page as client coordinates, where jsdom puts the page at 0, 0. */
+export function clientAt([x, y]: readonly [number, number]) {
+  const scale = pxPerPt();
+  return { clientX: x * scale, clientY: y * scale, button: 0, pointerId: 1 };
+}
+
+/** Where an element drawn on the page lies, in points: `[x0, y0, x1, y1]`. */
+export function boxPt(element: HTMLElement): [number, number, number, number] {
+  const scale = pxPerPt();
+  const left = parseFloat(element.style.left) / scale;
+  const top = parseFloat(element.style.top) / scale;
+  return [
+    left,
+    top,
+    left + parseFloat(element.style.width) / scale,
+    top + parseFloat(element.style.height) / scale,
+  ];
+}
+
+/**
+ * The layer the page's pointer events are handled on. A captured pointer's
+ * moves and release reach it whatever the pointer is over.
+ */
+export function overlay(): HTMLElement {
+  return screen.getByTestId("crop-overlay");
+}
+
+/** Presses on `target` at the point of the page. */
+export function pressAt(target: Element, point: readonly [number, number]) {
+  fireEvent.pointerDown(target, clientAt(point));
+}
+
+export function moveTo(point: readonly [number, number]) {
+  fireEvent.pointerMove(overlay(), clientAt(point));
+}
+
+export function releaseAt(point: readonly [number, number]) {
+  fireEvent.pointerUp(overlay(), clientAt(point));
+}
+
+/** A whole drag: press on `target`, move, release. */
+export function dragFromTo(
+  target: Element,
+  from: readonly [number, number],
+  to: readonly [number, number],
+) {
+  pressAt(target, from);
+  moveTo(to);
+  releaseAt(to);
+}
+
+/** Opens the export settings, which start closed, if they are not open. */
+export function openSettings() {
+  const toggle = screen.getByRole("button", { name: /書き出しの設定/ });
+  if (toggle.getAttribute("aria-expanded") === "false") {
+    fireEvent.click(toggle);
+  }
+}
+
 /** The areas' rows of the list, in the order shown. */
 export function areaRows(): HTMLElement[] {
   return screen.queryAllByTestId("crop-area-row");

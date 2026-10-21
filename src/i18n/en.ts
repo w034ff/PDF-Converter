@@ -277,6 +277,9 @@ export const en: Translations = {
       manual: "Custom area",
     },
     searching: "Looking for suggestions…",
+    candidateAria: "Suggestion: {kind}",
+    photoFrameAria: "Photo frame",
+    areaAria: "Area: {kind}",
     candidateKinds: {
       photo: "Photo",
       figure: "Figure",
@@ -304,9 +307,9 @@ export const en: Translations = {
     },
     detectAll: {
       summaryFinished: "Searched all pages for suggestions: {counts}",
-      addedSingle: "Added {count} area",
-      addedMultiple: "Added {count} areas",
-      noneAdded: "No areas were added",
+      addedSingle: "added {count} area",
+      addedMultiple: "added {count} areas",
+      noneAdded: "no areas were added",
     },
     replaceDialog: {
       title: "Discard areas that have not been exported and open?",

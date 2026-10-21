@@ -11,6 +11,24 @@ export const CSS_PX_PER_PT = 96 / 72;
 
 const PERCENT = 100;
 
+/** A press that moves less than this (CSS px) before it is released is a click (design §10.1). */
+export const CROP_DRAG_THRESHOLD_PX = 4;
+
+/** The side of the square a handle is drawn as, in CSS px. */
+export const CROP_HANDLE_SIZE_PX = 8;
+
+/** The side of the square a handle can be pressed in, in CSS px. */
+export const CROP_HANDLE_HIT_PX = 16;
+
+/** The smallest width and height an area is drawn or resized to, in points. */
+export const CROP_MIN_AREA_SIDE_PT = 4;
+
+/** How far an arrow key moves an area or an edge, in points. */
+export const CROP_KEY_STEP_PT = 1;
+
+/** The same with Shift held. */
+export const CROP_KEY_STEP_LARGE_PT = 10;
+
 /** The room the page has: the content box of the scrolling view, in CSS pixels. */
 export interface ViewportSize {
   width: number;

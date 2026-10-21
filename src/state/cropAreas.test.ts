@@ -522,6 +522,121 @@ describe("all pages' candidates", () => {
   });
 });
 
+describe("drawing an area", () => {
+  const drawn: CropAction = {
+    type: "CROP_AREA_DRAWN",
+    page: 2,
+    rectPt: [10, 20, 110, 220],
+  };
+
+  it("adds a hand-picked, checked area and selects it", () => {
+    const state = reduce(add(open(), figure(1)), drawn);
+    expect(state.areas[1]).toEqual({
+      key: 2,
+      page: 2,
+      kind: "manual",
+      rectPt: [10, 20, 110, 220],
+      imageIndex: null,
+      checked: true,
+      onTop: null,
+    });
+    expect(state.selectedKey).toBe(2);
+    expect(state.nextAreaKey).toBe(3);
+  });
+
+  it("adds it however much it overlaps an area of the page", () => {
+    const state = reduce(add(open(), figure(2, [10, 20, 110, 220])), drawn);
+    expect(state.areas).toHaveLength(2);
+    expect(rectIou(state.areas[0].rectPt, state.areas[1].rectPt)).toBe(1);
+  });
+});
+
+describe("moving and resizing an area", () => {
+  const moved: RectPt = [10, 20, 60, 70];
+
+  function change(state: CropState, key: number, rectPt: RectPt): CropState {
+    return reduce(state, { type: "CROP_AREA_CHANGED", key, rectPt });
+  }
+
+  it("replaces the rectangle and keeps the kind, the check and the selection", () => {
+    const base = reduce(
+      add(open(), figure(1), figure(1, [200, 0, 300, 100])),
+      { type: "CROP_AREA_CHECKED", key: 1, checked: false },
+      { type: "CROP_AREA_SELECTED", key: 2 },
+    );
+    const state = change(base, 1, moved);
+    expect(state.areas[0]).toMatchObject({
+      key: 1,
+      kind: "figure",
+      rectPt: moved,
+      checked: false,
+    });
+    expect(state.areas[1]).toBe(base.areas[1]);
+    expect(state.selectedKey).toBe(2);
+  });
+
+  it("makes a photo a hand-picked area, with no image and no overlay mark", () => {
+    const base = reduce(add(open(), photo(1, 3)), {
+      type: "CROP_ON_TOP_DONE",
+      id: 1,
+      key: 1,
+      onTop: true,
+    });
+    expect(base.areas[0].onTop).toBe(true);
+    const state = change(base, 1, moved);
+    expect(state.areas[0]).toMatchObject({
+      kind: "manual",
+      imageIndex: null,
+      onTop: null,
+      rectPt: moved,
+    });
+  });
+
+  it("drops what was asked of check_on_top for a photo", () => {
+    const base = reduce(add(open(), photo(1, 3)), {
+      type: "CROP_ON_TOP_STARTED",
+      id: 1,
+      key: 1,
+    });
+    expect(base.onTopRequests).toEqual({ 1: "pending" });
+    expect(change(base, 1, moved).onTopRequests).toEqual({});
+  });
+
+  it("keeps the kind of the areas that are not photos", () => {
+    for (const kind of ["figure", "chart", "table", "manual"] as const) {
+      const base = add(open(), { ...figure(1), kind });
+      expect(change(base, 1, moved).areas[0].kind).toBe(kind);
+    }
+  });
+
+  it("takes the area off the exported ones, so the replace question counts it", () => {
+    const base = {
+      ...add(open(), figure(1), figure(2)),
+      exportedKeys: [1, 2],
+    };
+    expect(unexportedAreaCount(base)).toBe(0);
+    const state = change(base, 1, moved);
+    expect(state.exportedKeys).toEqual([2]);
+    expect(unexportedAreaCount(state)).toBe(1);
+  });
+
+  it("is not subject to the check for a repeat", () => {
+    const base = add(open(), figure(1), figure(1, [200, 0, 300, 100]));
+    const state = change(base, 2, [0, 0, 100, 100]);
+    expect(state.areas[1].rectPt).toEqual([0, 0, 100, 100]);
+  });
+
+  it("returns the same state for the rectangle the area has", () => {
+    const base = { ...add(open(), figure(1)), exportedKeys: [1] };
+    expect(change(base, 1, [0, 0, 100, 100])).toBe(base);
+  });
+
+  it("returns the same state for an area that is not there", () => {
+    const base = add(open(), figure(1));
+    expect(change(base, 9, moved)).toBe(base);
+  });
+});
+
 describe("the areas while a conversion runs", () => {
   function runningApp(): AppState {
     const state = {
@@ -535,11 +650,13 @@ describe("the areas while a conversion runs", () => {
     });
   }
 
-  it("takes no area added, removed or checked", () => {
+  it("takes no area added, drawn, changed, removed or checked", () => {
     const state = runningApp();
     const actions: AppAction[] = [
       { type: "CROP_AREA_ADDED", area: figure(2) },
       { type: "CROP_AREAS_ADDED", areas: [figure(2)] },
+      { type: "CROP_AREA_DRAWN", page: 2, rectPt: [10, 10, 50, 50] },
+      { type: "CROP_AREA_CHANGED", key: 1, rectPt: [10, 10, 50, 50] },
       { type: "CROP_AREA_REMOVED", key: 1 },
       { type: "CROP_AREA_CHECKED", key: 1, checked: false },
     ];
@@ -717,6 +834,8 @@ describe("dropping the last crop result", () => {
   const dropping: AppAction[] = [
     { type: "CROP_AREA_ADDED", area: figure(3) },
     { type: "CROP_AREAS_ADDED", areas: [figure(3)] },
+    { type: "CROP_AREA_DRAWN", page: 3, rectPt: [10, 10, 50, 50] },
+    { type: "CROP_AREA_CHANGED", key: 1, rectPt: [10, 10, 50, 50] },
     { type: "CROP_AREA_REMOVED", key: 1 },
     { type: "CROP_AREA_CHECKED", key: 1, checked: false },
     { type: "SET_CROP_FORMAT", format: "jpeg" },
@@ -786,6 +905,15 @@ describe("dropping the last crop result", () => {
       expect(state.job.finished).toEqual(finished);
     });
   }
+
+  it("is kept when an area is changed to the rectangle it has", () => {
+    const state = appReducer(withResult(), {
+      type: "CROP_AREA_CHANGED",
+      key: 1,
+      rectPt: [0, 0, 100, 100],
+    });
+    expect(state.job.finished).toEqual(finished);
+  });
 
   it("is kept when all pages' candidates add areas", () => {
     const state = appReducer(withResult(), {

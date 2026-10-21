@@ -178,6 +178,13 @@
 .crop-overlay {
   position: absolute;
   inset: 0;
+  user-select: none;
+}
+
+/* While a conversion runs nothing can be drawn, so the page keeps the
+   plain pointer. */
+.crop-overlay.is-editable {
+  cursor: crosshair;
 }
 
 .crop-photo-frame,
@@ -187,10 +194,11 @@
   box-sizing: border-box;
 }
 
-/* A frame or a candidate that adds an area when pressed. */
+/* A frame or a candidate that adds an area when pressed, or draws one when
+   dragged. */
 .crop-photo-frame.is-pressable,
 .crop-candidate.is-pressable {
-  cursor: pointer;
+  cursor: crosshair;
 }
 
 .crop-photo-frame {
@@ -227,8 +235,48 @@
   cursor: pointer;
 }
 
+.crop-overlay.is-editable .crop-area {
+  cursor: move;
+}
+
 .crop-area.is-selected {
   background: var(--color-page-area-tint);
+}
+
+/* The line of an area is accent too; the gap tells the ring from it. */
+.crop-photo-frame:focus-visible,
+.crop-candidate:focus-visible,
+.crop-area:focus-visible {
+  outline-offset: 3px;
+}
+
+/* The shape of an area being drawn: it takes no press itself. */
+.crop-area-draft {
+  pointer-events: none;
+  background: var(--color-page-area-tint);
+}
+
+/* The press area of a handle is bigger than the square it shows. Handles
+   lie over every area, so an area under another one can be resized. */
+.crop-handle {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.crop-handle-mark {
+  display: block;
+  box-sizing: border-box;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-page-area);
+}
+
+/* A drag keeps its own pointer, set on the overlay, wherever it passes: over
+   the pointers of the elements and the handles' inline ones. */
+.crop-overlay.is-dragging * {
+  cursor: inherit !important;
 }
 
 .crop-area-tag {

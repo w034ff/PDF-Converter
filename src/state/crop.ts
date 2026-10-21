@@ -53,12 +53,6 @@ export const CROP_PAGE_SIDE_STEPS: readonly number[] = [
 ];
 
 /**
- * The window height from which the export settings start open (design §10.1);
- * below it the list of areas would be squeezed out of view.
- */
-export const CROP_SETTINGS_OPEN_MIN_HEIGHT = 720;
-
-/**
  * From this IoU, two areas of a page count as the same one and the second is
  * not added (design §6.10).
  */
@@ -96,7 +90,7 @@ export function createInitialCropState(
     photoNative: settings?.photoNative ?? true,
     photoOnly: settings?.photoOnly ?? false,
     outputDir: settings?.outputDir ?? null,
-    settingsOpen: window.innerHeight >= CROP_SETTINGS_OPEN_MIN_HEIGHT,
+    settingsOpen: false,
   };
 }
 
@@ -136,7 +130,7 @@ export function rectIou(a: RectPt, b: RectPt): number {
 }
 
 /** The area on the page of `area` that it repeats, if there is one. */
-function findDuplicate(
+export function findDuplicate(
   areas: readonly CropArea[],
   area: NewArea,
 ): CropArea | undefined {
@@ -240,6 +234,43 @@ function withArea(
         ),
       }
     : state;
+}
+
+function sameRect(a: RectPt, b: RectPt): boolean {
+  return a.every((value, index) => value === b[index]);
+}
+
+/**
+ * Moves or resizes an area. A photo no longer lies on the pixel grid of its
+ * embedded image, so it becomes a hand-picked area and forgets the image and
+ * what was drawn over it; what an export wrote no longer matches the area, so
+ * it counts as not exported (design §6.10).
+ */
+function changeArea(state: CropState, key: number, rectPt: RectPt): CropState {
+  const area = state.areas.find((other) => other.key === key);
+  if (area === undefined || sameRect(area.rectPt, rectPt)) {
+    return state;
+  }
+  const onTopRequests = { ...state.onTopRequests };
+  delete onTopRequests[key];
+  return {
+    ...state,
+    areas: state.areas.map((other) =>
+      other.key === key
+        ? other.kind === "photo"
+          ? {
+              ...other,
+              kind: "manual",
+              rectPt,
+              imageIndex: null,
+              onTop: null,
+            }
+          : { ...other, rectPt }
+        : other,
+    ),
+    exportedKeys: state.exportedKeys.filter((other) => other !== key),
+    onTopRequests,
+  };
 }
 
 function isOpenPdf(state: CropState, id: number): boolean {
@@ -423,6 +454,29 @@ export function cropReducer(state: CropState, action: CropAction): CropState {
     }
     case "CROP_AREAS_ADDED":
       return appendAreas(state, action.areas).state;
+    // The user put the area there, so no overlap makes it a repeat.
+    case "CROP_AREA_DRAWN": {
+      const key = state.nextAreaKey;
+      return {
+        ...state,
+        areas: [
+          ...state.areas,
+          {
+            key,
+            page: action.page,
+            kind: "manual",
+            rectPt: action.rectPt,
+            imageIndex: null,
+            checked: true,
+            onTop: null,
+          },
+        ],
+        nextAreaKey: key + 1,
+        selectedKey: key,
+      };
+    }
+    case "CROP_AREA_CHANGED":
+      return changeArea(state, action.key, action.rectPt);
     case "CROP_AREA_SELECTED":
       if (
         state.selectedKey === action.key ||
