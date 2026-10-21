@@ -14,6 +14,8 @@ import { CropAction } from "./features/crop/CropAction";
 import { CropScreen } from "./features/crop/CropScreen";
 import { CropStatus } from "./features/crop/CropStatus";
 import { useCropDropped } from "./features/crop/useCropDropped";
+import { useCropAreaQueries } from "./features/crop/useCropAreaQueries";
+import { useCropLayoutPage } from "./features/crop/useCropLayoutPage";
 import { useCropPageData } from "./features/crop/useCropPageData";
 import { useDropTarget } from "./features/crop/useDropTarget";
 import { ImagesToPdfView } from "./features/images-to-pdf/ImagesToPdfView";
@@ -51,6 +53,8 @@ function AppShell() {
   useCropDropped();
   useDropTarget(language.activeTab);
   useCropPageData(language.activeTab === "crop");
+  useCropAreaQueries();
+  useCropLayoutPage();
 
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const aboutButtonRef = useRef<HTMLButtonElement>(null);

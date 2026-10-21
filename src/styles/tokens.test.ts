@@ -137,6 +137,7 @@ describe("design tokens and CSS rules", () => {
       "--color-page-frame",
       "--color-page-frame-hover",
       "--color-page-candidate",
+      "--color-page-area",
     ]) {
       expect(
         contrastRatio(
@@ -146,6 +147,16 @@ describe("design tokens and CSS rules", () => {
         `${fg} on the page`,
       ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
     }
+  });
+
+  it("keeps the kind tag of a selected area readable on its ground", () => {
+    const tokens = readThemeTokens("dark");
+    expect(
+      contrastRatio(
+        tokenValue(tokens, "--color-page-area-text"),
+        tokenValue(tokens, "--color-page-area"),
+      ),
+    ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
   });
 
   it.each(["light", "dark"] as const)(

@@ -550,27 +550,6 @@ describe("the frames and candidates", () => {
     expect(screen.getAllByTestId("crop-candidate")).toHaveLength(2);
   });
 
-  it("does nothing when a frame or a candidate is pressed", async () => {
-    const calls = await openPdf({
-      list_page_images: () => photos,
-      detect_layout: () => candidates,
-    });
-    const before = calls.length;
-    const exportButton = screen.getByRole("button", { name: "書き出す" });
-
-    fireEvent.click(screen.getByTestId("crop-photo-frame"));
-    fireEvent.click(screen.getAllByTestId("crop-candidate")[0]);
-    await flush();
-
-    expect(calls).toHaveLength(before);
-    expect(screen.getByText("範囲が選ばれていません")).toBeInTheDocument();
-    expect(screen.getByText("範囲はまだありません")).toBeInTheDocument();
-    expect(exportButton).toBeDisabled();
-    expect(
-      screen.getByTestId("crop-photo-frame").getAttribute("role"),
-    ).toBeNull();
-  });
-
   it("shows each page's own frames and candidates", async () => {
     await openPdf({
       list_page_images: (args) => (args.page === 1 ? photos : []),
