@@ -260,6 +260,8 @@
    lie over every area, so an area under another one can be resized. */
 .crop-handle {
   position: absolute;
+  /* Above the word raised by the pointer, which a handle may lie under. */
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -293,9 +295,24 @@
   white-space: nowrap;
 }
 
+/* The word of the selected area sits higher, its bottom 8px above the top
+   edge: right on the edge it would cover the handle in the middle whenever
+   it is longer than half the area, and the handles reach 8px out at most
+   (half of `CROP_HANDLE_HIT_PX`). Inside the area it would cover the right
+   edge's handle of a small one. */
 .crop-area.is-selected .crop-area-tag {
+  top: -28px;
   background: var(--color-page-area);
   color: var(--color-page-area-text);
+}
+
+/* A word sits outside its frame and can lie under a neighbour's. The one
+   under the pointer or the focus comes to the top, so each can be read. */
+.crop-candidate:hover > .crop-tag,
+.crop-candidate:focus-visible > .crop-tag,
+.crop-area:hover > .crop-area-tag,
+.crop-area:focus-visible > .crop-area-tag {
+  z-index: 1;
 }
 
 .crop-toolbar .menu-button {

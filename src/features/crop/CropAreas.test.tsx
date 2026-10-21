@@ -177,6 +177,34 @@ describe("pressing a candidate", () => {
     expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
     expect(screen.getAllByTestId("crop-area")).toHaveLength(1);
   });
+
+  it("leaves the word to the area in its place, and takes it back once the area moves away", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      detect_layout: () => candidates,
+    });
+    const [chart, photo] = screen.getAllByTestId("crop-candidate");
+    fireEvent.click(chart);
+    await flush();
+
+    expect(chart).not.toHaveTextContent("グラフ");
+    expect(photo).toHaveTextContent("写真");
+    expect(screen.getByTestId("crop-area")).toHaveTextContent("グラフ");
+
+    // 10 pt to the right still overlaps by 190 / 210 of the 200 pt width,
+    // over 0.9; 20 pt leaves 180 / 220, under it.
+    const moveRight = () =>
+      fireEvent.keyDown(screen.getByTestId("crop-area"), {
+        key: "ArrowRight",
+        shiftKey: true,
+      });
+    moveRight();
+    await flush();
+    expect(chart).not.toHaveTextContent("グラフ");
+    moveRight();
+    await flush();
+    expect(chart).toHaveTextContent("グラフ");
+  });
 });
 
 describe("selecting", () => {

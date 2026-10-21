@@ -52,7 +52,8 @@ type FocusTarget = number | "view";
 /**
  * What is drawn over the page (design §10.1): a dotted frame round each
  * embedded image, which is emphasized under the pointer, a thin line with the
- * kind's word round each candidate, and the areas (an accent line with the
+ * kind's word round each candidate (without the word when an area lies in
+ * its place), and the areas (an accent line with the
  * kind's word, and a tinted ground when selected). Pressing a frame or a
  * candidate adds the area it stands for, pressing an area selects it, and
  * pressing the page elsewhere selects none. Dragging draws an area, or moves
@@ -239,6 +240,9 @@ export function CropOverlays({
             imageIndex:
               candidate.kind === "photo" ? candidate.imageIndex : null,
           };
+          // An area in its place, such as the one made from it, puts its
+          // own word where the candidate's would be.
+          const madeArea = findDuplicate(areas, area) !== undefined;
           return (
             <div
               key={index}
@@ -256,9 +260,11 @@ export function CropOverlays({
                 activate(event, () => addFromKeyboard(area))
               }
             >
-              <span className="crop-tag">
-                {t.crop.candidateKinds[candidate.kind]}
-              </span>
+              {!madeArea && (
+                <span className="crop-tag">
+                  {t.crop.candidateKinds[candidate.kind]}
+                </span>
+              )}
             </div>
           );
         })}
