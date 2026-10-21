@@ -248,6 +248,10 @@ export type CropAction =
   | { type: "CROP_AREA_ADDED"; area: NewArea }
   /** Adds several areas without selecting any. */
   | { type: "CROP_AREAS_ADDED"; areas: NewArea[] }
+  /** Adds an area drawn by hand and selects it; no overlap makes it a repeat. */
+  | { type: "CROP_AREA_DRAWN"; page: number; rectPt: RectPt }
+  /** Replaces the rectangle of an area that was moved or resized. */
+  | { type: "CROP_AREA_CHANGED"; key: number; rectPt: RectPt }
   | { type: "CROP_AREA_SELECTED"; key: number | null }
   | { type: "CROP_AREA_REMOVED"; key: number }
   | { type: "CROP_AREA_CHECKED"; key: number; checked: boolean }

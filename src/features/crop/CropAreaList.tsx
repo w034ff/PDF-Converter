@@ -15,7 +15,6 @@ import {
   type AppState,
   type CropArea,
 } from "../../state";
-import { useThumbnail } from "../items/useThumbnail";
 import {
   CROP_PREVIEW_HEIGHT,
   CROP_PREVIEW_WIDTH,
@@ -25,6 +24,7 @@ import {
   exportSizeText,
   previewPlacement,
 } from "./cropAreas";
+import { useAreaPreview } from "./useAreaPreview";
 import "./crop.css";
 
 /** How a row says what became of its area in the last export. */
@@ -91,7 +91,7 @@ interface AreaPreviewProps {
 /** The area cut out of its page's picture, which fills the box of the row. */
 function AreaPreview({ pdf, area }: AreaPreviewProps) {
   const pageSize = pdf.pages[area.page - 1];
-  const { ref, src } = useThumbnail(
+  const { ref, src } = useAreaPreview(
     pdf.id,
     area.page,
     areaPreviewMaxSide(area, pageSize, window.devicePixelRatio),

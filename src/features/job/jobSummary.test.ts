@@ -277,7 +277,7 @@ describe("formatJobSummary for all pages' candidates", () => {
         { ...NOTHING, succeeded: 1, failed: 1 },
         detectAll(1, 1),
       ),
-    ).toBe("Searched all pages for suggestions: Added 1 area · 1 page failed");
+    ).toBe("Searched all pages for suggestions: added 1 area · 1 page failed");
     expect(
       formatJobSummary(
         en,
@@ -285,7 +285,7 @@ describe("formatJobSummary for all pages' candidates", () => {
         detectAll(5, 2),
       ),
     ).toBe(
-      "Searched all pages for suggestions: Added 5 areas · 2 pages failed",
+      "Searched all pages for suggestions: added 5 areas · 2 pages failed",
     );
     expect(
       formatJobSummary(
@@ -293,7 +293,7 @@ describe("formatJobSummary for all pages' candidates", () => {
         { ...NOTHING, cancelled: true, unprocessed: 4 },
         detectAll(0, 0, 4),
       ),
-    ).toBe("Cancelled: No areas were added · 4 pages not processed");
+    ).toBe("Cancelled: no areas were added · 4 pages not processed");
   });
 });
 

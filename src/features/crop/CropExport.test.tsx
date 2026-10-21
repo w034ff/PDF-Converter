@@ -12,6 +12,7 @@ import {
   installFakeObjectUrls,
   installFakeResizeObserver,
   openPdfInCropTab,
+  openSettings,
   pageImage,
   rowText,
   type Call,
@@ -56,6 +57,7 @@ async function withThreeAreas(
     await flush();
     await addWholePage();
   }
+  openSettings();
   return calls;
 }
 
@@ -97,6 +99,7 @@ describe("the button that writes", () => {
   it("cannot be pressed while the resolution typed is wrong", async () => {
     await openPdfInCropTab();
     await addWholePage();
+    openSettings();
     fireEvent.change(screen.getByLabelText("解像度"), {
       target: { value: "custom" },
     });
@@ -395,6 +398,7 @@ describe("what a running conversion locks", () => {
       detect_layout: () => [candidate("chart", [10, 10, 60, 60])],
     });
     await addWholePage();
+    openSettings();
     await startExport();
     return calls;
   }

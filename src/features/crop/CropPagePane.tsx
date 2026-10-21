@@ -33,10 +33,12 @@ interface PageSurfaceProps {
   pdf: CropPdf;
   page: number;
   scale: number;
+  /** The scrolling view the page is in. */
+  viewport: HTMLElement;
 }
 
 /** The page at `scale` with its picture and what is drawn over it. */
-function PageSurface({ pdf, page, scale }: PageSurfaceProps) {
+function PageSurface({ pdf, page, scale, viewport }: PageSurfaceProps) {
   const { language, crop, job } = useAppState();
   const t = getTranslations(language.language);
   const size = pdf.pages[page - 1];
@@ -66,6 +68,7 @@ function PageSurface({ pdf, page, scale }: PageSurfaceProps) {
       )}
       <CropOverlays
         page={page}
+        pageSize={size}
         images={images?.status === "done" ? images.value : []}
         candidates={layout?.status === "done" ? layout.value : []}
         areas={crop.areas.filter((area) => area.page === page)}
@@ -73,6 +76,7 @@ function PageSurface({ pdf, page, scale }: PageSurfaceProps) {
         showCandidates={crop.showCandidates}
         locked={locked}
         scale={scale}
+        focusView={() => viewport.focus()}
       />
     </div>
   );
@@ -291,8 +295,26 @@ export function CropPagePane({
         data-testid="crop-viewport"
         ref={setViewport}
         tabIndex={-1}
+        onKeyDown={(event) => {
+          // A drag takes the key first, and so do the menu and dialogs,
+          // which stop it.
+          if (
+            event.key === "Escape" &&
+            !event.defaultPrevented &&
+            crop.selectedKey !== null
+          ) {
+            dispatch({ type: "CROP_AREA_SELECTED", key: null });
+          }
+        }}
       >
-        {scale !== null && <PageSurface pdf={pdf} page={page} scale={scale} />}
+        {scale !== null && viewport !== null && (
+          <PageSurface
+            pdf={pdf}
+            page={page}
+            scale={scale}
+            viewport={viewport}
+          />
+        )}
       </div>
     </>
   );

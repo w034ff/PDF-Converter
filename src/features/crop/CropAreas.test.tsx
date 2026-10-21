@@ -10,6 +10,7 @@ import {
   installFakeObjectUrls,
   installFakeResizeObserver,
   openPdfInCropTab,
+  openSettings,
   pageImage,
   rowText,
   type ObjectUrls,
@@ -175,6 +176,34 @@ describe("pressing a candidate", () => {
 
     expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
     expect(screen.getAllByTestId("crop-area")).toHaveLength(1);
+  });
+
+  it("leaves the word to the area in its place, and takes it back once the area moves away", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      detect_layout: () => candidates,
+    });
+    const [chart, photo] = screen.getAllByTestId("crop-candidate");
+    fireEvent.click(chart);
+    await flush();
+
+    expect(chart).not.toHaveTextContent("グラフ");
+    expect(photo).toHaveTextContent("写真");
+    expect(screen.getByTestId("crop-area")).toHaveTextContent("グラフ");
+
+    // 10 pt to the right still overlaps by 190 / 210 of the 200 pt width,
+    // over 0.9; 20 pt leaves 180 / 220, under it.
+    const moveRight = () =>
+      fireEvent.keyDown(screen.getByTestId("crop-area"), {
+        key: "ArrowRight",
+        shiftKey: true,
+      });
+    moveRight();
+    await flush();
+    expect(chart).not.toHaveTextContent("グラフ");
+    moveRight();
+    await flush();
+    expect(chart).toHaveTextContent("グラフ");
   });
 });
 
@@ -455,6 +484,7 @@ describe("the list of areas", () => {
   it("names the format the bottom bar will write", async () => {
     await openPdfInCropTab();
     await addWholePage();
+    openSettings();
     fireEvent.click(screen.getByRole("button", { name: "JPEG" }));
     expect(
       screen.getByText("1 個の範囲を JPEG で書き出します"),
@@ -518,6 +548,7 @@ describe("the list of areas", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
     );
+    await flush();
     expect(urls.revoke).toHaveBeenCalledWith(src);
   });
 
@@ -561,6 +592,7 @@ describe("the list of areas", () => {
     await flush();
     expect(rowText(areaRows()[0])).toContain("元の画素 100 × 80");
 
+    openSettings();
     fireEvent.click(
       screen.getByRole("checkbox", { name: "写真は元の画素で書き出す" }),
     );
@@ -570,6 +602,7 @@ describe("the list of areas", () => {
   it("sizes the areas by the resolution of the settings", async () => {
     await openPdfInCropTab();
     await addWholePage();
+    openSettings();
     fireEvent.change(screen.getByLabelText("解像度"), {
       target: { value: "300" },
     });

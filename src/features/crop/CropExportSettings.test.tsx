@@ -30,8 +30,6 @@ import {
 } from "./cropTestSupport";
 import { JobFooter } from "../job/JobFooter";
 
-const originalHeight = window.innerHeight;
-
 beforeEach(() => {
   installFakeResizeObserver(600, 800);
   installFakeObjectUrls();
@@ -41,17 +39,18 @@ afterEach(() => {
   cleanup();
   clearMocks();
   vi.unstubAllGlobals();
-  vi.stubGlobal("innerHeight", originalHeight);
 });
 
 /**
  * The export settings are in the column on the right, which shows once a PDF
- * is open.
+ * is open. They start closed; `open` opens them, as most tests need them.
  */
-async function renderApp(settings: Settings | null = null, height = 800) {
-  vi.stubGlobal("innerHeight", height);
+async function renderApp(settings: Settings | null = null, open = true) {
   render(<App initialNavLang="ja" initialSettings={settings} />);
   await openPdf();
+  if (open) {
+    fireEvent.click(screen.getByRole("button", { name: /書き出しの設定/ }));
+  }
 }
 
 async function openPdf(name = "PDF を開く") {
@@ -72,23 +71,21 @@ function savedSettings(calls: ReturnType<typeof mockCropIpc>) {
 const SUMMARY = "PNG · カラー · 150 dpi · 写真は元の画素";
 
 describe("opening and closing", () => {
-  it("starts open in a window 720 px high and closed in one that is 719", async () => {
-    mockCropIpc();
-    await renderApp(null, 720);
-    expect(
-      screen.getByRole("button", { name: /書き出しの設定/ }),
-    ).toHaveAttribute("aria-expanded", "true");
-    cleanup();
-
-    await renderApp(null, 719);
-    expect(
-      screen.getByRole("button", { name: /書き出しの設定/ }),
-    ).toHaveAttribute("aria-expanded", "false");
-  });
+  it.each([400, 720, 1200])(
+    "starts closed in a window %i px high",
+    async (height) => {
+      mockCropIpc();
+      vi.stubGlobal("innerHeight", height);
+      await renderApp(null, false);
+      expect(
+        screen.getByRole("button", { name: /書き出しの設定/ }),
+      ).toHaveAttribute("aria-expanded", "false");
+    },
+  );
 
   it("opens and closes with the heading, and does not remember it", async () => {
     const calls = mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
     const toggle = screen.getByRole("button", { name: /書き出しの設定/ });
     expect(screen.getByRole("group", { name: "形式" })).toBeInTheDocument();
 
@@ -105,7 +102,7 @@ describe("opening and closing", () => {
 
   it("says the settings in one line on the heading while closed", async () => {
     mockCropIpc();
-    await renderApp(null, 719);
+    await renderApp(null, false);
 
     const toggle = screen.getByRole("button", { name: /書き出しの設定/ });
     expect(within(toggle).getByText(SUMMARY)).toBeInTheDocument();
@@ -124,20 +121,19 @@ describe("opening and closing", () => {
         photoNative: false,
         photoOnly: true,
       }),
-      719,
+      false,
     );
     expect(
       screen.getByText("WebP · グレースケール · 300 dpi · 写真だけ"),
     ).toBeInTheDocument();
     cleanup();
 
-    await renderApp(withCrop({ photoOnly: true }), 719);
+    await renderApp(withCrop({ photoOnly: true }), false);
     expect(screen.getByText(`${SUMMARY} · 写真だけ`)).toBeInTheDocument();
   });
 
   it("says the line in English", async () => {
     mockCropIpc();
-    vi.stubGlobal("innerHeight", 719);
     render(<App initialNavLang="en" initialSettings={null} />);
     await openPdf("Open PDF");
 
@@ -153,7 +149,7 @@ describe("opening and closing", () => {
 
   it("follows the choices while closed", async () => {
     mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
     fireEvent.click(screen.getByRole("button", { name: "JPEG" }));
     fireEvent.click(
       screen.getByRole("checkbox", { name: "写真だけを書き出す" }),
@@ -169,7 +165,7 @@ describe("opening and closing", () => {
 describe("the fields", () => {
   it("has the format, color, resolution, photo options and folder", async () => {
     mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
 
     expect(screen.getByRole("group", { name: "形式" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "色" })).toBeInTheDocument();
@@ -201,7 +197,6 @@ describe("the fields", () => {
         photoOnly: true,
         outputDir: { dirLabel: "figures" },
       }),
-      800,
     );
 
     expect(screen.getByRole("button", { name: "JPEG" })).toHaveAttribute(
@@ -223,7 +218,7 @@ describe("the fields", () => {
 
   it("is separate from the settings of PDF to images", async () => {
     mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
     fireEvent.click(screen.getByRole("button", { name: "WebP" }));
 
     fireEvent.click(screen.getByRole("tab", { name: "PDF → 画像" }));
@@ -242,7 +237,7 @@ describe("the fields", () => {
     const calls = mockCropIpc({
       pick_output_dir: () => ({ dirLabel: "figures" }),
     });
-    await renderApp(null, 800);
+    await renderApp(null);
 
     fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
     await flush();
@@ -257,7 +252,7 @@ describe("the fields", () => {
 describe("saving", () => {
   it("does not save what the app started with", async () => {
     const calls = mockCropIpc();
-    await renderApp(withCrop({ format: "jpeg" }), 800);
+    await renderApp(withCrop({ format: "jpeg" }));
     await flush();
 
     expect(callsOf(calls, "save_settings")).toHaveLength(0);
@@ -265,7 +260,7 @@ describe("saving", () => {
 
   it("sends the crop options with each change, with a higher revision each time", async () => {
     const calls = mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
 
     fireEvent.click(screen.getByRole("button", { name: "JPEG" }));
     await flush();
@@ -327,7 +322,7 @@ describe("saving", () => {
 
   it("still sends the other tabs' settings along with it", async () => {
     const calls = mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
 
     fireEvent.click(screen.getByRole("button", { name: "WebP" }));
     await flush();
@@ -361,7 +356,7 @@ describe("saving", () => {
     const calls = mockCropIpc({
       pick_output_dir: () => ({ dirLabel: "figures" }),
     });
-    await renderApp(null, 800);
+    await renderApp(null);
 
     fireEvent.click(screen.getByRole("button", { name: "フォルダを選ぶ" }));
     await flush();
@@ -382,7 +377,7 @@ describe("a resolution of your own", () => {
 
   it("starts from the resolution in use and follows a valid entry", async () => {
     const calls = mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
 
     const entry = chooseCustom();
     expect(entry).toHaveValue("150");
@@ -397,7 +392,7 @@ describe("a resolution of your own", () => {
 
   it("flags an entry out of range and keeps the last good value", async () => {
     const calls = mockCropIpc();
-    await renderApp(null, 800);
+    await renderApp(null);
     const entry = chooseCustom();
 
     fireEvent.change(entry, { target: { value: "5000" } });
@@ -417,7 +412,7 @@ describe("a resolution of your own", () => {
 
   it("starts a saved resolution that is not a preset as a custom entry", async () => {
     mockCropIpc();
-    await renderApp(withCrop({ dpi: 220 }), 800);
+    await renderApp(withCrop({ dpi: 220 }));
 
     expect(screen.getByRole("combobox", { name: "解像度" })).toHaveValue(
       "custom",

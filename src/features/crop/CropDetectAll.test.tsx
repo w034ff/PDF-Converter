@@ -401,7 +401,7 @@ describe("the result of the search", () => {
       "en",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Searched all pages for suggestions: Added 1 area · 1 page failed",
+      "Searched all pages for suggestions: added 1 area · 1 page failed",
     );
   });
 });

@@ -159,6 +159,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     // "全ページの候補" adds and selecting an area are not edits of that kind.
     case "CROP_AREA_ADDED":
     case "CROP_AREAS_ADDED":
+    case "CROP_AREA_DRAWN":
+    case "CROP_AREA_CHANGED":
     case "CROP_AREA_REMOVED":
     case "CROP_AREA_CHECKED":
       return isJobActive(state.job) ? state : reduceCrop(state, action, true);
