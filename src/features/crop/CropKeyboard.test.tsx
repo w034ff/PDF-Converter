@@ -396,8 +396,12 @@ describe("Delete and Backspace", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "書き出す" }));
     await flush();
-    expect(press(areaElements()[0], "Delete")).toBe(false);
+    const [area] = areaElements();
+    area.focus();
+    expect(press(area, "Delete")).toBe(false);
+    await flush();
     expect(areaRows()).toHaveLength(1);
+    expect(area).toHaveFocus();
   });
 });
 
