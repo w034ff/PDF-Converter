@@ -297,13 +297,23 @@ export function CropPagePane({
         tabIndex={-1}
         onKeyDown={(event) => {
           // A drag takes the key first, and so do the menu and dialogs,
-          // which stop it.
-          if (
-            event.key === "Escape" &&
-            !event.defaultPrevented &&
-            crop.selectedKey !== null
-          ) {
+          // which stop it; so does an area that removes itself.
+          if (event.defaultPrevented || crop.selectedKey === null) {
+            return;
+          }
+          if (event.key === "Escape") {
             dispatch({ type: "CROP_AREA_SELECTED", key: null });
+            return;
+          }
+          // Pressing a frame or a candidate adds an area but leaves the focus
+          // on what was pressed, so the key removes the selected area from
+          // anywhere on the page.
+          if (event.key === "Delete" || event.key === "Backspace") {
+            event.preventDefault();
+            if (!busy) {
+              dispatch({ type: "CROP_AREA_REMOVED", key: crop.selectedKey });
+              viewport?.focus();
+            }
           }
         }}
       >

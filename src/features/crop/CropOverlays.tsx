@@ -42,7 +42,7 @@ export interface CropOverlaysProps {
   /** Whether the areas cannot be added or changed (a conversion runs). */
   locked: boolean;
   scale: number;
-  /** Takes the focus to the view of the page, where it goes when no area is left to take it. */
+  /** Takes the focus to the view of the page, where it goes once an area is removed by key. */
   focusView: () => void;
 }
 
@@ -176,10 +176,9 @@ export function CropOverlays({
       if (locked) {
         return;
       }
-      const index = areas.findIndex((other) => other.key === area.key);
-      const neighbour = areas[index + 1] ?? areas[index - 1];
       dispatch({ type: "CROP_AREA_REMOVED", key: area.key });
-      moveFocusTo(neighbour?.key ?? "view");
+      // Not to another area: its focus ring would read as a selection.
+      moveFocusTo("view");
       return;
     }
     if (!isArrowKey(event.key) || event.ctrlKey || event.metaKey) {

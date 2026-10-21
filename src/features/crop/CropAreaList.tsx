@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useRef, type KeyboardEvent } from "react";
 import {
   formatErrorMessage,
   formatMessage,
@@ -213,9 +213,39 @@ function CropAreaRow({ pdf, area }: CropAreaRowProps) {
  * order they were added (design §10.1).
  */
 export function CropAreaList({ pdf }: { pdf: CropPdf }) {
-  const { crop } = useAppState();
+  const { crop, job } = useAppState();
+  const dispatch = useAppDispatch();
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // Delete and Backspace on any control of a row remove that row's area. The
+  // focus stays in the list rather than going to another row, whose ring
+  // would read as a selection.
+  function handleKeyDown(event: KeyboardEvent<HTMLUListElement>) {
+    if (event.key !== "Delete" && event.key !== "Backspace") {
+      return;
+    }
+    const row =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>(".crop-area-row")
+        : null;
+    const key = Number(row?.dataset.key);
+    if (!Number.isInteger(key)) {
+      return;
+    }
+    event.preventDefault();
+    if (!isJobActive(job)) {
+      dispatch({ type: "CROP_AREA_REMOVED", key });
+      listRef.current?.focus();
+    }
+  }
+
   return (
-    <ul className="crop-area-list">
+    <ul
+      ref={listRef}
+      className="crop-area-list"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+    >
       {areasInListOrder(crop.areas).map((area) => (
         <CropAreaRow key={area.key} pdf={pdf} area={area} />
       ))}

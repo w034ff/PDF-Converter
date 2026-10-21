@@ -366,8 +366,12 @@ describe("the arrow keys", () => {
 });
 
 describe("Delete and Backspace", () => {
+  function viewport(): HTMLElement {
+    return screen.getByTestId("crop-viewport");
+  }
+
   it.each(["Delete", "Backspace"])(
-    "%s removes the area and takes the focus to the next one, else the one before, else the view",
+    "%s removes the focused area and takes the focus to the view, not to another area",
     async (key) => {
       await openWithAll();
       await drawAreas(3);
@@ -377,18 +381,75 @@ describe("Delete and Backspace", () => {
       press(second, key);
       await flush();
       expect(areaRows()).toHaveLength(2);
-      expect(third).toHaveFocus();
-
-      press(third, key);
-      await flush();
-      expect(first).toHaveFocus();
-
-      press(first, key);
-      await flush();
-      expect(areaRows()).toHaveLength(0);
-      expect(screen.getByTestId("crop-viewport")).toHaveFocus();
+      expect(viewport()).toHaveFocus();
+      expect(first).not.toHaveFocus();
+      expect(third).not.toHaveFocus();
+      expect(
+        areaElements().filter((area) => area.dataset.selected === "true"),
+      ).toHaveLength(0);
     },
   );
+
+  it("removes the area just added by pressing a suggestion, which keeps the focus", async () => {
+    await openWithAll();
+    const suggestion = screen.getByTestId("crop-candidate");
+    suggestion.focus();
+    fireEvent.click(suggestion);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+
+    expect(press(suggestion, "Delete")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(0);
+    expect(viewport()).toHaveFocus();
+  });
+
+  it("removes the selected area while the view has the focus, and nothing when none is selected", async () => {
+    await openWithAll();
+    await drawAreas(2);
+    viewport().focus();
+    press(viewport(), "Backspace");
+    await flush();
+    expect(areaRows()).toHaveLength(2);
+
+    fireEvent.click(areaElements()[1]);
+    viewport().focus();
+    press(viewport(), "Backspace");
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    expect(viewport()).toHaveFocus();
+  });
+
+  it("removes the area of the row that has the focus and keeps the focus in the list", async () => {
+    await openWithAll();
+    await drawAreas(2);
+    fireEvent.click(areaElements()[0]);
+    const [, secondRow] = areaRows();
+    const list = secondRow.closest("ul");
+    const check = secondRow.querySelector("input");
+    if (check === null) {
+      throw new Error("the row has no checkbox");
+    }
+    check.focus();
+
+    expect(press(check, "Delete")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    // The selected area was the other one, and stays.
+    expect(areaElements()[0]).toHaveAttribute("data-selected", "true");
+    expect(list).toHaveFocus();
+  });
+
+  it("leaves the areas alone outside the page and the list", async () => {
+    await openWithAll();
+    await drawAreas(1);
+    fireEvent.click(areaElements()[0]);
+    const toggle = screen.getByRole("checkbox", { name: "候補" });
+    toggle.focus();
+    press(toggle, "Backspace");
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+  });
 
   it("does nothing while a conversion runs", async () => {
     await openWithAll();
@@ -402,6 +463,25 @@ describe("Delete and Backspace", () => {
     await flush();
     expect(areaRows()).toHaveLength(1);
     expect(area).toHaveFocus();
+
+    // Nor from elsewhere on the page, or from the list.
+    const suggestion = screen.getByTestId("crop-candidate");
+    suggestion.focus();
+    expect(press(suggestion, "Backspace")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    expect(suggestion).toHaveFocus();
+
+    // The row's checkbox is disabled then; its button is not.
+    const show = areaRows()[0].querySelector<HTMLElement>(".crop-area-main");
+    if (show === null) {
+      throw new Error("the row has no button");
+    }
+    show.focus();
+    expect(press(show, "Delete")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    expect(show).toHaveFocus();
   });
 });
 

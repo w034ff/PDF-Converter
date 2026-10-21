@@ -159,6 +159,14 @@
   outline-offset: -2px;
 }
 
+/* The areas' line and the selected area's ground are accent, so an accent
+   ring on the page or the list of areas reads as a selection. */
+.crop-viewport:focus-visible,
+.crop-viewport :focus-visible,
+.crop-area-list:focus-visible {
+  outline-color: var(--color-text-primary);
+}
+
 /* The page's auto margins center it when it is narrower than the view, and
    fall to zero when it is wider, so the whole page can be scrolled to. */
 .crop-page {
@@ -243,7 +251,7 @@
   background: var(--color-page-area-tint);
 }
 
-/* The line of an area is accent too; the gap tells the ring from it. */
+/* The gap tells the ring from the line of the frame. */
 .crop-photo-frame:focus-visible,
 .crop-candidate:focus-visible,
 .crop-area:focus-visible {
