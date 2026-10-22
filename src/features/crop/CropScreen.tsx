@@ -4,7 +4,6 @@ import { CropMain } from "./CropMain";
 import { CropReplaceDialog } from "./CropReplaceDialog";
 import { CropSidePanel } from "./CropSidePanel";
 import { CropThumbnails } from "./CropThumbnails";
-import { useCropHistoryKeys } from "./useCropHistoryKeys";
 
 /**
  * The body of the crop tab (design §10.1): the page thumbnails on the left,
@@ -16,7 +15,6 @@ export function CropScreen() {
   const { pdf, pendingReplace } = crop;
   const [focusRequested, setFocusRequested] = useState(false);
   const openButtonRef = useRef<HTMLButtonElement>(null);
-  useCropHistoryKeys();
 
   return (
     <>

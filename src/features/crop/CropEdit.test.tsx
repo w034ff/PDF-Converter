@@ -8,6 +8,8 @@ import {
   candidate,
   clientAt,
   dragFromTo,
+  drawFromTo,
+  pickDrawTool,
   emitJobFinished,
   emitJobItem,
   flush,
@@ -78,12 +80,23 @@ function expectBox(
   });
 }
 
+/** The area with `key`; the page stacks them by size, not by key. */
+function areaByKey(key: number): HTMLElement {
+  const area = screen
+    .getAllByTestId("crop-area")
+    .find((element) => element.dataset.key === String(key));
+  if (area === undefined) {
+    throw new Error(`no area ${key}`);
+  }
+  return area;
+}
+
 describe("drawing an area", () => {
   it("adds a hand-picked area from a drag on an empty place, selects it and lists it", async () => {
     await openWithChart();
     expect(areaRows()).toHaveLength(0);
 
-    dragFromTo(overlay(), [300, 300], [450, 380]);
+    drawFromTo(overlay(), [300, 300], [450, 380]);
     await flush();
 
     expect(areaRows()).toHaveLength(1);
@@ -95,12 +108,13 @@ describe("drawing an area", () => {
 
   it("draws toward the top left as well", async () => {
     await openWithChart();
-    dragFromTo(overlay(), [450, 380], [300, 300]);
+    drawFromTo(overlay(), [450, 380], [300, 300]);
     expectBox(theArea(), [300, 300, 450, 380]);
   });
 
   it("shows the shape while the pointer moves, and adds nothing until it is released", async () => {
     await openWithChart();
+    pickDrawTool();
     pressAt(overlay(), [300, 300]);
     moveTo([400, 350]);
     expectBox(screen.getByTestId("crop-draft"), [300, 300, 400, 350]);
@@ -116,13 +130,13 @@ describe("drawing an area", () => {
 
   it("stops at the edges of the page", async () => {
     await openWithChart();
-    dragFromTo(overlay(), [300, 300], [9000, 9000]);
+    drawFromTo(overlay(), [300, 300], [9000, 9000]);
     expectBox(theArea(), [300, 300, A4.widthPt, A4.heightPt]);
   });
 
   it("adds nothing when the rectangle is smaller than 4 pt on a side", async () => {
     await openWithChart();
-    dragFromTo(overlay(), [300, 300], [303, 400]);
+    drawFromTo(overlay(), [300, 300], [303, 400]);
     dragFromTo(overlay(), [300, 300], [400, 303]);
     expect(areaRows()).toHaveLength(0);
   });
@@ -130,13 +144,10 @@ describe("drawing an area", () => {
   it("adds it even where it covers an area almost exactly", async () => {
     await openWithChartArea();
     // Starts outside the area and ends so that the rectangles are 0.9 alike.
-    dragFromTo(overlay(), [49, 59], [251, 161]);
+    drawFromTo(overlay(), [49, 59], [251, 161]);
     await flush();
     expect(areaRows()).toHaveLength(2);
-    expect(screen.getAllByTestId("crop-area")[1]).toHaveAttribute(
-      "data-selected",
-      "true",
-    );
+    expect(areaByKey(2)).toHaveAttribute("data-selected", "true");
   });
 
   it("draws from a press on a frame or a candidate, and adds not the frame or candidate", async () => {
@@ -144,23 +155,20 @@ describe("drawing an area", () => {
       list_page_images: () => [pageImage(PHOTO, 2)],
       detect_layout: () => [candidate("chart", CHART)],
     });
-    dragFromTo(screen.getByTestId("crop-candidate"), [60, 70], [200, 300]);
-    dragFromTo(screen.getByTestId("crop-photo-frame"), [150, 250], [500, 600]);
+    drawFromTo(screen.getByTestId("crop-candidate"), [60, 70], [200, 300]);
+    drawFromTo(screen.getByTestId("crop-photo-frame"), [150, 250], [500, 600]);
     await flush();
 
-    const areas = screen.getAllByTestId("crop-area");
-    expect(areas.map((area) => area.dataset.kind)).toEqual([
-      "manual",
-      "manual",
-    ]);
-    expectBox(areas[0], [60, 70, 200, 300]);
-    expectBox(areas[1], [150, 250, 500, 600]);
+    expect(areaByKey(1)).toHaveAttribute("data-kind", "manual");
+    expect(areaByKey(2)).toHaveAttribute("data-kind", "manual");
+    expectBox(areaByKey(1), [60, 70, 200, 300]);
+    expectBox(areaByKey(2), [150, 250, 500, 600]);
   });
 
   it("does not add a frame or a candidate when the click after a drag arrives", async () => {
     await openWithChart();
     const chart = screen.getByTestId("crop-candidate");
-    dragFromTo(chart, [60, 70], [200, 300]);
+    drawFromTo(chart, [60, 70], [200, 300]);
     fireEvent.click(chart);
     await flush();
     expect(areaRows()).toHaveLength(1);
@@ -169,14 +177,14 @@ describe("drawing an area", () => {
 
   it("does not deselect with the click after a drag on an empty place", async () => {
     await openWithChart();
-    dragFromTo(overlay(), [300, 300], [450, 380]);
+    drawFromTo(overlay(), [300, 300], [450, 380]);
     fireEvent.click(overlay());
     expect(theArea()).toHaveAttribute("data-selected", "true");
   });
 
   it("still adds a frame or a candidate that is clicked after an earlier drag", async () => {
     await openWithChart();
-    dragFromTo(overlay(), [300, 300], [450, 380]);
+    drawFromTo(overlay(), [300, 300], [450, 380]);
     // The browser's click for the first drag never came.
     const chart = screen.getByTestId("crop-candidate");
     pressAt(chart, [100, 100]);
@@ -214,6 +222,7 @@ describe("a press that does not move", () => {
   it("is a drag from 4 CSS pixels of movement", async () => {
     await openWithChart();
     const scale = clientAt([1, 0]).clientX;
+    pickDrawTool();
     pressAt(overlay(), [300, 300]);
     fireEvent.pointerMove(overlay(), {
       ...clientAt([300, 300]),
@@ -281,14 +290,15 @@ describe("moving an area", () => {
     expect(areaRows()).toHaveLength(1);
   });
 
-  it("moves the one drawn on top when areas overlap", async () => {
+  it("moves the smaller one where areas overlap, as it lies on top", async () => {
     await openWithChartArea();
-    dragFromTo(overlay(), [100, 100], [400, 300]);
+    drawFromTo(overlay(), [100, 100], [400, 300]);
     const [lower, upper] = screen.getAllByTestId("crop-area");
+    expect(upper).toBe(areaByKey(1));
     // The press lands on the topmost element, which is what the browser does.
     dragFromTo(upper, [150, 150], [160, 150]);
-    expectBox(lower, CHART);
-    expectBox(upper, [110, 100, 410, 300]);
+    expectBox(lower, [100, 100, 400, 300]);
+    expectBox(upper, [60, 60, 260, 160]);
   });
 
   it("turns a photo into a hand-picked area without its overlay mark or pixel size", async () => {
@@ -379,26 +389,29 @@ describe("resizing an area", () => {
   it("can start from a handle that lies under another area", async () => {
     await openWithChartArea();
     // Another area drawn over the first one's corner.
-    dragFromTo(overlay(), [200, 120], [400, 300]);
+    drawFromTo(overlay(), [200, 120], [400, 300]);
     // Pressing the first area selects it, as the click after a press would.
-    pressAt(screen.getAllByTestId("crop-area")[0], [60, 70]);
+    pressAt(areaByKey(1), [60, 70]);
     releaseAt([60, 70]);
     expect(screen.getAllByTestId("crop-handle")).toHaveLength(8);
     dragFromTo(handle("se"), [250, 160], [260, 170]);
-    expectBox(screen.getAllByTestId("crop-area")[0], [50, 60, 260, 170]);
+    expectBox(areaByKey(1), [50, 60, 260, 170]);
     expect(screen.getAllByTestId("crop-area")).toHaveLength(2);
   });
 });
 
 describe("the pointer", () => {
-  it("is a cross on an empty place, a frame and a candidate, and a hand on an area", async () => {
+  it("is the select tool's on the page, frames and suggestions, and a cross with the draw tool", async () => {
     await openPdfInCropTab({
       list_page_images: () => [pageImage(PHOTO, 2)],
       detect_layout: () => [candidate("chart", CHART)],
     });
     expect(overlay()).toHaveClass("is-editable");
+    expect(overlay()).not.toHaveClass("is-drawing");
     expect(screen.getByTestId("crop-candidate")).toHaveClass("is-pressable");
     expect(screen.getByTestId("crop-photo-frame")).toHaveClass("is-pressable");
+    pickDrawTool();
+    expect(overlay()).toHaveClass("is-drawing");
   });
 
   it("is the drag's own while a drag lasts", async () => {
@@ -415,6 +428,13 @@ describe("the pointer", () => {
     expect(overlay().style.cursor).toBe("move");
     releaseAt([110, 100]);
 
+    pressAt(overlay(), [400, 400]);
+    moveTo([450, 450]);
+    expect(overlay()).toHaveClass("is-panning");
+    releaseAt([450, 450]);
+    expect(overlay()).not.toHaveClass("is-panning");
+
+    pickDrawTool();
     pressAt(overlay(), [400, 400]);
     moveTo([450, 450]);
     expect(overlay().style.cursor).toBe("crosshair");
@@ -588,7 +608,7 @@ describe("the result of the last write", () => {
 
   it("goes when an area is drawn", async () => {
     await exported();
-    dragFromTo(overlay(), [300, 300], [450, 380]);
+    drawFromTo(overlay(), [300, 300], [450, 380]);
     expect(screen.queryByRole("status")).toBeNull();
   });
 

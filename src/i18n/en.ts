@@ -262,10 +262,46 @@ export const en: Translations = {
       zoomIn: "Zoom in",
       candidates: "Suggestions",
       addAreas: "Add areas ▾",
-      undo: "Undo",
-      redo: "Redo",
-      undoTitle: "Undo (Ctrl+Z)",
-      redoTitle: "Redo (Ctrl+Y)",
+      toolLabel: "Tool",
+      select: "Select",
+      draw: "Draw",
+      keyHints: "Keyboard shortcuts",
+      keyHintsTitle: "Keyboard shortcuts (?)",
+    },
+    keyHints: {
+      title: "Keyboard shortcuts",
+      close: "Close",
+      keyColumn: "Keys",
+      actionColumn: "Action",
+      rows: [
+        {
+          keys: "V",
+          action:
+            "Select (press to add or select an area, drag to move an area or the page)",
+        },
+        { keys: "R", action: "Draw (drag to draw one area)" },
+        { keys: "Esc", action: "Stop drawing, deselect, or call a drag off" },
+        { keys: "Ctrl+Z", action: "Undo" },
+        { keys: "Ctrl+Y, Ctrl+Shift+Z", action: "Redo" },
+        {
+          keys: "Delete, Backspace",
+          action: "Remove the area (hide a suggestion)",
+        },
+        {
+          keys: "Arrows, Shift+Arrows",
+          action: "Move the area by 1 pt or 10 pt",
+        },
+        {
+          keys: "Alt+Arrows",
+          action: "Move the area's right and bottom edges",
+        },
+        {
+          keys: "Tab, Enter, Space",
+          action: "Go through frames, suggestions and areas; add or select",
+        },
+        { keys: "Ctrl+Wheel", action: "Zoom in or out" },
+        { keys: "?", action: "Open this list" },
+      ],
     },
     addMenu: {
       label: "Add areas",
@@ -294,6 +330,9 @@ export const en: Translations = {
       sectionAria: "Areas and export settings",
       title: "Areas",
       empty: "No areas yet",
+      emptyHint:
+        "Press a suggestion or a photo on the page to make it an area, or add the suggestions on all pages at once.",
+      detectAll: "Add suggestions on all pages",
       summarySingle: "{count} area · {checked} to export",
       summaryMultiple: "{count} areas · {checked} to export",
       pageLabel: "p.{page}",

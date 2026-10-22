@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MenuButton,
   SegmentedControl,
@@ -9,14 +9,14 @@ import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import {
   candidateAreas,
-  canRedo,
-  canUndo,
   isJobActive,
   useAppDispatch,
   useAppState,
+  type CropTool,
   type CropViewSize,
 } from "../../state";
 import { useJobRunner } from "../job/useJobRunner";
+import { CropKeyHints } from "./CropKeyHints";
 import { CropOverlays } from "./CropOverlays";
 import {
   CSS_PX_PER_PT,
@@ -26,6 +26,7 @@ import {
   viewScale,
   type ViewportSize,
 } from "./cropView";
+import { useCropKeys } from "./useCropKeys";
 import { usePageImage } from "./usePageImage";
 import "./crop.css";
 
@@ -78,7 +79,9 @@ function PageSurface({ pdf, page, scale, viewport }: PageSurfaceProps) {
         showCandidates={crop.showCandidates}
         locked={locked}
         scale={scale}
-        focusView={() => viewport.focus()}
+        tool={locked ? "select" : crop.tool}
+        hiddenCandidates={crop.hiddenCandidates[page] ?? []}
+        viewport={viewport}
       />
     </div>
   );
@@ -114,17 +117,18 @@ export function CropPagePane({
   const busy = isJobActive(job);
 
   const layout = crop.layouts[page];
-  const pageCandidates = layout?.status === "done" ? layout.value : [];
+  const pageCandidates = candidateAreas(
+    page,
+    layout?.status === "done" ? layout.value : [],
+    crop.hiddenCandidates[page],
+  );
   const addItems: MenuButtonItem[] = [
     {
       id: "thisPage",
       label: t.crop.addMenu.thisPage,
       disabled: pageCandidates.length === 0,
       onSelect: () =>
-        dispatch({
-          type: "CROP_AREAS_ADDED",
-          areas: candidateAreas(page, pageCandidates),
-        }),
+        dispatch({ type: "CROP_AREAS_ADDED", areas: pageCandidates }),
     },
     {
       id: "allPages",
@@ -148,6 +152,17 @@ export function CropPagePane({
     },
   ];
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const attachViewport = useCallback((element: HTMLDivElement | null) => {
+    viewportRef.current = element;
+    setViewport(element);
+  }, []);
+  const hintsButtonRef = useRef<HTMLButtonElement>(null);
+  // Where the list of keys was opened from, which the focus goes back to.
+  const [hints, setHints] = useState<"button" | "key" | null>(null);
+  const tool = busy ? "select" : crop.tool;
+  const openHintsByKey = useCallback(() => setHints("key"), []);
+  useCropKeys({ tool, canDraw: !busy, onHelp: openHintsByKey });
   const [room, setRoom] = useState<ViewportSize | null>(null);
 
   // The room is the content box, so the view's padding is not part of it.
@@ -224,6 +239,11 @@ export function CropPagePane({
     }
   }
 
+  const toolOptions: readonly SegmentedOption<CropTool>[] = [
+    { value: "select", label: t.crop.toolbar.select },
+    { value: "draw", label: t.crop.toolbar.draw },
+  ];
+
   const sizeOptions: readonly SegmentedOption<"fitWidth" | "fitPage">[] = [
     { value: "fitWidth", label: t.crop.toolbar.fitWidth },
     { value: "fitPage", label: t.crop.toolbar.fitPage },
@@ -282,28 +302,14 @@ export function CropPagePane({
           />
           {t.crop.toolbar.candidates}
         </label>
-        <div className="crop-history">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={t.crop.toolbar.undo}
-            title={t.crop.toolbar.undoTitle}
-            disabled={busy || !canUndo(crop)}
-            onClick={() => dispatch({ type: "CROP_UNDO" })}
-          >
-            ↶
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={t.crop.toolbar.redo}
-            title={t.crop.toolbar.redoTitle}
-            disabled={busy || !canRedo(crop)}
-            onClick={() => dispatch({ type: "CROP_REDO" })}
-          >
-            ↷
-          </button>
-        </div>
+        <SegmentedControl<CropTool>
+          label={t.crop.toolbar.toolLabel}
+          options={toolOptions}
+          value={tool}
+          onChange={(next) => dispatch({ type: "CROP_TOOL_SET", tool: next })}
+          disabled={busy}
+          className="seg crop-tool-seg"
+        />
         <MenuButton
           className="btn btn-ghost crop-add-areas"
           menuLabel={t.crop.addMenu.label}
@@ -312,17 +318,38 @@ export function CropPagePane({
         >
           {t.crop.toolbar.addAreas}
         </MenuButton>
+        <button
+          ref={hintsButtonRef}
+          type="button"
+          className="icon-btn"
+          aria-label={t.crop.toolbar.keyHints}
+          title={t.crop.toolbar.keyHintsTitle}
+          onClick={() => setHints("button")}
+        >
+          ?
+        </button>
       </div>
+      {hints !== null && (
+        <CropKeyHints
+          onClose={() => setHints(null)}
+          returnFocusRef={hints === "button" ? hintsButtonRef : viewportRef}
+        />
+      )}
 
       <div
         className="crop-viewport"
         data-testid="crop-viewport"
-        ref={setViewport}
+        ref={attachViewport}
         tabIndex={-1}
         onKeyDown={(event) => {
           // A drag takes the key first, and so do the menu and dialogs,
-          // which stop it; so does an area that removes itself.
-          if (event.defaultPrevented || crop.selectedKey === null) {
+          // which stop it; so does an area that removes itself. With "描く",
+          // Esc goes back to "選ぶ" (`useCropKeys`) and keeps the selection.
+          if (
+            event.defaultPrevented ||
+            crop.selectedKey === null ||
+            (event.key === "Escape" && tool === "draw")
+          ) {
             return;
           }
           if (event.key === "Escape") {

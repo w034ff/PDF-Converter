@@ -36,14 +36,6 @@ async function openWithSuggestions() {
   });
 }
 
-function undoButton(): HTMLElement {
-  return screen.getByRole("button", { name: "元に戻す" });
-}
-
-function redoButton(): HTMLElement {
-  return screen.getByRole("button", { name: "やり直す" });
-}
-
 function ctrl(target: Element, key: string, shiftKey = false) {
   return fireEvent.keyDown(target, { key, ctrlKey: true, shiftKey });
 }
@@ -55,32 +47,18 @@ async function addBoth() {
   await flush();
 }
 
-describe("the undo and redo buttons", () => {
-  it("are off until there is a step, and take it back and forth", async () => {
+describe("undoing", () => {
+  it("has no buttons; the keys are in the list of keys", async () => {
     await openWithSuggestions();
-    expect(undoButton()).toBeDisabled();
-    expect(redoButton()).toBeDisabled();
-    expect(undoButton()).toHaveAttribute("title", "元に戻す（Ctrl+Z）");
-
-    await addBoth();
-    expect(undoButton()).toBeEnabled();
-    fireEvent.click(undoButton());
-    await flush();
-    expect(areaRows()).toHaveLength(1);
-    expect(redoButton()).toBeEnabled();
-
-    fireEvent.click(redoButton());
-    await flush();
-    expect(areaRows()).toHaveLength(2);
-    expect(redoButton()).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "元に戻す" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "やり直す" })).toBeNull();
   });
 
-  it("are off while a conversion runs", async () => {
+  it("is refused while a conversion runs", async () => {
     await openWithSuggestions();
     await addBoth();
     fireEvent.click(screen.getByRole("button", { name: "書き出す" }));
     await flush();
-    expect(undoButton()).toBeDisabled();
     ctrl(document.body, "z");
     await flush();
     expect(areaRows()).toHaveLength(2);

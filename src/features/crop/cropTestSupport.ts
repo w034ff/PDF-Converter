@@ -363,6 +363,21 @@ export function releaseAt(point: readonly [number, number]) {
   fireEvent.pointerUp(overlay(), clientAt(point));
 }
 
+/** Picks the "描く" tool, with which a drag draws an area (design §10.1). */
+export function pickDrawTool() {
+  fireEvent.click(screen.getByRole("button", { name: /^(描く|Draw)$/ }));
+}
+
+/** Draws an area with the "描く" tool, which goes back to "選ぶ" after it. */
+export function drawFromTo(
+  target: Element,
+  from: readonly [number, number],
+  to: readonly [number, number],
+) {
+  pickDrawTool();
+  dragFromTo(target, from, to);
+}
+
 /** A whole drag: press on `target`, move, release. */
 export function dragFromTo(
   target: Element,

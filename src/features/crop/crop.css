@@ -108,10 +108,18 @@
 
 .crop-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
   flex: none;
+}
+
+/* At the narrowest window the controls do not fit on one row; they go on a
+   second one whole rather than squeeze their words onto two lines. */
+.crop-toolbar > * {
+  flex: none;
+  white-space: nowrap;
 }
 
 .crop-size-seg {
@@ -189,10 +197,10 @@
   user-select: none;
 }
 
-/* While a conversion runs nothing can be drawn, so the page keeps the
-   plain pointer. */
-.crop-overlay.is-editable {
-  cursor: crosshair;
+/* With "select", the page itself is dragged to scroll it, even while a
+   conversion runs. */
+.crop-overlay:not(.is-drawing) {
+  cursor: grab;
 }
 
 .crop-photo-frame,
@@ -202,11 +210,10 @@
   box-sizing: border-box;
 }
 
-/* A frame or a candidate that adds an area when pressed, or draws one when
-   dragged. */
+/* A frame or a candidate that adds an area when pressed. */
 .crop-photo-frame.is-pressable,
 .crop-candidate.is-pressable {
-  cursor: crosshair;
+  cursor: pointer;
 }
 
 .crop-photo-frame {
@@ -328,11 +335,57 @@
   z-index: 2;
 }
 
-/* Undo and redo, and the menu after them, keep to the right. */
-.crop-history {
-  display: flex;
-  gap: 4px;
+/* The tools, the menu and the list of keys keep to the right. */
+.crop-tool-seg {
   margin-left: auto;
+}
+
+/* With "draw", a press anywhere draws, over areas and frames too. */
+.crop-overlay.is-drawing,
+.crop-overlay.is-drawing * {
+  cursor: crosshair !important;
+}
+
+.crop-overlay.is-panning,
+.crop-overlay.is-panning * {
+  cursor: grabbing !important;
+}
+
+.crop-ranges-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* The card of the other dialogs: one padded column with no rules. */
+.modal-dialog.crop-key-hints {
+  max-width: 520px;
+  padding: 24px;
+  gap: 16px;
+}
+
+.crop-key-hints-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.crop-key-hints-table th,
+.crop-key-hints-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.crop-key-hints-table td:first-child {
+  white-space: nowrap;
+}
+
+.crop-key-hints-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .crop-add-areas {

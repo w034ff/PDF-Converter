@@ -7,7 +7,7 @@ import {
   type RefObject,
 } from "react";
 import type { PageSizePt } from "../../ipc";
-import type { RectPt } from "../../state";
+import type { CropTool, RectPt } from "../../state";
 import {
   drawRect,
   handleCursor,
@@ -18,9 +18,10 @@ import {
   type PointPt,
 } from "./cropEdit";
 import { CROP_DRAG_THRESHOLD_PX, CSS_PX_PER_PT } from "./cropView";
-import { historyKeyOf } from "./useCropHistoryKeys";
+import { historyKeyOf } from "./useCropKeys";
 
 type DragMode =
+  | { kind: "pan"; scrollLeft: number; scrollTop: number }
   | { kind: "draw"; start: PointPt }
   | { kind: "move"; key: number; rect: RectPt }
   | { kind: "resize"; key: number; rect: RectPt; handle: HandleId };
@@ -55,7 +56,11 @@ export interface UseAreaDragOptions {
   scale: number;
   /** Whether areas cannot be drawn or changed (a conversion runs). */
   locked: boolean;
+  /** What a press and a drag do; "draw" draws wherever the press is. */
+  tool: CropTool;
   overlayRef: RefObject<HTMLElement | null>;
+  /** The scrolling view a drag of the page itself moves. */
+  viewport: HTMLElement;
   /** Called on release with the rectangle of a drawn area that is big enough. */
   onDraw: (rectPt: RectPt) => void;
   /** Called on release with the rectangle a moved or resized area ends with. */
@@ -66,6 +71,8 @@ export interface UseAreaDragOptions {
 
 export interface AreaDrag {
   preview: DragPreview | null;
+  /** Whether the page is being dragged to scroll it. */
+  panning: boolean;
   /** Spread on the element the page's overlay is drawn in. */
   overlayProps: {
     onPointerDownCapture: () => void;
@@ -90,7 +97,7 @@ export interface AreaDrag {
   ) => void;
 }
 
-function cursorOf(mode: DragMode): string {
+function cursorOf(mode: Exclude<DragMode, { kind: "pan" }>): string {
   switch (mode.kind) {
     case "draw":
       return "crosshair";
@@ -101,11 +108,14 @@ function cursorOf(mode: DragMode): string {
   }
 }
 
-function previewOf(drag: Drag, pageSize: PageSizePt): DragPreview {
+/** The shape a drag gives an area; `null` for a drag of the page. */
+function previewOf(drag: Drag, pageSize: PageSizePt): DragPreview | null {
   const pxPerPt = CSS_PX_PER_PT * drag.scale;
   const delta = { x: drag.dx / pxPerPt, y: drag.dy / pxPerPt };
   const { mode } = drag;
   switch (mode.kind) {
+    case "pan":
+      return null;
     case "draw":
       return {
         key: null,
@@ -134,9 +144,10 @@ function previewOf(drag: Drag, pageSize: PageSizePt): DragPreview {
 /**
  * The pointer side of editing the areas of a page (design §10.1): a press
  * that stays under `CROP_DRAG_THRESHOLD_PX` is left to the `click` of what it
- * landed on, and one that goes further draws a new area, or moves or resizes
- * the one it landed on. The shape of a drag in progress is only here; the
- * state changes once, on release.
+ * landed on, and one that goes further moves or resizes the area it landed
+ * on, or else scrolls the page; with the "draw" tool it draws a new area
+ * wherever it began. The shape of a drag in progress is only here; the state
+ * changes once, on release.
  *
  * The pointer is captured by the element the press landed on, so the moves
  * and the release come however far the pointer goes, even off the page, and
@@ -148,7 +159,9 @@ export function useAreaDrag({
   pageSize,
   scale,
   locked,
+  tool,
   overlayRef,
+  viewport,
   onDraw,
   onChange,
   onSelect,
@@ -160,8 +173,13 @@ export function useAreaDrag({
   // Set when a drag ends, so the `click` the browser sends after it is dropped.
   const suppressClickRef = useRef(false);
 
+  // Scrolling the page edits nothing, so a conversion does not stop it.
   function isCurrent(candidate: Drag): boolean {
-    return candidate.page === page && candidate.scale === scale && !locked;
+    return (
+      candidate.page === page &&
+      candidate.scale === scale &&
+      (candidate.mode.kind === "pan" || !locked)
+    );
   }
 
   function setBoth(next: Drag | null) {
@@ -226,13 +244,26 @@ export function useAreaDrag({
     });
   }
 
-  function canBegin(event: PointerEvent<HTMLElement>): boolean {
+  function canBegin(
+    event: PointerEvent<HTMLElement>,
+    evenLocked = false,
+  ): boolean {
     const current = dragRef.current;
     return (
       event.button === 0 &&
-      !locked &&
+      (evenLocked || !locked) &&
       (current === null || current.pointerId === event.pointerId)
     );
+  }
+
+  function beginPan(event: PointerEvent<HTMLElement>) {
+    if (canBegin(event, true)) {
+      begin(event, {
+        kind: "pan",
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop,
+      });
+    }
   }
 
   function beginDraw(event: PointerEvent<HTMLElement>) {
@@ -256,7 +287,11 @@ export function useAreaDrag({
     key: number,
     rect: RectPt,
   ) {
-    // A press on an area is the area's, not the page's: no new area is drawn.
+    // With "draw" the press draws, over the area as anywhere else.
+    if (tool === "draw") {
+      return;
+    }
+    // A press on an area is the area's, not the page's: it is not scrolled.
     event.stopPropagation();
     if (event.button !== 0) {
       return;
@@ -293,6 +328,13 @@ export function useAreaDrag({
     const passed =
       current.passed || Math.hypot(dx, dy) >= CROP_DRAG_THRESHOLD_PX;
     if (passed) {
+      const { mode } = current;
+      if (mode.kind === "pan") {
+        viewport.scrollTo({
+          left: mode.scrollLeft - dx,
+          top: mode.scrollTop - dy,
+        });
+      }
       setBoth({ ...current, dx, dy, passed });
     } else {
       dragRef.current = { ...current, dx, dy };
@@ -309,14 +351,17 @@ export function useAreaDrag({
       return;
     }
     suppressClickRef.current = true;
-    const { rectPt } = previewOf(current, pageSize);
+    const preview = previewOf(current, pageSize);
     const { mode } = current;
+    if (preview === null || mode.kind === "pan") {
+      return;
+    }
     if (mode.kind === "draw") {
-      if (isDrawnAreaBigEnough(rectPt)) {
-        onDraw(rectPt);
+      if (isDrawnAreaBigEnough(preview.rectPt)) {
+        onDraw(preview.rectPt);
       }
     } else {
-      onChange(mode.key, rectPt);
+      onChange(mode.key, preview.rectPt);
     }
   }
 
@@ -328,11 +373,12 @@ export function useAreaDrag({
 
   return {
     preview: dragging ? previewOf(drag, pageSize) : null,
+    panning: dragging && drag.mode.kind === "pan",
     overlayProps: {
       onPointerDownCapture: () => {
         suppressClickRef.current = false;
       },
-      onPointerDown: beginDraw,
+      onPointerDown: tool === "draw" ? beginDraw : beginPan,
       onPointerMove: handleMove,
       onPointerUp: handleUp,
       onPointerCancel: handleCancel,

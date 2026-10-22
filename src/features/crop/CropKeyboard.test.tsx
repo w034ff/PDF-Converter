@@ -6,7 +6,7 @@ import {
   areaRows,
   boxPt,
   candidate,
-  dragFromTo,
+  drawFromTo,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -52,6 +52,17 @@ function areaElements(): HTMLElement[] {
   return screen.queryAllByTestId("crop-area");
 }
 
+/** The area with `key`; the page stacks them by size, not by key. */
+function areaByKey(key: number): HTMLElement {
+  const area = areaElements().find(
+    (element) => element.dataset.key === String(key),
+  );
+  if (area === undefined) {
+    throw new Error(`no area ${key}`);
+  }
+  return area;
+}
+
 function tabbableKinds(): (string | undefined)[] {
   return Array.from(
     overlay().querySelectorAll<HTMLElement>("[tabindex='0']"),
@@ -69,7 +80,7 @@ function tapEmptyPlace() {
 async function drawAreas(count: number) {
   for (let index = 0; index < count; index += 1) {
     const x = 20 + index * 120;
-    dragFromTo(overlay(), [x, 500], [x + 100, 600]);
+    drawFromTo(overlay(), [x, 500], [x + 100, 600]);
   }
   tapEmptyPlace();
   await flush();
@@ -89,7 +100,7 @@ function expectBox(
 }
 
 describe("what the keyboard reaches", () => {
-  it("is the suggestions, then the frames, then the areas, each a button", async () => {
+  it("follows the stacking, the biggest first, each a button", async () => {
     await openWithAll();
     await drawAreas(1);
     expect(tabbableKinds()).toEqual([
@@ -296,7 +307,7 @@ describe("the arrow keys", () => {
 
   it("stop at the edge of the page, change nothing and still stop the browser", async () => {
     await openWithAll();
-    dragFromTo(overlay(), [-50, 100], [100, 200]);
+    drawFromTo(overlay(), [-50, 100], [100, 200]);
     tapEmptyPlace();
     const [area] = areaElements();
     expectBox(area, [0, 100, 100, 200]);
@@ -306,8 +317,8 @@ describe("the arrow keys", () => {
     expectBox(area, [0, 100, 100, 200]);
     expect(area).toHaveAttribute("data-selected", "false");
 
-    dragFromTo(overlay(), [300, 700], [9000, 9000]);
-    const edge = areaElements()[1];
+    drawFromTo(overlay(), [300, 700], [9000, 9000]);
+    const edge = areaByKey(2);
     expectBox(edge, [300, 700, A4.widthPt, A4.heightPt]);
     press(edge, "ArrowRight", { shiftKey: true });
     press(edge, "ArrowDown");
@@ -318,7 +329,7 @@ describe("the arrow keys", () => {
 
   it("stop 4 pt from the opposite edge", async () => {
     await openWithAll();
-    dragFromTo(overlay(), [100, 100], [106, 150]);
+    drawFromTo(overlay(), [100, 100], [106, 150]);
     const [area] = areaElements();
     press(area, "ArrowLeft", { altKey: true, shiftKey: true });
     expectBox(area, [100, 100, 104, 150]);

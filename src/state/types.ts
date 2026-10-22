@@ -143,12 +143,24 @@ export interface CropArea extends NewArea {
   onTop: boolean | null;
 }
 
+/** What a press and a drag on the page do (design §10.1). */
+export type CropTool = "select" | "draw";
+
+/** What a step of the history puts back (design §6.10). */
+export interface CropSnapshot {
+  areas: CropArea[];
+  hiddenCandidates: HiddenCandidates;
+}
+
+/** The candidates put aside as wrong, by page: their indices in `layouts`. */
+export type HiddenCandidates = Partial<Record<number, number[]>>;
+
 /** What "元に戻す" and "やり直す" go back to (design §6.10). */
 export interface CropHistory {
-  /** The lists of areas before each step, the latest last. */
-  past: CropArea[][];
-  /** The lists of areas that were undone, the latest undone last. */
-  future: CropArea[][];
+  /** What there was before each step, the latest last. */
+  past: CropSnapshot[];
+  /** What there was before each undo, the latest undone last. */
+  future: CropSnapshot[];
   /**
    * The area the keyboard moves or resizes as one step until another step
    * comes between; `null` when the next change is a step of its own.
@@ -180,6 +192,8 @@ export interface CropState {
   pageImages: Partial<Record<number, CropPageResult<PageImage[]>>>;
   /** The layout candidates of the pages asked about, by page. */
   layouts: Partial<Record<number, CropPageResult<Candidate[]>>>;
+  /** The candidates put aside as wrong; they are not drawn nor added (design §10.1). */
+  hiddenCandidates: HiddenCandidates;
   /** Set once an analysis fails with `LayoutUnavailable`: Rust answers the same for every page. */
   layoutUnavailable: boolean;
   /** The areas, in the order of their `key`. */
@@ -219,6 +233,8 @@ export interface CropState {
   /** Whether the export settings are open; only the screen keeps it (design §10.1). */
   settingsOpen: boolean;
   history: CropHistory;
+  /** Only the screen keeps it; a conversion makes it "select" (design §10.1). */
+  tool: CropTool;
 }
 
 export type CropAction =
@@ -277,6 +293,9 @@ export type CropAction =
   | { type: "CROP_AREA_SELECTED"; key: number | null }
   | { type: "CROP_AREA_REMOVED"; key: number }
   | { type: "CROP_AREA_CHECKED"; key: number; checked: boolean }
+  /** Puts the candidate at `index` of the page's `layouts` aside as wrong. */
+  | { type: "CROP_CANDIDATE_HIDDEN"; page: number; index: number }
+  | { type: "CROP_TOOL_SET"; tool: CropTool }
   | { type: "CROP_UNDO" }
   | { type: "CROP_REDO" }
   | { type: "CROP_ON_TOP_STARTED"; id: number; key: number }

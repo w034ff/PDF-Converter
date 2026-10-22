@@ -12,6 +12,8 @@ import type {
   CropAction,
   CropArea,
   CropHistory,
+  CropSnapshot,
+  HiddenCandidates,
   CropPageResult,
   CropState,
   NewArea,
@@ -77,6 +79,7 @@ export function createInitialCropState(
     pageImages: {},
     layouts: {},
     layoutUnavailable: false,
+    hiddenCandidates: {},
     areas: [],
     nextAreaKey: 1,
     selectedKey: null,
@@ -98,6 +101,7 @@ export function createInitialCropState(
     outputDir: settings?.outputDir ?? null,
     settingsOpen: false,
     history: EMPTY_HISTORY,
+    tool: "select",
   };
 }
 
@@ -110,6 +114,7 @@ function withPdf(state: CropState, pdf: CropPdf | null): CropState {
     pageImages: {},
     layouts: {},
     layoutUnavailable: false,
+    hiddenCandidates: {},
     areas: [],
     nextAreaKey: 1,
     selectedKey: null,
@@ -168,17 +173,23 @@ function appendAreas(
     : { state: { ...state, areas, nextAreaKey }, added };
 }
 
-/** The areas the candidates of `page` make, in their order. */
+/**
+ * The areas the candidates of `page` make, in their order, but for those at
+ * the `hidden` indices, which were put aside as wrong.
+ */
 export function candidateAreas(
   page: number,
   candidates: readonly Candidate[],
+  hidden: readonly number[] = [],
 ): NewArea[] {
-  return candidates.map((candidate) => ({
-    page,
-    kind: candidate.kind,
-    rectPt: candidate.rectPt,
-    imageIndex: candidate.kind === "photo" ? candidate.imageIndex : null,
-  }));
+  return candidates
+    .filter((_, index) => !hidden.includes(index))
+    .map((candidate) => ({
+      page,
+      kind: candidate.kind,
+      rectPt: candidate.rectPt,
+      imageIndex: candidate.kind === "photo" ? candidate.imageIndex : null,
+    }));
 }
 
 /** Adds a page's candidates, and counts how many were new for the summary. */
@@ -189,7 +200,7 @@ function addDetected(
 ): CropState {
   const { state: next, added } = appendAreas(
     state,
-    candidateAreas(page, candidates),
+    candidateAreas(page, candidates, state.hiddenCandidates[page]),
   );
   return added === 0
     ? state
@@ -593,6 +604,22 @@ function reduceCropState(state: CropState, action: CropAction): CropState {
       return state.settingsOpen === action.open
         ? state
         : { ...state, settingsOpen: action.open };
+    case "CROP_TOOL_SET":
+      return state.tool === action.tool
+        ? state
+        : { ...state, tool: action.tool };
+    case "CROP_CANDIDATE_HIDDEN": {
+      const hidden = state.hiddenCandidates[action.page] ?? [];
+      return hidden.includes(action.index)
+        ? state
+        : {
+            ...state,
+            hiddenCandidates: {
+              ...state.hiddenCandidates,
+              [action.page]: [...hidden, action.index],
+            },
+          };
+    }
     // `cropReducer` takes these, as they move through the history.
     case "CROP_UNDO":
     case "CROP_REDO":
@@ -618,17 +645,40 @@ function sameAreas(a: readonly CropArea[], b: readonly CropArea[]): boolean {
   );
 }
 
+function sameHidden(a: HiddenCandidates, b: HiddenCandidates): boolean {
+  const pages = new Set([...Object.keys(a), ...Object.keys(b)].map(Number));
+  return [...pages].every((page) => {
+    const left = a[page] ?? [];
+    const right = b[page] ?? [];
+    return (
+      left.length === right.length &&
+      left.every((index) => right.includes(index))
+    );
+  });
+}
+
+function snapshotOf(state: CropState): CropSnapshot {
+  return { areas: state.areas, hiddenCandidates: state.hiddenCandidates };
+}
+
+function sameSnapshot(snapshot: CropSnapshot, state: CropState): boolean {
+  return (
+    sameAreas(snapshot.areas, state.areas) &&
+    sameHidden(snapshot.hiddenCandidates, state.hiddenCandidates)
+  );
+}
+
 /**
- * Where in `steps` the latest list that differs from `areas` is, or -1. A
- * step can leave the list as it was ("全ページの候補" that found nothing),
+ * Where in `steps` the latest one that differs from `state` is, or -1. A
+ * step can leave things as they were ("全ページの候補" that found nothing),
  * and going back to it would seem to do nothing.
  */
 function latestDifferent(
-  steps: readonly CropArea[][],
-  areas: readonly CropArea[],
+  steps: readonly CropSnapshot[],
+  state: CropState,
 ): number {
   for (let index = steps.length - 1; index >= 0; index -= 1) {
-    if (!sameAreas(steps[index], areas)) {
+    if (!sameSnapshot(steps[index], state)) {
       return index;
     }
   }
@@ -636,24 +686,25 @@ function latestDifferent(
 }
 
 export function canUndo(state: CropState): boolean {
-  return latestDifferent(state.history.past, state.areas) >= 0;
+  return latestDifferent(state.history.past, state) >= 0;
 }
 
 export function canRedo(state: CropState): boolean {
-  return latestDifferent(state.history.future, state.areas) >= 0;
+  return latestDifferent(state.history.future, state) >= 0;
 }
 
 /**
- * `state` with the areas of an earlier or undone step (design §6.10). The
+ * `state` with what an earlier or undone step had (design §6.10). The
  * keys stay as they were, and `nextAreaKey` does not go back, so no key is
  * given twice. An area that comes back or changes shape is no longer counted
  * as exported, and the page of the first area that changed is shown.
  */
-function restoreAreas(
+function restoreSnapshot(
   state: CropState,
-  restored: readonly CropArea[],
+  snapshot: CropSnapshot,
   history: CropHistory,
 ): CropState {
+  const restored = snapshot.areas;
   const current = new Map(state.areas.map((area) => [area.key, area]));
   // An area that is unchanged keeps what Rust has said of it since.
   const areas = restored.map((area) => {
@@ -681,6 +732,7 @@ function restoreAreas(
       (key) => keys.has(key) && !changed.some((area) => area.key === key),
     ),
     onTopRequests,
+    hiddenCandidates: snapshot.hiddenCandidates,
     history,
   };
 }
@@ -694,7 +746,9 @@ function withStep(
   return {
     ...after,
     history: {
-      past: [...before.history.past, before.areas].slice(-CROP_HISTORY_LIMIT),
+      past: [...before.history.past, snapshotOf(before)].slice(
+        -CROP_HISTORY_LIMIT,
+      ),
       future: [],
       keyedKey,
     },
@@ -719,6 +773,8 @@ function recordStep(
       return after.areas === before.areas
         ? after
         : withStep(before, after, null);
+    case "CROP_CANDIDATE_HIDDEN":
+      return withStep(before, after, null);
     case "CROP_AREA_CHANGED": {
       if (after.areas === before.areas) {
         return after;
@@ -740,22 +796,22 @@ export function cropReducer(state: CropState, action: CropAction): CropState {
   switch (action.type) {
     case "CROP_UNDO": {
       const { past, future } = state.history;
-      const index = latestDifferent(past, state.areas);
+      const index = latestDifferent(past, state);
       return index < 0
         ? state
-        : restoreAreas(state, past[index], {
+        : restoreSnapshot(state, past[index], {
             past: past.slice(0, index),
-            future: [...future, state.areas],
+            future: [...future, snapshotOf(state)],
             keyedKey: null,
           });
     }
     case "CROP_REDO": {
       const { past, future } = state.history;
-      const index = latestDifferent(future, state.areas);
+      const index = latestDifferent(future, state);
       return index < 0
         ? state
-        : restoreAreas(state, future[index], {
-            past: [...past, state.areas].slice(-CROP_HISTORY_LIMIT),
+        : restoreSnapshot(state, future[index], {
+            past: [...past, snapshotOf(state)].slice(-CROP_HISTORY_LIMIT),
             future: future.slice(0, index),
             keyedKey: null,
           });

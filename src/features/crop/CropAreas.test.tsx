@@ -46,6 +46,17 @@ async function addWholePage() {
   await addMenuItem("ページ全体を範囲にする");
 }
 
+/** The candidate of `kind`; the page stacks them by size, not in their order. */
+function candidateOf(kind: string): HTMLElement {
+  const found = screen
+    .getAllByTestId("crop-candidate")
+    .find((element) => element.dataset.kind === kind);
+  if (found === undefined) {
+    throw new Error(`no ${kind} candidate`);
+  }
+  return found;
+}
+
 function selectedAreas(): HTMLElement[] {
   return screen
     .queryAllByTestId("crop-area")
@@ -141,8 +152,7 @@ describe("pressing a candidate", () => {
       list_page_images: () => photos,
       detect_layout: () => candidates,
     });
-    const [chart] = screen.getAllByTestId("crop-candidate");
-    fireEvent.click(chart);
+    fireEvent.click(candidateOf("chart"));
     await flush();
 
     const [row] = areaRows();
@@ -157,7 +167,7 @@ describe("pressing a candidate", () => {
       list_page_images: () => photos,
       detect_layout: () => candidates,
     });
-    fireEvent.click(screen.getAllByTestId("crop-candidate")[1]);
+    fireEvent.click(candidateOf("photo"));
     await flush();
     expect(callsOf(calls, "check_on_top")).toHaveLength(1);
 
@@ -171,7 +181,7 @@ describe("pressing a candidate", () => {
 
   it("keeps the areas when the candidates are hidden", async () => {
     await openPdfInCropTab({ detect_layout: () => candidates });
-    fireEvent.click(screen.getAllByTestId("crop-candidate")[0]);
+    fireEvent.click(candidateOf("chart"));
     fireEvent.click(screen.getByRole("checkbox", { name: "候補" }));
 
     expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
@@ -183,7 +193,8 @@ describe("pressing a candidate", () => {
       list_page_images: () => photos,
       detect_layout: () => candidates,
     });
-    const [chart, photo] = screen.getAllByTestId("crop-candidate");
+    const chart = candidateOf("chart");
+    const photo = candidateOf("photo");
     fireEvent.click(chart);
     await flush();
 

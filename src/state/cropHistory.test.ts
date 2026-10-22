@@ -337,3 +337,72 @@ describe("undoing in the app", () => {
     expect(state.job.finished).toBeNull();
   });
 });
+
+describe("putting candidates aside", () => {
+  const chart: Candidate = {
+    kind: "chart",
+    score: 0.9,
+    rectPt: [10, 10, 200, 200],
+    imageIndex: null,
+  };
+  const table: Candidate = {
+    ...chart,
+    kind: "table",
+    rectPt: [300, 300, 400, 400],
+  };
+
+  it("is a step, which an undo takes back", () => {
+    const hidden = reduce(open(), {
+      type: "CROP_CANDIDATE_HIDDEN",
+      page: 2,
+      index: 1,
+    });
+    expect(hidden.hiddenCandidates).toEqual({ 2: [1] });
+    expect(reduce(hidden, UNDO).hiddenCandidates).toEqual({});
+    expect(reduce(hidden, UNDO, REDO).hiddenCandidates).toEqual({ 2: [1] });
+  });
+
+  it("is not done twice", () => {
+    const action: CropAction = {
+      type: "CROP_CANDIDATE_HIDDEN",
+      page: 2,
+      index: 1,
+    };
+    const once = reduce(open(), action);
+    expect(reduce(once, action)).toBe(once);
+  });
+
+  it("keeps them out of the areas the all-pages search adds", () => {
+    const state = reduce(
+      open(),
+      { type: "CROP_CANDIDATE_HIDDEN", page: 3, index: 0 },
+      { type: "CROP_DETECT_ALL_STARTED" },
+      {
+        type: "CROP_LAYOUT_PAGE",
+        id: 1,
+        page: 3,
+        candidates: [chart, table],
+        error: null,
+      },
+    );
+    expect(state.areas.map((area) => area.kind)).toEqual(["table"]);
+  });
+
+  it("are forgotten with another PDF", () => {
+    const state = reduce(
+      open(),
+      { type: "CROP_CANDIDATE_HIDDEN", page: 3, index: 0 },
+      { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) },
+    );
+    expect(state.hiddenCandidates).toEqual({});
+  });
+});
+
+describe("the tool", () => {
+  it("starts on select and is no step of the history", () => {
+    const state = reduce(open(), { type: "CROP_TOOL_SET", tool: "draw" });
+    expect(createInitialCropState().tool).toBe("select");
+    expect(state.tool).toBe("draw");
+    expect(canUndo(state)).toBe(false);
+  });
+});
