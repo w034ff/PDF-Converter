@@ -1,3 +1,4 @@
+export * from "./CloseIcon";
 export * from "./DropZone";
 export * from "./ErrorDisplay";
 export * from "./InfoIcon";

@@ -1,5 +1,5 @@
 import { useRef, type RefObject } from "react";
-import { ModalDialog } from "../../components";
+import { CloseIcon, ModalDialog } from "../../components";
 import { getTranslations } from "../../i18n";
 import { useAppState } from "../../state";
 
@@ -27,34 +27,37 @@ export function CropKeyHints({ onClose, returnFocusRef }: CropKeyHintsProps) {
       initialFocusRef={closeRef}
       returnFocusRef={returnFocusRef}
     >
-      <h2 id="crop-key-hints-title" className="modal-title">
-        {t.crop.keyHints.title}
-      </h2>
-      <table className="crop-key-hints-table">
-        <thead>
-          <tr>
-            <th scope="col">{t.crop.keyHints.keyColumn}</th>
-            <th scope="col">{t.crop.keyHints.actionColumn}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {t.crop.keyHints.rows.map((row) => (
-            <tr key={row.keys}>
-              <td className="mono">{row.keys}</td>
-              <td>{row.action}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="crop-key-hints-actions">
+      <div className="modal-header">
+        <h2 id="crop-key-hints-title" className="modal-title">
+          {t.crop.keyHints.title}
+        </h2>
         <button
           ref={closeRef}
           type="button"
-          className="btn btn-ghost"
+          className="icon-btn"
+          aria-label={t.crop.keyHints.close}
           onClick={onClose}
         >
-          {t.crop.keyHints.close}
+          <CloseIcon size={16} />
         </button>
+      </div>
+      <div className="modal-body">
+        <table className="crop-key-hints-table">
+          <thead>
+            <tr>
+              <th scope="col">{t.crop.keyHints.keyColumn}</th>
+              <th scope="col">{t.crop.keyHints.actionColumn}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {t.crop.keyHints.rows.map((row) => (
+              <tr key={row.keys}>
+                <td className="mono">{row.keys}</td>
+                <td>{row.action}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </ModalDialog>
   );
