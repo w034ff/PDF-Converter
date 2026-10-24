@@ -270,8 +270,9 @@ describe("the list of keys", () => {
     button.focus();
     fireEvent.click(button);
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Ctrl+Z")).toBeInTheDocument();
-    expect(within(dialog).getByText("元に戻す")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("元に戻す").closest("tr"),
+    ).toHaveTextContent("Ctrl+Z");
 
     fireEvent.keyDown(dialog, { key: "Escape" });
     await flush();

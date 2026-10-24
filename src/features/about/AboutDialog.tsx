@@ -97,7 +97,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
         <button
           ref={closeButtonRef}
           type="button"
-          className="icon-btn"
+          className="icon-btn modal-close"
           aria-label={t.about.close}
           onClick={onClose}
         >
@@ -178,12 +178,6 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
             </div>
           )}
         </section>
-      </div>
-
-      <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>
-          {t.about.close}
-        </button>
       </div>
     </ModalDialog>
   );

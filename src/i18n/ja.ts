@@ -270,33 +270,66 @@ export const ja = {
     keyHints: {
       title: "キー操作",
       close: "閉じる",
-      keyColumn: "キー",
-      actionColumn: "操作",
-      rows: [
+      groups: [
         {
-          keys: "V",
-          action: "選択モード（クリックで選ぶ・加える、ドラッグで動かす）",
-        },
-        { keys: "R", action: "範囲を描く（ドラッグで新しい範囲を描く）" },
-        { keys: "Esc", action: "選択を解除・操作を取り消す" },
-        { keys: "Ctrl+Z", action: "元に戻す" },
-        { keys: "Ctrl+Y・Ctrl+Shift+Z", action: "やり直す" },
-        {
-          keys: "Delete / Backspace",
-          action: "範囲を削除（候補なら非表示にする）",
-        },
-        {
-          keys: "矢印 / Shift+矢印",
-          action: "範囲を 1 pt 動かす（Shift で 10 pt）",
+          title: "ツール",
+          rows: [
+            {
+              keys: [["V"]],
+              action: "選択モード（クリックで選ぶ・加える、ドラッグで動かす）",
+            },
+            {
+              keys: [["R"]],
+              action: "範囲を描く（ドラッグで新しい範囲を描く）",
+            },
+            { keys: [["Esc"]], action: "選択を解除・操作を取り消す" },
+          ],
         },
         {
-          keys: "Alt+矢印",
-          action: "範囲の大きさを変える（右と下の辺を伸縮）",
+          title: "範囲の編集",
+          rows: [
+            {
+              keys: [["Delete"], ["Backspace"]],
+              action: "範囲を削除（候補なら非表示にする）",
+            },
+            {
+              keys: [["矢印"], ["Shift", "矢印"]],
+              action: "範囲を 1 pt 動かす（Shift で 10 pt）",
+            },
+            {
+              keys: [["Alt", "矢印"]],
+              action: "範囲の大きさを変える（右と下の辺を伸縮）",
+            },
+            { keys: [["Ctrl", "Z"]], action: "元に戻す" },
+            {
+              keys: [
+                ["Ctrl", "Y"],
+                ["Ctrl", "Shift", "Z"],
+              ],
+              action: "やり直す",
+            },
+          ],
         },
-        { keys: "Tab / Shift+Tab", action: "枠・候補・範囲を順に移る" },
-        { keys: "Enter / Space", action: "選ぶ・候補を範囲に加える" },
-        { keys: "Ctrl+ホイール", action: "拡大・縮小" },
-        { keys: "?", action: "この一覧を開く" },
+        {
+          title: "キーボード操作",
+          rows: [
+            {
+              keys: [["Tab"], ["Shift", "Tab"]],
+              action: "枠・候補・範囲を順に移る",
+            },
+            {
+              keys: [["Enter"], ["Space"]],
+              action: "選ぶ・候補を範囲に加える",
+            },
+          ],
+        },
+        {
+          title: "画面操作・ヘルプ",
+          rows: [
+            { keys: [["Ctrl", "ホイール"]], action: "拡大・縮小" },
+            { keys: [["?"]], action: "この一覧を開く" },
+          ],
+        },
       ],
     },
     addMenu: {

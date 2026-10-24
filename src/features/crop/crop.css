@@ -361,7 +361,8 @@
 /* The header and body of the About dialog, so that the × sits at the top
    right as it does there. */
 .modal-dialog.crop-key-hints {
-  max-width: 520px;
+  max-width: 600px;
+  max-height: 100%;
 }
 
 .crop-key-hints-table {
@@ -378,8 +379,52 @@
   vertical-align: top;
 }
 
-.crop-key-hints-table td:first-child {
+.crop-key-hints-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The badges are taller than a line of text, so the cells lose the padding
+   they add. */
+.crop-key-hints-table td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  vertical-align: middle;
+}
+
+/* The keys take the width they need and the actions the rest. */
+.crop-key-hints-keys {
+  width: 1%;
   white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.crop-key-hints-keys kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* The group's heading stands in for the column headings, so it takes their
+   weight and leaves a gap above every group but the first. */
+.crop-key-hints-table .crop-key-hints-group {
+  padding-top: 16px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.crop-key-hints-table tbody:first-child .crop-key-hints-group {
+  padding-top: 0;
 }
 
 .crop-add-areas {

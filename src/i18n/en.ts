@@ -271,39 +271,66 @@ export const en: Translations = {
     keyHints: {
       title: "Keyboard shortcuts",
       close: "Close",
-      keyColumn: "Keys",
-      actionColumn: "Action",
-      rows: [
+      groups: [
         {
-          keys: "V",
-          action: "Select mode (click to select or add, drag to move)",
-        },
-        { keys: "R", action: "Draw an area (drag to draw a new area)" },
-        { keys: "Esc", action: "Deselect, or cancel the current action" },
-        { keys: "Ctrl+Z", action: "Undo" },
-        { keys: "Ctrl+Y, Ctrl+Shift+Z", action: "Redo" },
-        {
-          keys: "Delete / Backspace",
-          action: "Remove the area (hide a suggestion)",
-        },
-        {
-          keys: "Arrows / Shift+Arrows",
-          action: "Move the area by 1 pt (10 pt with Shift)",
+          title: "Tools",
+          rows: [
+            {
+              keys: [["V"]],
+              action: "Select mode (click to select or add, drag to move)",
+            },
+            { keys: [["R"]], action: "Draw an area (drag to draw a new area)" },
+            {
+              keys: [["Esc"]],
+              action: "Deselect, or cancel the current action",
+            },
+          ],
         },
         {
-          keys: "Alt+Arrows",
-          action: "Resize the area (move the right and bottom edges)",
+          title: "Editing areas",
+          rows: [
+            {
+              keys: [["Delete"], ["Backspace"]],
+              action: "Remove the area (hide a suggestion)",
+            },
+            {
+              keys: [["Arrows"], ["Shift", "Arrows"]],
+              action: "Move the area by 1 pt (10 pt with Shift)",
+            },
+            {
+              keys: [["Alt", "Arrows"]],
+              action: "Resize the area (move the right and bottom edges)",
+            },
+            { keys: [["Ctrl", "Z"]], action: "Undo" },
+            {
+              keys: [
+                ["Ctrl", "Y"],
+                ["Ctrl", "Shift", "Z"],
+              ],
+              action: "Redo",
+            },
+          ],
         },
         {
-          keys: "Tab / Shift+Tab",
-          action: "Go through frames, suggestions and areas",
+          title: "Keyboard navigation",
+          rows: [
+            {
+              keys: [["Tab"], ["Shift", "Tab"]],
+              action: "Go through frames, suggestions and areas",
+            },
+            {
+              keys: [["Enter"], ["Space"]],
+              action: "Select, or add a suggestion as an area",
+            },
+          ],
         },
         {
-          keys: "Enter / Space",
-          action: "Select, or add a suggestion as an area",
+          title: "View and help",
+          rows: [
+            { keys: [["Ctrl", "Wheel"]], action: "Zoom in or out" },
+            { keys: [["?"]], action: "Open this list" },
+          ],
         },
-        { keys: "Ctrl+Wheel", action: "Zoom in or out" },
-        { keys: "?", action: "Open this list" },
       ],
     },
     addMenu: {

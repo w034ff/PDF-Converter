@@ -1,4 +1,4 @@
-import { useRef, type RefObject } from "react";
+import { Fragment, useRef, type RefObject } from "react";
 import { CloseIcon, ModalDialog } from "../../components";
 import { getTranslations } from "../../i18n";
 import { useAppState } from "../../state";
@@ -34,7 +34,7 @@ export function CropKeyHints({ onClose, returnFocusRef }: CropKeyHintsProps) {
         <button
           ref={closeRef}
           type="button"
-          className="icon-btn"
+          className="icon-btn modal-close"
           aria-label={t.crop.keyHints.close}
           onClick={onClose}
         >
@@ -43,20 +43,39 @@ export function CropKeyHints({ onClose, returnFocusRef }: CropKeyHintsProps) {
       </div>
       <div className="modal-body">
         <table className="crop-key-hints-table">
-          <thead>
-            <tr>
-              <th scope="col">{t.crop.keyHints.keyColumn}</th>
-              <th scope="col">{t.crop.keyHints.actionColumn}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {t.crop.keyHints.rows.map((row) => (
-              <tr key={row.keys}>
-                <td className="mono">{row.keys}</td>
-                <td>{row.action}</td>
+          {t.crop.keyHints.groups.map((group) => (
+            <tbody key={group.title}>
+              <tr>
+                <th
+                  scope="rowgroup"
+                  colSpan={2}
+                  className="crop-key-hints-group"
+                >
+                  {group.title}
+                </th>
               </tr>
-            ))}
-          </tbody>
+              {group.rows.map((row) => (
+                <tr key={row.action}>
+                  <td className="crop-key-hints-keys">
+                    {row.keys.map((combo, comboIndex) => (
+                      <Fragment key={combo.join("+")}>
+                        {comboIndex > 0 && " / "}
+                        <span className="crop-key-hints-combo">
+                          {combo.map((key, keyIndex) => (
+                            <Fragment key={key}>
+                              {keyIndex > 0 && "+"}
+                              <kbd>{key}</kbd>
+                            </Fragment>
+                          ))}
+                        </span>
+                      </Fragment>
+                    ))}
+                  </td>
+                  <td>{row.action}</td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
     </ModalDialog>
