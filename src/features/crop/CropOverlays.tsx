@@ -138,7 +138,7 @@ export function CropOverlays({
     tool,
     overlayRef,
     viewport,
-    // "描く" draws one area, then the page is for selecting again.
+    // Drawing makes one area, then the page is for selecting again.
     onDraw: (rectPt) => {
       dispatch({ type: "CROP_AREA_DRAWN", page, rectPt });
       dispatch({ type: "CROP_TOOL_SET", tool: "select" });

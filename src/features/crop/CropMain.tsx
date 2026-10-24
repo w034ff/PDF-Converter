@@ -1,6 +1,11 @@
 import { useRef, type RefObject } from "react";
-import { DropZone, ErrorDisplay, NoticeDisplay } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import {
+  DropZone,
+  ErrorDisplay,
+  FolderIcon,
+  NoticeDisplay,
+} from "../../components";
+import { formatErrorMessage, getTranslations } from "../../i18n";
 import { unlockCropPdf, type CropPdf, type IpcError } from "../../ipc";
 import { isJobActive, useAppDispatch, useAppState } from "../../state";
 import { openCropPdfFromDialog } from "./cropOpen";
@@ -81,17 +86,51 @@ function CropNotices() {
   return <div className="crop-notices">{notices}</div>;
 }
 
-/** The line above the page: file name, page number, how the page is going. */
-function CropBand({
+/**
+ * The name of the open PDF and the button that opens another, at the left of
+ * the toolbar (design §10.1). The name is cut short with an ellipsis and
+ * shows whole on hover.
+ */
+export function CropFileControls({
   pdf,
   openButtonRef,
 }: {
   pdf: CropPdf;
   openButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
-  const { language, crop, job } = useAppState();
+  const { language, job } = useAppState();
   const dispatch = useAppDispatch();
   const getCrop = useLatestCrop();
+  const t = getTranslations(language.language);
+
+  return (
+    <div className="crop-file">
+      <span className="crop-file-name" title={pdf.name}>
+        {pdf.name}
+      </span>
+      <button
+        ref={openButtonRef}
+        type="button"
+        className="icon-btn crop-file-open"
+        aria-label={t.crop.openAnother}
+        title={t.crop.openAnother}
+        disabled={isJobActive(job)}
+        onClick={() => void openCropPdfFromDialog(dispatch, getCrop)}
+      >
+        <FolderIcon size={16} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * How the page shown is going, over the bottom left of the page: only while
+ * an area is being drawn, its suggestions are being looked for or are hidden,
+ * or something about it failed, so it takes no room the rest of the time
+ * (design §10.1).
+ */
+function CropPageStatus({ pdf }: { pdf: CropPdf }) {
+  const { language, crop } = useAppState();
   const t = getTranslations(language.language);
   const { page, layouts, pageImages, layoutUnavailable } = crop;
 
@@ -112,39 +151,32 @@ function CropBand({
   ) {
     failures.push(layout.error);
   }
+  // Said while hidden, so that a page without frames is not taken for a
+  // failed analysis.
+  const hidden = !crop.showCandidates && !layoutUnavailable;
+  // Drawing has no control of its own on the screen, so this says it is on.
+  // A conversion stops it (`JOB_STARTED`), so it is never on while one runs.
+  const drawing = crop.tool === "draw";
+  if (!drawing && !searching && !hidden && failures.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="crop-band">
-      <span className="crop-band-name">{pdf.name}</span>
-      {pdf.pageCount > 0 && (
-        <span className="mono crop-band-counter">
-          {formatMessage(t.crop.pageCounter, {
-            page,
-            total: pdf.pageCount,
-          })}
-        </span>
-      )}
+    <div className="crop-page-status">
+      {drawing && <span>{t.crop.drawing}</span>}
       {searching && <span className="hint">{t.crop.searching}</span>}
+      {hidden && <span className="hint">{t.crop.candidatesHidden}</span>}
       {failures.map((error, index) => (
         <span key={index} className="error-text">
           {formatErrorMessage(error.code, error.detail, language.language)}
         </span>
       ))}
-      <button
-        ref={openButtonRef}
-        type="button"
-        className="btn btn-ghost crop-band-open"
-        disabled={isJobActive(job)}
-        onClick={() => void openCropPdfFromDialog(dispatch, getCrop)}
-      >
-        {t.crop.openAnother}
-      </button>
     </div>
   );
 }
 
 export interface CropMainProps {
-  /** The band's "別の PDF を開く", where the focus returns after the replace question. */
+  /** The toolbar's "別の PDF を開く", where the focus returns after the replace question. */
   openButtonRef: RefObject<HTMLButtonElement | null>;
   /** Whether the page should take the focus (see `CropPagePane`). */
   focusRequested: boolean;
@@ -156,7 +188,8 @@ export interface CropMainProps {
 
 /**
  * The middle of the crop tab (mockups `CropEmpty` and `CropA`): a drop zone
- * while no PDF is open, otherwise the PDF's band and its page.
+ * while no PDF is open, otherwise the toolbar and the page. A PDF that cannot
+ * be shown keeps a toolbar of its name and the button to open another.
  */
 export function CropMain({
   openButtonRef,
@@ -190,7 +223,11 @@ export function CropMain({
   return (
     <main className="crop-main">
       <CropNotices />
-      <CropBand pdf={pdf} openButtonRef={openButtonRef} />
+      {pdf.error !== null && (
+        <div className="crop-toolbar">
+          <CropFileControls pdf={pdf} openButtonRef={openButtonRef} />
+        </div>
+      )}
       {needsPassword && (
         <div className="crop-notices">
           <NoticeDisplay
@@ -226,11 +263,17 @@ export function CropMain({
         </div>
       )}
       {pdf.error === null && (
-        <CropPagePane
-          pdf={pdf}
-          focusRequested={focusRequested}
-          onFocused={onFocused}
-        />
+        <>
+          <CropPagePane
+            pdf={pdf}
+            fileControls={
+              <CropFileControls pdf={pdf} openButtonRef={openButtonRef} />
+            }
+            focusRequested={focusRequested}
+            onFocused={onFocused}
+          />
+          <CropPageStatus pdf={pdf} />
+        </>
       )}
       {crop.passwordDialogOpen && (
         <PasswordDialog

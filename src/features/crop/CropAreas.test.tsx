@@ -6,6 +6,9 @@ import {
   callsOf,
   candidate,
   cropPdf,
+  drawWholePage,
+  expectPageShown,
+  toggleCandidates,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -43,7 +46,7 @@ async function addMenuItem(name: string) {
 }
 
 async function addWholePage() {
-  await addMenuItem("ページ全体を範囲にする");
+  await drawWholePage();
 }
 
 /** The candidate of `kind`; the page stacks them by size, not in their order. */
@@ -182,7 +185,7 @@ describe("pressing a candidate", () => {
   it("keeps the areas when the candidates are hidden", async () => {
     await openPdfInCropTab({ detect_layout: () => candidates });
     fireEvent.click(candidateOf("chart"));
-    fireEvent.click(screen.getByRole("checkbox", { name: "候補" }));
+    toggleCandidates();
 
     expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
     expect(screen.getAllByTestId("crop-area")).toHaveLength(1);
@@ -265,7 +268,7 @@ describe("selecting", () => {
 });
 
 describe("the menu of areas to add", () => {
-  it("has the three items, in a menu button", async () => {
+  it("has the three items, in a menu button, with drawing set apart", async () => {
     await openPdfInCropTab();
     const button = screen.getByRole("button", { name: "範囲を追加 ▾" });
     expect(button).toHaveAttribute("aria-haspopup", "menu");
@@ -278,8 +281,12 @@ describe("the menu of areas to add", () => {
     ).toEqual([
       "このページの候補をすべて追加",
       "全ページの候補をすべて追加",
-      "ページ全体を範囲にする",
+      "範囲を描く",
     ]);
+    const menu = screen.getByRole("menu");
+    expect(
+      [...menu.children].map((child) => child.getAttribute("role")),
+    ).toEqual(["menuitem", "menuitem", "separator", "menuitem"]);
   });
 
   it("closes on Esc, with the focus back on the button, and on a press outside", async () => {
@@ -333,7 +340,7 @@ describe("the menu of areas to add", () => {
           candidate("chart", [50, 60, 250, 160]),
         ],
       });
-      fireEvent.click(screen.getByRole("checkbox", { name: "候補" }));
+      toggleCandidates();
       await addMenuItem("このページの候補をすべて追加");
 
       expect(areaRows().map((row) => rowText(row))).toEqual([
@@ -356,50 +363,6 @@ describe("the menu of areas to add", () => {
       expect(areaRows()).toHaveLength(2);
       await addMenuItem("このページの候補をすべて追加");
       expect(areaRows()).toHaveLength(2);
-    });
-  });
-
-  describe("the whole page", () => {
-    it("adds a hand-picked area of the page's size and selects it", async () => {
-      await openPdfInCropTab();
-      await addWholePage();
-
-      const [row] = areaRows();
-      expect(rowText(row)).toContain("手で選んだ範囲");
-      expect(rowText(row)).toContain("150 dpi · 1240 × 1754");
-      expect(selectedAreas()).toHaveLength(1);
-    });
-
-    it("selects the area that is there instead of adding another", async () => {
-      await openPdfInCropTab({
-        detect_layout: () => [candidate("figure", [50, 60, 250, 160])],
-      });
-      await addWholePage();
-      fireEvent.click(screen.getByTestId("crop-candidate"));
-      expect(selectedAreas().map((a) => a.dataset.kind)).toEqual(["figure"]);
-      await addWholePage();
-
-      expect(areaRows()).toHaveLength(2);
-      expect(selectedAreas().map((a) => a.dataset.kind)).toEqual(["manual"]);
-    });
-
-    it("takes the size of the page shown", async () => {
-      await openPdfInCropTab(
-        {},
-        cropPdf({
-          pages: [
-            { widthPt: 595, heightPt: 842 },
-            { widthPt: 300, heightPt: 200 },
-            { widthPt: 595, heightPt: 842 },
-            { widthPt: 595, heightPt: 842 },
-          ],
-        }),
-      );
-      pickPage(2);
-      await flush();
-      await addWholePage();
-      expect(rowText(areaRows()[0])).toContain("p.2");
-      expect(rowText(areaRows()[0])).toContain("150 dpi · 625 × 417");
     });
   });
 
@@ -506,14 +469,14 @@ describe("the list of areas", () => {
     await twoPages();
     pickPage(2);
     await flush();
-    expect(screen.getByText("2 / 4")).toBeInTheDocument();
+    expectPageShown(2, 4);
 
     fireEvent.click(
       screen.getByRole("button", { name: "p.3 の手で選んだ範囲を表示" }),
     );
     await flush();
 
-    expect(screen.getByText("3 / 4")).toBeInTheDocument();
+    expectPageShown(3, 4);
     expect(selectedAreas().map((a) => a.dataset.key)).toEqual(["1"]);
     expect(
       screen.getByRole("button", { name: "p.3 の手で選んだ範囲を表示" }),
@@ -667,12 +630,10 @@ describe("in English", () => {
     ).toEqual([
       "Add all suggestions on this page",
       "Add all suggestions on all pages",
-      "Make the whole page an area",
+      "Draw an area",
     ]);
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Make the whole page an area" }),
-    );
-    await flush();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await drawWholePage();
 
     expect(screen.getByText("1 area · 1 to export")).toBeInTheDocument();
     expect(screen.getByText("Export 1 area as PNG")).toBeInTheDocument();
@@ -684,18 +645,9 @@ describe("in English", () => {
       screen.getByRole("button", { name: "Show Custom area on p.1" }),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add areas ▾" }));
-    // The same rectangle again selects the area that is there.
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Make the whole page an area" }),
-    );
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Add areas ▾" }));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Make the whole page an area" }),
-    );
-    await flush();
+    await drawWholePage();
     expect(screen.getByText("2 areas · 2 to export")).toBeInTheDocument();
     expect(screen.getByText("Export 2 areas as PNG")).toBeInTheDocument();
   });

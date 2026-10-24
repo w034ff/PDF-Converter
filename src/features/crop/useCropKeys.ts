@@ -18,13 +18,13 @@ export function historyKeyOf(
   return key === "y" && !event.shiftKey ? "redo" : null;
 }
 
-/** The tool a plain key picks: V selects and R draws (design §10.1). */
-function toolKeyOf(event: KeyboardEvent): CropTool | null {
-  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
-    return null;
-  }
-  const key = event.key.toLowerCase();
-  return key === "v" ? "select" : key === "r" ? "draw" : null;
+function hasModifier(event: KeyboardEvent): boolean {
+  return event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
+}
+
+/** Whether the key is R alone, which starts drawing an area (design §10.1). */
+function isDrawKey(event: KeyboardEvent): boolean {
+  return !hasModifier(event) && event.key.toLowerCase() === "r";
 }
 
 /** Inputs whose own keys these would take: those that take text. */
@@ -41,22 +41,34 @@ function takesText(target: EventTarget | null): boolean {
 }
 
 export interface CropKeysOptions {
-  /** The tool in use, which Esc takes back to "select". */
+  /** The tool in use: Esc stops drawing. */
   tool: CropTool;
-  /** Whether "描く" can be picked; it cannot while a conversion runs. */
+  /** Whether R can start drawing; it cannot while a conversion runs. */
   canDraw: boolean;
   /** Opens the list of the keys (`?`). */
   onHelp: () => void;
+  /**
+   * Draws an area over the whole page shown (Enter while drawing): the way
+   * to make an area of one's own without a pointer, to move and resize with
+   * the arrows after.
+   */
+  onDrawWholePage: () => void;
 }
 
 /**
  * The keys of the crop tab that work wherever the focus is while a PDF is
- * open (design §10.1): Ctrl+Z undoes and Ctrl+Y or Ctrl+Shift+Z redoes, V and
- * R pick the tool, Esc leaves "描く", and `?` lists the keys. None of them
+ * open (design §10.1): Ctrl+Z undoes and Ctrl+Y or Ctrl+Shift+Z redoes, R
+ * starts drawing an area, Enter then draws one over the whole page, Esc
+ * stops drawing, and `?` lists the keys. None of them
  * work in a field that takes text nor while a dialog is open, and a drag in
  * progress stops them before they get here.
  */
-export function useCropKeys({ tool, canDraw, onHelp }: CropKeysOptions) {
+export function useCropKeys({
+  tool,
+  canDraw,
+  onHelp,
+  onDrawWholePage,
+}: CropKeysOptions) {
   const dispatch = useAppDispatch();
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -73,17 +85,23 @@ export function useCropKeys({ tool, canDraw, onHelp }: CropKeysOptions) {
         dispatch({ type: direction === "undo" ? "CROP_UNDO" : "CROP_REDO" });
         return;
       }
-      const picked = toolKeyOf(event);
-      if (picked !== null) {
-        if (picked === "select" || canDraw) {
+      if (isDrawKey(event)) {
+        if (canDraw) {
           event.preventDefault();
-          dispatch({ type: "CROP_TOOL_SET", tool: picked });
+          dispatch({ type: "CROP_TOOL_SET", tool: "draw" });
         }
         return;
       }
       if (event.key === "Escape" && tool === "draw") {
         event.preventDefault();
         dispatch({ type: "CROP_TOOL_SET", tool: "select" });
+        return;
+      }
+      // Before the control with the focus takes it: the menu's button, which
+      // has the focus after "範囲を描く", would open the menu again.
+      if (event.key === "Enter" && tool === "draw" && !hasModifier(event)) {
+        event.preventDefault();
+        onDrawWholePage();
         return;
       }
       if (event.key === "?" && !event.ctrlKey && !event.altKey) {
@@ -93,5 +111,5 @@ export function useCropKeys({ tool, canDraw, onHelp }: CropKeysOptions) {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dispatch, tool, canDraw, onHelp]);
+  }, [dispatch, tool, canDraw, onHelp, onDrawWholePage]);
 }

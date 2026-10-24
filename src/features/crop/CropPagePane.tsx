@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  MenuButton,
-  SegmentedControl,
-  type MenuButtonItem,
-  type SegmentedOption,
-} from "../../components";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { MenuButton, type MenuButtonItem } from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import {
@@ -12,7 +13,6 @@ import {
   isJobActive,
   useAppDispatch,
   useAppState,
-  type CropTool,
   type CropViewSize,
 } from "../../state";
 import { useJobRunner } from "../job/useJobRunner";
@@ -30,7 +30,8 @@ import { useCropKeys } from "./useCropKeys";
 import { usePageImage } from "./usePageImage";
 import "./crop.css";
 
-type ViewKind = CropViewSize["kind"];
+/** The sizes the view menu offers besides fitting the page (design §10.1). */
+const ZOOM_PRESETS: readonly number[] = [50, 100, 200];
 
 interface PageSurfaceProps {
   pdf: CropPdf;
@@ -89,6 +90,8 @@ function PageSurface({ pdf, page, scale, viewport }: PageSurfaceProps) {
 
 export interface CropPagePaneProps {
   pdf: CropPdf;
+  /** The PDF's name and the button that opens another, first in the toolbar. */
+  fileControls: ReactNode;
   /**
    * Whether the view should take the focus once it is shown: the control that
    * opened the password dialog is gone by then (design §10.1).
@@ -105,6 +108,7 @@ export interface CropPagePaneProps {
  */
 export function CropPagePane({
   pdf,
+  fileControls,
   focusRequested,
   onFocused,
 }: CropPagePaneProps) {
@@ -137,18 +141,10 @@ export function CropPagePane({
       onSelect: () => void runner.startDetectAll(pdf.id),
     },
     {
-      id: "wholePage",
-      label: t.crop.addMenu.wholePage,
-      onSelect: () =>
-        dispatch({
-          type: "CROP_AREA_ADDED",
-          area: {
-            page,
-            kind: "manual",
-            rectPt: [0, 0, size.widthPt, size.heightPt],
-            imageIndex: null,
-          },
-        }),
+      id: "draw",
+      label: t.crop.addMenu.draw,
+      separatorBefore: true,
+      onSelect: () => dispatch({ type: "CROP_TOOL_SET", tool: "draw" }),
     },
   ];
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
@@ -161,8 +157,21 @@ export function CropPagePane({
   // Where the list of keys was opened from, which the focus goes back to.
   const [hints, setHints] = useState<"button" | "key" | null>(null);
   const tool = busy ? "select" : crop.tool;
-  const openHintsByKey = useCallback(() => setHints("key"), []);
-  useCropKeys({ tool, canDraw: !busy, onHelp: openHintsByKey });
+  const openHintsByKey = useCallback(() => setHints("key"), [setHints]);
+  const drawWholePage = useCallback(() => {
+    dispatch({
+      type: "CROP_AREA_DRAWN",
+      page,
+      rectPt: [0, 0, size.widthPt, size.heightPt],
+    });
+    dispatch({ type: "CROP_TOOL_SET", tool: "select" });
+  }, [dispatch, page, size]);
+  useCropKeys({
+    tool,
+    canDraw: !busy,
+    onHelp: openHintsByKey,
+    onDrawWholePage: drawWholePage,
+  });
   const [room, setRoom] = useState<ViewportSize | null>(null);
 
   // The room is the content box, so the view's padding is not part of it.
@@ -239,77 +248,89 @@ export function CropPagePane({
     }
   }
 
-  const toolOptions: readonly SegmentedOption<CropTool>[] = [
-    { value: "select", label: t.crop.toolbar.select },
-    { value: "draw", label: t.crop.toolbar.draw },
-  ];
-
-  const sizeOptions: readonly SegmentedOption<"fitWidth" | "fitPage">[] = [
-    { value: "fitWidth", label: t.crop.toolbar.fitWidth },
-    { value: "fitPage", label: t.crop.toolbar.fitPage },
+  function showView(view: CropViewSize) {
+    dispatch({ type: "CROP_VIEW_SET", view });
+  }
+  const zoomItems: MenuButtonItem[] = [
+    {
+      id: "fitPage",
+      label: t.crop.toolbar.fitPage,
+      checked: view.kind === "fitPage",
+      onSelect: () => showView({ kind: "fitPage" }),
+    },
+    {
+      id: "fitWidth",
+      label: t.crop.toolbar.fitWidth,
+      checked: view.kind === "fitWidth",
+      onSelect: () => showView({ kind: "fitWidth" }),
+    },
+    ...ZOOM_PRESETS.map((preset, index) => ({
+      id: `zoom${preset}`,
+      label: formatMessage(t.crop.toolbar.zoomPreset, { percent: preset }),
+      checked: view.kind === "zoom" && view.percent === preset,
+      separatorBefore: index === 0,
+      onSelect: () => showView({ kind: "zoom", percent: preset }),
+    })),
+    {
+      id: "candidates",
+      label: t.crop.toolbar.showCandidates,
+      checked: crop.showCandidates,
+      separatorBefore: true,
+      onSelect: () =>
+        dispatch({
+          type: "CROP_CANDIDATES_SHOWN",
+          shown: !crop.showCandidates,
+        }),
+    },
   ];
 
   return (
     <>
       <div className="crop-toolbar">
-        <SegmentedControl<ViewKind>
-          label={t.crop.toolbar.sizeLabel}
-          options={sizeOptions}
-          value={view.kind}
-          onChange={(kind) => {
-            if (kind !== "zoom") {
-              dispatch({ type: "CROP_VIEW_SET", view: { kind } });
+        {fileControls}
+        <div className="crop-zoom">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t.crop.toolbar.zoomOut}
+            disabled={
+              percent === null || nextZoomPercent(percent, "out") === null
             }
-          }}
-          className="seg crop-size-seg"
-        />
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label={t.crop.toolbar.zoomOut}
-          disabled={
-            percent === null || nextZoomPercent(percent, "out") === null
-          }
-          onClick={() => zoom("out")}
-        >
-          −
-        </button>
-        <span
-          className="mono crop-zoom-percent"
-          data-testid="crop-zoom-percent"
-        >
-          {percent === null ? "" : `${percent}%`}
-        </span>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label={t.crop.toolbar.zoomIn}
-          disabled={percent === null || nextZoomPercent(percent, "in") === null}
-          onClick={() => zoom("in")}
-        >
-          ＋
-        </button>
-        <label className="crop-candidates-toggle label">
-          <input
-            type="checkbox"
-            checked={crop.showCandidates}
-            onChange={(event) =>
-              dispatch({
-                type: "CROP_CANDIDATES_SHOWN",
-                shown: event.target.checked,
-              })
+            onClick={() => zoom("out")}
+          >
+            −
+          </button>
+          <MenuButton
+            className="crop-zoom-menu"
+            label={
+              percent === null
+                ? t.crop.toolbar.viewLabel
+                : `${t.crop.toolbar.viewLabel} ${percent}%`
             }
-          />
-          {t.crop.toolbar.candidates}
-        </label>
-        <SegmentedControl<CropTool>
-          label={t.crop.toolbar.toolLabel}
-          options={toolOptions}
-          value={tool}
-          onChange={(next) => dispatch({ type: "CROP_TOOL_SET", tool: next })}
-          disabled={busy}
-          className="seg crop-tool-seg"
-        />
+            menuLabel={t.crop.toolbar.viewLabel}
+            items={zoomItems}
+            disabled={percent === null}
+            align="start"
+          >
+            <span data-testid="crop-zoom-percent">
+              {percent === null ? "" : `${percent}%`}
+            </span>
+            <span className="crop-zoom-caret" aria-hidden="true">
+              ▾
+            </span>
+          </MenuButton>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t.crop.toolbar.zoomIn}
+            disabled={
+              percent === null || nextZoomPercent(percent, "in") === null
+            }
+            onClick={() => zoom("in")}
+          >
+            ＋
+          </button>
+        </div>
         <MenuButton
           className="btn btn-ghost crop-add-areas"
           menuLabel={t.crop.addMenu.label}
@@ -343,8 +364,8 @@ export function CropPagePane({
         tabIndex={-1}
         onKeyDown={(event) => {
           // A drag takes the key first, and so do the menu and dialogs,
-          // which stop it; so does an area that removes itself. With "描く",
-          // Esc goes back to "選ぶ" (`useCropKeys`) and keeps the selection.
+          // which stop it; so does an area that removes itself. While drawing,
+          // Esc stops drawing (`useCropKeys`) and keeps the selection.
           if (
             event.defaultPrevented ||
             crop.selectedKey === null ||

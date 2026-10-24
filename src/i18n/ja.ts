@@ -246,7 +246,6 @@ export const ja = {
       open: "PDF を開く",
     },
     openAnother: "別の PDF を開く",
-    pageCounter: "{page} / {total}",
     notOnePdf: "切り出しでは PDF を 1 つずつ開きます",
     pagesAria: "ページ",
     pageAria: "ページ {page}",
@@ -254,16 +253,14 @@ export const ja = {
     pageWithAreasMultiple: "ページ {page}、範囲 {count} 個",
     pageAlt: "{name} の {page} ページ",
     toolbar: {
-      sizeLabel: "表示の大きさ",
-      fitWidth: "幅",
-      fitPage: "全体",
+      viewLabel: "表示",
+      fitWidth: "幅に合わせる",
+      fitPage: "全体を表示",
+      zoomPreset: "{percent}%",
       zoomOut: "縮小",
       zoomIn: "拡大",
-      candidates: "候補",
+      showCandidates: "候補を表示",
       addAreas: "範囲を追加 ▾",
-      toolLabel: "道具",
-      select: "選ぶ",
-      draw: "描く",
       keyHints: "キー操作",
       keyHintsTitle: "キー操作（?）",
     },
@@ -272,22 +269,17 @@ export const ja = {
       close: "閉じる",
       groups: [
         {
-          title: "ツール",
+          title: "範囲の編集",
           rows: [
-            {
-              keys: [["V"]],
-              action: "選択モード（クリックで選ぶ・加える、ドラッグで動かす）",
-            },
             {
               keys: [["R"]],
               action: "範囲を描く（ドラッグで新しい範囲を描く）",
             },
+            {
+              keys: [["Enter"]],
+              action: "範囲を描くとき、ページ全体を範囲にする",
+            },
             { keys: [["Esc"]], action: "選択を解除・操作を取り消す" },
-          ],
-        },
-        {
-          title: "範囲の編集",
-          rows: [
             {
               keys: [["Delete"], ["Backspace"]],
               action: "範囲を削除（候補なら非表示にする）",
@@ -336,7 +328,7 @@ export const ja = {
       label: "範囲を追加",
       thisPage: "このページの候補をすべて追加",
       allPages: "全ページの候補をすべて追加",
-      wholePage: "ページ全体を範囲にする",
+      draw: "範囲を描く",
     },
     areaKinds: {
       photo: "写真",
@@ -346,6 +338,8 @@ export const ja = {
       manual: "手で選んだ範囲",
     },
     searching: "候補を探しています…",
+    candidatesHidden: "候補を隠しています",
+    drawing: "ドラッグで範囲を描きます（Enter でページ全体、Esc でやめる）",
     candidateAria: "候補：{kind}",
     photoFrameAria: "写真の枠",
     areaAria: "範囲：{kind}",
@@ -360,7 +354,7 @@ export const ja = {
       title: "範囲",
       empty: "範囲はまだありません",
       emptyHint:
-        "ページの候補や写真を押すと範囲になります。全ページの候補をまとめて加えることもできます。",
+        "ページの候補や写真を押すと範囲になります。全ページの候補をまとめて加えることも、候補にないものを「範囲を追加」の「範囲を描く」で描くこともできます。",
       detectAll: "全ページの候補を追加",
       summarySingle: "{count} 個 · 書き出す {checked} 個",
       summaryMultiple: "{count} 個 · 書き出す {checked} 個",

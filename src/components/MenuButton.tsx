@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useId,
   useRef,
@@ -14,6 +15,13 @@ export interface MenuButtonItem {
   label: string;
   /** An item that cannot be chosen now is shown but skipped by the arrow keys. */
   disabled?: boolean;
+  /**
+   * Set on the items of a menu that picks one of several states: the item is
+   * a `menuitemradio` and shows a check while it is the state in use.
+   */
+  checked?: boolean;
+  /** Draws a rule above the item, to set it apart from the ones before. */
+  separatorBefore?: boolean;
   onSelect: () => void;
 }
 
@@ -26,6 +34,14 @@ export interface MenuButtonProps {
   /** A disabled button cannot open the menu, and closes it if it is open. */
   disabled?: boolean;
   className?: string;
+  /** Names the button when what it says does not (e.g. a bare number). */
+  label?: string;
+  /**
+   * Which edge of the button the menu lines up with: `end` for a button at
+   * the right of its toolbar, `start` for one further left, whose menu would
+   * otherwise run off to the left.
+   */
+  align?: "start" | "end";
 }
 
 /** Which item takes the focus when the menu opens. */
@@ -44,6 +60,8 @@ export function MenuButton({
   items,
   disabled = false,
   className,
+  label,
+  align = "end",
 }: MenuButtonProps) {
   const [open, setOpen] = useState(false);
   // A menu does not wait to come back when the button is enabled again.
@@ -55,6 +73,8 @@ export function MenuButton({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const menuId = useId();
+  // The checks keep a column of their own, so the labels line up.
+  const hasChecks = items.some((item) => item.checked !== undefined);
 
   function enabledIndexes(): number[] {
     return items.flatMap((item, index) => (item.disabled ? [] : [index]));
@@ -162,6 +182,7 @@ export function MenuButton({
         ref={buttonRef}
         type="button"
         className={className}
+        aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -176,27 +197,37 @@ export function MenuButton({
           id={menuId}
           role="menu"
           aria-label={menuLabel}
-          className="menu-button-menu"
+          className={`menu-button-menu is-${align}`}
           onKeyDown={handleMenuKeyDown}
         >
           {items.map((item, index) => (
-            <button
-              key={item.id}
-              ref={(element) => {
-                itemRefs.current[index] = element;
-              }}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              className="menu-button-item"
-              disabled={item.disabled}
-              onClick={() => {
-                closeAndFocusButton();
-                item.onSelect();
-              }}
-            >
-              {item.label}
-            </button>
+            <Fragment key={item.id}>
+              {item.separatorBefore === true && (
+                <div role="separator" className="menu-button-separator" />
+              )}
+              <button
+                ref={(element) => {
+                  itemRefs.current[index] = element;
+                }}
+                type="button"
+                role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+                aria-checked={item.checked}
+                tabIndex={-1}
+                className="menu-button-item"
+                disabled={item.disabled}
+                onClick={() => {
+                  closeAndFocusButton();
+                  item.onSelect();
+                }}
+              >
+                {hasChecks && (
+                  <span className="menu-button-check" aria-hidden="true">
+                    {item.checked === true ? "✓" : ""}
+                  </span>
+                )}
+                {item.label}
+              </button>
+            </Fragment>
           ))}
         </div>
       )}

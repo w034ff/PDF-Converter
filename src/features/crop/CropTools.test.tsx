@@ -19,6 +19,7 @@ import {
   pickDrawTool,
   pressAt,
   releaseAt,
+  rowText,
 } from "./cropTestSupport";
 
 beforeEach(() => {
@@ -64,8 +65,18 @@ function viewport(): HTMLElement {
   return screen.getByTestId("crop-viewport");
 }
 
-function tool(name: "選ぶ" | "描く"): HTMLElement {
-  return screen.getByRole("button", { name });
+const DRAWING_NOTE =
+  "ドラッグで範囲を描きます（Enter でページ全体、Esc でやめる）";
+
+/** Whether a drag would draw an area; the note under the page says so too. */
+function isDrawing(): boolean {
+  const drawing = overlay().classList.contains("is-drawing");
+  expect(screen.queryByText(DRAWING_NOTE) !== null).toBe(drawing);
+  return drawing;
+}
+
+function addMenuButton(): HTMLElement {
+  return screen.getByRole("button", { name: "範囲を追加 ▾" });
 }
 
 function suggestion(kind: string): HTMLElement {
@@ -142,28 +153,28 @@ describe("putting a wrong suggestion aside", () => {
   });
 });
 
-describe("the tools", () => {
-  it("start on select, and draw one area with draw before going back", async () => {
+describe("drawing", () => {
+  it("is off at first, and draws one area from the add menu before it stops", async () => {
     await openNested();
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(tool("描く"));
-    expect(tool("描く")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(false);
+    pickDrawTool();
+    expect(isDrawing()).toBe(true);
 
     dragFromTo(overlay(), [300, 500], [400, 600]);
     await flush();
     expect(areaRows()).toHaveLength(1);
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(false);
   });
 
-  it("stay on draw after a rectangle too small to add", async () => {
+  it("goes on after a rectangle too small to add", async () => {
     await openNested();
     pickDrawTool();
     dragFromTo(overlay(), [300, 500], [302, 600]);
     expect(areaRows()).toHaveLength(0);
-    expect(tool("描く")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(true);
   });
 
-  it("draw over a suggestion, a frame and an area, and add none of them by a press", async () => {
+  it("draws over a suggestion, a frame and an area, and adds none of them by a press", async () => {
     await openNested();
     fireEvent.click(suggestion("chart"));
     await flush();
@@ -180,7 +191,7 @@ describe("the tools", () => {
     expect(screen.queryAllByTestId("crop-handle")).toHaveLength(8);
   });
 
-  it("show no handles while drawing", async () => {
+  it("shows no handles", async () => {
     await openNested();
     fireEvent.click(suggestion("chart"));
     await flush();
@@ -189,37 +200,72 @@ describe("the tools", () => {
     expect(screen.queryAllByTestId("crop-handle")).toHaveLength(0);
   });
 
-  it("are picked with V and R, and Esc leaves draw keeping the selection", async () => {
+  it("starts with R, not V, and Esc stops it keeping the selection", async () => {
     await openNested();
     fireEvent.click(suggestion("chart"));
     await flush();
-    fireEvent.keyDown(document.body, { key: "r" });
-    expect(tool("描く")).toHaveAttribute("aria-pressed", "true");
     fireEvent.keyDown(document.body, { key: "v" });
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(false);
+    fireEvent.keyDown(document.body, { key: "r" });
+    expect(isDrawing()).toBe(true);
+    fireEvent.keyDown(document.body, { key: "v" });
+    expect(isDrawing()).toBe(true);
 
-    fireEvent.keyDown(document.body, { key: "R" });
     fireEvent.keyDown(viewport(), { key: "Escape" });
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(false);
+    fireEvent.keyDown(document.body, { key: "R" });
+    expect(isDrawing()).toBe(true);
+    fireEvent.keyDown(viewport(), { key: "Escape" });
+    expect(isDrawing()).toBe(false);
     expect(screen.getByTestId("crop-area")).toHaveAttribute(
       "data-selected",
       "true",
     );
   });
 
-  it("cannot be draw while a conversion runs", async () => {
+  it("makes the whole page an area with Enter, wherever the focus is, and stops", async () => {
+    await openNested();
+    pickDrawTool();
+    const button = addMenuButton();
+    button.focus();
+    // Taken before the button, which would open the menu again.
+    expect(fireEvent.keyDown(button, { key: "Enter" })).toBe(false);
+    await flush();
+
+    expect(screen.queryByRole("menu")).toBeNull();
+    const [row] = areaRows();
+    expect(rowText(row)).toContain("手で選んだ範囲");
+    expect(rowText(row)).toContain("150 dpi · 1240 × 1754");
+    expect(screen.getByTestId("crop-area")).toHaveAttribute(
+      "data-selected",
+      "true",
+    );
+    expect(isDrawing()).toBe(false);
+  });
+
+  it("leaves Enter alone when not drawing, and with a modifier", async () => {
+    await openNested();
+    expect(fireEvent.keyDown(document.body, { key: "Enter" })).toBe(true);
+    pickDrawTool();
+    fireEvent.keyDown(document.body, { key: "Enter", ctrlKey: true });
+    await flush();
+    expect(areaRows()).toHaveLength(0);
+    expect(isDrawing()).toBe(true);
+  });
+
+  it("stops when a conversion starts, and cannot start while it runs", async () => {
     await openNested();
     fireEvent.click(suggestion("chart"));
     await flush();
     pickDrawTool();
     fireEvent.click(screen.getByRole("button", { name: "書き出す" }));
     await flush();
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
-    expect(tool("描く")).toBeDisabled();
+    expect(isDrawing()).toBe(false);
+    expect(addMenuButton()).toBeDisabled();
     fireEvent.keyDown(document.body, { key: "r" });
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(false);
 
-    // Nor does R pressed then pick it for after the conversion.
+    // Nor does R pressed then start it for after the conversion.
     await emitJobFinished({
       succeeded: 1,
       failed: 0,
@@ -227,7 +273,7 @@ describe("the tools", () => {
       unprocessed: 0,
       cancelled: false,
     });
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(false);
   });
 });
 
@@ -253,7 +299,7 @@ describe("dragging the page", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "書き出す" }));
     await flush();
-    expect(tool("描く")).toBeDisabled();
+    expect(addMenuButton()).toBeDisabled();
     viewport().scrollTop = 200;
     pressAt(overlay(), [300, 600]);
     moveTo([300, 560]);
@@ -290,7 +336,7 @@ describe("the list of keys", () => {
     fireEvent.keyDown(dialog, { key: "r" });
     await flush();
     expect(areaRows()).toHaveLength(1);
-    expect(tool("選ぶ")).toHaveAttribute("aria-pressed", "true");
+    expect(isDrawing()).toBe(false);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
     await flush();

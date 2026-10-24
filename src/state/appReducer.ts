@@ -221,8 +221,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ? withExportedItem(next, action.item.id)
         : next;
     }
-    // A conversion freezes the areas, so "描く" has nothing left to do; it
-    // does not come back when the conversion ends (design §10.1).
+    // A conversion freezes the areas, so drawing one has nothing left to do;
+    // it does not come back when the conversion ends (design §10.1).
     case "JOB_STARTED":
       return {
         ...state,

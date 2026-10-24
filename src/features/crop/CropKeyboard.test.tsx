@@ -7,6 +7,8 @@ import {
   boxPt,
   candidate,
   drawFromTo,
+  toggleCandidates,
+  viewMenuButton,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -116,7 +118,7 @@ describe("what the keyboard reaches", () => {
   it("leaves out the suggestions that are hidden", async () => {
     await openWithAll();
     await drawAreas(1);
-    fireEvent.click(screen.getByRole("checkbox", { name: "候補" }));
+    toggleCandidates();
     expect(tabbableKinds()).toEqual(["crop-photo-frame", "crop-area"]);
   });
 
@@ -455,9 +457,9 @@ describe("Delete and Backspace", () => {
     await openWithAll();
     await drawAreas(1);
     fireEvent.click(areaElements()[0]);
-    const toggle = screen.getByRole("checkbox", { name: "候補" });
-    toggle.focus();
-    press(toggle, "Backspace");
+    const outside = viewMenuButton();
+    outside.focus();
+    press(outside, "Backspace");
     await flush();
     expect(areaRows()).toHaveLength(1);
   });

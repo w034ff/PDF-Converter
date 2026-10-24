@@ -20,6 +20,7 @@ import {
   brokenCropPdf,
   callsOf,
   cropPdf,
+  expectPageShown,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -253,11 +254,19 @@ describe("the crop tab: opening a PDF", () => {
         { id: 7 },
       ]);
       expect(callsOf(calls, "discard_crop_pdf")).toHaveLength(0);
-      expect(screen.getByText("market-report.pdf")).toBeInTheDocument();
-      expect(screen.getByText("1 / 12")).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "別の PDF を開く" }),
-      ).toBeInTheDocument();
+      // The name and the button sit at the left of the toolbar; the name
+      // shows whole on hover, as it may be cut short.
+      const toolbar = screen.getByText("market-report.pdf").parentElement;
+      expect(screen.getByText("market-report.pdf")).toHaveAttribute(
+        "title",
+        "market-report.pdf",
+      );
+      expectPageShown(1, 12);
+      const openAnother = screen.getByRole("button", {
+        name: "別の PDF を開く",
+      });
+      expect(openAnother).toHaveAttribute("title", "別の PDF を開く");
+      expect(toolbar).toContainElement(openAnother);
       expect(screen.getByText("範囲が選ばれていません")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "書き出す" })).toBeDisabled();
     });
@@ -312,7 +321,7 @@ describe("the crop tab: opening a PDF", () => {
         { id: 7 },
       ]);
       expect(screen.getByText("good.pdf")).toBeInTheDocument();
-      expect(screen.getByText("1 / 4")).toBeInTheDocument();
+      expectPageShown(1, 4);
       expect(screen.getByRole("alert")).toHaveTextContent(
         "PDF を読み込めませんでした。ファイルが壊れている可能性があります",
       );
@@ -413,6 +422,26 @@ describe("the crop tab: opening a PDF", () => {
       expect(within(dialog).getByLabelText("パスワード")).toBeInTheDocument();
     });
 
+    it("keeps the name and the button to open another, without a page", async () => {
+      mockCropIpc({ open_crop_pdf: () => lockedPdf() });
+      renderApp();
+      openCropTab();
+      pressOpen("PDF を開く");
+      await flush();
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "キャンセル",
+        }),
+      );
+      await flush();
+
+      expect(screen.getByText("locked.pdf")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "別の PDF を開く" }),
+      ).toBeEnabled();
+      expect(screen.queryByTestId("crop-viewport")).toBeNull();
+    });
+
     it("keeps the dialog open with an error for a wrong password", async () => {
       const calls = mockCropIpc({
         open_crop_pdf: () => lockedPdf(),
@@ -460,7 +489,7 @@ describe("the crop tab: opening a PDF", () => {
       await flush();
 
       expect(screen.queryByRole("dialog")).toBeNull();
-      expect(screen.getByText("1 / 6")).toBeInTheDocument();
+      expectPageShown(1, 6);
       expect(
         screen.getByRole("navigation", { name: "ページ" }),
       ).toBeInTheDocument();
@@ -532,7 +561,7 @@ describe("the crop tab: opening a PDF", () => {
         { id: 21 },
       ]);
       expect(screen.getByText("dropped.pdf")).toBeInTheDocument();
-      expect(screen.getByText("1 / 3")).toBeInTheDocument();
+      expectPageShown(1, 3);
     });
 
     it("drops a broken PDF that was dropped, keeping the open one", async () => {

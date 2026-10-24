@@ -247,7 +247,6 @@ export const en: Translations = {
       open: "Open PDF",
     },
     openAnother: "Open another PDF",
-    pageCounter: "{page} / {total}",
     notOnePdf: "Open one PDF at a time to crop",
     pagesAria: "Pages",
     pageAria: "Page {page}",
@@ -255,16 +254,14 @@ export const en: Translations = {
     pageWithAreasMultiple: "Page {page}, {count} areas",
     pageAlt: "Page {page} of {name}",
     toolbar: {
-      sizeLabel: "Display size",
-      fitWidth: "Width",
-      fitPage: "Page",
+      viewLabel: "View",
+      fitWidth: "Fit width",
+      fitPage: "Fit page",
+      zoomPreset: "{percent}%",
       zoomOut: "Zoom out",
       zoomIn: "Zoom in",
-      candidates: "Suggestions",
+      showCandidates: "Show suggestions",
       addAreas: "Add areas ▾",
-      toolLabel: "Tool",
-      select: "Select",
-      draw: "Draw",
       keyHints: "Keyboard shortcuts",
       keyHintsTitle: "Keyboard shortcuts (?)",
     },
@@ -273,22 +270,17 @@ export const en: Translations = {
       close: "Close",
       groups: [
         {
-          title: "Tools",
+          title: "Editing areas",
           rows: [
-            {
-              keys: [["V"]],
-              action: "Select mode (click to select or add, drag to move)",
-            },
             { keys: [["R"]], action: "Draw an area (drag to draw a new area)" },
+            {
+              keys: [["Enter"]],
+              action: "While drawing, make the whole page an area",
+            },
             {
               keys: [["Esc"]],
               action: "Deselect, or cancel the current action",
             },
-          ],
-        },
-        {
-          title: "Editing areas",
-          rows: [
             {
               keys: [["Delete"], ["Backspace"]],
               action: "Remove the area (hide a suggestion)",
@@ -337,7 +329,7 @@ export const en: Translations = {
       label: "Add areas",
       thisPage: "Add all suggestions on this page",
       allPages: "Add all suggestions on all pages",
-      wholePage: "Make the whole page an area",
+      draw: "Draw an area",
     },
     areaKinds: {
       photo: "Photo",
@@ -347,6 +339,8 @@ export const en: Translations = {
       manual: "Custom area",
     },
     searching: "Looking for suggestions…",
+    candidatesHidden: "Suggestions are hidden",
+    drawing: "Drag to draw an area (Enter for the whole page, Esc to stop)",
     candidateAria: "Suggestion: {kind}",
     photoFrameAria: "Photo frame",
     areaAria: "Area: {kind}",
@@ -361,7 +355,7 @@ export const en: Translations = {
       title: "Areas",
       empty: "No areas yet",
       emptyHint:
-        "Press a suggestion or a photo on the page to make it an area, or add the suggestions on all pages at once.",
+        "Press a suggestion or a photo on the page to make it an area, or add the suggestions on all pages at once. Draw what no suggestion covers with Add areas > Draw an area.",
       detectAll: "Add suggestions on all pages",
       summarySingle: "{count} area · {checked} to export",
       summaryMultiple: "{count} areas · {checked} to export",
