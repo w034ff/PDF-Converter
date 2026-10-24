@@ -275,23 +275,26 @@ export const ja = {
       rows: [
         {
           keys: "V",
-          action:
-            "選ぶ（押して範囲を加える・選ぶ、ドラッグで範囲やページを動かす）",
+          action: "選択モード（クリックで選ぶ・加える、ドラッグで動かす）",
         },
-        { keys: "R", action: "描く（ドラッグで範囲を 1 つ描く）" },
-        {
-          keys: "Esc",
-          action: "描くのをやめる、選ぶのをやめる、ドラッグを取りやめる",
-        },
+        { keys: "R", action: "範囲を描く（ドラッグで新しい範囲を描く）" },
+        { keys: "Esc", action: "選択を解除・操作を取り消す" },
         { keys: "Ctrl+Z", action: "元に戻す" },
         { keys: "Ctrl+Y・Ctrl+Shift+Z", action: "やり直す" },
-        { keys: "Delete・Backspace", action: "範囲を消す（候補なら隠す）" },
-        { keys: "矢印・Shift+矢印", action: "範囲を 1 pt・10 pt 動かす" },
-        { keys: "Alt+矢印", action: "範囲の右と下の辺を動かす" },
         {
-          keys: "Tab・Enter・Space",
-          action: "枠・候補・範囲を順に移り、加える・選ぶ",
+          keys: "Delete / Backspace",
+          action: "範囲を削除（候補なら非表示にする）",
         },
+        {
+          keys: "矢印 / Shift+矢印",
+          action: "範囲を 1 pt 動かす（Shift で 10 pt）",
+        },
+        {
+          keys: "Alt+矢印",
+          action: "範囲の大きさを変える（右と下の辺を伸縮）",
+        },
+        { keys: "Tab / Shift+Tab", action: "枠・候補・範囲を順に移る" },
+        { keys: "Enter / Space", action: "選ぶ・候補を範囲に加える" },
         { keys: "Ctrl+ホイール", action: "拡大・縮小" },
         { keys: "?", action: "この一覧を開く" },
       ],

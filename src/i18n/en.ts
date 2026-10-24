@@ -276,28 +276,31 @@ export const en: Translations = {
       rows: [
         {
           keys: "V",
-          action:
-            "Select (press to add or select an area, drag to move an area or the page)",
+          action: "Select mode (click to select or add, drag to move)",
         },
-        { keys: "R", action: "Draw (drag to draw one area)" },
-        { keys: "Esc", action: "Stop drawing, deselect, or call a drag off" },
+        { keys: "R", action: "Draw an area (drag to draw a new area)" },
+        { keys: "Esc", action: "Deselect, or cancel the current action" },
         { keys: "Ctrl+Z", action: "Undo" },
         { keys: "Ctrl+Y, Ctrl+Shift+Z", action: "Redo" },
         {
-          keys: "Delete, Backspace",
+          keys: "Delete / Backspace",
           action: "Remove the area (hide a suggestion)",
         },
         {
-          keys: "Arrows, Shift+Arrows",
-          action: "Move the area by 1 pt or 10 pt",
+          keys: "Arrows / Shift+Arrows",
+          action: "Move the area by 1 pt (10 pt with Shift)",
         },
         {
           keys: "Alt+Arrows",
-          action: "Move the area's right and bottom edges",
+          action: "Resize the area (move the right and bottom edges)",
         },
         {
-          keys: "Tab, Enter, Space",
-          action: "Go through frames, suggestions and areas; add or select",
+          keys: "Tab / Shift+Tab",
+          action: "Go through frames, suggestions and areas",
+        },
+        {
+          keys: "Enter / Space",
+          action: "Select, or add a suggestion as an area",
         },
         { keys: "Ctrl+Wheel", action: "Zoom in or out" },
         { keys: "?", action: "Open this list" },
