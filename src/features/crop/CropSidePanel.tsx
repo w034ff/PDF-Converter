@@ -1,7 +1,8 @@
 import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
-import { useAppState } from "../../state";
+import { isJobActive, useAppState } from "../../state";
 import { JobSummaryBanner } from "../job/JobSummaryBanner";
+import { useJobRunner } from "../job/useJobRunner";
 import { CropAreaList } from "./CropAreaList";
 import { CropExportSettings } from "./CropExportSettings";
 import "./crop.css";
@@ -12,7 +13,8 @@ import "./crop.css";
  * to be exported, and the export settings under it.
  */
 export function CropSidePanel({ pdf }: { pdf: CropPdf }) {
-  const { language, crop } = useAppState();
+  const { language, crop, job } = useAppState();
+  const runner = useJobRunner();
   const t = getTranslations(language.language);
   const count = crop.areas.length;
   const checked = crop.areas.filter((area) => area.checked).length;
@@ -35,7 +37,21 @@ export function CropSidePanel({ pdf }: { pdf: CropPdf }) {
       </div>
       <div className="crop-ranges">
         {count === 0 ? (
-          <p className="hint">{t.crop.ranges.empty}</p>
+          // The way in to the main use: let the analysis find the areas.
+          <div className="crop-ranges-empty">
+            <p className="hint">{t.crop.ranges.empty}</p>
+            <p className="hint">{t.crop.ranges.emptyHint}</p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={
+                crop.layoutUnavailable || pdf.error !== null || isJobActive(job)
+              }
+              onClick={() => void runner.startDetectAll(pdf.id)}
+            >
+              {t.crop.ranges.detectAll}
+            </button>
+          </div>
         ) : (
           <CropAreaList pdf={pdf} />
         )}

@@ -8,6 +8,7 @@ import {
   candidate,
   emitLayoutPage,
   emitLayoutPages,
+  drawWholePage,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -205,11 +206,7 @@ describe("the questions the photo areas bring", () => {
     });
     fireEvent.click(screen.getByTestId("crop-photo-frame"));
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "ページ全体を範囲にする" }),
-    );
-    await flush();
+    await drawWholePage();
     await flush();
 
     expect(callsOf(calls, "list_page_images")).toHaveLength(1);
@@ -234,11 +231,7 @@ describe("the questions the photo areas bring", () => {
 
     // Other changes do not make it ask again.
     failing = false;
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "ページ全体を範囲にする" }),
-    );
-    await flush();
+    await drawWholePage();
     fireEvent.click(screen.getByRole("button", { name: "ページ 2" }));
     await flush();
     expect(callsOf(calls, "check_on_top")).toHaveLength(1);

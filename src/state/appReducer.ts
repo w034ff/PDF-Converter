@@ -163,6 +163,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "CROP_AREA_CHANGED":
     case "CROP_AREA_REMOVED":
     case "CROP_AREA_CHECKED":
+    case "CROP_CANDIDATE_HIDDEN":
+    case "CROP_UNDO":
+    case "CROP_REDO":
       return isJobActive(state.job) ? state : reduceCrop(state, action, true);
     case "CROP_PDF_ACTIVATED":
     case "CROP_PDF_CLOSED":
@@ -196,6 +199,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "CROP_DETECT_ALL_STARTED":
     case "CROP_REPLACE_PENDING":
     case "SET_CROP_SETTINGS_OPEN":
+    case "CROP_TOOL_SET":
       return reduceCrop(state, action, false);
     // The answers to a range check follow the user's edit; the edit itself
     // already dropped the result.
@@ -217,7 +221,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ? withExportedItem(next, action.item.id)
         : next;
     }
+    // A conversion freezes the areas, so drawing one has nothing left to do;
+    // it does not come back when the conversion ends (design §10.1).
     case "JOB_STARTED":
+      return {
+        ...state,
+        job: jobReducer(state.job, action),
+        crop:
+          state.crop.tool === "draw"
+            ? { ...state.crop, tool: "select" }
+            : state.crop,
+      };
     case "JOB_CANCEL_REQUESTED":
     case "JOB_PROGRESS":
     case "JOB_FINISHED":

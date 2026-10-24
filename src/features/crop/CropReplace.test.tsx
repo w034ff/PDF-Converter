@@ -21,6 +21,8 @@ import {
   cropPdf,
   emitJobFinished,
   emitJobItem,
+  drawWholePage,
+  expectPageShown,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -68,11 +70,7 @@ async function openWithAreas(count = 2): Promise<Call[]> {
       screen.getByRole("button", { name: new RegExp(`^ページ ${page}(、|$)`) }),
     );
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "ページ全体を範囲にする" }),
-    );
-    await flush();
+    await drawWholePage();
   }
   return calls;
 }
@@ -141,7 +139,7 @@ describe("replacing a PDF whose areas were not exported", () => {
     expect(callsOf(calls, "discard_crop_pdf")).toHaveLength(0);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("next.pdf")).toBeInTheDocument();
-    expect(screen.getByText("1 / 6")).toBeInTheDocument();
+    expectPageShown(1, 6);
     expect(screen.getByText("範囲はまだありません")).toBeInTheDocument();
   });
 
@@ -265,11 +263,7 @@ describe("replacing a PDF whose areas were not exported", () => {
       cropPdf(),
       "en",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Add areas ▾" }));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Make the whole page an area" }),
-    );
-    await flush();
+    await drawWholePage();
     fireEvent.click(screen.getByRole("button", { name: "Open another PDF" }));
     await flush();
 

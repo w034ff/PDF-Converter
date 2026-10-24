@@ -13,6 +13,7 @@ import {
   cropPdf,
   deferred,
   dragFromTo,
+  drawFromTo,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -52,7 +53,7 @@ function rowImage(index: number): HTMLElement | null {
 }
 
 function drawSquare(x: number, y = 500, side = 100) {
-  dragFromTo(overlay(), [x, y], [x + side, y + side]);
+  drawFromTo(overlay(), [x, y], [x + side, y + side]);
 }
 
 describe("the previews of the list of areas", () => {

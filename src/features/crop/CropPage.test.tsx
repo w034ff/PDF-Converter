@@ -15,6 +15,9 @@ import {
   candidate,
   cropPdf,
   deferred,
+  expectPageShown,
+  viewMenuButton,
+  pickView,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -102,14 +105,14 @@ describe("the thumbnails", () => {
     expect(thumbnails.every((c) => c.args.id === 7)).toBe(true);
   });
 
-  it("shows the page that is pressed, in the band and by the frame", async () => {
+  it("shows the page that is pressed, marked by its thumbnail's frame", async () => {
     await openPdf();
-    expect(screen.getByText("1 / 4")).toBeInTheDocument();
+    expectPageShown(1, 4);
 
     pickPage(3);
     await flush();
 
-    expect(screen.getByText("3 / 4")).toBeInTheDocument();
+    expectPageShown(3, 4);
     const nav = screen.getByRole("navigation", { name: "ページ" });
     const [one, , three] = within(nav).getAllByRole("button");
     expect(three).toHaveAttribute("aria-current", "page");
@@ -281,48 +284,75 @@ describe("the page", () => {
   });
 });
 
+/** The names of the view menu's checked items; the menu is closed again after. */
+function checkedViews(): string[] {
+  fireEvent.click(viewMenuButton());
+  const names = screen
+    .getAllByRole("menuitemradio")
+    .filter((item) => item.getAttribute("aria-checked") === "true")
+    .map((item) => item.textContent.replace("✓", ""));
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  return names;
+}
+
 describe("the size", () => {
   it("starts with the whole page", async () => {
     await openPdf();
-    const group = screen.getByRole("group", { name: "表示の大きさ" });
-    expect(within(group).getByRole("button", { name: "全体" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    expect(viewMenuButton()).toHaveAttribute(
+      "aria-label",
+      `表示 ${FIT_PAGE_PERCENT}%`,
     );
-    expect(within(group).getByRole("button", { name: "幅" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(checkedViews()).toEqual(["全体を表示", "候補を表示"]);
+  });
+
+  it("offers the fits, three sizes and the candidates, in that order", async () => {
+    await openPdf();
+    fireEvent.click(viewMenuButton());
+    const menu = screen.getByRole("menu", { name: "表示" });
+    expect(
+      [...menu.children].map((child) =>
+        child.getAttribute("role") === "separator" ? "—" : child.textContent,
+      ),
+    ).toEqual([
+      "✓全体を表示",
+      "幅に合わせる",
+      "—",
+      "50%",
+      "100%",
+      "200%",
+      "—",
+      "✓候補を表示",
+    ]);
   });
 
   it("fits the width", async () => {
     await openPdf();
-    fireEvent.click(screen.getByRole("button", { name: "幅" }));
+    pickView("幅に合わせる");
 
     expect(percentText()).toBe(`${FIT_WIDTH_PERCENT}%`);
-    expect(screen.getByRole("button", { name: "幅" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "全体" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(checkedViews()).toEqual(["幅に合わせる", "候補を表示"]);
   });
 
-  it("moves to the next step with ＋ and −, and then neither fit is pressed", async () => {
+  it("shows a size picked in the menu, checked while it is that size", async () => {
+    await openPdf();
+    pickView("200%");
+    expect(percentText()).toBe("200%");
+    expect(checkedViews()).toEqual(["200%", "候補を表示"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "縮小" }));
+    expect(percentText()).toBe("150%");
+    expect(checkedViews()).toEqual(["候補を表示"]);
+
+    pickView("全体を表示");
+    expect(percentText()).toBe(`${FIT_PAGE_PERCENT}%`);
+  });
+
+  it("moves to the next step with ＋ and −, and then neither fit is checked", async () => {
     await openPdf();
 
     fireEvent.click(screen.getByRole("button", { name: "拡大" }));
     expect(percentText()).toBe("75%");
-    expect(screen.getByRole("button", { name: "全体" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    expect(screen.getByRole("button", { name: "幅" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(checkedViews()).toEqual(["候補を表示"]);
 
     fireEvent.click(screen.getByRole("button", { name: "拡大" }));
     expect(percentText()).toBe("90%");
@@ -366,7 +396,7 @@ describe("the size", () => {
     // 400 px of height: 400 / (842 · 96 / 72) = 35.6 %.
     expect(percentText()).toBe("36%");
 
-    fireEvent.click(screen.getByRole("button", { name: "幅" }));
+    pickView("幅に合わせる");
     resizeRoom(900, 400);
     expect(percentText()).toBe("113%");
 
@@ -394,10 +424,7 @@ describe("the size", () => {
       });
       expect(zoomedOut).toBe(false);
       expect(percentText()).toBe("67%");
-      expect(screen.getByRole("button", { name: "全体" })).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
+      expect(checkedViews()).toEqual(["候補を表示"]);
     });
 
     it("moves one step per event even before the screen is drawn again", async () => {
@@ -531,23 +558,29 @@ describe("the frames and candidates", () => {
     expect(tags).toEqual(["写真", "図", "グラフ", "表"]);
   });
 
-  it("hides the candidates, and only them, with the checkbox", async () => {
+  it("hides the candidates, and only them, from the view menu, and says so", async () => {
     await openPdf({
       list_page_images: () => photos,
       detect_layout: () => candidates,
     });
-    const checkbox = screen.getByRole("checkbox", { name: "候補" });
-    expect(checkbox).toBeChecked();
+    const shownItem = () =>
+      screen.getByRole("menuitemradio", { name: "候補を表示" });
     expect(screen.getAllByTestId("crop-candidate")).toHaveLength(2);
+    fireEvent.click(viewMenuButton());
+    expect(shownItem()).toHaveAttribute("aria-checked", "true");
 
-    fireEvent.click(checkbox);
+    fireEvent.click(shownItem());
 
-    expect(checkbox).not.toBeChecked();
     expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
     expect(screen.getAllByTestId("crop-photo-frame")).toHaveLength(1);
+    expect(screen.getByText("候補を隠しています")).toBeInTheDocument();
+    fireEvent.click(viewMenuButton());
+    expect(shownItem()).toHaveAttribute("aria-checked", "false");
 
-    fireEvent.click(checkbox);
+    fireEvent.click(shownItem());
+
     expect(screen.getAllByTestId("crop-candidate")).toHaveLength(2);
+    expect(screen.queryByText("候補を隠しています")).toBeNull();
   });
 
   it("shows each page's own frames and candidates", async () => {
@@ -818,7 +851,7 @@ describe("an answer for a PDF that is no longer open", () => {
     fireEvent.click(screen.getByRole("button", { name: "別の PDF を開く" }));
     await flush();
 
-    expect(screen.getByText("1 / 4")).toBeInTheDocument();
+    expectPageShown(1, 4);
     expect(
       callsOf(calls, "detect_layout").map((c) => `${c.args.id}:${c.args.page}`),
     ).toEqual(["7:1", "7:3", "8:1"]);
@@ -842,7 +875,7 @@ describe("while another tab is shown", () => {
 
     // Already answered: coming back asks nothing more.
     expect(callsOf(calls, "detect_layout")).toHaveLength(asked);
-    expect(screen.getByText("1 / 4")).toBeInTheDocument();
+    expectPageShown(1, 4);
   });
 
   it("keeps the PDF, the page and the size when the tab is left and shown again", async () => {
@@ -855,7 +888,7 @@ describe("while another tab is shown", () => {
     openCropTab();
     await flush();
 
-    expect(screen.getByText("3 / 4")).toBeInTheDocument();
+    expectPageShown(3, 4);
     expect(percentText()).toBe("75%");
   });
 });

@@ -6,7 +6,9 @@ import {
   areaRows,
   boxPt,
   candidate,
-  dragFromTo,
+  drawFromTo,
+  toggleCandidates,
+  viewMenuButton,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -52,6 +54,17 @@ function areaElements(): HTMLElement[] {
   return screen.queryAllByTestId("crop-area");
 }
 
+/** The area with `key`; the page stacks them by size, not by key. */
+function areaByKey(key: number): HTMLElement {
+  const area = areaElements().find(
+    (element) => element.dataset.key === String(key),
+  );
+  if (area === undefined) {
+    throw new Error(`no area ${key}`);
+  }
+  return area;
+}
+
 function tabbableKinds(): (string | undefined)[] {
   return Array.from(
     overlay().querySelectorAll<HTMLElement>("[tabindex='0']"),
@@ -69,7 +82,7 @@ function tapEmptyPlace() {
 async function drawAreas(count: number) {
   for (let index = 0; index < count; index += 1) {
     const x = 20 + index * 120;
-    dragFromTo(overlay(), [x, 500], [x + 100, 600]);
+    drawFromTo(overlay(), [x, 500], [x + 100, 600]);
   }
   tapEmptyPlace();
   await flush();
@@ -89,7 +102,7 @@ function expectBox(
 }
 
 describe("what the keyboard reaches", () => {
-  it("is the suggestions, then the frames, then the areas, each a button", async () => {
+  it("follows the stacking, the biggest first, each a button", async () => {
     await openWithAll();
     await drawAreas(1);
     expect(tabbableKinds()).toEqual([
@@ -105,7 +118,7 @@ describe("what the keyboard reaches", () => {
   it("leaves out the suggestions that are hidden", async () => {
     await openWithAll();
     await drawAreas(1);
-    fireEvent.click(screen.getByRole("checkbox", { name: "候補" }));
+    toggleCandidates();
     expect(tabbableKinds()).toEqual(["crop-photo-frame", "crop-area"]);
   });
 
@@ -296,7 +309,7 @@ describe("the arrow keys", () => {
 
   it("stop at the edge of the page, change nothing and still stop the browser", async () => {
     await openWithAll();
-    dragFromTo(overlay(), [-50, 100], [100, 200]);
+    drawFromTo(overlay(), [-50, 100], [100, 200]);
     tapEmptyPlace();
     const [area] = areaElements();
     expectBox(area, [0, 100, 100, 200]);
@@ -306,8 +319,8 @@ describe("the arrow keys", () => {
     expectBox(area, [0, 100, 100, 200]);
     expect(area).toHaveAttribute("data-selected", "false");
 
-    dragFromTo(overlay(), [300, 700], [9000, 9000]);
-    const edge = areaElements()[1];
+    drawFromTo(overlay(), [300, 700], [9000, 9000]);
+    const edge = areaByKey(2);
     expectBox(edge, [300, 700, A4.widthPt, A4.heightPt]);
     press(edge, "ArrowRight", { shiftKey: true });
     press(edge, "ArrowDown");
@@ -318,7 +331,7 @@ describe("the arrow keys", () => {
 
   it("stop 4 pt from the opposite edge", async () => {
     await openWithAll();
-    dragFromTo(overlay(), [100, 100], [106, 150]);
+    drawFromTo(overlay(), [100, 100], [106, 150]);
     const [area] = areaElements();
     press(area, "ArrowLeft", { altKey: true, shiftKey: true });
     expectBox(area, [100, 100, 104, 150]);
@@ -366,8 +379,12 @@ describe("the arrow keys", () => {
 });
 
 describe("Delete and Backspace", () => {
+  function viewport(): HTMLElement {
+    return screen.getByTestId("crop-viewport");
+  }
+
   it.each(["Delete", "Backspace"])(
-    "%s removes the area and takes the focus to the next one, else the one before, else the view",
+    "%s removes the focused area and takes the focus to the view, not to another area",
     async (key) => {
       await openWithAll();
       await drawAreas(3);
@@ -377,18 +394,75 @@ describe("Delete and Backspace", () => {
       press(second, key);
       await flush();
       expect(areaRows()).toHaveLength(2);
-      expect(third).toHaveFocus();
-
-      press(third, key);
-      await flush();
-      expect(first).toHaveFocus();
-
-      press(first, key);
-      await flush();
-      expect(areaRows()).toHaveLength(0);
-      expect(screen.getByTestId("crop-viewport")).toHaveFocus();
+      expect(viewport()).toHaveFocus();
+      expect(first).not.toHaveFocus();
+      expect(third).not.toHaveFocus();
+      expect(
+        areaElements().filter((area) => area.dataset.selected === "true"),
+      ).toHaveLength(0);
     },
   );
+
+  it("removes the area just added by pressing a suggestion, which keeps the focus", async () => {
+    await openWithAll();
+    const suggestion = screen.getByTestId("crop-candidate");
+    suggestion.focus();
+    fireEvent.click(suggestion);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+
+    expect(press(suggestion, "Delete")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(0);
+    expect(viewport()).toHaveFocus();
+  });
+
+  it("removes the selected area while the view has the focus, and nothing when none is selected", async () => {
+    await openWithAll();
+    await drawAreas(2);
+    viewport().focus();
+    press(viewport(), "Backspace");
+    await flush();
+    expect(areaRows()).toHaveLength(2);
+
+    fireEvent.click(areaElements()[1]);
+    viewport().focus();
+    press(viewport(), "Backspace");
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    expect(viewport()).toHaveFocus();
+  });
+
+  it("removes the area of the row that has the focus and keeps the focus in the list", async () => {
+    await openWithAll();
+    await drawAreas(2);
+    fireEvent.click(areaElements()[0]);
+    const [, secondRow] = areaRows();
+    const list = secondRow.closest("ul");
+    const check = secondRow.querySelector("input");
+    if (check === null) {
+      throw new Error("the row has no checkbox");
+    }
+    check.focus();
+
+    expect(press(check, "Delete")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    // The selected area was the other one, and stays.
+    expect(areaElements()[0]).toHaveAttribute("data-selected", "true");
+    expect(list).toHaveFocus();
+  });
+
+  it("leaves the areas alone outside the page and the list", async () => {
+    await openWithAll();
+    await drawAreas(1);
+    fireEvent.click(areaElements()[0]);
+    const outside = viewMenuButton();
+    outside.focus();
+    press(outside, "Backspace");
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+  });
 
   it("does nothing while a conversion runs", async () => {
     await openWithAll();
@@ -402,6 +476,25 @@ describe("Delete and Backspace", () => {
     await flush();
     expect(areaRows()).toHaveLength(1);
     expect(area).toHaveFocus();
+
+    // Nor from elsewhere on the page, or from the list.
+    const suggestion = screen.getByTestId("crop-candidate");
+    suggestion.focus();
+    expect(press(suggestion, "Backspace")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    expect(suggestion).toHaveFocus();
+
+    // The row's checkbox is disabled then; its button is not.
+    const show = areaRows()[0].querySelector<HTMLElement>(".crop-area-main");
+    if (show === null) {
+      throw new Error("the row has no button");
+    }
+    show.focus();
+    expect(press(show, "Delete")).toBe(false);
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    expect(show).toHaveFocus();
   });
 });
 

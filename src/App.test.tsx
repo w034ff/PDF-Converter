@@ -643,18 +643,19 @@ describe("App", () => {
       expect(aboutButton).toHaveFocus();
     });
 
-    it("closes with the close button at the bottom", async () => {
+    it("closes with the × at the top right, its only close button", async () => {
       mockAppIpc((cmd) => (cmd === "get_about" ? ABOUT_READY : null));
       render(<App initialNavLang="ja" initialSettings={null} />);
+      const aboutButton = screen.getByRole("button", {
+        name: "このアプリについて",
+      });
       const dialog = openAbout();
       await within(dialog).findByText("バージョン 0.1.0");
 
-      const closeButtons = within(dialog).getAllByRole("button", {
-        name: "閉じる",
-      });
-      fireEvent.click(closeButtons[closeButtons.length - 1]);
+      fireEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(aboutButton).toHaveFocus();
     });
   });
 
