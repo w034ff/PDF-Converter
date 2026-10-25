@@ -63,8 +63,10 @@
   min-height: 0;
 }
 
-/* Over the page's bottom left, clear of the page's scroll bars. */
+/* Over the page's bottom left, clear of the page's scroll bars. It only
+   tells, so presses go through it to the page: drawing can start under it. */
 .crop-page-status {
+  pointer-events: none;
   position: absolute;
   left: 12px;
   bottom: 12px;
