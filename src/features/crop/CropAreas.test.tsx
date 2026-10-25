@@ -194,21 +194,49 @@ describe("pressing a candidate", () => {
     expect(selectedAreas()).toHaveLength(1);
   });
 
-  it("adds a photo area with the candidate's image, which the frame of that image then repeats", async () => {
+  it("leaves an image a photo candidate stands for to the candidate, and draws its frame while the candidates are hidden", async () => {
     const calls = await openPdfInCropTab({
       list_page_images: () => photos,
       detect_layout: () => candidates,
     });
+    expect(screen.queryAllByTestId("crop-photo-frame")).toHaveLength(0);
     fireEvent.click(candidateOf("photo"));
     await flush();
     expect(callsOf(calls, "check_on_top")).toHaveLength(1);
 
+    toggleCandidates();
     fireEvent.click(screen.getByTestId("crop-photo-frame"));
     await flush();
 
     expect(areaRows()).toHaveLength(1);
     expect(rowText(areaRows()[0])).toContain("写真");
     expect(callsOf(calls, "check_on_top")).toHaveLength(1);
+  });
+
+  it("draws no frame for an image whose photo candidate was put aside", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      detect_layout: () => candidates,
+    });
+    fireEvent.keyDown(candidateOf("photo"), { key: "Delete" });
+    await flush();
+    expect(
+      screen.getAllByTestId("crop-candidate").map((c) => c.dataset.kind),
+    ).toEqual(["chart"]);
+    expect(screen.queryAllByTestId("crop-photo-frame")).toHaveLength(0);
+  });
+
+  it("words the frame of an image without a photo candidate like one, until an area lies in its place", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      detect_layout: () => [candidate("chart", [50, 60, 250, 160])],
+    });
+    const frame = screen.getByTestId("crop-photo-frame");
+    expect(frame.textContent).toBe("写真");
+
+    fireEvent.click(frame);
+    await flush();
+    expect(screen.getByTestId("crop-photo-frame").textContent).toBe("");
   });
 
   it("keeps the areas when the candidates are hidden", async () => {

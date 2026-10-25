@@ -40,7 +40,7 @@ export interface CropOverlaysProps {
   /** The areas of the page. */
   areas: readonly CropArea[];
   selectedKey: number | null;
-  /** Whether the candidates are drawn; the frames of embedded images always are. */
+  /** Whether the candidates are drawn. The frames of embedded images are drawn either way, but those of photo candidates only while the candidates are not. */
   showCandidates: boolean;
   /** Whether the areas cannot be added or changed (a conversion runs). */
   locked: boolean;
@@ -109,10 +109,11 @@ interface PageMenu {
 }
 
 /**
- * What is drawn over the page (design §10.1): a dotted frame round each
- * embedded image, which is emphasized under the pointer, a thin line with the
- * kind's word round each candidate (without the word when an area lies in
- * its place), and the areas (an accent line with the kind's word, and a
+ * What is drawn over the page (design §10.1): a thin line with the kind's
+ * word round each candidate and each embedded image, alike as both add an
+ * area when pressed (without the word when an area lies in its place; an
+ * image a shown or put-aside photo candidate stands for is left to that
+ * candidate), and the areas (an accent line with the kind's word, and a
  * tinted ground when selected). With the "select" tool, pressing a frame or
  * a candidate adds the area it stands for, pressing an area selects it,
  * pressing the page elsewhere selects none, dragging an area or its handles
@@ -392,6 +393,16 @@ export function CropOverlays({
   const selectedArea = areas.find((area) => area.key === selectedKey);
   const pxPerPt = CSS_PX_PER_PT * scale;
   const pressable = locked ? "" : " is-pressable";
+  // A photo candidate and its image's frame add the same area and would be
+  // drawn on one another; the candidate stays, as it can be put aside. Once
+  // put aside it takes the frame with it, or the photo would seem to stay.
+  const candidateImages = new Set(
+    showCandidates
+      ? candidates.flatMap((candidate) =>
+          candidate.kind === "photo" ? [candidate.imageIndex] : [],
+        )
+      : [],
+  );
   const layers = stackLayers([
     ...(showCandidates
       ? candidates.flatMap((candidate, index): Layer[] =>
@@ -400,7 +411,9 @@ export function CropOverlays({
             : [{ kind: "candidate", index, candidate }],
         )
       : []),
-    ...images.map((image): Layer => ({ kind: "frame", image })),
+    ...images.flatMap((image): Layer[] =>
+      candidateImages.has(image.imageIndex) ? [] : [{ kind: "frame", image }],
+    ),
     ...areas.map((area): Layer => ({ kind: "area", area })),
   ]);
 
@@ -457,7 +470,11 @@ export function CropOverlays({
         style={rectToCssBox(image.rectPt, scale)}
         onClick={() => add(area)}
         onKeyDown={(event) => activate(event, () => addFromKeyboard(area))}
-      />
+      >
+        {findDuplicate(areas, area) === undefined && (
+          <span className="crop-tag">{t.crop.candidateKinds.photo}</span>
+        )}
+      </div>
     );
   }
 

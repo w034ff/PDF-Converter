@@ -133,12 +133,7 @@ describe("design tokens and CSS rules", () => {
     // The page is white in both themes, and the frames and the kind tags
     // drawn on it do not change with the theme (see tokens.css).
     const tokens = readThemeTokens("dark");
-    for (const fg of [
-      "--color-page-frame",
-      "--color-page-frame-hover",
-      "--color-page-candidate",
-      "--color-page-area",
-    ]) {
+    for (const fg of ["--color-page-candidate", "--color-page-area"]) {
       expect(
         contrastRatio(
           tokenValue(tokens, fg),

@@ -297,14 +297,9 @@
   cursor: pointer;
 }
 
-.crop-photo-frame {
-  border: 1.5px dashed var(--color-page-frame);
-}
-
-.crop-photo-frame:hover {
-  border: 2px solid var(--color-page-frame-hover);
-}
-
+/* An embedded image's frame looks like a candidate: both add an area when
+   pressed, and how they were found does not change that. */
+.crop-photo-frame,
 .crop-candidate {
   border: 1px solid var(--color-page-candidate);
 }
@@ -405,6 +400,8 @@
 /* A word sits outside its frame and can lie under a neighbour's. The one
    under the pointer or the focus comes up, so each can be read, but not
    over the selected area's: that is the area being worked on. */
+.crop-photo-frame:hover > .crop-tag,
+.crop-photo-frame:focus-visible > .crop-tag,
 .crop-candidate:hover > .crop-tag,
 .crop-candidate:focus-visible > .crop-tag,
 .crop-area:hover > .crop-area-tag,
