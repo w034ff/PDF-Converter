@@ -362,8 +362,6 @@ export const en: Translations = {
       emptyHint:
         "Press a suggestion or a photo on the page to make it an area, or add the suggestions on all pages at once. Draw what no suggestion covers with Add areas > Draw an area.",
       detectAll: "Add suggestions on all pages",
-      summarySingle: "{count} area · {checked} to export",
-      summaryMultiple: "{count} areas · {checked} to export",
       pageHeadSingle: "p.{page} · {count} area",
       pageHeadMultiple: "p.{page} · {count} areas",
       overlaid: "Overlaid",

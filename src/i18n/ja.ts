@@ -361,8 +361,6 @@ export const ja = {
       emptyHint:
         "ページの候補や写真を押すと範囲になります。全ページの候補をまとめて加えることも、候補にないものを「範囲を追加」の「範囲を描く」で描くこともできます。",
       detectAll: "全ページの候補を追加",
-      summarySingle: "{count} 個 · 書き出す {checked} 個",
-      summaryMultiple: "{count} 個 · 書き出す {checked} 個",
       pageHeadSingle: "p.{page} · {count} 個",
       pageHeadMultiple: "p.{page} · {count} 個",
       overlaid: "重なりあり",

@@ -1,4 +1,4 @@
-import { formatMessage, getTranslations } from "../../i18n";
+import { getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import { isJobActive, useAppState } from "../../state";
 import { useJobRunner } from "../job/useJobRunner";
@@ -16,22 +16,11 @@ export function CropSidePanel({ pdf }: { pdf: CropPdf }) {
   const runner = useJobRunner();
   const t = getTranslations(language.language);
   const count = crop.areas.length;
-  const checked = crop.areas.filter((area) => area.checked).length;
 
   return (
     <section className="crop-side" aria-label={t.crop.ranges.sectionAria}>
       <div className="crop-ranges-header">
         <span className="label">{t.crop.ranges.title}</span>
-        {count > 0 && (
-          <span className="hint">
-            {formatMessage(
-              count === 1
-                ? t.crop.ranges.summarySingle
-                : t.crop.ranges.summaryMultiple,
-              { count, checked },
-            )}
-          </span>
-        )}
       </div>
       <div className="crop-ranges">
         {count === 0 ? (

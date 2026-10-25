@@ -556,20 +556,18 @@ describe("the list of areas", () => {
     expect(areaRows().every((row) => !rowText(row).includes("p."))).toBe(true);
   });
 
-  it("says in the heading how many areas there are and how many are written", async () => {
-    await twoPages();
-    expect(screen.getByText("2 個 · 書き出す 2 個")).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "p.1 の手で選んだ範囲を書き出す" }),
-    );
-    expect(screen.getByText("2 個 · 書き出す 1 個")).toBeInTheDocument();
-  });
-
-  it("says nothing of counts, and that there are no areas, while there are none", async () => {
+  it("says that there are no areas while there are none", async () => {
     await openPdfInCropTab();
     expect(screen.getByText("範囲はまだありません")).toBeInTheDocument();
-    expect(screen.queryByText(/書き出す \d+ 個/)).toBeNull();
+  });
+
+  it("leaves the counts to the bottom bar, not the heading", async () => {
+    await twoPages();
+    const side = screen.getByRole("region", { name: "範囲と書き出しの設定" });
+    expect(within(side).queryByText(/書き出す \d+ 個/)).toBeNull();
+    expect(
+      screen.getByText("2 個の範囲を PNG で書き出します"),
+    ).toBeInTheDocument();
   });
 
   it("changes what the bottom bar says when a box is unchecked", async () => {
@@ -626,7 +624,6 @@ describe("the list of areas", () => {
     expect(areaRows()).toHaveLength(1);
     expect(selectedAreas()).toHaveLength(0);
     expect(screen.queryByTestId("crop-area")).toBeNull();
-    expect(screen.getByText("1 個 · 書き出す 1 個")).toBeInTheDocument();
   });
 
   it("keeps the selection when another area is removed", async () => {
@@ -768,7 +765,6 @@ describe("in English", () => {
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await drawWholePage();
 
-    expect(screen.getByText("1 area · 1 to export")).toBeInTheDocument();
     expect(screen.getByText("Export 1 area as PNG")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Page 1, 1 area" }),
@@ -781,7 +777,6 @@ describe("in English", () => {
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
     await flush();
     await drawWholePage();
-    expect(screen.getByText("2 areas · 2 to export")).toBeInTheDocument();
     expect(screen.getByText("Export 2 areas as PNG")).toBeInTheDocument();
   });
 
