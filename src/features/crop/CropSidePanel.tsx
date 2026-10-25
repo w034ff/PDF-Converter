@@ -7,9 +7,9 @@ import { CropExportSettings } from "./CropExportSettings";
 import "./crop.css";
 
 /**
- * The column on the right of the crop tab (mockup `CropA`): the result of the
- * last conversion, the list of areas with how many there are and how many are
- * to be exported, and the export settings under it.
+ * The column on the right of the crop tab (mockup `CropA`): the list of
+ * areas, or the way in to finding them while there are none, and the export
+ * settings under it.
  */
 export function CropSidePanel({ pdf }: { pdf: CropPdf }) {
   const { language, crop, job } = useAppState();
