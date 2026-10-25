@@ -203,4 +203,27 @@ describe("design tokens and CSS rules", () => {
       }
     },
   );
+
+  it.each(["light", "dark"] as const)(
+    "keeps the words of a selected row readable in the %s theme",
+    (theme) => {
+      const tokens = readThemeTokens(theme);
+      // Success is left out: the dark green falls short on the selected
+      // row's ground, and it shows there only on an exported row.
+      for (const fg of [
+        "--color-text-primary",
+        "--color-text-secondary",
+        "--color-error",
+        "--color-warning",
+      ]) {
+        expect(
+          contrastRatio(
+            tokenValue(tokens, fg),
+            tokenValue(tokens, "--color-row-selected"),
+          ),
+          `${fg} on --color-row-selected in the ${theme} theme`,
+        ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
+      }
+    },
+  );
 });

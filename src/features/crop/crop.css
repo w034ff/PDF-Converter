@@ -649,8 +649,8 @@
 }
 
 .crop-area-row.is-selected {
-  background: var(--color-accent-subtle);
-  border-color: var(--color-accent);
+  background: var(--color-row-selected);
+  border-color: var(--color-text-secondary);
 }
 
 .crop-area-check {
