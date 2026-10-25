@@ -40,6 +40,10 @@
      what is on, as a checked box (design §10.3). */
   --color-row-selected: #e4e1db;
 
+  /* The ground under the pointer of a control drawn on the subtle ground,
+     where the usual hover color would not show. */
+  --color-bg-hover: #e4e1db;
+
   --color-overlay-backdrop: rgba(0, 0, 0, 0.45);
 
   /* A PDF page is drawn on white whichever theme the app is in, so what is
@@ -96,6 +100,7 @@
     --color-progress-track: #363430;
 
     --color-row-selected: #3a3834;
+    --color-bg-hover: #3a3834;
 
     --color-overlay-backdrop: rgba(0, 0, 0, 0.65);
   }
