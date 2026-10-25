@@ -19,14 +19,11 @@ export function CropSidePanel({ pdf }: { pdf: CropPdf }) {
 
   return (
     <section className="crop-side" aria-label={t.crop.ranges.sectionAria}>
-      <div className="crop-ranges-header">
-        <span className="label">{t.crop.ranges.title}</span>
-      </div>
       <div className="crop-ranges">
         {count === 0 ? (
           // The way in to the main use: let the analysis find the areas.
           <div className="crop-ranges-empty">
-            <p className="hint">{t.crop.ranges.empty}</p>
+            <p className="label">{t.crop.ranges.empty}</p>
             <p className="hint">{t.crop.ranges.emptyHint}</p>
             <button
               type="button"

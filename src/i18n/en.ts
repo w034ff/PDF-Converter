@@ -357,10 +357,9 @@ export const en: Translations = {
     },
     ranges: {
       sectionAria: "Areas and export settings",
-      title: "Areas",
       empty: "No areas yet",
       emptyHint:
-        "Press a suggestion or a photo on the page to make it an area, or add the suggestions on all pages at once. Draw what no suggestion covers with Add areas > Draw an area.",
+        "Press a suggestion or a photo on the page to make it an area. Draw what no suggestion covers with Draw an area.",
       detectAll: "Add suggestions on all pages",
       pageHeadSingle: "p.{page} · {count} area",
       pageHeadMultiple: "p.{page} · {count} areas",

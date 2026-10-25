@@ -479,9 +479,6 @@ describe("the list of keys", () => {
 describe("the list of areas while it is empty", () => {
   it("offers to add the suggestions on all pages", async () => {
     const calls = await openNested();
-    expect(
-      screen.getByText(/全ページの候補をまとめて加える/),
-    ).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "全ページの候補を追加" }),
     );

@@ -356,10 +356,9 @@ export const ja = {
     },
     ranges: {
       sectionAria: "範囲と書き出しの設定",
-      title: "範囲",
       empty: "範囲はまだありません",
       emptyHint:
-        "ページの候補や写真を押すと範囲になります。全ページの候補をまとめて加えることも、候補にないものを「範囲を追加」の「範囲を描く」で描くこともできます。",
+        "ページの候補や写真を押すと、範囲になります。候補にないものは「範囲を描く」で描けます。",
       detectAll: "全ページの候補を追加",
       pageHeadSingle: "p.{page} · {count} 個",
       pageHeadMultiple: "p.{page} · {count} 個",

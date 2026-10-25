@@ -559,9 +559,21 @@ describe("the list of areas", () => {
   it("says that there are no areas while there are none", async () => {
     await openPdfInCropTab();
     expect(screen.getByText("範囲はまだありません")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "ページの候補や写真を押すと、範囲になります。候補にないものは「範囲を描く」で描けます。",
+      ),
+    ).toBeInTheDocument();
   });
 
-  it("leaves the counts to the bottom bar, not the heading", async () => {
+  it("starts the list without a heading of its own", async () => {
+    await twoPages();
+    const side = screen.getByRole("region", { name: "範囲と書き出しの設定" });
+    expect(within(side).queryByText("範囲")).toBeNull();
+    expect(pageHeads()[0]).toMatch(/^p\.1 · /);
+  });
+
+  it("leaves the counts to the bottom bar, not the list", async () => {
     await twoPages();
     const side = screen.getByRole("region", { name: "範囲と書き出しの設定" });
     expect(within(side).queryByText(/書き出す \d+ 個/)).toBeNull();
