@@ -783,12 +783,25 @@
   color: var(--color-text-secondary);
 }
 
-.crop-area-remove {
+/* Only the × shows, without a border or a ground: a square would stand out
+   on the selected row's gray. The pointer and a press change its color
+   instead, red for the press as it removes the area. The class pair
+   outweighs `.icon-btn` in app.css, which loads after this file. */
+.icon-btn.crop-area-remove {
   flex: none;
   width: 28px;
-  border: 0;
+  border-color: transparent;
   background: transparent;
   color: var(--color-text-secondary);
+}
+
+.icon-btn.crop-area-remove:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+.icon-btn.crop-area-remove:active:not(:disabled) {
+  color: var(--color-error);
 }
 
 .crop-replace-count {
