@@ -328,11 +328,14 @@ a:hover {
   overflow-y: auto;
 }
 
+/* The gap keeps a dropped-files error band off the view under it, as the
+   views' own bands are kept off their contents. */
 .app-main {
   flex: 999 1 560px;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 12px;
   padding: 24px;
   overflow-y: auto;
 }
