@@ -18,11 +18,11 @@ import {
   type RectPt,
 } from "../../state";
 import {
-  HANDLE_IDS,
   arrowRect,
   handleCursor,
   handlePoint,
   isArrowKey,
+  shownHandles,
 } from "./cropEdit";
 import {
   CROP_HANDLE_HIT_PX,
@@ -391,6 +391,8 @@ export function CropOverlays({
   const editable = !locked;
   const drawing = editable && tool === "draw";
   const selectedArea = areas.find((area) => area.key === selectedKey);
+  const selectedRect =
+    selectedArea === undefined ? undefined : rectOf(selectedArea);
   const pxPerPt = CSS_PX_PER_PT * scale;
   const pressable = locked ? "" : " is-pressable";
   // A photo candidate and its image's frame add the same area and would be
@@ -546,8 +548,12 @@ export function CropOverlays({
         {editable &&
           !drawing &&
           selectedArea !== undefined &&
-          HANDLE_IDS.map((handle) => {
-            const point = handlePoint(rectOf(selectedArea), handle);
+          selectedRect !== undefined &&
+          shownHandles(
+            (selectedRect[2] - selectedRect[0]) * pxPerPt,
+            (selectedRect[3] - selectedRect[1]) * pxPerPt,
+          ).map((handle) => {
+            const point = handlePoint(selectedRect, handle);
             return (
               <div
                 key={handle}

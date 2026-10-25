@@ -20,6 +20,13 @@ export const CROP_HANDLE_SIZE_PX = 8;
 /** The side of the square a handle can be pressed in, in CSS px. */
 export const CROP_HANDLE_HIT_PX = 16;
 
+/**
+ * The shortest side, in CSS px, along which an area shows the handle in the
+ * middle of its edges. Below it that handle's press square meets the
+ * corners' and the handles crowd out the area; the corners still resize it.
+ */
+export const CROP_EDGE_HANDLE_MIN_SIDE_PX = 2 * CROP_HANDLE_HIT_PX;
+
 /** The smallest width and height an area is drawn or resized to, in points. */
 export const CROP_MIN_AREA_SIDE_PT = 4;
 

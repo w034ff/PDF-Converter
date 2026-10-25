@@ -9,9 +9,11 @@ import {
   isDrawnAreaBigEnough,
   moveRect,
   resizeRect,
+  shownHandles,
   type HandleId,
 } from "./cropEdit";
 import {
+  CROP_EDGE_HANDLE_MIN_SIDE_PX,
   CROP_KEY_STEP_LARGE_PT,
   CROP_KEY_STEP_PT,
   CROP_MIN_AREA_SIDE_PT,
@@ -256,5 +258,39 @@ describe("arrowRect", () => {
     expect(
       arrowRect(thin, "ArrowLeft", { shift: true, alt: true }, PAGE),
     ).toEqual(thin);
+  });
+});
+
+describe("shownHandles", () => {
+  const min = CROP_EDGE_HANDLE_MIN_SIDE_PX;
+
+  it("shows all eight on an area long enough both ways", () => {
+    expect(shownHandles(min, min)).toEqual(HANDLE_IDS);
+  });
+
+  it("leaves out the middles of the top and bottom on a narrow area", () => {
+    expect(shownHandles(min - 0.5, min)).toEqual([
+      "nw",
+      "ne",
+      "e",
+      "se",
+      "sw",
+      "w",
+    ]);
+  });
+
+  it("leaves out the middles of the left and right on a low area", () => {
+    expect(shownHandles(min, min - 0.5)).toEqual([
+      "nw",
+      "n",
+      "ne",
+      "se",
+      "s",
+      "sw",
+    ]);
+  });
+
+  it("keeps the corners on the smallest area", () => {
+    expect(shownHandles(1, 1)).toEqual(["nw", "ne", "se", "sw"]);
   });
 });

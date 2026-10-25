@@ -1,6 +1,7 @@
 import type { PageSizePt } from "../../ipc";
 import type { RectPt } from "../../state";
 import {
+  CROP_EDGE_HANDLE_MIN_SIDE_PX,
   CROP_KEY_STEP_LARGE_PT,
   CROP_KEY_STEP_PT,
   CROP_MIN_AREA_SIDE_PT,
@@ -31,6 +32,24 @@ export const HANDLE_IDS: readonly HandleId[] = [
   "sw",
   "w",
 ];
+
+/**
+ * The handles an area of `widthPx` × `heightPx` on screen shows: the corners
+ * always, and the middle of the top and bottom edges or of the left and right
+ * ones only while the area is wide or tall enough for them.
+ */
+export function shownHandles(widthPx: number, heightPx: number): HandleId[] {
+  return HANDLE_IDS.filter((handle) => {
+    const edges = movedEdges(handle);
+    if (edges.x === 0) {
+      return widthPx >= CROP_EDGE_HANDLE_MIN_SIDE_PX;
+    }
+    if (edges.y === 0) {
+      return heightPx >= CROP_EDGE_HANDLE_MIN_SIDE_PX;
+    }
+    return true;
+  });
+}
 
 /** Which edges a handle moves: the sign says which side of the area it is on. */
 function movedEdges(handle: HandleId): { x: -1 | 0 | 1; y: -1 | 0 | 1 } {
