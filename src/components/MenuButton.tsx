@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useEffect,
   useId,
   useRef,
@@ -7,23 +6,10 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { MenuList, type MenuFirstFocus, type MenuItem } from "./MenuList";
 import "./MenuButton.css";
 
-export interface MenuButtonItem {
-  /** Names the item for `key`; unique within the menu. */
-  id: string;
-  label: string;
-  /** An item that cannot be chosen now is shown but skipped by the arrow keys. */
-  disabled?: boolean;
-  /**
-   * Set on the items of a menu that picks one of several states: the item is
-   * a `menuitemradio` and shows a check while it is the state in use.
-   */
-  checked?: boolean;
-  /** Draws a rule above the item, to set it apart from the ones before. */
-  separatorBefore?: boolean;
-  onSelect: () => void;
-}
+export type MenuButtonItem = MenuItem;
 
 export interface MenuButtonProps {
   /** What the button says. */
@@ -44,15 +30,12 @@ export interface MenuButtonProps {
   align?: "start" | "end";
 }
 
-/** Which item takes the focus when the menu opens. */
-type FirstFocus = "first" | "last";
-
 /**
  * A button that opens a menu of actions (the WAI-ARIA menu button pattern,
- * design §10.1): `aria-haspopup` and `aria-expanded` on the button,
- * `role="menu"` with `menuitem`s under it. ↑↓ move between the items that can
- * be chosen (Home and End jump), Enter or Space choose, Esc closes and gives
- * the focus back to the button, and a press outside closes the menu.
+ * design §10.1): `aria-haspopup` and `aria-expanded` on the button, and the
+ * menu (`MenuList`) under it. ↓ on the button opens it at the first item and
+ * ↑ at the last, Esc or a chosen item closes it and gives the focus back to
+ * the button, and a press outside closes it.
  */
 export function MenuButton({
   children,
@@ -68,31 +51,10 @@ export function MenuButton({
   if (open && disabled) {
     setOpen(false);
   }
-  const [firstFocus, setFirstFocus] = useState<FirstFocus>("first");
+  const [firstFocus, setFirstFocus] = useState<MenuFirstFocus>("first");
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const menuId = useId();
-  // The checks keep a column of their own, so the labels line up.
-  const hasChecks = items.some((item) => item.checked !== undefined);
-
-  function enabledIndexes(): number[] {
-    return items.flatMap((item, index) => (item.disabled ? [] : [index]));
-  }
-
-  // The focus moves into the menu once it is rendered.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const indexes = enabledIndexes();
-    const target = firstFocus === "first" ? indexes[0] : indexes.at(-1);
-    if (target !== undefined) {
-      itemRefs.current[target]?.focus();
-    }
-    // The items may change while the menu is open; the focus is set once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, firstFocus]);
 
   useEffect(() => {
     if (!open) {
@@ -110,7 +72,7 @@ export function MenuButton({
     return () => document.removeEventListener("mousedown", handlePress);
   }, [open]);
 
-  function openMenu(which: FirstFocus) {
+  function openMenu(which: MenuFirstFocus) {
     setFirstFocus(which);
     setOpen(true);
   }
@@ -120,19 +82,6 @@ export function MenuButton({
     buttonRef.current?.focus();
   }
 
-  function moveFocus(from: number, step: 1 | -1) {
-    const indexes = enabledIndexes();
-    if (indexes.length === 0) {
-      return;
-    }
-    const position = indexes.indexOf(from);
-    const next =
-      position === -1
-        ? indexes[0]
-        : indexes[(position + step + indexes.length) % indexes.length];
-    itemRefs.current[next]?.focus();
-  }
-
   function handleButtonKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -140,39 +89,6 @@ export function MenuButton({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       openMenu("last");
-    }
-  }
-
-  function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const focused = itemRefs.current.findIndex(
-      (element) => element === document.activeElement,
-    );
-    switch (event.key) {
-      case "ArrowDown":
-        event.preventDefault();
-        moveFocus(focused, 1);
-        break;
-      case "ArrowUp":
-        event.preventDefault();
-        moveFocus(focused, -1);
-        break;
-      case "Home":
-        event.preventDefault();
-        itemRefs.current[enabledIndexes()[0]]?.focus();
-        break;
-      case "End":
-        event.preventDefault();
-        itemRefs.current[enabledIndexes().at(-1) ?? -1]?.focus();
-        break;
-      case "Escape":
-        event.preventDefault();
-        event.stopPropagation();
-        closeAndFocusButton();
-        break;
-      case "Tab":
-        // The focus leaves the menu with the key; the menu goes with it.
-        setOpen(false);
-        break;
     }
   }
 
@@ -193,43 +109,15 @@ export function MenuButton({
         {children}
       </button>
       {open && (
-        <div
+        <MenuList
           id={menuId}
-          role="menu"
-          aria-label={menuLabel}
+          label={menuLabel}
+          items={items}
           className={`menu-button-menu is-${align}`}
-          onKeyDown={handleMenuKeyDown}
-        >
-          {items.map((item, index) => (
-            <Fragment key={item.id}>
-              {item.separatorBefore === true && (
-                <div role="separator" className="menu-button-separator" />
-              )}
-              <button
-                ref={(element) => {
-                  itemRefs.current[index] = element;
-                }}
-                type="button"
-                role={item.checked === undefined ? "menuitem" : "menuitemradio"}
-                aria-checked={item.checked}
-                tabIndex={-1}
-                className="menu-button-item"
-                disabled={item.disabled}
-                onClick={() => {
-                  closeAndFocusButton();
-                  item.onSelect();
-                }}
-              >
-                {hasChecks && (
-                  <span className="menu-button-check" aria-hidden="true">
-                    {item.checked === true ? "✓" : ""}
-                  </span>
-                )}
-                {item.label}
-              </button>
-            </Fragment>
-          ))}
-        </div>
+          firstFocus={firstFocus}
+          onDismiss={closeAndFocusButton}
+          onLeave={() => setOpen(false)}
+        />
       )}
     </div>
   );

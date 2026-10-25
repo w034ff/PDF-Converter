@@ -286,6 +286,10 @@ export const en: Translations = {
               action: "Remove the area (hide a suggestion)",
             },
             {
+              keys: [["Right-click"], ["Shift", "F10"]],
+              action: "Open the menu to hide or bring back suggestions",
+            },
+            {
               keys: [["Arrows"], ["Shift", "Arrows"]],
               action: "Move the area by 1 pt (10 pt with Shift)",
             },
@@ -344,6 +348,11 @@ export const en: Translations = {
     candidateAria: "Suggestion: {kind}",
     photoFrameAria: "Photo frame",
     areaAria: "Area: {kind}",
+    pageMenu: {
+      label: "Page actions",
+      hide: "Hide this suggestion",
+      restore: "Bring back hidden suggestions on this page",
+    },
     candidateKinds: {
       photo: "Photo",
       figure: "Figure",

@@ -1,4 +1,5 @@
 export * from "./CloseIcon";
+export * from "./ContextMenu";
 export * from "./DropZone";
 export * from "./ErrorDisplay";
 export * from "./FolderIcon";

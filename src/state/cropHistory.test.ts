@@ -388,6 +388,35 @@ describe("putting candidates aside", () => {
     expect(state.areas.map((area) => area.kind)).toEqual(["table"]);
   });
 
+  it("come back, for that page only, as a step an undo takes back", () => {
+    const hidden = reduce(
+      open(),
+      { type: "CROP_CANDIDATE_HIDDEN", page: 2, index: 1 },
+      { type: "CROP_CANDIDATE_HIDDEN", page: 2, index: 0 },
+      { type: "CROP_CANDIDATE_HIDDEN", page: 3, index: 0 },
+    );
+    const restored = reduce(hidden, {
+      type: "CROP_CANDIDATES_RESTORED",
+      page: 2,
+    });
+    expect(restored.hiddenCandidates).toEqual({ 3: [0] });
+    expect(reduce(restored, UNDO).hiddenCandidates).toEqual({
+      2: [1, 0],
+      3: [0],
+    });
+  });
+
+  it("do not come back where none was hidden", () => {
+    const state = reduce(open(), {
+      type: "CROP_CANDIDATE_HIDDEN",
+      page: 3,
+      index: 0,
+    });
+    expect(reduce(state, { type: "CROP_CANDIDATES_RESTORED", page: 2 })).toBe(
+      state,
+    );
+  });
+
   it("are forgotten with another PDF", () => {
     const state = reduce(
       open(),

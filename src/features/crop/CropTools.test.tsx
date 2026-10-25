@@ -153,6 +153,138 @@ describe("putting a wrong suggestion aside", () => {
   });
 });
 
+describe("the page's menu", () => {
+  function menuItems(): string[] {
+    return within(screen.getByRole("menu", { name: "ページの操作" }))
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent ?? "");
+  }
+
+  function choose(name: string) {
+    fireEvent.click(screen.getByRole("menuitem", { name }));
+  }
+
+  it("opens on a suggestion instead of the browser's, to hide it", async () => {
+    await openNested();
+    expect(fireEvent.contextMenu(suggestion("figure"))).toBe(false);
+    expect(menuItems()).toEqual([
+      "この候補を隠す",
+      "このページの隠した候補を戻す",
+    ]);
+    expect(
+      [...screen.getByRole("menu").children].map((child) =>
+        child.getAttribute("role"),
+      ),
+    ).toEqual(["menuitem", "separator", "menuitem"]);
+    expect(
+      screen.getByRole("menuitem", { name: "このページの隠した候補を戻す" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("menuitem", { name: "この候補を隠す" }),
+    ).toHaveFocus();
+
+    choose("この候補を隠す");
+    await flush();
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(
+      screen
+        .getAllByTestId("crop-candidate")
+        .map((element) => element.dataset.kind),
+    ).toEqual(["chart"]);
+    expect(areaRows()).toHaveLength(0);
+    expect(viewport()).toHaveFocus();
+  });
+
+  it("brings the page's hidden suggestions back from anywhere on the page, as a step", async () => {
+    await openNested();
+    fireEvent.contextMenu(suggestion("figure"));
+    choose("この候補を隠す");
+    fireEvent.contextMenu(suggestion("chart"));
+    choose("この候補を隠す");
+    await flush();
+    expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
+
+    fireEvent.contextMenu(screen.getByTestId("crop-photo-frame"));
+    expect(menuItems()).toEqual(["このページの隠した候補を戻す"]);
+    choose("このページの隠した候補を戻す");
+    await flush();
+    expect(screen.getAllByTestId("crop-candidate")).toHaveLength(2);
+    expect(viewport()).toHaveFocus();
+
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    await flush();
+    expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
+    fireEvent.keyDown(document.body, { key: "y", ctrlKey: true });
+    await flush();
+    // From a suggestion's menu, the focus goes back to the suggestion.
+    fireEvent.contextMenu(suggestion("figure"));
+    choose("この候補を隠す");
+    const chart = suggestion("chart");
+    chart.focus();
+    fireEvent.contextMenu(chart);
+    choose("このページの隠した候補を戻す");
+    await flush();
+    expect(chart).toHaveFocus();
+  });
+
+  it("gives the focus back to the suggestion on Esc", async () => {
+    await openNested();
+    const chart = suggestion("chart");
+    chart.focus();
+    fireEvent.contextMenu(chart);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(chart).toHaveFocus();
+  });
+
+  it("takes the focus itself with nothing to choose, so Esc still closes it", async () => {
+    await openNested();
+    fireEvent.contextMenu(screen.getByTestId("crop-photo-frame"));
+    const menu = screen.getByRole("menu");
+    expect(menu).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(viewport()).toHaveFocus();
+  });
+
+  it("keeps its keys from the page", async () => {
+    await openNested();
+    fireEvent.click(suggestion("chart"));
+    await flush();
+    fireEvent.contextMenu(suggestion("figure"));
+    const item = screen.getByRole("menuitem", { name: "この候補を隠す" });
+    fireEvent.keyDown(item, { key: "Delete" });
+    fireEvent.keyDown(item, { key: "r" });
+    await flush();
+    expect(areaRows()).toHaveLength(1);
+    expect(isDrawing()).toBe(false);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("closes on a press outside it", async () => {
+    await openNested();
+    fireEvent.contextMenu(suggestion("figure"));
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getAllByTestId("crop-candidate")).toHaveLength(2);
+  });
+
+  it("does not open while drawing or while a conversion runs, nor does the browser's", async () => {
+    await openNested();
+    pickDrawTool();
+    expect(fireEvent.contextMenu(suggestion("figure"))).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    fireEvent.click(suggestion("chart"));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "書き出す" }));
+    await flush();
+    expect(fireEvent.contextMenu(suggestion("figure"))).toBe(false);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+});
+
 describe("drawing", () => {
   it("is off at first, and draws one area from the add menu before it stops", async () => {
     await openNested();

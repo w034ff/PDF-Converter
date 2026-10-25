@@ -620,6 +620,14 @@ function reduceCropState(state: CropState, action: CropAction): CropState {
             },
           };
     }
+    case "CROP_CANDIDATES_RESTORED": {
+      if ((state.hiddenCandidates[action.page] ?? []).length === 0) {
+        return state;
+      }
+      const hiddenCandidates = { ...state.hiddenCandidates };
+      delete hiddenCandidates[action.page];
+      return { ...state, hiddenCandidates };
+    }
     // `cropReducer` takes these, as they move through the history.
     case "CROP_UNDO":
     case "CROP_REDO":
@@ -774,6 +782,7 @@ function recordStep(
         ? after
         : withStep(before, after, null);
     case "CROP_CANDIDATE_HIDDEN":
+    case "CROP_CANDIDATES_RESTORED":
       return withStep(before, after, null);
     case "CROP_AREA_CHANGED": {
       if (after.areas === before.areas) {

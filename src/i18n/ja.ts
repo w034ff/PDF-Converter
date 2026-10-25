@@ -285,6 +285,10 @@ export const ja = {
               action: "範囲を削除（候補なら非表示にする）",
             },
             {
+              keys: [["右クリック"], ["Shift", "F10"]],
+              action: "候補を隠す・隠した候補を戻すメニューを開く",
+            },
+            {
               keys: [["矢印"], ["Shift", "矢印"]],
               action: "範囲を 1 pt 動かす（Shift で 10 pt）",
             },
@@ -343,6 +347,11 @@ export const ja = {
     candidateAria: "候補：{kind}",
     photoFrameAria: "写真の枠",
     areaAria: "範囲：{kind}",
+    pageMenu: {
+      label: "ページの操作",
+      hide: "この候補を隠す",
+      restore: "このページの隠した候補を戻す",
+    },
     candidateKinds: {
       photo: "写真",
       figure: "図",

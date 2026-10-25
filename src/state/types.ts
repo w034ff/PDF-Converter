@@ -295,6 +295,8 @@ export type CropAction =
   | { type: "CROP_AREA_CHECKED"; key: number; checked: boolean }
   /** Puts the candidate at `index` of the page's `layouts` aside as wrong. */
   | { type: "CROP_CANDIDATE_HIDDEN"; page: number; index: number }
+  /** Brings back every candidate of the page that was put aside. */
+  | { type: "CROP_CANDIDATES_RESTORED"; page: number }
   | { type: "CROP_TOOL_SET"; tool: CropTool }
   | { type: "CROP_UNDO" }
   | { type: "CROP_REDO" }

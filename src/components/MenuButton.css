@@ -20,6 +20,24 @@
   box-shadow: 0 4px 12px var(--color-overlay-backdrop);
 }
 
+/* Only holds the menu, for the keys it stops (`ContextMenu`). */
+.context-menu-root {
+  display: contents;
+}
+
+/* At the point given (`ContextMenu`), over everything, wherever it opens. */
+.menu-button-menu.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 0;
+}
+
+/* The menu itself takes the focus only when no item can (`MenuList`); its
+   items show where the focus is otherwise, so it draws no ring. */
+.menu-button-menu:focus {
+  outline: none;
+}
+
 .menu-button-menu.is-end {
   right: 0;
 }

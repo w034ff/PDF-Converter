@@ -1,9 +1,11 @@
 import {
   useEffect,
   useRef,
+  useState,
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { ContextMenu, type MenuButtonItem } from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import type { Candidate, PageImage, PageSizePt } from "../../ipc";
 import {
@@ -95,6 +97,18 @@ function stackLayers(layers: Layer[]): Layer[] {
 type FocusTarget = number | "view";
 
 /**
+ * The page's menu open at `x`, `y`: over the candidate at `index` of the
+ * page's, or elsewhere on the page (`null`). The focus goes back to `origin`
+ * when it is dismissed.
+ */
+interface PageMenu {
+  x: number;
+  y: number;
+  index: number | null;
+  origin: HTMLElement;
+}
+
+/**
  * What is drawn over the page (design §10.1): a dotted frame round each
  * embedded image, which is emphasized under the pointer, a thin line with the
  * kind's word round each candidate (without the word when an area lies in
@@ -182,6 +196,81 @@ export function CropOverlays({
     takeFocus();
     focusTargetRef.current = null;
   });
+
+  const [menu, setMenu] = useState<PageMenu | null>(null);
+  const menuOpen = !locked && tool === "select";
+  // A conversion or drawing takes the page; the menu does not wait for it.
+  if (menu !== null && !menuOpen) {
+    setMenu(null);
+  }
+
+  // The browser's own menu (back, reload) has nothing to do on the page, so
+  // it never shows there; the page's menu does while areas can be changed.
+  useEffect(() => {
+    function handleContextMenu(event: MouseEvent) {
+      event.preventDefault();
+      if (!menuOpen) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      const candidate = target?.closest<HTMLElement>(".crop-candidate");
+      const index =
+        candidate === null || candidate === undefined
+          ? null
+          : Number(candidate.dataset.index);
+      const origin = candidate ?? viewport;
+      // Shift+F10 and the menu key say where the focus is, not the pointer.
+      const box = origin.getBoundingClientRect();
+      const inside =
+        event.clientX >= box.left &&
+        event.clientX <= box.right &&
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom;
+      setMenu({
+        x: inside ? event.clientX : box.left,
+        y: inside ? event.clientY : box.top,
+        index: index !== null && Number.isInteger(index) ? index : null,
+        origin,
+      });
+    }
+    viewport.addEventListener("contextmenu", handleContextMenu);
+    return () => viewport.removeEventListener("contextmenu", handleContextMenu);
+  }, [viewport, menuOpen]);
+
+  function menuItems(target: PageMenu): MenuButtonItem[] {
+    const restore: MenuButtonItem = {
+      id: "restore",
+      label: t.crop.pageMenu.restore,
+      disabled: hiddenCandidates.length === 0,
+      separatorBefore: target.index !== null,
+      onSelect: () => {
+        dispatch({ type: "CROP_CANDIDATES_RESTORED", page });
+      },
+    };
+    const { index } = target;
+    if (index === null) {
+      return [restore];
+    }
+    return [
+      {
+        id: "hide",
+        label: t.crop.pageMenu.hide,
+        onSelect: () => {
+          dispatch({ type: "CROP_CANDIDATE_HIDDEN", page, index });
+          viewport.focus();
+        },
+      },
+      restore,
+    ];
+  }
+
+  function closeMenu(returnFocus: boolean) {
+    const origin = menu?.origin;
+    setMenu(null);
+    if (returnFocus && origin !== undefined) {
+      (origin.isConnected ? origin : viewport).focus();
+    }
+  }
 
   function add(area: NewArea) {
     if (!locked && tool === "select") {
@@ -331,6 +420,7 @@ export function CropOverlays({
         className={`crop-candidate${pressable}`}
         data-testid="crop-candidate"
         data-kind={candidate.kind}
+        data-index={index}
         role="button"
         tabIndex={locked ? -1 : 0}
         aria-label={formatMessage(t.crop.candidateAria, {
@@ -402,75 +492,86 @@ export function CropOverlays({
 
   const toolClass = `${editable ? " is-editable" : ""}${drawing ? " is-drawing" : ""}`;
   return (
-    <div
-      ref={overlayRef}
-      data-testid="crop-overlay"
-      className={`crop-overlay${toolClass}${
-        preview !== null ? " is-dragging" : ""
-      }${drag.panning ? " is-panning" : ""}`}
-      style={preview !== null ? { cursor: preview.cursor } : undefined}
-      {...drag.overlayProps}
-      onClick={(event) => {
-        // Only the page itself, not a frame or an area on it.
-        if (event.target === event.currentTarget && tool === "select") {
-          dispatch({ type: "CROP_AREA_SELECTED", key: null });
-        }
-      }}
-    >
-      {layers.map((layer) => {
-        switch (layer.kind) {
-          case "candidate":
-            return renderCandidate(layer.index, layer.candidate);
-          case "frame":
-            return renderFrame(layer.image);
-          case "area":
-            return renderArea(layer.area);
-        }
-      })}
-      {preview !== null && preview.key === null && (
-        <div
-          className="crop-area crop-area-draft"
-          data-testid="crop-draft"
-          style={rectToCssBox(preview.rectPt, scale)}
+    <>
+      <div
+        ref={overlayRef}
+        data-testid="crop-overlay"
+        className={`crop-overlay${toolClass}${
+          preview !== null ? " is-dragging" : ""
+        }${drag.panning ? " is-panning" : ""}`}
+        style={preview !== null ? { cursor: preview.cursor } : undefined}
+        {...drag.overlayProps}
+        onClick={(event) => {
+          // Only the page itself, not a frame or an area on it.
+          if (event.target === event.currentTarget && tool === "select") {
+            dispatch({ type: "CROP_AREA_SELECTED", key: null });
+          }
+        }}
+      >
+        {layers.map((layer) => {
+          switch (layer.kind) {
+            case "candidate":
+              return renderCandidate(layer.index, layer.candidate);
+            case "frame":
+              return renderFrame(layer.image);
+            case "area":
+              return renderArea(layer.area);
+          }
+        })}
+        {preview !== null && preview.key === null && (
+          <div
+            className="crop-area crop-area-draft"
+            data-testid="crop-draft"
+            style={rectToCssBox(preview.rectPt, scale)}
+          />
+        )}
+        {editable &&
+          !drawing &&
+          selectedArea !== undefined &&
+          HANDLE_IDS.map((handle) => {
+            const point = handlePoint(rectOf(selectedArea), handle);
+            return (
+              <div
+                key={handle}
+                className="crop-handle"
+                data-testid="crop-handle"
+                data-handle={handle}
+                style={{
+                  left: point.x * pxPerPt - CROP_HANDLE_HIT_PX / 2,
+                  top: point.y * pxPerPt - CROP_HANDLE_HIT_PX / 2,
+                  width: CROP_HANDLE_HIT_PX,
+                  height: CROP_HANDLE_HIT_PX,
+                  cursor: handleCursor(handle),
+                }}
+                onPointerDown={(event: PointerEvent<HTMLElement>) =>
+                  drag.beginResize(
+                    event,
+                    selectedArea.key,
+                    selectedArea.rectPt,
+                    handle,
+                  )
+                }
+              >
+                <span
+                  className="crop-handle-mark"
+                  style={{
+                    width: CROP_HANDLE_SIZE_PX,
+                    height: CROP_HANDLE_SIZE_PX,
+                  }}
+                />
+              </div>
+            );
+          })}
+      </div>
+      {menu !== null && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={t.crop.pageMenu.label}
+          items={menuItems(menu)}
+          onClose={closeMenu}
         />
       )}
-      {editable &&
-        !drawing &&
-        selectedArea !== undefined &&
-        HANDLE_IDS.map((handle) => {
-          const point = handlePoint(rectOf(selectedArea), handle);
-          return (
-            <div
-              key={handle}
-              className="crop-handle"
-              data-testid="crop-handle"
-              data-handle={handle}
-              style={{
-                left: point.x * pxPerPt - CROP_HANDLE_HIT_PX / 2,
-                top: point.y * pxPerPt - CROP_HANDLE_HIT_PX / 2,
-                width: CROP_HANDLE_HIT_PX,
-                height: CROP_HANDLE_HIT_PX,
-                cursor: handleCursor(handle),
-              }}
-              onPointerDown={(event: PointerEvent<HTMLElement>) =>
-                drag.beginResize(
-                  event,
-                  selectedArea.key,
-                  selectedArea.rectPt,
-                  handle,
-                )
-              }
-            >
-              <span
-                className="crop-handle-mark"
-                style={{
-                  width: CROP_HANDLE_SIZE_PX,
-                  height: CROP_HANDLE_SIZE_PX,
-                }}
-              />
-            </div>
-          );
-        })}
-    </div>
+    </>
   );
 }
