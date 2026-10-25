@@ -30,8 +30,19 @@
   /* A PDF waiting for its password: not an error, since it opens once the
      password is entered (design §10.3). */
   --color-warning: #8a5a00;
+  /* A notice that only informs, such as what the crop tab cannot do: not the
+     warning's yellow, which means a PDF waits for its password. */
+  --color-info: #2f5f9e;
 
   --color-progress-track: #e4e1db;
+
+  /* The ground of the selected row of a list. Not the accent, which marks
+     what is on, as a checked box (design §10.3). */
+  --color-row-selected: #e4e1db;
+
+  /* The ground under the pointer of a control drawn on the subtle ground,
+     where the usual hover color would not show. */
+  --color-bg-hover: #e4e1db;
 
   --color-overlay-backdrop: rgba(0, 0, 0, 0.45);
 
@@ -40,8 +51,6 @@
      themes instead of following the app's colors. */
   --color-page-bg: #ffffff;
   --color-page-shadow: rgba(0, 0, 0, 0.18);
-  --color-page-frame: #5c5a56;
-  --color-page-frame-hover: #b4492b;
   --color-page-candidate: #0e6b66;
   /* The areas picked on the page: the light theme's accent, text on it, and
      the tint over a selected area. */
@@ -86,8 +95,12 @@
     --color-error-tint: rgba(255, 122, 138, 0.2);
     --color-text-on-error: #1c1b18;
     --color-warning: #e0a83a;
+    --color-info: #7aa7e0;
 
     --color-progress-track: #363430;
+
+    --color-row-selected: #3a3834;
+    --color-bg-hover: #3a3834;
 
     --color-overlay-backdrop: rgba(0, 0, 0, 0.65);
   }

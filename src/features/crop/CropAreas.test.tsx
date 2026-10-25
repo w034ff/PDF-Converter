@@ -15,6 +15,8 @@ import {
   openPdfInCropTab,
   openSettings,
   pageImage,
+  pageHeads,
+  rowPage,
   rowText,
   type ObjectUrls,
 } from "./cropTestSupport";
@@ -30,6 +32,7 @@ afterEach(() => {
   cleanup();
   clearMocks();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const PHOTO_RECT: [number, number, number, number] = [100, 200, 300, 400];
@@ -39,8 +42,8 @@ function pickPage(page: number) {
   fireEvent.click(screen.getByRole("button", { name: `ページ ${page}` }));
 }
 
-async function addMenuItem(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+async function addMenuItem(name: string, menu = "範囲を追加 ▾") {
+  fireEvent.click(screen.getByRole("button", { name: menu }));
   fireEvent.click(screen.getByRole("menuitem", { name }));
   await flush();
 }
@@ -75,7 +78,7 @@ describe("pressing a frame", () => {
     await flush();
 
     const [row] = areaRows();
-    expect(rowText(row)).toContain("p.1");
+    expect(rowPage(row)).toBe("p.1");
     expect(rowText(row)).toContain("写真");
     expect(rowText(row)).toContain("元の画素 100 × 80");
     expect(row).toHaveAttribute("data-key", "1");
@@ -99,6 +102,32 @@ describe("pressing a frame", () => {
     fireEvent.click(screen.getByTestId("crop-photo-frame"));
     await flush();
     expect(rowText(areaRows()[0])).toContain("重なりあり");
+    expect(within(areaRows()[0]).getByText("重なりあり")).toHaveAttribute(
+      "title",
+      "写真の上に文字・図形・ほかの画像などが重なっています。「写真だけを書き出す」で除けます",
+    );
+  });
+
+  it("says the photo is written without what lies over it while only photos are written", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      check_on_top: () => true,
+    });
+    fireEvent.click(screen.getByTestId("crop-photo-frame"));
+    await flush();
+    openSettings();
+    const only = screen.getByRole("checkbox", { name: "写真だけを書き出す" });
+
+    fireEvent.click(only);
+    expect(rowText(areaRows()[0])).not.toContain("重なりあり");
+    expect(within(areaRows()[0]).getByText("重なりを除く")).toHaveAttribute(
+      "title",
+      "写真の上に重なった文字・図形・ほかの画像などを除いて書き出します",
+    );
+
+    fireEvent.click(only);
+    expect(rowText(areaRows()[0])).toContain("重なりあり");
+    expect(rowText(areaRows()[0])).not.toContain("重なりを除く");
   });
 
   it("marks nothing when nothing lies over the photo, or when the question failed", async () => {
@@ -165,21 +194,49 @@ describe("pressing a candidate", () => {
     expect(selectedAreas()).toHaveLength(1);
   });
 
-  it("adds a photo area with the candidate's image, which the frame of that image then repeats", async () => {
+  it("leaves an image a photo candidate stands for to the candidate, and draws its frame while the candidates are hidden", async () => {
     const calls = await openPdfInCropTab({
       list_page_images: () => photos,
       detect_layout: () => candidates,
     });
+    expect(screen.queryAllByTestId("crop-photo-frame")).toHaveLength(0);
     fireEvent.click(candidateOf("photo"));
     await flush();
     expect(callsOf(calls, "check_on_top")).toHaveLength(1);
 
+    toggleCandidates();
     fireEvent.click(screen.getByTestId("crop-photo-frame"));
     await flush();
 
     expect(areaRows()).toHaveLength(1);
     expect(rowText(areaRows()[0])).toContain("写真");
     expect(callsOf(calls, "check_on_top")).toHaveLength(1);
+  });
+
+  it("draws no frame for an image whose photo candidate was put aside", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      detect_layout: () => candidates,
+    });
+    fireEvent.keyDown(candidateOf("photo"), { key: "Delete" });
+    await flush();
+    expect(
+      screen.getAllByTestId("crop-candidate").map((c) => c.dataset.kind),
+    ).toEqual(["chart"]);
+    expect(screen.queryAllByTestId("crop-photo-frame")).toHaveLength(0);
+  });
+
+  it("words the frame of an image without a photo candidate like one, until an area lies in its place", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      detect_layout: () => [candidate("chart", [50, 60, 250, 160])],
+    });
+    const frame = screen.getByTestId("crop-photo-frame");
+    expect(frame.textContent).toBe("写真");
+
+    fireEvent.click(frame);
+    await flush();
+    expect(screen.getByTestId("crop-photo-frame").textContent).toBe("");
   });
 
   it("keeps the areas when the candidates are hidden", async () => {
@@ -202,7 +259,9 @@ describe("pressing a candidate", () => {
     await flush();
 
     expect(chart).not.toHaveTextContent("グラフ");
+    expect(chart).toHaveClass("is-covered");
     expect(photo).toHaveTextContent("写真");
+    expect(photo).not.toHaveClass("is-covered");
     expect(screen.getByTestId("crop-area")).toHaveTextContent("グラフ");
 
     // 10 pt to the right still overlaps by 190 / 210 of the 200 pt width,
@@ -218,6 +277,32 @@ describe("pressing a candidate", () => {
     moveRight();
     await flush();
     expect(chart).toHaveTextContent("グラフ");
+    expect(chart).not.toHaveClass("is-covered");
+  });
+
+  it("leaves the line and the word of a photo's frame to the area in its place", async () => {
+    await openPdfInCropTab({ list_page_images: () => photos });
+    const frame = screen.getByTestId("crop-photo-frame");
+    expect(frame).not.toHaveClass("is-covered");
+    fireEvent.click(frame);
+    await flush();
+    expect(screen.getByTestId("crop-photo-frame")).toHaveClass("is-covered");
+  });
+
+  it("draws an area whose row is unchecked as one that is not exported", async () => {
+    await openPdfInCropTab({ detect_layout: () => candidates });
+    fireEvent.click(candidateOf("chart"));
+    await flush();
+    const area = () => screen.getByTestId("crop-area");
+    expect(area()).not.toHaveClass("is-unchecked");
+
+    const check = screen.getByRole("checkbox", {
+      name: "p.1 のグラフを書き出す",
+    });
+    fireEvent.click(check);
+    expect(area()).toHaveClass("is-unchecked");
+    fireEvent.click(check);
+    expect(area()).not.toHaveClass("is-unchecked");
   });
 });
 
@@ -415,7 +500,7 @@ describe("the list of areas", () => {
     await flush();
     await addMenuItem("このページの候補をすべて追加");
 
-    expect(areaRows().map((row) => rowText(row))).toEqual([
+    expect(areaRows().map((row) => `${rowPage(row)}${rowText(row)}`)).toEqual([
       expect.stringMatching(/^p\.1表/),
       expect.stringMatching(/^p\.1グラフ/),
       expect.stringMatching(/^p\.3手で選んだ範囲/),
@@ -423,20 +508,78 @@ describe("the list of areas", () => {
     expect(areaRows().map((row) => row.dataset.key)).toEqual(["2", "3", "1"]);
   });
 
-  it("says in the heading how many areas there are and how many are written", async () => {
-    await twoPages();
-    expect(screen.getByText("2 個 · 書き出す 2 個")).toBeInTheDocument();
+  it("brings the row of an area selected on the page into view", async () => {
+    await openPdfInCropTab({
+      detect_layout: () => [
+        candidate("chart", [50, 60, 250, 160]),
+        candidate("table", [50, 300, 250, 400]),
+      ],
+    });
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    const rowOf = (kind: string) =>
+      areaRows().find((row) => rowText(row).startsWith(kind));
+    const [chart, table] = screen.getAllByTestId("crop-candidate");
 
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "p.1 の手で選んだ範囲を書き出す" }),
-    );
-    expect(screen.getByText("2 個 · 書き出す 1 個")).toBeInTheDocument();
+    fireEvent.click(chart);
+    expect(scroll.mock.contexts).toEqual([rowOf("グラフ")]);
+    expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+
+    fireEvent.click(table);
+    expect(scroll.mock.contexts.at(-1)).toBe(rowOf("表"));
+
+    fireEvent.click(screen.getAllByTestId("crop-area")[0]);
+    expect(scroll.mock.contexts.at(-1)).toBe(rowOf("グラフ"));
+    expect(scroll).toHaveBeenCalledTimes(3);
   });
 
-  it("says nothing of counts, and that there are no areas, while there are none", async () => {
+  it("puts the rows of each page under a heading with the page and its count", async () => {
+    await openPdfInCropTab({
+      detect_layout: () => [
+        candidate("table", [50, 300, 250, 400]),
+        candidate("chart", [50, 60, 250, 160]),
+      ],
+    });
+    pickPage(3);
+    await flush();
+    await addWholePage();
+    pickPage(1);
+    await flush();
+    await addMenuItem("このページの候補をすべて追加");
+
+    expect(pageHeads()).toEqual(["p.1 · 2 個", "p.3 · 1 個"]);
+    const page1 = screen.getByRole("list", { name: "p.1 · 2 個" });
+    expect(within(page1).getAllByTestId("crop-area-row")).toHaveLength(2);
+    const page3 = screen.getByRole("list", { name: "p.3 · 1 個" });
+    expect(rowText(within(page3).getByTestId("crop-area-row"))).toContain(
+      "手で選んだ範囲",
+    );
+    expect(areaRows().every((row) => !rowText(row).includes("p."))).toBe(true);
+  });
+
+  it("says that there are no areas while there are none", async () => {
     await openPdfInCropTab();
     expect(screen.getByText("範囲はまだありません")).toBeInTheDocument();
-    expect(screen.queryByText(/書き出す \d+ 個/)).toBeNull();
+    expect(
+      screen.getByText(
+        "ページの候補や写真を押すと、範囲になります。候補にないものは「範囲を描く」で描けます。",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("starts the list without a heading of its own", async () => {
+    await twoPages();
+    const side = screen.getByRole("region", { name: "範囲と書き出しの設定" });
+    expect(within(side).queryByText("範囲")).toBeNull();
+    expect(pageHeads()[0]).toMatch(/^p\.1 · /);
+  });
+
+  it("leaves the counts to the bottom bar, not the list", async () => {
+    await twoPages();
+    const side = screen.getByRole("region", { name: "範囲と書き出しの設定" });
+    expect(within(side).queryByText(/書き出す \d+ 個/)).toBeNull();
+    expect(
+      screen.getByText("2 個の範囲を PNG で書き出します"),
+    ).toBeInTheDocument();
   });
 
   it("changes what the bottom bar says when a box is unchecked", async () => {
@@ -493,7 +636,6 @@ describe("the list of areas", () => {
     expect(areaRows()).toHaveLength(1);
     expect(selectedAreas()).toHaveLength(0);
     expect(screen.queryByTestId("crop-area")).toBeNull();
-    expect(screen.getByText("1 個 · 書き出す 1 個")).toBeInTheDocument();
   });
 
   it("keeps the selection when another area is removed", async () => {
@@ -635,7 +777,6 @@ describe("in English", () => {
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await drawWholePage();
 
-    expect(screen.getByText("1 area · 1 to export")).toBeInTheDocument();
     expect(screen.getByText("Export 1 area as PNG")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Page 1, 1 area" }),
@@ -648,7 +789,24 @@ describe("in English", () => {
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
     await flush();
     await drawWholePage();
-    expect(screen.getByText("2 areas · 2 to export")).toBeInTheDocument();
     expect(screen.getByText("Export 2 areas as PNG")).toBeInTheDocument();
+  });
+
+  it("heads each page with its count in the singular and the plural", async () => {
+    await openPdfInCropTab(
+      {
+        detect_layout: () => [
+          candidate("table", [50, 300, 250, 400]),
+          candidate("chart", [50, 60, 250, 160]),
+        ],
+      },
+      cropPdf(),
+      "en",
+    );
+    await addMenuItem("Add all suggestions on this page", "Add areas ▾");
+    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    await flush();
+    await drawWholePage();
+    expect(pageHeads()).toEqual(["p.1 · 2 areas", "p.2 · 1 area"]);
   });
 });

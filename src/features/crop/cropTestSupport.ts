@@ -446,3 +446,30 @@ export function areaRows(): HTMLElement[] {
 export function rowText(row: HTMLElement): string {
   return (row.textContent ?? "").replace(/\s+/g, " ").trim();
 }
+
+/** The headings of the pages in the list of areas, in the order shown. */
+export function pageHeads(): string[] {
+  return Array.from(
+    document.querySelectorAll(".crop-page-head"),
+    (head) => head.textContent ?? "",
+  );
+}
+
+/** The page of a row, as its page's heading names it: "p.3". */
+export function rowPage(row: HTMLElement): string {
+  const head = row
+    .closest(".crop-page-group")
+    ?.querySelector(".crop-page-head")?.textContent;
+  return /^p\.\d+/.exec(head ?? "")?.[0] ?? "";
+}
+
+/** Whether `notice` lies after the toolbar and before the page's view. */
+export function liesUnderToolbar(notice: HTMLElement): boolean {
+  const toolbar = document.querySelector(".crop-toolbar");
+  const view = document.querySelector('[data-testid="crop-viewport"]');
+  const after = (a: Element | null, b: Element | null) =>
+    a !== null &&
+    b !== null &&
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  return after(toolbar, notice) && (view === null || after(notice, view));
+}

@@ -15,6 +15,7 @@ import {
   installFakeObjectUrls,
   installFakeResizeObserver,
   openPdfInCropTab,
+  rowPage,
   rowText,
   type Call,
   type Handler,
@@ -29,6 +30,7 @@ afterEach(() => {
   cleanup();
   clearMocks();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const TIMEOUT: IpcError = { code: "WorkerTimeout", detail: null };
@@ -61,7 +63,7 @@ async function answer(
 }
 
 function pages(): string[] {
-  return areaRows().map((row) => rowText(row).slice(0, 3));
+  return areaRows().map(rowPage);
 }
 
 function detectLayoutPages(calls: Call[]): unknown[] {
@@ -73,12 +75,13 @@ describe("starting the search of all pages", () => {
     const calls = await openPdfInCropTab({
       detect_layout: () => [chart, table],
     });
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
     await startDetectAll();
 
     expect(callsOf(calls, "start_detect_all").map((c) => c.args)).toEqual([
       { id: 7 },
     ]);
-    expect(areaRows().map((row) => rowText(row))).toEqual([
+    expect(areaRows().map((row) => `${rowPage(row)}${rowText(row)}`)).toEqual([
       expect.stringMatching(/^p\.1グラフ/),
       expect.stringMatching(/^p\.1表/),
     ]);
@@ -87,6 +90,7 @@ describe("starting the search of all pages", () => {
         .queryAllByTestId("crop-area")
         .filter((a) => a.dataset.selected === "true"),
     ).toHaveLength(0);
+    expect(scroll).not.toHaveBeenCalled();
   });
 
   it("says in the bottom bar that all pages are searched, with a way to cancel", async () => {
@@ -315,7 +319,7 @@ describe("the result of the search", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "全ページの候補を探しました：範囲を 3 個追加 · 失敗 1 ページ",
     );
-    expect(screen.getByText("失敗があります")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveClass("error-text");
   });
 
   it("says no area was added, leaving out the counts of zero", async () => {
@@ -362,7 +366,7 @@ describe("the result of the search", () => {
       },
       [[2, [chart], null]],
     );
-    expect(screen.getByRole("status")).toHaveClass("is-success");
+    expect(screen.getByRole("status")).toHaveClass("success-text");
   });
 
   it("is dropped when an area is removed, but not when one is selected", async () => {

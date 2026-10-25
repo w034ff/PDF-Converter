@@ -5,7 +5,6 @@ import {
   ListRow,
   type ListRowStatus,
 } from "../../components";
-import { JobSummaryBanner } from "../job/JobSummaryBanner";
 import { OutputDirError } from "../output";
 import {
   formatErrorMessage,
@@ -510,8 +509,6 @@ export function ImagesToPdfView() {
     <div className="images-view">
       {errorDisplay}
       <OutputDirError tab="imagesToPdf" />
-
-      <JobSummaryBanner tab="imagesToPdf" />
 
       <div className="images-view-header">
         <div className="images-view-title-group">

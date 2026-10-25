@@ -247,10 +247,12 @@
   outline: none;
 }
 
-/* The areas' line and the selected area's ground are accent, so an accent
-   ring on the page or the list of areas reads as a selection. */
+/* The areas' line, the selected area's ground and the selected row's are
+   accent, so an accent ring on the page, the list of areas or a row's
+   controls reads as a selection. */
 .crop-viewport :focus-visible,
-.crop-area-list:focus-visible {
+.crop-area-list:focus-visible,
+.crop-area-list :focus-visible {
   outline-color: var(--color-text-primary);
 }
 
@@ -295,16 +297,18 @@
   cursor: pointer;
 }
 
-.crop-photo-frame {
-  border: 1.5px dashed var(--color-page-frame);
-}
-
-.crop-photo-frame:hover {
-  border: 2px solid var(--color-page-frame-hover);
-}
-
+/* An embedded image's frame looks like a candidate: both add an area when
+   pressed, and how they were found does not change that. */
+.crop-photo-frame,
 .crop-candidate {
   border: 1px solid var(--color-page-candidate);
+}
+
+/* An area lies in its place and draws the line there. Under an area that is
+   not exported, whose line is dashed, this one would show in the gaps. */
+.crop-photo-frame.is-covered,
+.crop-candidate.is-covered {
+  border-color: transparent;
 }
 
 .crop-tag {
@@ -335,6 +339,11 @@
 
 .crop-area.is-selected {
   background: var(--color-page-area-tint);
+}
+
+/* An area whose row is unchecked: still an area, but not exported. */
+.crop-area.is-unchecked {
+  border-style: dashed;
 }
 
 /* The gap tells the ring from the line of the frame. */
@@ -403,6 +412,8 @@
 /* A word sits outside its frame and can lie under a neighbour's. The one
    under the pointer or the focus comes up, so each can be read, but not
    over the selected area's: that is the area being worked on. */
+.crop-photo-frame:hover > .crop-tag,
+.crop-photo-frame:focus-visible > .crop-tag,
 .crop-candidate:hover > .crop-tag,
 .crop-candidate:focus-visible > .crop-tag,
 .crop-area:hover > .crop-area-tag,
@@ -521,24 +532,11 @@
   min-height: 0;
 }
 
-.crop-side > .job-summary {
-  flex: none;
-  margin: 12px 16px 0;
-}
-
-.crop-ranges-header {
-  padding: 12px 16px 8px;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex: none;
-}
-
 .crop-ranges {
   flex: 1 1 0;
   min-height: 72px;
   overflow-y: auto;
-  padding: 0 16px 12px;
+  padding: 12px 16px;
 }
 
 .crop-ranges p {
@@ -628,6 +626,11 @@
 }
 
 .crop-area-list {
+  --crop-page-head-height: 28px;
+}
+
+.crop-area-list,
+.crop-page-rows {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -636,7 +639,26 @@
   gap: 6px;
 }
 
+/* A page's heading stays at the top while its rows scroll under it. Its
+   ground reaches down over the gap to the first row, so a row scrolled
+   under it does not show above that row. */
+.crop-page-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  height: var(--crop-page-head-height);
+  padding: 6px 2px;
+  line-height: 16px;
+  background: var(--color-bg-surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+/* A row scrolled into view stops below its page's heading, not under it. */
 .crop-area-row {
+  scroll-margin-top: var(--crop-page-head-height);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -647,8 +669,8 @@
 }
 
 .crop-area-row.is-selected {
-  background: var(--color-accent-subtle);
-  border-color: var(--color-accent);
+  background: var(--color-row-selected);
+  border-color: var(--color-text-secondary);
 }
 
 .crop-area-check {
@@ -720,10 +742,6 @@
   font-size: 13px;
 }
 
-.crop-area-page {
-  color: var(--color-text-primary);
-}
-
 .crop-area-kind {
   font-weight: 500;
 }
@@ -761,12 +779,25 @@
   color: var(--color-text-secondary);
 }
 
-.crop-area-remove {
+/* Only the × shows, without a border or a ground: a square would stand out
+   on the selected row's gray. The pointer and a press change its color
+   instead, red for the press as it removes the area. The class pair
+   outweighs `.icon-btn` in app.css, which loads after this file. */
+.icon-btn.crop-area-remove {
   flex: none;
   width: 28px;
-  border: 0;
+  border-color: transparent;
   background: transparent;
   color: var(--color-text-secondary);
+}
+
+.icon-btn.crop-area-remove:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+.icon-btn.crop-area-remove:active:not(:disabled) {
+  color: var(--color-error);
 }
 
 .crop-replace-count {

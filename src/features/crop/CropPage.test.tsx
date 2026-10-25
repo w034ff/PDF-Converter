@@ -21,6 +21,7 @@ import {
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
+  liesUnderToolbar,
   mockCropIpc,
   openCropTab,
   pageImage,
@@ -714,6 +715,7 @@ describe("when the analysis fails", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
     );
+    expect(liesUnderToolbar(screen.getByRole("status"))).toBe(true);
     expect(screen.queryByText("候補を探しています…")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
 

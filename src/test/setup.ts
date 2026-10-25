@@ -12,8 +12,17 @@ for (const name of ["setPointerCapture", "releasePointerCapture"]) {
   }
 }
 
-// jsdom has no scrolling either; the page is dragged to scroll it. This one
-// moves the offsets, so a test can read where a drag scrolled to.
+// jsdom has no scrolling either. A test that cares spies on scrollIntoView.
+if (!("scrollIntoView" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    value: () => {},
+    configurable: true,
+    writable: true,
+  });
+}
+
+// The page is dragged to scroll it. This one moves the offsets, so a test
+// can read where a drag scrolled to.
 if (!("scrollTo" in Element.prototype)) {
   Object.defineProperty(Element.prototype, "scrollTo", {
     value(this: Element, options: ScrollToOptions) {

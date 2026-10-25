@@ -1,5 +1,9 @@
 import type { PageSizeChoice } from "../ipc";
-import type { ImagesToPdfAction, ImagesToPdfState } from "./types";
+import type {
+  ImagesPdfFormat,
+  ImagesToPdfAction,
+  ImagesToPdfState,
+} from "./types";
 
 export interface PaperSizeOption {
   readonly value: Exclude<PageSizeChoice, "fit">;
@@ -24,6 +28,15 @@ export function isPaperSize(
 
 export function isPageSizeChoice(value: unknown): value is PageSizeChoice {
   return value === "fit" || isPaperSize(value);
+}
+
+export function imagesPdfFormat(
+  state: Pick<ImagesToPdfState, "pdfA" | "encrypt">,
+): ImagesPdfFormat {
+  if (state.pdfA) {
+    return "pdfA";
+  }
+  return state.encrypt ? "encrypt" : "standard";
 }
 
 export const initialImagesToPdfState: ImagesToPdfState = {
@@ -96,22 +109,14 @@ export function imagesToPdfReducer(
         orientation: action.orientation,
       };
     }
-    case "SET_IMAGES_PDF_A": {
-      if (state.pdfA === action.pdfA) {
+    case "SET_IMAGES_PDF_FORMAT": {
+      if (imagesPdfFormat(state) === action.format) {
         return state;
       }
       return {
         ...state,
-        pdfA: action.pdfA,
-      };
-    }
-    case "SET_IMAGES_ENCRYPT": {
-      if (state.encrypt === action.encrypt) {
-        return state;
-      }
-      return {
-        ...state,
-        encrypt: action.encrypt,
+        pdfA: action.format === "pdfA",
+        encrypt: action.format === "encrypt",
       };
     }
     case "SET_IMAGES_OUTPUT_DIR": {

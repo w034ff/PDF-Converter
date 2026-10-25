@@ -18,6 +18,7 @@ import {
   openPdfInCropTab,
   openSettings,
   pageImage,
+  rowPage,
   rowText,
   type Call,
   type Handler,
@@ -71,7 +72,7 @@ async function startExport() {
 }
 
 function statusOf(page: number): string {
-  const row = areaRows().find((r) => rowText(r).startsWith(`p.${page}`));
+  const row = areaRows().find((r) => rowPage(r) === `p.${page}`);
   return row === undefined ? "" : rowText(row);
 }
 
@@ -288,10 +289,10 @@ describe("the rows while and after a write", () => {
     expect(banner).toHaveTextContent(
       "変換が終わりました：成功 1 件 · 失敗 1 件 · 未処理 1 件",
     );
-    expect(screen.getByText("失敗があります")).toBeInTheDocument();
+    expect(banner).toHaveClass("error-text");
   });
 
-  it("have the summary above the heading of the list", async () => {
+  it("tell the summary in the bottom bar, not above the list", async () => {
     await started();
     await emitJobFinished({
       succeeded: 3,
@@ -301,13 +302,11 @@ describe("the rows while and after a write", () => {
       cancelled: false,
     });
     const side = screen.getByRole("region", { name: "範囲と書き出しの設定" });
-    const banner = within(side).getByRole("status");
-    const heading = within(side).getByText("範囲");
-    expect(
-      banner.compareDocumentPosition(heading) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(screen.getByText("すべて完了しました")).toBeInTheDocument();
+    expect(within(side).queryByRole("status")).toBeNull();
+    const summary = screen.getByRole("status");
+    expect(summary.closest("footer")).not.toBeNull();
+    expect(summary).toHaveTextContent("変換が終わりました：成功 3 件");
+    expect(summary).toHaveClass("success-text");
   });
 
   it("say cancelled for the row a cancel stopped, and how the cancel is summarized", async () => {

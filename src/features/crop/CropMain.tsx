@@ -41,7 +41,11 @@ function EmptyIcon() {
   );
 }
 
-/** Why nothing opened, and that layout suggestions are not available. */
+/**
+ * Why nothing opened, and that layout suggestions are not available: under
+ * the toolbar once a PDF is open, so a notice does not move the toolbar, and
+ * at the top while none is.
+ */
 function CropNotices() {
   const { language, crop } = useAppState();
   const dispatch = useAppDispatch();
@@ -222,11 +226,13 @@ export function CropMain({
   const needsPassword = pdf.error?.code === "PasswordProtected";
   return (
     <main className="crop-main">
-      <CropNotices />
       {pdf.error !== null && (
-        <div className="crop-toolbar">
-          <CropFileControls pdf={pdf} openButtonRef={openButtonRef} />
-        </div>
+        <>
+          <div className="crop-toolbar">
+            <CropFileControls pdf={pdf} openButtonRef={openButtonRef} />
+          </div>
+          <CropNotices />
+        </>
       )}
       {needsPassword && (
         <div className="crop-notices">
@@ -271,6 +277,7 @@ export function CropMain({
             }
             focusRequested={focusRequested}
             onFocused={onFocused}
+            notices={<CropNotices />}
           />
           <CropPageStatus pdf={pdf} />
         </>

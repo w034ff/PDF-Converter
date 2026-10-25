@@ -79,9 +79,6 @@ td{font-size:13px;padding:8px 12px;border-bottom:1px solid #ebe8e3;vertical-alig
     </aside>
 
     <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; box-sizing: border-box">
-      <div role="status" style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #ffffff; border: 1px solid #dcd9d3; border-radius: 8px">
-        <span style="font-size: 14px; font-weight: 700">変換が終わりました：成功 3 件 · 失敗 2 件 · 対象のページなし 1 件</span>
-      </div>
       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
         <span class="label">PDF 6 件</span>
         <span class="hint">「invoices」フォルダから追加</span>
@@ -110,7 +107,7 @@ td{font-size:13px;padding:8px 12px;border-bottom:1px solid #ebe8e3;vertical-alig
   </div>
 
   <footer style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: #ffffff; border-top: 1px solid #dcd9d3">
-    <span class="hint">完了</span>
+    <span role="status" style="font-size: 13px; color: #b3163a">✕ 変換が終わりました：成功 3 件 · 失敗 2 件 · 対象のページなし 1 件</span>
     <button class="btn btn-primary" style="margin-left: auto">変換を開始</button>
   </footer>
 </div>

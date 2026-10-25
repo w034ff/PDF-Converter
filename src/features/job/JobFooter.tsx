@@ -11,7 +11,7 @@ import {
 import type { Translations } from "../../i18n";
 import type { JobFinishedPayload } from "../../ipc";
 import { isOutputDirError } from "../output";
-import { jobOutcome } from "./jobSummary";
+import { formatJobSummary, jobOutcome, summaryShape } from "./jobSummary";
 import { useJobRunner } from "./useJobRunner";
 
 export interface JobFooterProps {
@@ -39,30 +39,30 @@ function runningText(t: Translations, job: JobState): string {
   });
 }
 
-function finishedStatus(t: Translations, finished: JobFinishedPayload) {
-  switch (jobOutcome(finished)) {
-    case "failure":
-      return <span className="error-text">{t.job.doneWithFailures}</span>;
-    case "success":
-      return <span className="success-text">{t.job.doneAllSucceeded}</span>;
-    case "neutral":
-      return (
-        <span className="hint">
-          {finished.cancelled ? t.job.cancelled : t.job.done}
-        </span>
-      );
-  }
+/** How the screen's last conversion ended, with its counts, in the outcome's color. */
+function finishedStatus(finished: JobFinishedPayload, summary: string) {
+  const className = {
+    failure: "error-text",
+    success: "success-text",
+    neutral: "hint",
+  }[jobOutcome(finished)];
+  return (
+    <span role="status" className={className}>
+      {summary}
+    </span>
+  );
 }
 
 /**
  * The bottom bar's status and button for a conversion (mockups `ImagesEach`
- * and `PdfBatch`): progress and Cancel while it runs, then how it
- * ended, in red when anything failed (design §10.1).
+ * and `PdfBatch`): progress and Cancel while it runs, then how it ended
+ * with its counts, in red when anything failed (design §10.1). It is the
+ * only place the result is told, so the lists above it do not move.
  * A running conversion shows on both tabs, since it locks both; a finished
  * or failed one shows only on the tab that started it.
  */
 export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
-  const { language, job, crop } = useAppState();
+  const { language, job, crop, imagesToPdf, pdfToImages } = useAppState();
   const runner = useJobRunner();
   const t = getTranslations(language.language);
 
@@ -122,7 +122,22 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
       </span>
     );
   } else if (job.kind === tab && job.finished !== null) {
-    status = finishedStatus(t, job.finished);
+    // A PDF that failed on some pages is counted as failed by `job-finished`;
+    // the rows say which, and the summary lists them apart.
+    const partial =
+      tab === "pdfToImages"
+        ? Object.values(job.results).filter(
+            (result) => result.status === "partial",
+          ).length
+        : 0;
+    status = finishedStatus(
+      job.finished,
+      formatJobSummary(
+        t,
+        job.finished,
+        summaryShape(tab, job, imagesToPdf, pdfToImages, crop, partial),
+      ),
+    );
   }
 
   return (

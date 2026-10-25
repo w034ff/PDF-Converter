@@ -4,9 +4,11 @@ import { OutputDirField } from "../output/OutputDirField";
 import { getTranslations } from "../../i18n";
 import type { OutputMode, PageOrientationChoice } from "../../ipc";
 import {
+  imagesPdfFormat,
   isJobActive,
   isPageSizeChoice,
   PAPER_SIZE_OPTIONS,
+  type ImagesPdfFormat,
   useAppDispatch,
   useAppState,
 } from "../../state";
@@ -14,7 +16,7 @@ import "./ImagesToPdf.css";
 
 /**
  * Settings panel for Images to PDF (design §6.1, §6.2, mockups Main.dc.html, ImagesMerge.dc.html, ImagesEach.dc.html).
- * Provides output mode ("merge" | "each"), page size dropdown, orientation, the PDF/A checkbox, and output folder picker for "each" mode.
+ * Provides output mode ("merge" | "each"), page size dropdown, orientation, the PDF format (standard, PDF/A or password), and output folder picker for "each" mode.
  */
 export function ImagesToPdfSettings() {
   const { imagesToPdf, job, language } = useAppState();
@@ -34,6 +36,13 @@ export function ImagesToPdfSettings() {
       { value: "portrait", label: t.imagesToPdf.orientationPortrait },
       { value: "landscape", label: t.imagesToPdf.orientationLandscape },
     ];
+
+  const pdfFormatOptions: readonly SegmentedOption<ImagesPdfFormat>[] = [
+    { value: "standard", label: t.imagesToPdf.pdfFormatStandard },
+    { value: "pdfA", label: t.imagesToPdf.pdfFormatPdfA },
+    { value: "encrypt", label: t.imagesToPdf.pdfFormatEncrypt },
+  ];
+  const pdfFormat = imagesPdfFormat(imagesToPdf);
 
   const handlePageSizeChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value;
@@ -110,56 +119,23 @@ export function ImagesToPdfSettings() {
         )}
       </div>
 
-      {/* PDF/A forbids encryption (design §4.3.1), so while one of the two
-          boxes is on the other cannot be turned on. It is not turned off for
-          the user: a choice they made is not taken back silently. */}
       <div className="images-settings-field">
-        <label
-          className={`label images-settings-checkbox${imagesToPdf.encrypt ? " is-unavailable" : ""}`}
-        >
-          <input
-            type="checkbox"
-            checked={imagesToPdf.pdfA}
-            onChange={(event) =>
-              dispatch({
-                type: "SET_IMAGES_PDF_A",
-                pdfA: event.target.checked,
-              })
-            }
-            disabled={disabled || imagesToPdf.encrypt}
-          />
-          {t.imagesToPdf.pdfALabel}
-        </label>
-        {imagesToPdf.pdfA && (
+        <span className="label">{t.imagesToPdf.pdfFormatLabel}</span>
+        <SegmentedControl
+          label={t.imagesToPdf.pdfFormatLabel}
+          className="seg images-pdf-format"
+          options={pdfFormatOptions}
+          value={pdfFormat}
+          onChange={(format) =>
+            dispatch({ type: "SET_IMAGES_PDF_FORMAT", format })
+          }
+          disabled={disabled}
+        />
+        {pdfFormat === "pdfA" && (
           <span className="hint">{t.imagesToPdf.pdfAHint}</span>
         )}
-        {imagesToPdf.encrypt && (
-          <span className="hint">{t.imagesToPdf.pdfAUnavailableHint}</span>
-        )}
-      </div>
-
-      <div className="images-settings-field images-settings-field-tight">
-        <label
-          className={`label images-settings-checkbox${imagesToPdf.pdfA ? " is-unavailable" : ""}`}
-        >
-          <input
-            type="checkbox"
-            checked={imagesToPdf.encrypt}
-            onChange={(event) =>
-              dispatch({
-                type: "SET_IMAGES_ENCRYPT",
-                encrypt: event.target.checked,
-              })
-            }
-            disabled={disabled || imagesToPdf.pdfA}
-          />
-          {t.imagesToPdf.encryptLabel}
-        </label>
-        {imagesToPdf.encrypt && (
+        {pdfFormat === "encrypt" && (
           <span className="hint">{t.imagesToPdf.encryptHint}</span>
-        )}
-        {imagesToPdf.pdfA && (
-          <span className="hint">{t.imagesToPdf.encryptUnavailableHint}</span>
         )}
       </div>
 

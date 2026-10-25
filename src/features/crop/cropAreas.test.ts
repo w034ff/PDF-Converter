@@ -11,6 +11,7 @@ import {
 import {
   CROP_PREVIEW_HEIGHT,
   CROP_PREVIEW_WIDTH,
+  areasByPage,
   areasInListOrder,
   exportSize,
   exportSizeText,
@@ -299,6 +300,32 @@ describe("exportSizeText", () => {
       "元の画素を縮小 1241 × 964",
     );
     expect(exportSizeText(en, native)).toBe("Original pixels 1241 × 964");
+  });
+});
+
+describe("areasByPage", () => {
+  it("splits the areas in list order by page, leaving out pages without areas", () => {
+    const areas = [
+      area({ key: 1, page: 3 }),
+      area({ key: 2, page: 1 }),
+      area({ key: 3, page: 3 }),
+      area({ key: 4, page: 1 }),
+      area({ key: 5, page: 4 }),
+    ];
+    expect(
+      areasByPage(areas).map(({ page, areas }) => [
+        page,
+        areas.map((a) => a.key),
+      ]),
+    ).toEqual([
+      [1, [2, 4]],
+      [3, [1, 3]],
+      [4, [5]],
+    ]);
+  });
+
+  it("has no pages without areas", () => {
+    expect(areasByPage([])).toEqual([]);
   });
 });
 

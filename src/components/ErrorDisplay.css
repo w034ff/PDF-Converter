@@ -31,6 +31,16 @@
   font-size: 12px;
 }
 
-.error-display-dismiss {
+/* Like a dialog's ×, no border or ground until the pointer is on it, so it
+   reads as the band's own control. The band's ground is the subtle one,
+   which a hover in that same color would not show. The class pair outweighs
+   `.icon-btn` in app.css, which loads after this file. */
+.icon-btn.error-display-dismiss {
   margin-left: auto;
+  border-color: transparent;
+  background: transparent;
+}
+
+.icon-btn.error-display-dismiss:hover:not(:disabled) {
+  background: var(--color-bg-hover);
 }

@@ -18,11 +18,11 @@ import {
   type RectPt,
 } from "../../state";
 import {
-  HANDLE_IDS,
   arrowRect,
   handleCursor,
   handlePoint,
   isArrowKey,
+  shownHandles,
 } from "./cropEdit";
 import {
   CROP_HANDLE_HIT_PX,
@@ -40,7 +40,7 @@ export interface CropOverlaysProps {
   /** The areas of the page. */
   areas: readonly CropArea[];
   selectedKey: number | null;
-  /** Whether the candidates are drawn; the frames of embedded images always are. */
+  /** Whether the candidates are drawn. The frames of embedded images are drawn either way, but those of photo candidates only while the candidates are not. */
   showCandidates: boolean;
   /** Whether the areas cannot be added or changed (a conversion runs). */
   locked: boolean;
@@ -109,10 +109,11 @@ interface PageMenu {
 }
 
 /**
- * What is drawn over the page (design §10.1): a dotted frame round each
- * embedded image, which is emphasized under the pointer, a thin line with the
- * kind's word round each candidate (without the word when an area lies in
- * its place), and the areas (an accent line with the kind's word, and a
+ * What is drawn over the page (design §10.1): a thin line with the kind's
+ * word round each candidate and each embedded image, alike as both add an
+ * area when pressed (without the word when an area lies in its place; an
+ * image a shown or put-aside photo candidate stands for is left to that
+ * candidate), and the areas (an accent line with the kind's word, and a
  * tinted ground when selected). With the "select" tool, pressing a frame or
  * a candidate adds the area it stands for, pressing an area selects it,
  * pressing the page elsewhere selects none, dragging an area or its handles
@@ -390,8 +391,20 @@ export function CropOverlays({
   const editable = !locked;
   const drawing = editable && tool === "draw";
   const selectedArea = areas.find((area) => area.key === selectedKey);
+  const selectedRect =
+    selectedArea === undefined ? undefined : rectOf(selectedArea);
   const pxPerPt = CSS_PX_PER_PT * scale;
   const pressable = locked ? "" : " is-pressable";
+  // A photo candidate and its image's frame add the same area and would be
+  // drawn on one another; the candidate stays, as it can be put aside. Once
+  // put aside it takes the frame with it, or the photo would seem to stay.
+  const candidateImages = new Set(
+    showCandidates
+      ? candidates.flatMap((candidate) =>
+          candidate.kind === "photo" ? [candidate.imageIndex] : [],
+        )
+      : [],
+  );
   const layers = stackLayers([
     ...(showCandidates
       ? candidates.flatMap((candidate, index): Layer[] =>
@@ -400,7 +413,9 @@ export function CropOverlays({
             : [{ kind: "candidate", index, candidate }],
         )
       : []),
-    ...images.map((image): Layer => ({ kind: "frame", image })),
+    ...images.flatMap((image): Layer[] =>
+      candidateImages.has(image.imageIndex) ? [] : [{ kind: "frame", image }],
+    ),
     ...areas.map((area): Layer => ({ kind: "area", area })),
   ]);
 
@@ -411,13 +426,13 @@ export function CropOverlays({
       rectPt: candidate.rectPt,
       imageIndex: candidate.kind === "photo" ? candidate.imageIndex : null,
     };
-    // An area in its place, such as the one made from it, puts its own word
-    // where the candidate's would be.
+    // An area in its place, such as the one made from it, puts its own line
+    // and word where the candidate's would be.
     const madeArea = findDuplicate(areas, area) !== undefined;
     return (
       <div
         key={`candidate-${index}`}
-        className={`crop-candidate${pressable}`}
+        className={`crop-candidate${pressable}${madeArea ? " is-covered" : ""}`}
         data-testid="crop-candidate"
         data-kind={candidate.kind}
         data-index={index}
@@ -446,10 +461,11 @@ export function CropOverlays({
       rectPt: image.rectPt,
       imageIndex: image.imageIndex,
     };
+    const madeArea = findDuplicate(areas, area) !== undefined;
     return (
       <div
         key={`frame-${image.imageIndex}`}
-        className={`crop-photo-frame${pressable}`}
+        className={`crop-photo-frame${pressable}${madeArea ? " is-covered" : ""}`}
         data-testid="crop-photo-frame"
         role="button"
         tabIndex={locked ? -1 : 0}
@@ -457,7 +473,11 @@ export function CropOverlays({
         style={rectToCssBox(image.rectPt, scale)}
         onClick={() => add(area)}
         onKeyDown={(event) => activate(event, () => addFromKeyboard(area))}
-      />
+      >
+        {!madeArea && (
+          <span className="crop-tag">{t.crop.candidateKinds.photo}</span>
+        )}
+      </div>
     );
   }
 
@@ -465,7 +485,7 @@ export function CropOverlays({
     return (
       <div
         key={`area-${area.key}`}
-        className={`crop-area${area.key === selectedKey ? " is-selected" : ""}`}
+        className={`crop-area${area.key === selectedKey ? " is-selected" : ""}${area.checked ? "" : " is-unchecked"}`}
         data-testid="crop-area"
         data-key={area.key}
         data-kind={area.kind}
@@ -528,8 +548,12 @@ export function CropOverlays({
         {editable &&
           !drawing &&
           selectedArea !== undefined &&
-          HANDLE_IDS.map((handle) => {
-            const point = handlePoint(rectOf(selectedArea), handle);
+          selectedRect !== undefined &&
+          shownHandles(
+            (selectedRect[2] - selectedRect[0]) * pxPerPt,
+            (selectedRect[3] - selectedRect[1]) * pxPerPt,
+          ).map((handle) => {
+            const point = handlePoint(selectedRect, handle);
             return (
               <div
                 key={handle}

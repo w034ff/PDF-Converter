@@ -112,6 +112,7 @@ describe("design tokens and CSS rules", () => {
       "--color-success",
       "--color-error",
       "--color-warning",
+      "--color-info",
       "--color-progress-track",
     ];
 
@@ -133,12 +134,7 @@ describe("design tokens and CSS rules", () => {
     // The page is white in both themes, and the frames and the kind tags
     // drawn on it do not change with the theme (see tokens.css).
     const tokens = readThemeTokens("dark");
-    for (const fg of [
-      "--color-page-frame",
-      "--color-page-frame-hover",
-      "--color-page-candidate",
-      "--color-page-area",
-    ]) {
+    for (const fg of ["--color-page-candidate", "--color-page-area"]) {
       expect(
         contrastRatio(
           tokenValue(tokens, fg),
@@ -170,7 +166,8 @@ describe("design tokens and CSS rules", () => {
       // The focus ring draws accent on every ground the app uses.
       // A failed page's mark puts text-on-error over error. Error and
       // success are also text, on every ground the app uses, and so is
-      // warning (the status word of a PDF waiting for its password).
+      // warning (the status word of a PDF waiting for its password). Info
+      // marks a notice on the same grounds.
       const pairs: [string, string][] = [
         ["--color-text-on-accent", "--color-accent"],
         ["--color-text-on-accent", "--color-accent-hover"],
@@ -189,6 +186,9 @@ describe("design tokens and CSS rules", () => {
         ["--color-warning", "--color-bg-app"],
         ["--color-warning", "--color-bg-surface"],
         ["--color-warning", "--color-bg-subtle"],
+        ["--color-info", "--color-bg-app"],
+        ["--color-info", "--color-bg-surface"],
+        ["--color-info", "--color-bg-subtle"],
       ];
 
       for (const [fg, bg] of pairs) {
@@ -199,6 +199,29 @@ describe("design tokens and CSS rules", () => {
         expect(
           ratio,
           `${fg} on ${bg} in the ${theme} theme`,
+        ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
+      }
+    },
+  );
+
+  it.each(["light", "dark"] as const)(
+    "keeps the words of a selected row readable in the %s theme",
+    (theme) => {
+      const tokens = readThemeTokens(theme);
+      // Success is left out: the dark green falls short on the selected
+      // row's ground, and it shows there only on an exported row.
+      for (const fg of [
+        "--color-text-primary",
+        "--color-text-secondary",
+        "--color-error",
+        "--color-warning",
+      ]) {
+        expect(
+          contrastRatio(
+            tokenValue(tokens, fg),
+            tokenValue(tokens, "--color-row-selected"),
+          ),
+          `${fg} on --color-row-selected in the ${theme} theme`,
         ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
       }
     },

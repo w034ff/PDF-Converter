@@ -340,6 +340,17 @@ describe("resizing an area", () => {
     expect(screen.queryAllByTestId("crop-handle")).toHaveLength(0);
   });
 
+  it("leaves out the handles in the middle of a short side", async () => {
+    await openPdfInCropTab({
+      detect_layout: () => [candidate("figure", [50, 60, 54, 400])],
+    });
+    fireEvent.click(screen.getByTestId("crop-candidate"));
+    await flush();
+    expect(
+      screen.getAllByTestId("crop-handle").map((h) => h.dataset.handle),
+    ).toEqual(["nw", "ne", "e", "se", "sw", "w"]);
+  });
+
   it("puts them on the corners and edge middles", async () => {
     await openWithChartArea();
     const centre = (id: string): [number, number] => {

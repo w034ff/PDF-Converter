@@ -35,4 +35,12 @@ describe("NoticeDisplay", () => {
     expect(container.querySelector("rect")).toBeNull();
     expect(container.querySelector("circle")).not.toBeNull();
   });
+
+  it("colors the info notice blue and leaves the lock's yellow", () => {
+    const { rerender } = render(<NoticeDisplay message="a" />);
+    expect(screen.getByRole("status")).not.toHaveClass("is-info");
+
+    rerender(<NoticeDisplay message="a" icon="info" />);
+    expect(screen.getByRole("status")).toHaveClass("is-info");
+  });
 });

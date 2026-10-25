@@ -1,6 +1,11 @@
 import { formatMessage, type Translations } from "../../i18n";
 import type { JobFinishedPayload, JobItemPayload } from "../../ipc";
-import { failedAsAWhole } from "../pdf-to-images/pdfUtils";
+import type { ActiveTab, AppState, JobState } from "../../state";
+import {
+  countPagesInIntervals,
+  failedAsAWhole,
+  selectedIntervals,
+} from "../pdf-to-images/pdfUtils";
 
 /**
  * What the summary counts. Most conversions count items. A conversion of one
@@ -185,4 +190,78 @@ export function jobOutcome(finished: JobFinishedPayload): JobOutcome {
     return "neutral";
   }
   return finished.succeeded > 0 ? "success" : "neutral";
+}
+
+/** How many pages the range selected in the PDF with `pageCount` pages. */
+function selectedPageCount(
+  pdfToImages: AppState["pdfToImages"],
+  pageCount: number,
+): number | null {
+  if (pdfToImages.pageSelection === "all") {
+    return pageCount;
+  }
+  return pdfToImages.rangeResult === null
+    ? null
+    : countPagesInIntervals(
+        selectedIntervals(pdfToImages.rangeResult, pageCount),
+        pageCount,
+      );
+}
+
+/**
+ * What the summary of the screen's last conversion counts: pages when one
+ * PDF was converted, the pages of the PDF written by "Single PDF" (nothing,
+ * if that was cancelled, since no PDF exists), items otherwise.
+ */
+export function summaryShape(
+  tab: ActiveTab,
+  job: JobState,
+  imagesToPdf: AppState["imagesToPdf"],
+  pdfToImages: AppState["pdfToImages"],
+  crop: AppState["crop"],
+  partialCount: number,
+): JobSummaryShape {
+  if (tab === "crop" && crop.lastJob === "detectAll" && job.finished !== null) {
+    return {
+      kind: "detectAll",
+      added: crop.detectAdded,
+      failed: job.finished.failed,
+      unprocessed: job.finished.unprocessed,
+    };
+  }
+  if (tab === "pdfToImages" && job.targets.length === 1) {
+    const [target] = job.targets;
+    const item = pdfToImages.items.find((pdf) => pdf.id === target.id);
+    const selected =
+      item === undefined
+        ? null
+        : selectedPageCount(pdfToImages, item.pageCount);
+    if (selected !== null) {
+      return singlePdfPageCounts(job.results[target.id], selected);
+    }
+  }
+  if (
+    tab === "imagesToPdf" &&
+    imagesToPdf.output === "merge" &&
+    job.finished?.cancelled === true
+  ) {
+    return { kind: "mergedPdfNotSaved" };
+  }
+  if (
+    tab === "imagesToPdf" &&
+    job.savedName !== null &&
+    job.finished !== null &&
+    job.finished.succeeded > 0
+  ) {
+    const okItems = imagesToPdf.items.filter(
+      (item) => job.results[item.id]?.status === "ok",
+    );
+    const pages = okItems.reduce((sum, item) => sum + item.pageCount, 0);
+    return {
+      kind: "mergedPdf",
+      pages,
+      failedImages: job.finished.failed,
+    };
+  }
+  return { kind: "items", partial: partialCount };
 }

@@ -231,7 +231,7 @@ describe("ImagesToPdf (T11)", () => {
         "images-table-reason",
       );
       expect(screen.getByText("✕ 読み込めません")).toBeInTheDocument();
-      expect(screen.getByRole("status")).toHaveClass("is-failure");
+      expect(screen.getByRole("status")).toHaveClass("error-text");
     });
 
     it("does not mark merged pages as done when the merge was cancelled", async () => {
@@ -2151,23 +2151,25 @@ describe("ImagesToPdf (T11)", () => {
       });
     }
 
-    it("starts unchecked with no note, and shows the note only while checked", () => {
+    it("starts at standard with no note, and shows the note only while chosen", () => {
       mockAppIpc(() => undefined);
       renderHarness();
 
-      const box = screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" });
-      expect(box).not.toBeChecked();
+      const pdfA = screen.getByRole("button", { name: "PDF/A" });
+      const standard = screen.getByRole("button", { name: "標準" });
+      expect(standard).toHaveAttribute("aria-pressed", "true");
+      expect(pdfA).toHaveAttribute("aria-pressed", "false");
       expect(
         screen.queryByText("CMYK の画像は使えません"),
       ).not.toBeInTheDocument();
 
-      fireEvent.click(box);
-      expect(box).toBeChecked();
+      fireEvent.click(pdfA);
+      expect(pdfA).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByText("CMYK の画像は使えません")).toBeInTheDocument();
       expect(screen.getByText("CMYK の画像は使えません")).toHaveClass("hint");
 
-      fireEvent.click(box);
-      expect(box).not.toBeChecked();
+      fireEvent.click(standard);
+      expect(pdfA).toHaveAttribute("aria-pressed", "false");
       expect(
         screen.queryByText("CMYK の画像は使えません"),
       ).not.toBeInTheDocument();
@@ -2179,7 +2181,7 @@ describe("ImagesToPdf (T11)", () => {
       fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
 
       const orientation = screen.getByRole("group", { name: "向き" });
-      const box = screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" });
+      const box = screen.getByRole("group", { name: "PDF の形式" });
       const folder = screen.getByRole("button", { name: "フォルダを選ぶ" });
       expect(
         orientation.compareDocumentPosition(box) &
@@ -2194,8 +2196,10 @@ describe("ImagesToPdf (T11)", () => {
       mockAppIpc(() => undefined);
       renderHarness("en-US");
 
-      const box = screen.getByRole("checkbox", { name: "Archival (PDF/A)" });
-      fireEvent.click(box);
+      expect(
+        screen.getByRole("group", { name: "PDF format" }),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "PDF/A" }));
       expect(screen.getByText("CMYK images can't be used")).toBeInTheDocument();
     });
 
@@ -2204,9 +2208,7 @@ describe("ImagesToPdf (T11)", () => {
       renderHarness();
       await addPhoto();
 
-      fireEvent.click(
-        screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "PDF/A" }));
       fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
       await waitFor(() => {
         expect(calls).toContainEqual({
@@ -2232,9 +2234,7 @@ describe("ImagesToPdf (T11)", () => {
       await waitFor(() => {
         expect(screen.getByText("out")).toBeInTheDocument();
       });
-      fireEvent.click(
-        screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "PDF/A" }));
       fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
       await waitFor(() => {
         expect(calls).toContainEqual({
@@ -2261,7 +2261,7 @@ describe("ImagesToPdf (T11)", () => {
       await waitFor(() => {
         expect(screen.getByText("out")).toBeInTheDocument();
       });
-      const box = screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" });
+      const box = screen.getByRole("button", { name: "PDF/A" });
       expect(box).toBeEnabled();
 
       fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
