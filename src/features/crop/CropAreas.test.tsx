@@ -99,6 +99,32 @@ describe("pressing a frame", () => {
     fireEvent.click(screen.getByTestId("crop-photo-frame"));
     await flush();
     expect(rowText(areaRows()[0])).toContain("重なりあり");
+    expect(within(areaRows()[0]).getByText("重なりあり")).toHaveAttribute(
+      "title",
+      "写真の上に文字・図形・ほかの画像などが重なっています。「写真だけを書き出す」で除けます",
+    );
+  });
+
+  it("says the photo is written without what lies over it while only photos are written", async () => {
+    await openPdfInCropTab({
+      list_page_images: () => photos,
+      check_on_top: () => true,
+    });
+    fireEvent.click(screen.getByTestId("crop-photo-frame"));
+    await flush();
+    openSettings();
+    const only = screen.getByRole("checkbox", { name: "写真だけを書き出す" });
+
+    fireEvent.click(only);
+    expect(rowText(areaRows()[0])).not.toContain("重なりあり");
+    expect(within(areaRows()[0]).getByText("重なりを除く")).toHaveAttribute(
+      "title",
+      "写真の上に重なった文字・図形・ほかの画像などを除いて書き出します",
+    );
+
+    fireEvent.click(only);
+    expect(rowText(areaRows()[0])).toContain("重なりあり");
+    expect(rowText(areaRows()[0])).not.toContain("重なりを除く");
   });
 
   it("marks nothing when nothing lies over the photo, or when the question failed", async () => {

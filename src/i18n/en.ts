@@ -370,6 +370,11 @@ export const en: Translations = {
       summaryMultiple: "{count} areas · {checked} to export",
       pageLabel: "p.{page}",
       overlaid: "Overlaid",
+      overlaidHint:
+        'Text, shapes or other images lie over this photo. "Photos only" leaves them out',
+      overlaidRemoved: "Overlay removed",
+      overlaidRemovedHint:
+        "Exported without the text, shapes or other images over this photo",
       exported: "✓ Exported",
       checkAria: "Export {kind} on p.{page}",
       showAria: "Show {kind} on p.{page}",

@@ -175,8 +175,17 @@ function CropAreaRow({ pdf, area }: CropAreaRowProps) {
             </span>
             <span className="crop-area-kind">{kind}</span>
             {area.onTop === true && (
-              <span className="crop-badge crop-area-overlaid">
-                {t.crop.ranges.overlaid}
+              <span
+                className="crop-badge crop-area-overlaid"
+                title={
+                  crop.photoOnly
+                    ? t.crop.ranges.overlaidRemovedHint
+                    : t.crop.ranges.overlaidHint
+                }
+              >
+                {crop.photoOnly
+                  ? t.crop.ranges.overlaidRemoved
+                  : t.crop.ranges.overlaid}
               </span>
             )}
           </span>

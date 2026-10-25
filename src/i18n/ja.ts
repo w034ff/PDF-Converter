@@ -369,6 +369,11 @@ export const ja = {
       summaryMultiple: "{count} 個 · 書き出す {checked} 個",
       pageLabel: "p.{page}",
       overlaid: "重なりあり",
+      overlaidHint:
+        "写真の上に文字・図形・ほかの画像などが重なっています。「写真だけを書き出す」で除けます",
+      overlaidRemoved: "重なりを除く",
+      overlaidRemovedHint:
+        "写真の上に重なった文字・図形・ほかの画像などを除いて書き出します",
       exported: "✓ 書き出し済み",
       checkAria: "p.{page} の{kind}を書き出す",
       showAria: "p.{page} の{kind}を表示",
