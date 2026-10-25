@@ -375,6 +375,15 @@ describe("drawing", () => {
     expect(isDrawing()).toBe(false);
   });
 
+  it("takes the focus to the area Enter drew, for the arrow keys", async () => {
+    await openNested();
+    pickDrawTool();
+    addMenuButton().focus();
+    fireEvent.keyDown(addMenuButton(), { key: "Enter" });
+    await flush();
+    expect(screen.getByTestId("crop-area")).toHaveFocus();
+  });
+
   it("leaves Enter alone when not drawing, and with a modifier", async () => {
     await openNested();
     expect(fireEvent.keyDown(document.body, { key: "Enter" })).toBe(true);
