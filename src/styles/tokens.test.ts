@@ -112,6 +112,7 @@ describe("design tokens and CSS rules", () => {
       "--color-success",
       "--color-error",
       "--color-warning",
+      "--color-info",
       "--color-progress-track",
     ];
 
@@ -165,7 +166,8 @@ describe("design tokens and CSS rules", () => {
       // The focus ring draws accent on every ground the app uses.
       // A failed page's mark puts text-on-error over error. Error and
       // success are also text, on every ground the app uses, and so is
-      // warning (the status word of a PDF waiting for its password).
+      // warning (the status word of a PDF waiting for its password). Info
+      // marks a notice on the same grounds.
       const pairs: [string, string][] = [
         ["--color-text-on-accent", "--color-accent"],
         ["--color-text-on-accent", "--color-accent-hover"],
@@ -184,6 +186,9 @@ describe("design tokens and CSS rules", () => {
         ["--color-warning", "--color-bg-app"],
         ["--color-warning", "--color-bg-surface"],
         ["--color-warning", "--color-bg-subtle"],
+        ["--color-info", "--color-bg-app"],
+        ["--color-info", "--color-bg-surface"],
+        ["--color-info", "--color-bg-subtle"],
       ];
 
       for (const [fg, bg] of pairs) {

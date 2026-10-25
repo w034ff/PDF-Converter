@@ -1,5 +1,6 @@
 /* The ground and shape of ErrorDisplay; only the mark and the border are
-   yellow, so the message reads as text rather than as a warning. */
+   colored, so the message reads as text rather than as a warning: yellow for
+   a PDF waiting for its password, blue for a notice that only informs. */
 .notice-display {
   display: flex;
   align-items: center;
@@ -14,6 +15,14 @@
 .notice-display-icon {
   stroke: var(--color-warning);
   flex-shrink: 0;
+}
+
+.notice-display.is-info {
+  border-color: var(--color-info);
+}
+
+.notice-display.is-info .notice-display-icon {
+  stroke: var(--color-info);
 }
 
 .notice-display-body {

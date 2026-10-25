@@ -7,8 +7,9 @@ export interface NoticeDisplayProps {
   /** Placed at the right end of the line; wraps to its own line when narrow. */
   action?: React.ReactNode;
   /**
-   * The mark before the message: the lock for a PDF waiting for its password,
-   * the "i" for any other notice. Defaults to the lock.
+   * The mark before the message and its color: the lock in yellow for a PDF
+   * waiting for its password, the "i" in blue for any other notice. Defaults
+   * to the lock.
    */
   icon?: "lock" | "info";
 }
@@ -25,7 +26,10 @@ export function NoticeDisplay({
   icon = "lock",
 }: NoticeDisplayProps) {
   return (
-    <div role="status" className="notice-display">
+    <div
+      role="status"
+      className={`notice-display${icon === "info" ? " is-info" : ""}`}
+    >
       {icon === "lock" ? (
         <LockIcon size={18} className="notice-display-icon" />
       ) : (

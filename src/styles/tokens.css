@@ -30,6 +30,9 @@
   /* A PDF waiting for its password: not an error, since it opens once the
      password is entered (design §10.3). */
   --color-warning: #8a5a00;
+  /* A notice that only informs, such as what the crop tab cannot do: not the
+     warning's yellow, which means a PDF waits for its password. */
+  --color-info: #2f5f9e;
 
   --color-progress-track: #e4e1db;
 
@@ -88,6 +91,7 @@
     --color-error-tint: rgba(255, 122, 138, 0.2);
     --color-text-on-error: #1c1b18;
     --color-warning: #e0a83a;
+    --color-info: #7aa7e0;
 
     --color-progress-track: #363430;
 
