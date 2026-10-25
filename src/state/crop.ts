@@ -105,7 +105,7 @@ export function createInitialCropState(
   };
 }
 
-/** What a PDF's results, areas and page are reset to when another PDF is open. */
+/** What a PDF's results, areas, page and tool are reset to when another PDF is open. */
 function withPdf(state: CropState, pdf: CropPdf | null): CropState {
   return {
     ...state,
@@ -122,6 +122,7 @@ function withPdf(state: CropState, pdf: CropPdf | null): CropState {
     onTopRequests: {},
     detectAwaiting: [],
     history: EMPTY_HISTORY,
+    tool: "select",
   };
 }
 
