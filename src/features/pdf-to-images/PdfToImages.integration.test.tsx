@@ -440,7 +440,7 @@ describe("PdfToImages integration workflow", () => {
     };
     await act(() => emit(JOB_FINISHED_EVENT, finished));
 
-    expect(await screen.findByRole("status")).toHaveClass("is-failure");
+    expect(await screen.findByRole("status")).toHaveClass("error-text");
 
     // Check row status: 一部失敗 and reason 失敗したページ：2
     expect(screen.getByText("✕ 一部失敗")).toBeInTheDocument();

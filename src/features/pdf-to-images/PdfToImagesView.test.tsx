@@ -20,6 +20,7 @@ import {
   createInitialAppState,
   type AppState,
 } from "../../state";
+import { JobFooter } from "../job/JobFooter";
 import { PdfToImagesSettings } from "./PdfToImagesSettings";
 import { PdfToImagesStatus } from "./PdfToImagesStatus";
 import { PdfToImagesView } from "./PdfToImagesView";
@@ -108,6 +109,8 @@ function renderView(stateModifier?: (state: AppState) => void) {
   return render(
     <AppStateProvider initialState={state}>
       <PdfToImagesView />
+      {/* The bottom bar, where the result of a conversion is told. */}
+      <JobFooter tab="pdfToImages" idleStatus={null} action={null} />
     </AppStateProvider>,
   );
 }
@@ -589,7 +592,7 @@ describe("PdfToImagesView", () => {
       expect(status).toHaveClass("pdf-status-neutral");
     });
 
-    it("renders job summary banner above table on finish", () => {
+    it("tells the result in the bottom bar on finish", () => {
       mockCommands(() => undefined);
       const finished: JobFinishedPayload = {
         succeeded: 1,

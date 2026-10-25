@@ -319,7 +319,7 @@ describe("the result of the search", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "全ページの候補を探しました：範囲を 3 個追加 · 失敗 1 ページ",
     );
-    expect(screen.getByText("失敗があります")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveClass("error-text");
   });
 
   it("says no area was added, leaving out the counts of zero", async () => {
@@ -366,7 +366,7 @@ describe("the result of the search", () => {
       },
       [[2, [chart], null]],
     );
-    expect(screen.getByRole("status")).toHaveClass("is-success");
+    expect(screen.getByRole("status")).toHaveClass("success-text");
   });
 
   it("is dropped when an area is removed, but not when one is selected", async () => {

@@ -532,11 +532,6 @@
   min-height: 0;
 }
 
-.crop-side > .job-summary {
-  flex: none;
-  margin: 12px 16px 0;
-}
-
 .crop-ranges-header {
   padding: 12px 16px 8px;
   display: flex;

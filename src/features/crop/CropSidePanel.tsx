@@ -1,7 +1,6 @@
 import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import { isJobActive, useAppState } from "../../state";
-import { JobSummaryBanner } from "../job/JobSummaryBanner";
 import { useJobRunner } from "../job/useJobRunner";
 import { CropAreaList } from "./CropAreaList";
 import { CropExportSettings } from "./CropExportSettings";
@@ -21,7 +20,6 @@ export function CropSidePanel({ pdf }: { pdf: CropPdf }) {
 
   return (
     <section className="crop-side" aria-label={t.crop.ranges.sectionAria}>
-      <JobSummaryBanner tab="crop" />
       <div className="crop-ranges-header">
         <span className="label">{t.crop.ranges.title}</span>
         {count > 0 && (

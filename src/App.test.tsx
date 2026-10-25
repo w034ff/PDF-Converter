@@ -761,7 +761,9 @@ describe("App", () => {
         await emit(JOB_FINISHED_EVENT, finishedPayload);
       });
 
-      expect(screen.getByText("すべて完了しました")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /^変換が終わりました：/,
+      );
       expect(
         screen.queryByText("2 ページの PDF になります"),
       ).not.toBeInTheDocument();

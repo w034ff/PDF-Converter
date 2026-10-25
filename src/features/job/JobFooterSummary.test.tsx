@@ -2,7 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ImageItem, JobItemPayload } from "../../ipc";
 import { AppStateProvider, createInitialAppState } from "../../state";
-import { JobSummaryBanner } from "./JobSummaryBanner";
+import { JobFooter } from "./JobFooter";
 
 const multiPageTiff: ImageItem = {
   id: 1,
@@ -50,12 +50,12 @@ function failedItem(id: number): JobItemPayload {
   };
 }
 
-describe("JobSummaryBanner", () => {
+describe("JobFooter's summary", () => {
   afterEach(() => {
     cleanup();
   });
 
-  describe("imagesToPdf merged PDF banner page counts", () => {
+  describe("imagesToPdf merged PDF page counts", () => {
     it("sums pageCount across successful items rather than counting succeeded items", () => {
       const state = createInitialAppState("ja-JP");
       state.imagesToPdf.output = "merge";
@@ -83,7 +83,7 @@ describe("JobSummaryBanner", () => {
 
       render(
         <AppStateProvider initialState={state}>
-          <JobSummaryBanner tab="imagesToPdf" />
+          <JobFooter tab="imagesToPdf" idleStatus={null} action={null} />
         </AppStateProvider>,
       );
 
@@ -122,7 +122,7 @@ describe("JobSummaryBanner", () => {
 
       render(
         <AppStateProvider initialState={state}>
-          <JobSummaryBanner tab="imagesToPdf" />
+          <JobFooter tab="imagesToPdf" idleStatus={null} action={null} />
         </AppStateProvider>,
       );
 
@@ -160,7 +160,7 @@ describe("JobSummaryBanner", () => {
 
       render(
         <AppStateProvider initialState={state}>
-          <JobSummaryBanner tab="imagesToPdf" />
+          <JobFooter tab="imagesToPdf" idleStatus={null} action={null} />
         </AppStateProvider>,
       );
 

@@ -34,7 +34,6 @@ import {
   type PageSelection,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
-import { JobSummaryBanner } from "../job/JobSummaryBanner";
 import { OutputDirError } from "../output";
 import {
   countPagesInIntervals,
@@ -539,9 +538,6 @@ export function PdfToImagesView() {
 
   const skippedText = formatSkippedSummary(t, lastSkipped);
   const results = job.kind === "pdfToImages" ? job.results : {};
-  const partialCount = Object.values(results).filter(
-    (result) => result.status === "partial",
-  ).length;
   // The single-PDF view has no table, so its result goes under its name.
   const singleStatus =
     singleItem !== null && singleItem.error === null
@@ -592,7 +588,6 @@ export function PdfToImagesView() {
         />
       )}
       <OutputDirError tab="pdfToImages" />
-      <JobSummaryBanner tab="pdfToImages" partialCount={partialCount} />
 
       {/* Header above content */}
       <div className="pdf-view-header">

@@ -231,7 +231,7 @@ describe("ImagesToPdf (T11)", () => {
         "images-table-reason",
       );
       expect(screen.getByText("✕ 読み込めません")).toBeInTheDocument();
-      expect(screen.getByRole("status")).toHaveClass("is-failure");
+      expect(screen.getByRole("status")).toHaveClass("error-text");
     });
 
     it("does not mark merged pages as done when the merge was cancelled", async () => {

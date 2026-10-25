@@ -215,7 +215,9 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     fireEvent.click(screen.getByRole("button", { name: "start each" }));
     await act(() => emit(JOB_FINISHED_EVENT, finished));
 
-    expect(screen.getByText("すべて完了しました")).toHaveClass("success-text");
+    expect(screen.getByText("変換が終わりました：成功 3 件")).toHaveClass(
+      "success-text",
+    );
     expect(
       screen.getByRole("button", { name: "screen action" }),
     ).toBeInTheDocument();
@@ -230,7 +232,9 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
       emit(JOB_FINISHED_EVENT, { ...finished, succeeded: 2, failed: 1 }),
     );
 
-    expect(screen.getByText("失敗があります")).toHaveClass("error-text");
+    expect(
+      screen.getByText("変換が終わりました：成功 2 件 · 失敗 1 件"),
+    ).toHaveClass("error-text");
   });
 
   it("stays neutral after a cancel", async () => {
@@ -247,7 +251,9 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
       }),
     );
 
-    expect(screen.getByText("キャンセルしました")).toHaveClass("hint");
+    expect(
+      screen.getByText("キャンセルしました：PDF は保存していません"),
+    ).toHaveClass("hint");
   });
 
   it("shows an error raised after the job finished over its counts", async () => {
@@ -268,7 +274,7 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     });
 
     expect(screen.getByRole("alert")).toHaveClass("error-text");
-    expect(screen.queryByText("すべて完了しました")).not.toBeInTheDocument();
+    expect(screen.queryByText(/変換が終わりました/)).not.toBeInTheDocument();
   });
 
   it("shows a finished job only on the tab that started it", async () => {
@@ -279,7 +285,7 @@ describe("JobFooter with useJobEvents and useJobRunner", () => {
     await act(() => emit(JOB_FINISHED_EVENT, finished));
 
     expect(screen.getByText("idle")).toBeInTheDocument();
-    expect(screen.queryByText("すべて完了しました")).not.toBeInTheDocument();
+    expect(screen.queryByText(/変換が終わりました/)).not.toBeInTheDocument();
   });
 
   it("sends the PDF → image arguments", async () => {
