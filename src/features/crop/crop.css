@@ -239,13 +239,16 @@
   padding: 24px 16px 16px;
 }
 
+/* No ring on the view itself. Tab does not stop on it; it takes the focus
+   from a press on the page or after a key removes an area, and the browser
+   rings it again at the next key of any kind, shortcuts included. The
+   frames, candidates and areas in it keep theirs. */
 .crop-viewport:focus-visible {
-  outline-offset: -2px;
+  outline: none;
 }
 
 /* The areas' line and the selected area's ground are accent, so an accent
    ring on the page or the list of areas reads as a selection. */
-.crop-viewport:focus-visible,
 .crop-viewport :focus-visible,
 .crop-area-list:focus-visible {
   outline-color: var(--color-text-primary);
