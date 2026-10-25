@@ -100,10 +100,9 @@ async function renderWithImages(lang = "ja-JP") {
   await screen.findByText("a.png");
 }
 
-const encryptBox = () =>
-  screen.getByRole("checkbox", { name: "パスワードを付ける" });
-const pdfABox = () =>
-  screen.getByRole("checkbox", { name: "長期保存用（PDF/A）" });
+const encryptButton = () => screen.getByRole("button", { name: "パスワード" });
+const pdfAButton = () => screen.getByRole("button", { name: "PDF/A" });
+const standardButton = () => screen.getByRole("button", { name: "標準" });
 
 function fillDialog(password = PASSWORD) {
   fireEvent.change(screen.getByLabelText("パスワード"), {
@@ -123,102 +122,82 @@ afterEach(() => {
   clearMocks();
 });
 
-describe("the password checkbox", () => {
-  it("starts off with no note, and shows its note only while on", async () => {
+describe("the PDF format", () => {
+  it("starts at standard with no note, and shows each choice's note only while chosen", async () => {
     mockIpc([image(1, "a.png")]);
     await renderWithImages();
 
-    expect(encryptBox()).not.toBeChecked();
+    expect(standardButton()).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.queryByText("保存するときにパスワードを入れます"),
+      screen.queryByText("保存時にパスワードを入れます"),
     ).not.toBeInTheDocument();
-
-    fireEvent.click(encryptBox());
-    expect(encryptBox()).toBeChecked();
-    expect(screen.getByText("保存するときにパスワードを入れます")).toHaveClass(
-      "hint",
-    );
-
-    fireEvent.click(encryptBox());
-    expect(
-      screen.queryByText("保存するときにパスワードを入れます"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("sits right under the PDF/A checkbox", async () => {
-    mockIpc([image(1, "a.png")]);
-    await renderWithImages();
-    const field = (box: HTMLElement) => box.closest(".images-settings-field");
-    expect(field(pdfABox())?.nextElementSibling).toBe(field(encryptBox()));
-  });
-
-  it("cannot be turned on while PDF/A is on, and says why", async () => {
-    mockIpc([image(1, "a.png")]);
-    await renderWithImages();
-
-    fireEvent.click(pdfABox());
-    expect(encryptBox()).toBeDisabled();
-    expect(encryptBox()).not.toBeChecked();
-    expect(screen.getByText("PDF/A では選べません")).toHaveClass("hint");
-    // PDF/A's own note is still there.
-    expect(screen.getByText("CMYK の画像は使えません")).toBeInTheDocument();
-
-    fireEvent.click(pdfABox());
-    expect(encryptBox()).toBeEnabled();
-    expect(screen.queryByText("PDF/A では選べません")).not.toBeInTheDocument();
-  });
-
-  it("makes PDF/A unavailable while on, without turning anything off", async () => {
-    mockIpc([image(1, "a.png")]);
-    await renderWithImages();
-
-    fireEvent.click(encryptBox());
-    expect(pdfABox()).toBeDisabled();
-    expect(pdfABox()).not.toBeChecked();
-    expect(screen.getByText("パスワードを付けると選べません")).toHaveClass(
-      "hint",
-    );
-    // The CMYK note belongs to PDF/A being on.
     expect(
       screen.queryByText("CMYK の画像は使えません"),
     ).not.toBeInTheDocument();
 
-    expect(encryptBox()).toBeChecked();
-
-    fireEvent.click(encryptBox());
-    expect(pdfABox()).toBeEnabled();
+    fireEvent.click(encryptButton());
+    expect(encryptButton()).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("保存時にパスワードを入れます")).toHaveClass(
+      "hint",
+    );
     expect(
-      screen.queryByText("パスワードを付けると選べません"),
+      screen.queryByText("CMYK の画像は使えません"),
     ).not.toBeInTheDocument();
+
+    // Choosing PDF/A takes the password off: the two are one choice.
+    fireEvent.click(pdfAButton());
+    expect(pdfAButton()).toHaveAttribute("aria-pressed", "true");
+    expect(encryptButton()).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("CMYK の画像は使えません")).toHaveClass("hint");
+    expect(
+      screen.queryByText("保存時にパスワードを入れます"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(standardButton());
+    expect(standardButton()).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.queryByText("CMYK の画像は使えません"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the three choices in one group", async () => {
+    mockIpc([image(1, "a.png")]);
+    await renderWithImages();
+    const group = screen.getByRole("group", { name: "PDF の形式" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["標準", "PDF/A", "パスワード"]);
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
   });
 
   it("says it in English", async () => {
     mockIpc([image(1, "a.png")]);
     await renderWithImages("en-US");
 
-    const box = screen.getByRole("checkbox", { name: "Password-protect" });
-    fireEvent.click(box);
+    const group = screen.getByRole("group", { name: "PDF format" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Standard", "PDF/A", "Password"]);
+    fireEvent.click(within(group).getByRole("button", { name: "Password" }));
     expect(
       screen.getByText("You'll enter the password when saving"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("Not available with a password"),
-    ).toBeInTheDocument();
-    fireEvent.click(box);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Archival (PDF/A)" }));
-    expect(screen.getByText("Not available with PDF/A")).toBeInTheDocument();
   });
 });
 
 describe("the footer's line", () => {
-  it("adds the mark after the preview only while the box is on", async () => {
+  it("adds the mark after the preview only while the password is chosen", async () => {
     mockIpc([image(1, "a.png"), image(2, "b.png", 2)]);
     await renderWithImages();
 
     expect(screen.getByText("3 ページの PDF になります")).toBeInTheDocument();
     expect(screen.queryByText("パスワード付き")).not.toBeInTheDocument();
 
-    fireEvent.click(encryptBox());
+    fireEvent.click(encryptButton());
     const mark = screen.getByText("パスワード付き");
     expect(mark.textContent).toContain("·");
     expect(mark.querySelector("svg")).not.toBeNull();
@@ -231,7 +210,7 @@ describe("the footer's line", () => {
         Node.DOCUMENT_POSITION_CONTAINED_BY,
     ).toBeTruthy();
 
-    fireEvent.click(encryptBox());
+    fireEvent.click(standardButton());
     expect(screen.queryByText("パスワード付き")).not.toBeInTheDocument();
   });
 
@@ -239,7 +218,7 @@ describe("the footer's line", () => {
     mockIpc([image(1, "a.png"), image(2, "b.png")]);
     await renderWithImages("en-US");
     fireEvent.click(screen.getByRole("button", { name: "Each image" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Password-protect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Password" }));
 
     expect(screen.getByText("Will save 2 PDFs")).toBeInTheDocument();
     expect(screen.getByText("Password-protected")).toBeInTheDocument();
@@ -252,7 +231,7 @@ describe("the footer's line", () => {
         <Harness />
       </AppStateProvider>,
     );
-    fireEvent.click(encryptBox());
+    fireEvent.click(encryptButton());
     expect(screen.getByText("画像が選ばれていません")).toBeInTheDocument();
     expect(screen.queryByText("パスワード付き")).not.toBeInTheDocument();
   });
@@ -260,7 +239,7 @@ describe("the footer's line", () => {
   it("does not show the mark once a conversion has started", async () => {
     mockIpc([image(1, "a.png")]);
     await renderWithImages();
-    fireEvent.click(encryptBox());
+    fireEvent.click(encryptButton());
     expect(screen.getByText("パスワード付き")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
@@ -277,7 +256,7 @@ describe("starting with a password", () => {
   it("asks for the password first and saves one PDF with it", async () => {
     const calls = mockIpc([image(1, "a.png")]);
     await renderWithImages();
-    fireEvent.click(encryptBox());
+    fireEvent.click(encryptButton());
 
     fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
     const dialog = await screen.findByRole("dialog", {
@@ -308,7 +287,7 @@ describe("starting with a password", () => {
     const calls = mockIpc([image(1, "a.png"), image(2, "b.png")]);
     await renderWithImages();
     fireEvent.click(screen.getByRole("button", { name: "1 枚ずつ" }));
-    fireEvent.click(encryptBox());
+    fireEvent.click(encryptButton());
 
     fireEvent.click(screen.getByRole("button", { name: "変換を開始" }));
     await screen.findByRole("dialog", { name: "パスワードを付ける" });
@@ -348,7 +327,7 @@ describe("starting with a password", () => {
   it("starts nothing when the dialog is cancelled, and gives the focus back", async () => {
     const calls = mockIpc([image(1, "a.png")]);
     await renderWithImages();
-    fireEvent.click(encryptBox());
+    fireEvent.click(encryptButton());
     const action = screen.getByRole("button", { name: "PDF を保存" });
 
     fireEvent.click(action);
@@ -373,7 +352,7 @@ describe("starting with a password", () => {
   it("opens the dialog empty each time", async () => {
     mockIpc([image(1, "a.png")]);
     await renderWithImages();
-    fireEvent.click(encryptBox());
+    fireEvent.click(encryptButton());
     const action = screen.getByRole("button", { name: "PDF を保存" });
 
     fireEvent.click(action);
@@ -410,7 +389,7 @@ describe("starting with a password", () => {
   it("asks in English too", async () => {
     mockIpc([image(1, "a.png")]);
     await renderWithImages("en-US");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Password-protect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Password" }));
     fireEvent.click(screen.getByRole("button", { name: "Save PDF" }));
     expect(
       await screen.findByRole("dialog", { name: "Set a password" }),

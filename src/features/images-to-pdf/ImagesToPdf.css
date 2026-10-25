@@ -12,25 +12,10 @@
   gap: 8px;
 }
 
-/* The two checkboxes sit 12px apart, not the 20px between the other fields (design §10.1). */
-.images-settings-field-tight {
-  margin-top: -8px;
-}
-
-/* The label is the click target, so the whole line toggles the box. */
-.images-settings-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.images-settings-checkbox input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--color-accent);
-  cursor: pointer;
+/* A third of the panel is too narrow for "パスワード" inside the usual 12px
+   sides; the class is doubled to win over app.css, which loads later. */
+.seg.images-pdf-format button {
+  padding: 0 4px;
 }
 
 .images-view {
@@ -298,17 +283,6 @@
    stylesheet the build puts first. */
 .password-dialog-input.output-password-confirm {
   padding-right: 10px;
-}
-
-/* A box that the other one rules out: off, and its text faded. */
-.images-settings-checkbox.is-unavailable {
-  color: var(--color-text-secondary);
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.images-settings-checkbox.is-unavailable input {
-  cursor: not-allowed;
 }
 
 /* Beside the line that says what a start would do (design §10.1). */

@@ -45,6 +45,12 @@ export interface ImagesToPdfState {
   outputDir: OutputDirLabel | null;
 }
 
+/**
+ * The one choice the panel offers for `pdfA` and `encrypt`: PDF/A forbids
+ * encryption (design §4.3.1), so the two are never on together.
+ */
+export type ImagesPdfFormat = "standard" | "pdfA" | "encrypt";
+
 export type ImagesToPdfAction =
   | { type: "ADD_IMAGE_ITEMS"; items: ImageItem[] }
   | { type: "REMOVE_IMAGE_ITEM"; id: number }
@@ -52,8 +58,7 @@ export type ImagesToPdfAction =
   | { type: "SET_IMAGES_OUTPUT_MODE"; output: OutputMode }
   | { type: "SET_IMAGES_PAGE_SIZE"; pageSize: PageSizeChoice }
   | { type: "SET_IMAGES_ORIENTATION"; orientation: PageOrientationChoice }
-  | { type: "SET_IMAGES_PDF_A"; pdfA: boolean }
-  | { type: "SET_IMAGES_ENCRYPT"; encrypt: boolean }
+  | { type: "SET_IMAGES_PDF_FORMAT"; format: ImagesPdfFormat }
   | { type: "SET_IMAGES_OUTPUT_DIR"; outputDir: OutputDirLabel | null }
   | { type: "MOVE_IMAGE_ITEM"; fromIndex: number; toIndex: number };
 

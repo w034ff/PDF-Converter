@@ -224,7 +224,7 @@ describe("App", () => {
       expect(screen.getByText("Rendered")).toBeInTheDocument();
     });
 
-    it("starts with the PDF/A box as saved", async () => {
+    it("starts with PDF/A chosen as saved", async () => {
       mockAppIpc((cmd) =>
         cmd === "get_settings"
           ? {
@@ -236,12 +236,13 @@ describe("App", () => {
       render(<App initialNavLang="ja" />);
       await flush();
 
-      expect(
-        screen.getByRole("checkbox", { name: "Archival (PDF/A)" }),
-      ).toBeChecked();
+      expect(screen.getByRole("button", { name: "PDF/A" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
 
-    it("starts with the password box as saved", async () => {
+    it("starts with the password chosen as saved", async () => {
       mockAppIpc((cmd) =>
         cmd === "get_settings"
           ? {
@@ -253,12 +254,14 @@ describe("App", () => {
       render(<App initialNavLang="ja" />);
       await flush();
 
-      expect(
-        screen.getByRole("checkbox", { name: "Password-protect" }),
-      ).toBeChecked();
-      expect(
-        screen.getByRole("checkbox", { name: "Archival (PDF/A)" }),
-      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Password" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByRole("button", { name: "PDF/A" })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
     });
 
     it("follows the OS language when none was saved", async () => {
@@ -403,9 +406,7 @@ describe("App", () => {
       const saved = mockSaves();
       render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
 
-      fireEvent.click(
-        screen.getByRole("checkbox", { name: "Archival (PDF/A)" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "PDF/A" }));
       await act(async () => {});
       expect(saved).toEqual([
         {
@@ -430,9 +431,7 @@ describe("App", () => {
       const saved = mockSaves();
       render(<App initialNavLang="en" initialSettings={SAVED_SETTINGS} />);
 
-      fireEvent.click(
-        screen.getByRole("checkbox", { name: "Password-protect" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Password" }));
       await act(async () => {});
       expect(saved).toEqual([
         {

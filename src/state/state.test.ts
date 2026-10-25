@@ -3,6 +3,7 @@ import type { ImageItem, PdfItem } from "../ipc";
 import {
   appReducer,
   createInitialAppState,
+  imagesPdfFormat,
   imagesToPdfReducer,
   initialImagesToPdfState,
   initialPdfToImagesState,
@@ -231,36 +232,31 @@ describe("state reducers", () => {
       expect(unchanged).toBe(updated);
     });
 
-    it("updates pdfA with SET_IMAGES_PDF_A, starting from false", () => {
-      expect(initialImagesToPdfState.pdfA).toBe(false);
-      const updated = imagesToPdfReducer(initialImagesToPdfState, {
-        type: "SET_IMAGES_PDF_A",
-        pdfA: true,
+    it("sets pdfA and encrypt from SET_IMAGES_PDF_FORMAT, starting from standard", () => {
+      expect(imagesPdfFormat(initialImagesToPdfState)).toBe("standard");
+      const pdfA = imagesToPdfReducer(initialImagesToPdfState, {
+        type: "SET_IMAGES_PDF_FORMAT",
+        format: "pdfA",
       });
-      expect(updated.pdfA).toBe(true);
+      expect(pdfA).toMatchObject({ pdfA: true, encrypt: false });
 
-      const unchanged = imagesToPdfReducer(updated, {
-        type: "SET_IMAGES_PDF_A",
-        pdfA: true,
+      const encrypt = imagesToPdfReducer(pdfA, {
+        type: "SET_IMAGES_PDF_FORMAT",
+        format: "encrypt",
       });
-      expect(unchanged).toBe(updated);
-    });
+      expect(encrypt).toMatchObject({ pdfA: false, encrypt: true });
 
-    it("updates encrypt with SET_IMAGES_ENCRYPT, starting from false", () => {
-      expect(initialImagesToPdfState.encrypt).toBe(false);
-      const updated = imagesToPdfReducer(initialImagesToPdfState, {
-        type: "SET_IMAGES_ENCRYPT",
-        encrypt: true,
+      const standard = imagesToPdfReducer(encrypt, {
+        type: "SET_IMAGES_PDF_FORMAT",
+        format: "standard",
       });
-      expect(updated.encrypt).toBe(true);
-      // The two boxes are independent in the state: the screen keeps them apart.
-      expect(updated.pdfA).toBe(false);
+      expect(standard).toMatchObject({ pdfA: false, encrypt: false });
 
-      const unchanged = imagesToPdfReducer(updated, {
-        type: "SET_IMAGES_ENCRYPT",
-        encrypt: true,
+      const unchanged = imagesToPdfReducer(encrypt, {
+        type: "SET_IMAGES_PDF_FORMAT",
+        format: "encrypt",
       });
-      expect(unchanged).toBe(updated);
+      expect(unchanged).toBe(encrypt);
     });
 
     it("retains orientation when pageSize changes", () => {
@@ -558,18 +554,10 @@ describe("state reducers", () => {
         expect(state.job.finished).toBeNull();
       });
 
-      it("drops it when the PDF/A choice of imagesToPdf changes", () => {
+      it("drops it when the PDF format of imagesToPdf changes", () => {
         const state = appReducer(finishedOn("imagesToPdf"), {
-          type: "SET_IMAGES_PDF_A",
-          pdfA: true,
-        });
-        expect(state.job.finished).toBeNull();
-      });
-
-      it("drops it when the password choice of imagesToPdf changes", () => {
-        const state = appReducer(finishedOn("imagesToPdf"), {
-          type: "SET_IMAGES_ENCRYPT",
-          encrypt: true,
+          type: "SET_IMAGES_PDF_FORMAT",
+          format: "encrypt",
         });
         expect(state.job.finished).toBeNull();
       });
