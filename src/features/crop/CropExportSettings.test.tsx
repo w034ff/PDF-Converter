@@ -175,7 +175,7 @@ describe("the fields", () => {
     });
     expect(native).toBeChecked();
     expect(
-      screen.getByText("写真は解像度によらず、元の画素の数で書き出します"),
+      screen.getByText("解像度によらず、元の画素の数で書き出します"),
     ).toBeInTheDocument();
     const only = screen.getByRole("checkbox", { name: "写真だけを書き出す" });
     expect(only).not.toBeChecked();

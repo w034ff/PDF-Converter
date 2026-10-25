@@ -403,7 +403,7 @@ export const en: Translations = {
       title: "Export settings",
       photoNative: "Export photos at original pixels",
       photoNativeHint:
-        "Photos are written in their own number of pixels, whatever the resolution",
+        "Written in their own number of pixels, whatever the resolution",
       photoOnly: "Photos only",
       photoOnlyHint: "Leaves out text and frames drawn over a photo",
       summaryPhotoNative: "Photos at original pixels",

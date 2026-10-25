@@ -401,7 +401,7 @@ export const ja = {
     settings: {
       title: "書き出しの設定",
       photoNative: "写真は元の画素で書き出す",
-      photoNativeHint: "写真は解像度によらず、元の画素の数で書き出します",
+      photoNativeHint: "解像度によらず、元の画素の数で書き出します",
       photoOnly: "写真だけを書き出す",
       photoOnlyHint: "写真に重なった文字や枠を除きます",
       summaryPhotoNative: "写真は元の画素",
