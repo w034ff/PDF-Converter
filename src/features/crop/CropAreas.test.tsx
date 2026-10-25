@@ -32,6 +32,7 @@ afterEach(() => {
   cleanup();
   clearMocks();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const PHOTO_RECT: [number, number, number, number] = [100, 200, 300, 400];
@@ -449,6 +450,30 @@ describe("the list of areas", () => {
       expect.stringMatching(/^p\.3手で選んだ範囲/),
     ]);
     expect(areaRows().map((row) => row.dataset.key)).toEqual(["2", "3", "1"]);
+  });
+
+  it("brings the row of an area selected on the page into view", async () => {
+    await openPdfInCropTab({
+      detect_layout: () => [
+        candidate("chart", [50, 60, 250, 160]),
+        candidate("table", [50, 300, 250, 400]),
+      ],
+    });
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    const rowOf = (kind: string) =>
+      areaRows().find((row) => rowText(row).startsWith(kind));
+    const [chart, table] = screen.getAllByTestId("crop-candidate");
+
+    fireEvent.click(chart);
+    expect(scroll.mock.contexts).toEqual([rowOf("グラフ")]);
+    expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+
+    fireEvent.click(table);
+    expect(scroll.mock.contexts.at(-1)).toBe(rowOf("表"));
+
+    fireEvent.click(screen.getAllByTestId("crop-area")[0]);
+    expect(scroll.mock.contexts.at(-1)).toBe(rowOf("グラフ"));
+    expect(scroll).toHaveBeenCalledTimes(3);
   });
 
   it("puts the rows of each page under a heading with the page and its count", async () => {

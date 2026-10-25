@@ -30,6 +30,7 @@ afterEach(() => {
   cleanup();
   clearMocks();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const TIMEOUT: IpcError = { code: "WorkerTimeout", detail: null };
@@ -74,6 +75,7 @@ describe("starting the search of all pages", () => {
     const calls = await openPdfInCropTab({
       detect_layout: () => [chart, table],
     });
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
     await startDetectAll();
 
     expect(callsOf(calls, "start_detect_all").map((c) => c.args)).toEqual([
@@ -88,6 +90,7 @@ describe("starting the search of all pages", () => {
         .queryAllByTestId("crop-area")
         .filter((a) => a.dataset.selected === "true"),
     ).toHaveLength(0);
+    expect(scroll).not.toHaveBeenCalled();
   });
 
   it("says in the bottom bar that all pages are searched, with a way to cancel", async () => {

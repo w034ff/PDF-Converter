@@ -1,4 +1,4 @@
-import { useId, useRef, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import {
   formatErrorMessage,
   formatMessage,
@@ -135,9 +135,19 @@ function CropAreaRow({ pdf, area }: CropAreaRowProps) {
   const size = exportSize(area, crop.pageImages[area.page], crop);
   const status = rowStatus(state, t, language.language, area.key);
   const selected = crop.selectedKey === area.key;
+  const rowRef = useRef<HTMLLIElement>(null);
+
+  // An area is mostly selected on the page, where its row may lie outside
+  // the part of the list in view. The focus stays where it is.
+  useEffect(() => {
+    if (selected) {
+      rowRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [selected]);
 
   return (
     <li
+      ref={rowRef}
       className={`crop-area-row${selected ? " is-selected" : ""}`}
       data-testid="crop-area-row"
       data-key={area.key}

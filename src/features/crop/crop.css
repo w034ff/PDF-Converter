@@ -629,6 +629,10 @@
   color: var(--color-text-on-accent);
 }
 
+.crop-area-list {
+  --crop-page-head-height: 28px;
+}
+
 .crop-area-list,
 .crop-page-rows {
   list-style: none;
@@ -646,14 +650,19 @@
   position: sticky;
   top: 0;
   z-index: 1;
+  box-sizing: border-box;
+  height: var(--crop-page-head-height);
   padding: 6px 2px;
+  line-height: 16px;
   background: var(--color-bg-surface);
   font-size: 12px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
+/* A row scrolled into view stops below its page's heading, not under it. */
 .crop-area-row {
+  scroll-margin-top: var(--crop-page-head-height);
   display: flex;
   align-items: center;
   gap: 8px;
