@@ -24,8 +24,10 @@ import {
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
+  liesUnderToolbar,
   mockCropIpc,
   openCropTab,
+  openPdfInCropTab,
 } from "./cropTestSupport";
 
 const PASSWORD: IpcError = { code: "PasswordProtected", detail: null };
@@ -649,6 +651,27 @@ describe("the crop tab: opening a PDF", () => {
       expect(screen.getByRole("status")).toHaveTextContent(
         "切り出しでは PDF を 1 つずつ開きます",
       );
+    });
+
+    it("says it under the toolbar while a PDF is open", async () => {
+      await openPdfInCropTab();
+      await drop({ notOnePdf: true });
+
+      const notice = screen.getByRole("status");
+      expect(notice).toHaveTextContent("切り出しでは PDF を 1 つずつ開きます");
+      expect(liesUnderToolbar(notice)).toBe(true);
+    });
+
+    it("says it under the toolbar while a PDF that needs its password is open", async () => {
+      await openPdfInCropTab({}, brokenCropPdf(7, PASSWORD, "locked.pdf"));
+      fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+      await drop({ notOnePdf: true });
+
+      const notice = screen
+        .getAllByRole("status")
+        .find((element) => element.textContent?.includes("1 つずつ"));
+      expect(notice).toBeDefined();
+      expect(notice !== undefined && liesUnderToolbar(notice)).toBe(true);
     });
 
     it("does not show a drop for the lists in the crop tab", async () => {

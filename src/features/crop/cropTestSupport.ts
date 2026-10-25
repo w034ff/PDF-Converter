@@ -462,3 +462,14 @@ export function rowPage(row: HTMLElement): string {
     ?.querySelector(".crop-page-head")?.textContent;
   return /^p\.\d+/.exec(head ?? "")?.[0] ?? "";
 }
+
+/** Whether `notice` lies after the toolbar and before the page's view. */
+export function liesUnderToolbar(notice: HTMLElement): boolean {
+  const toolbar = document.querySelector(".crop-toolbar");
+  const view = document.querySelector('[data-testid="crop-viewport"]');
+  const after = (a: Element | null, b: Element | null) =>
+    a !== null &&
+    b !== null &&
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  return after(toolbar, notice) && (view === null || after(notice, view));
+}

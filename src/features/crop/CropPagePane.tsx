@@ -99,6 +99,8 @@ export interface CropPagePaneProps {
   focusRequested: boolean;
   /** Called once the view has taken the focus. */
   onFocused: () => void;
+  /** The tab's notices, between the toolbar and the page. */
+  notices: ReactNode;
 }
 
 /**
@@ -111,6 +113,7 @@ export function CropPagePane({
   fileControls,
   focusRequested,
   onFocused,
+  notices,
 }: CropPagePaneProps) {
   const { language, crop, job } = useAppState();
   const dispatch = useAppDispatch();
@@ -350,6 +353,7 @@ export function CropPagePane({
           ?
         </button>
       </div>
+      {notices}
       {hints !== null && (
         <CropKeyHints
           onClose={() => setHints(null)}
