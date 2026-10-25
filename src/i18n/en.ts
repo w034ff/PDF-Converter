@@ -290,8 +290,14 @@ export const en: Translations = {
               action: "Move the area by 1 pt (10 pt with Shift)",
             },
             {
-              keys: [["Alt", "Arrows"]],
-              action: "Resize the area (move the right and bottom edges)",
+              keys: [
+                ["Alt", "Arrows"],
+                ["Alt", "Shift", "Arrows"],
+              ],
+              // The no-break spaces keep each number with its unit, as the row
+              // wraps.
+              action:
+                "Move the right and bottom edges by 1\u00a0pt (10\u00a0pt with Shift)",
             },
             { keys: [["Ctrl", "Z"]], action: "Undo" },
             {

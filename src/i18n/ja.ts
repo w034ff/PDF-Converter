@@ -289,8 +289,11 @@ export const ja = {
               action: "範囲を 1 pt 動かす（Shift で 10 pt）",
             },
             {
-              keys: [["Alt", "矢印"]],
-              action: "範囲の大きさを変える（右と下の辺を伸縮）",
+              keys: [
+                ["Alt", "矢印"],
+                ["Alt", "Shift", "矢印"],
+              ],
+              action: "右と下の辺を 1 pt 動かす（Shift で 10 pt）",
             },
             { keys: [["Ctrl", "Z"]], action: "元に戻す" },
             {
