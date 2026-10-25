@@ -190,4 +190,62 @@ describe("MenuButton", () => {
     );
     expect(screen.queryByRole("menu")).toBeNull();
   });
+
+  it("names the button with its label when given one", () => {
+    render(
+      <MenuButton menuLabel="View" items={items().list} label="View 54%">
+        54%
+      </MenuButton>,
+    );
+    expect(
+      screen.getByRole("button", { name: "View 54%" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens from the button's right edge, or its left edge with align start", () => {
+    const { list } = items();
+    render(
+      <div>
+        <MenuButton menuLabel="End" items={list}>
+          End
+        </MenuButton>
+        <MenuButton menuLabel="Start" items={list} align="start">
+          Start
+        </MenuButton>
+      </div>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "End" }));
+    expect(screen.getByRole("menu", { name: "End" })).toHaveClass("is-end");
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(screen.getByRole("menu", { name: "Start" })).toHaveClass("is-start");
+  });
+
+  it("checks the items of a choice, and sets items apart with a rule", () => {
+    const onSelect = vi.fn();
+    renderMenu([
+      { id: "a", label: "Fit", checked: true, onSelect },
+      {
+        id: "b",
+        label: "50%",
+        checked: false,
+        separatorBefore: true,
+        onSelect,
+      },
+      { id: "c", label: "Plain", onSelect },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+
+    const menu = screen.getByRole("menu");
+    expect(
+      [...menu.children].map((child) => child.getAttribute("role")),
+    ).toEqual(["menuitemradio", "separator", "menuitemradio", "menuitem"]);
+    const [fit, half] = screen.getAllByRole("menuitemradio");
+    expect(fit).toHaveAttribute("aria-checked", "true");
+    expect(fit).toHaveTextContent("✓Fit");
+    expect(half).toHaveAttribute("aria-checked", "false");
+    expect(half).toHaveTextContent(/^50%$/);
+    // The rule is not an item: the arrows go from one item to the next.
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(focusedName()).toBe("50%");
+  });
 });

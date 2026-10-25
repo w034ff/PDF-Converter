@@ -1,8 +1,8 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { createElement } from "react";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import { App } from "../../App";
 import {
   JOB_FINISHED_EVENT,
@@ -19,6 +19,7 @@ import type {
   CropPdf,
   IpcError,
   PageImage,
+  PageSizePt,
   Settings,
 } from "../../ipc";
 
@@ -363,6 +364,35 @@ export function releaseAt(point: readonly [number, number]) {
   fireEvent.pointerUp(overlay(), clientAt(point));
 }
 
+/**
+ * Picks "範囲を描く" in the add menu, after which one drag draws an area
+ * (design §10.1).
+ */
+export function pickDrawTool() {
+  fireEvent.click(
+    screen.getByRole("button", { name: /^(範囲を追加|Add areas) ▾$/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: /^(範囲を描く|Draw an area)$/ }),
+  );
+}
+
+/** Draws one area with "範囲を描く", which stops drawing after it. */
+export function drawFromTo(
+  target: Element,
+  from: readonly [number, number],
+  to: readonly [number, number],
+) {
+  pickDrawTool();
+  dragFromTo(target, from, to);
+}
+
+/** Draws an area over the whole page shown, of `size`, corner to corner. */
+export async function drawWholePage(size: PageSizePt = A4) {
+  drawFromTo(overlay(), [0, 0], [size.widthPt, size.heightPt]);
+  await flush();
+}
+
 /** A whole drag: press on `target`, move, release. */
 export function dragFromTo(
   target: Element,
@@ -372,6 +402,31 @@ export function dragFromTo(
   pressAt(target, from);
   moveTo(to);
   releaseAt(to);
+}
+
+/** The button of the view menu, which says the percent the page is shown at. */
+export function viewMenuButton(): HTMLElement {
+  return screen.getByRole("button", { name: /^(表示|View)( \d+%)?$/ });
+}
+
+/** Picks the item named `name` in the view menu (design §10.1). */
+export function pickView(name: string | RegExp) {
+  fireEvent.click(viewMenuButton());
+  fireEvent.click(screen.getByRole("menuitemradio", { name }));
+}
+
+/** Shows or hides the candidates, with "候補を表示" in the view menu. */
+export function toggleCandidates() {
+  pickView(/^(候補を表示|Show suggestions)$/);
+}
+
+/** Checks that page `page` of `total` is the one shown, by its thumbnail. */
+export function expectPageShown(page: number, total: number) {
+  const thumbnails = within(
+    screen.getByRole("navigation", { name: /^(ページ|Pages)$/ }),
+  ).getAllByRole("button");
+  expect(thumbnails).toHaveLength(total);
+  expect(thumbnails[page - 1]).toHaveAttribute("aria-current", "page");
 }
 
 /** Opens the export settings, which start closed, if they are not open. */

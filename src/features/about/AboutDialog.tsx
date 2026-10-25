@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import appLicenseText from "../../../LICENSE?raw";
+import { CloseIcon } from "../../components/CloseIcon";
 import { ModalDialog } from "../../components/ModalDialog";
 import { formatMessage, getTranslations } from "../../i18n";
 import { getAbout, type AboutInfo } from "../../ipc/about";
@@ -96,24 +97,11 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
         <button
           ref={closeButtonRef}
           type="button"
-          className="icon-btn"
+          className="icon-btn modal-close"
           aria-label={t.about.close}
           onClick={onClose}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+          <CloseIcon size={16} />
         </button>
       </div>
 
@@ -190,12 +178,6 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
             </div>
           )}
         </section>
-      </div>
-
-      <div className="modal-footer">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>
-          {t.about.close}
-        </button>
       </div>
     </ModalDialog>
   );

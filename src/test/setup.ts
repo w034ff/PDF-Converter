@@ -11,3 +11,16 @@ for (const name of ["setPointerCapture", "releasePointerCapture"]) {
     });
   }
 }
+
+// jsdom has no scrolling either; the page is dragged to scroll it. This one
+// moves the offsets, so a test can read where a drag scrolled to.
+if (!("scrollTo" in Element.prototype)) {
+  Object.defineProperty(Element.prototype, "scrollTo", {
+    value(this: Element, options: ScrollToOptions) {
+      this.scrollLeft = options.left ?? this.scrollLeft;
+      this.scrollTop = options.top ?? this.scrollTop;
+    },
+    configurable: true,
+    writable: true,
+  });
+}

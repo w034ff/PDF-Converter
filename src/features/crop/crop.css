@@ -55,11 +55,32 @@
 }
 
 .crop-main {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Over the page's bottom left, clear of the page's scroll bars. It only
+   tells, so presses go through it to the page: drawing can start under it. */
+.crop-page-status {
+  pointer-events: none;
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 40px);
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px var(--color-overlay-backdrop);
 }
 
 .crop-main-empty {
@@ -77,17 +98,22 @@
   padding: 12px 16px 0;
 }
 
-.crop-band {
+/* The open PDF at the left of the toolbar, kept apart from the page's
+   controls by a rule. */
+.crop-file {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--color-bg-surface);
-  border-bottom: 1px solid var(--color-border);
-  flex: none;
+  gap: 4px;
+  padding-right: 8px;
+  border-right: 1px solid var(--color-border);
 }
 
-.crop-band-name {
+/* Up to a width that leaves the rest of the toolbar one row at 1200px; in a
+   narrower window it is the part that gives way (`.crop-toolbar >
+   .crop-file`). */
+.crop-file-name {
+  min-width: 0;
+  max-width: 200px;
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
@@ -95,55 +121,113 @@
   text-overflow: ellipsis;
 }
 
-.crop-band-counter {
-  white-space: nowrap;
-}
-
-.crop-band-open {
-  margin-left: auto;
-  min-height: 32px;
-  padding: 0 12px;
+/* No frame and no fill on the toolbar's ground, like the × of a dialog:
+   it belongs to the name beside it. */
+.crop-file-open.icon-btn {
   flex: none;
+  border-color: transparent;
+  background: transparent;
 }
 
+/* A white band with a rule, like the thumbnails and the side panel, so the
+   controls stand apart from the grey ground the page lies on. */
 .crop-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
   flex: none;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.crop-size-seg {
+/* The controls keep their words on one line. Only the PDF's name narrows,
+   so a long name still leaves them one row at the smallest window; if they
+   do not fit even so, they go on a second row whole. */
+.crop-toolbar > * {
   flex: none;
-}
-
-.crop-size-seg button {
-  min-height: 32px;
-  padding: 0 10px;
   white-space: nowrap;
 }
 
-.crop-zoom-percent {
-  min-width: 3ch;
-  text-align: center;
+/* A wrapping row breaks its lines by the parts' starting widths before any
+   of them shrinks, so the name starts at none and grows up to its own
+   width into what the controls leave. */
+.crop-toolbar > .crop-file {
+  flex: 1 0 0;
+  min-width: 0;
+  max-width: max-content;
 }
 
-.crop-candidates-toggle {
+/* −, the zoom menu and + as one control in one frame, which also keeps
+   them together when the toolbar wraps. The frame is drawn by the group, so
+   the parts have none of their own and meet at a rule. */
+.crop-zoom {
+  position: relative;
   display: flex;
+  align-items: stretch;
+  height: 32px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+}
+
+.crop-zoom > .icon-btn {
+  width: 30px;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.crop-zoom > .icon-btn:first-child {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.crop-zoom > .icon-btn:last-child {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+/* Wide enough for "100%" so the buttons beside it do not move as it
+   changes. */
+.crop-zoom-menu {
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  height: 100%;
+  min-width: 68px;
+  padding: 0 8px;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-left: 4px;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  border-left: 1px solid var(--color-border-subtle);
+  border-right: 1px solid var(--color-border-subtle);
+  background: transparent;
+  color: var(--color-text-primary);
   white-space: nowrap;
   cursor: pointer;
 }
 
-.crop-candidates-toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--color-accent);
-  cursor: pointer;
+.crop-zoom > .icon-btn:hover:not(:disabled),
+.crop-zoom-menu:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+}
+
+/* The menu opens under the whole control, from its left edge, not from
+   the percent alone. */
+.crop-zoom > .menu-button {
+  position: static;
+}
+
+.crop-zoom .menu-button-menu.is-start {
+  left: -1px;
+}
+
+.crop-zoom-caret {
+  font-size: 10px;
+  color: var(--color-text-secondary);
 }
 
 /* The padding is not part of the room the page is fitted into (the view
@@ -155,8 +239,19 @@
   padding: 24px 16px 16px;
 }
 
+/* No ring on the view itself. Tab does not stop on it; it takes the focus
+   from a press on the page or after a key removes an area, and the browser
+   rings it again at the next key of any kind, shortcuts included. The
+   frames, candidates and areas in it keep theirs. */
 .crop-viewport:focus-visible {
-  outline-offset: -2px;
+  outline: none;
+}
+
+/* The areas' line and the selected area's ground are accent, so an accent
+   ring on the page or the list of areas reads as a selection. */
+.crop-viewport :focus-visible,
+.crop-area-list:focus-visible {
+  outline-color: var(--color-text-primary);
 }
 
 /* The page's auto margins center it when it is narrower than the view, and
@@ -181,10 +276,10 @@
   user-select: none;
 }
 
-/* While a conversion runs nothing can be drawn, so the page keeps the
-   plain pointer. */
-.crop-overlay.is-editable {
-  cursor: crosshair;
+/* With "select", the page itself is dragged to scroll it, even while a
+   conversion runs. */
+.crop-overlay:not(.is-drawing) {
+  cursor: grab;
 }
 
 .crop-photo-frame,
@@ -194,11 +289,10 @@
   box-sizing: border-box;
 }
 
-/* A frame or a candidate that adds an area when pressed, or draws one when
-   dragged. */
+/* A frame or a candidate that adds an area when pressed. */
 .crop-photo-frame.is-pressable,
 .crop-candidate.is-pressable {
-  cursor: crosshair;
+  cursor: pointer;
 }
 
 .crop-photo-frame {
@@ -243,7 +337,7 @@
   background: var(--color-page-area-tint);
 }
 
-/* The line of an area is accent too; the gap tells the ring from it. */
+/* The gap tells the ring from the line of the frame. */
 .crop-photo-frame:focus-visible,
 .crop-candidate:focus-visible,
 .crop-area:focus-visible {
@@ -320,8 +414,96 @@
   z-index: 2;
 }
 
-.crop-toolbar .menu-button {
+/* The add menu and the list of keys keep to the right. */
+.crop-toolbar > .menu-button:has(> .crop-add-areas) {
   margin-left: auto;
+}
+
+/* While drawing, a press anywhere draws, over areas and frames too. */
+.crop-overlay.is-drawing,
+.crop-overlay.is-drawing * {
+  cursor: crosshair !important;
+}
+
+.crop-overlay.is-panning,
+.crop-overlay.is-panning * {
+  cursor: grabbing !important;
+}
+
+.crop-ranges-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* The header and body of the About dialog, so that the × sits at the top
+   right as it does there. */
+.modal-dialog.crop-key-hints {
+  max-width: 600px;
+  max-height: 100%;
+}
+
+.crop-key-hints-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.crop-key-hints-table th,
+.crop-key-hints-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.crop-key-hints-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The badges are taller than a line of text, so the cells lose the padding
+   they add. */
+.crop-key-hints-table td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  vertical-align: middle;
+}
+
+/* The keys take the width they need and the actions the rest. */
+.crop-key-hints-keys {
+  width: 1%;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.crop-key-hints-keys kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* The group's heading stands in for the column headings, so it takes their
+   weight and leaves a gap above every group but the first. */
+.crop-key-hints-table .crop-key-hints-group {
+  padding-top: 16px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.crop-key-hints-table tbody:first-child .crop-key-hints-group {
+  padding-top: 0;
 }
 
 .crop-add-areas {

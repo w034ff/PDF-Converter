@@ -246,7 +246,6 @@ export const ja = {
       open: "PDF を開く",
     },
     openAnother: "別の PDF を開く",
-    pageCounter: "{page} / {total}",
     notOnePdf: "切り出しでは PDF を 1 つずつ開きます",
     pagesAria: "ページ",
     pageAria: "ページ {page}",
@@ -254,19 +253,86 @@ export const ja = {
     pageWithAreasMultiple: "ページ {page}、範囲 {count} 個",
     pageAlt: "{name} の {page} ページ",
     toolbar: {
-      sizeLabel: "表示の大きさ",
-      fitWidth: "幅",
-      fitPage: "全体",
+      viewLabel: "表示",
+      fitWidth: "幅に合わせる",
+      fitPage: "全体を表示",
+      zoomPreset: "{percent}%",
       zoomOut: "縮小",
       zoomIn: "拡大",
-      candidates: "候補",
+      showCandidates: "候補を表示",
       addAreas: "範囲を追加 ▾",
+      keyHints: "キー操作",
+      keyHintsTitle: "キー操作（?）",
+    },
+    keyHints: {
+      title: "キー操作",
+      close: "閉じる",
+      groups: [
+        {
+          title: "範囲の編集",
+          rows: [
+            {
+              keys: [["R"]],
+              action: "範囲を描く（ドラッグで新しい範囲を描く）",
+            },
+            {
+              keys: [["Enter"]],
+              action: "範囲を描くとき、ページ全体を範囲にする",
+            },
+            { keys: [["Esc"]], action: "選択を解除・操作を取り消す" },
+            {
+              keys: [["Delete"], ["Backspace"]],
+              action: "範囲を削除（候補なら非表示にする）",
+            },
+            {
+              keys: [["右クリック"], ["Shift", "F10"]],
+              action: "候補を隠す・隠した候補を戻すメニューを開く",
+            },
+            {
+              keys: [["矢印"], ["Shift", "矢印"]],
+              action: "範囲を 1 pt 動かす（Shift で 10 pt）",
+            },
+            {
+              keys: [["Alt", "矢印"]],
+              action: "範囲の大きさを変える（右と下の辺を伸縮）",
+            },
+            { keys: [["Ctrl", "Z"]], action: "元に戻す" },
+            {
+              keys: [
+                ["Ctrl", "Y"],
+                ["Ctrl", "Shift", "Z"],
+              ],
+              action: "やり直す",
+            },
+          ],
+        },
+        {
+          title: "キーボード操作",
+          rows: [
+            {
+              keys: [["Tab"], ["Shift", "Tab"]],
+              action: "枠・候補・範囲を順に移る",
+            },
+            {
+              keys: [["Enter"], ["Space"]],
+              action: "選ぶ・候補を範囲に加える",
+            },
+          ],
+        },
+        {
+          title: "画面操作・ヘルプ",
+          rows: [
+            { keys: [["Ctrl", "ホイール"]], action: "拡大・縮小" },
+            { keys: [["?"]], action: "この一覧を開く" },
+          ],
+        },
+      ],
     },
     addMenu: {
       label: "範囲を追加",
       thisPage: "このページの候補をすべて追加",
       allPages: "全ページの候補をすべて追加",
-      wholePage: "ページ全体を範囲にする",
+      draw: "範囲を描く",
     },
     areaKinds: {
       photo: "写真",
@@ -276,9 +342,16 @@ export const ja = {
       manual: "手で選んだ範囲",
     },
     searching: "候補を探しています…",
+    candidatesHidden: "候補を隠しています",
+    drawing: "ドラッグで範囲を描きます（Enter でページ全体、Esc でやめる）",
     candidateAria: "候補：{kind}",
     photoFrameAria: "写真の枠",
     areaAria: "範囲：{kind}",
+    pageMenu: {
+      label: "ページの操作",
+      hide: "この候補を隠す",
+      restore: "このページの隠した候補を戻す",
+    },
     candidateKinds: {
       photo: "写真",
       figure: "図",
@@ -289,6 +362,9 @@ export const ja = {
       sectionAria: "範囲と書き出しの設定",
       title: "範囲",
       empty: "範囲はまだありません",
+      emptyHint:
+        "ページの候補や写真を押すと範囲になります。全ページの候補をまとめて加えることも、候補にないものを「範囲を追加」の「範囲を描く」で描くこともできます。",
+      detectAll: "全ページの候補を追加",
       summarySingle: "{count} 個 · 書き出す {checked} 個",
       summaryMultiple: "{count} 個 · 書き出す {checked} 個",
       pageLabel: "p.{page}",

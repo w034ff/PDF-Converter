@@ -3,12 +3,12 @@
   display: inline-flex;
 }
 
-/* Opens downwards from the button's right edge: the button sits at the
-   right of its toolbar, where a menu opened to the right would be cut off. */
+/* Opens downwards from one edge of the button (`align`): from the right
+   edge at the right of a toolbar, where a menu opened to the right would be
+   cut off, and from the left edge elsewhere. */
 .menu-button-menu {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
   z-index: 10;
   min-width: 100%;
   display: flex;
@@ -20,7 +20,36 @@
   box-shadow: 0 4px 12px var(--color-overlay-backdrop);
 }
 
+/* Only holds the menu, for the keys it stops (`ContextMenu`). */
+.context-menu-root {
+  display: contents;
+}
+
+/* At the point given (`ContextMenu`), over everything, wherever it opens. */
+.menu-button-menu.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 0;
+}
+
+/* The menu itself takes the focus only when no item can (`MenuList`); its
+   items show where the focus is otherwise, so it draws no ring. */
+.menu-button-menu:focus {
+  outline: none;
+}
+
+.menu-button-menu.is-end {
+  right: 0;
+}
+
+.menu-button-menu.is-start {
+  left: 0;
+}
+
 .menu-button-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font: inherit;
   font-size: 13px;
   min-height: 32px;
@@ -32,6 +61,18 @@
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.menu-button-check {
+  width: 1em;
+  flex: none;
+  color: var(--color-accent);
+}
+
+.menu-button-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-border);
 }
 
 .menu-button-item:hover:not(:disabled),

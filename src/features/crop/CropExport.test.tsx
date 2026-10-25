@@ -8,6 +8,10 @@ import {
   emitJobFinished,
   emitJobItem,
   emitJobProgress,
+  drawWholePage,
+  expectPageShown,
+  toggleCandidates,
+  viewMenuButton,
   flush,
   installFakeObjectUrls,
   installFakeResizeObserver,
@@ -37,11 +41,7 @@ function pickPage(page: number) {
 }
 
 async function addWholePage() {
-  fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
-  fireEvent.click(
-    screen.getByRole("menuitem", { name: "ページ全体を範囲にする" }),
-  );
-  await flush();
+  await drawWholePage();
 }
 
 /** Opens a PDF and adds the whole of pages 3, 1 and 2, which get keys 1, 2 and 3. */
@@ -438,14 +438,14 @@ describe("what a running conversion locks", () => {
     await running();
     expect(screen.getByRole("button", { name: "ページ 2" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "ページ 2" }));
-    expect(screen.getByText("2 / 4")).toBeInTheDocument();
+    expectPageShown(2, 4);
     fireEvent.click(
       screen.getByRole("button", { name: "ページ 1、範囲 1 個" }),
     );
 
     expect(screen.getByRole("button", { name: "拡大" })).toBeEnabled();
-    expect(screen.getByRole("checkbox", { name: "候補" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("checkbox", { name: "候補" }));
+    expect(viewMenuButton()).toBeEnabled();
+    toggleCandidates();
     expect(screen.queryAllByTestId("crop-candidate")).toHaveLength(0);
 
     fireEvent.click(screen.getByTestId("crop-area"));
@@ -462,7 +462,7 @@ describe("what a running conversion locks", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "p.1 の手で選んだ範囲を表示" }),
     );
-    expect(screen.getByText("1 / 4")).toBeInTheDocument();
+    expectPageShown(1, 4);
   });
 
   it("lets the settings be opened and closed", async () => {

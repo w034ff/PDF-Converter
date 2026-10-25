@@ -247,7 +247,6 @@ export const en: Translations = {
       open: "Open PDF",
     },
     openAnother: "Open another PDF",
-    pageCounter: "{page} / {total}",
     notOnePdf: "Open one PDF at a time to crop",
     pagesAria: "Pages",
     pageAria: "Page {page}",
@@ -255,19 +254,86 @@ export const en: Translations = {
     pageWithAreasMultiple: "Page {page}, {count} areas",
     pageAlt: "Page {page} of {name}",
     toolbar: {
-      sizeLabel: "Display size",
-      fitWidth: "Width",
-      fitPage: "Page",
+      viewLabel: "View",
+      fitWidth: "Fit width",
+      fitPage: "Fit page",
+      zoomPreset: "{percent}%",
       zoomOut: "Zoom out",
       zoomIn: "Zoom in",
-      candidates: "Suggestions",
+      showCandidates: "Show suggestions",
       addAreas: "Add areas ▾",
+      keyHints: "Keyboard shortcuts",
+      keyHintsTitle: "Keyboard shortcuts (?)",
+    },
+    keyHints: {
+      title: "Keyboard shortcuts",
+      close: "Close",
+      groups: [
+        {
+          title: "Editing areas",
+          rows: [
+            { keys: [["R"]], action: "Draw an area (drag to draw a new area)" },
+            {
+              keys: [["Enter"]],
+              action: "While drawing, make the whole page an area",
+            },
+            {
+              keys: [["Esc"]],
+              action: "Deselect, or cancel the current action",
+            },
+            {
+              keys: [["Delete"], ["Backspace"]],
+              action: "Remove the area (hide a suggestion)",
+            },
+            {
+              keys: [["Right-click"], ["Shift", "F10"]],
+              action: "Open the menu to hide or bring back suggestions",
+            },
+            {
+              keys: [["Arrows"], ["Shift", "Arrows"]],
+              action: "Move the area by 1 pt (10 pt with Shift)",
+            },
+            {
+              keys: [["Alt", "Arrows"]],
+              action: "Resize the area (move the right and bottom edges)",
+            },
+            { keys: [["Ctrl", "Z"]], action: "Undo" },
+            {
+              keys: [
+                ["Ctrl", "Y"],
+                ["Ctrl", "Shift", "Z"],
+              ],
+              action: "Redo",
+            },
+          ],
+        },
+        {
+          title: "Keyboard navigation",
+          rows: [
+            {
+              keys: [["Tab"], ["Shift", "Tab"]],
+              action: "Go through frames, suggestions and areas",
+            },
+            {
+              keys: [["Enter"], ["Space"]],
+              action: "Select, or add a suggestion as an area",
+            },
+          ],
+        },
+        {
+          title: "View and help",
+          rows: [
+            { keys: [["Ctrl", "Wheel"]], action: "Zoom in or out" },
+            { keys: [["?"]], action: "Open this list" },
+          ],
+        },
+      ],
     },
     addMenu: {
       label: "Add areas",
       thisPage: "Add all suggestions on this page",
       allPages: "Add all suggestions on all pages",
-      wholePage: "Make the whole page an area",
+      draw: "Draw an area",
     },
     areaKinds: {
       photo: "Photo",
@@ -277,9 +343,16 @@ export const en: Translations = {
       manual: "Custom area",
     },
     searching: "Looking for suggestions…",
+    candidatesHidden: "Suggestions are hidden",
+    drawing: "Drag to draw an area (Enter for the whole page, Esc to stop)",
     candidateAria: "Suggestion: {kind}",
     photoFrameAria: "Photo frame",
     areaAria: "Area: {kind}",
+    pageMenu: {
+      label: "Page actions",
+      hide: "Hide this suggestion",
+      restore: "Bring back hidden suggestions on this page",
+    },
     candidateKinds: {
       photo: "Photo",
       figure: "Figure",
@@ -290,6 +363,9 @@ export const en: Translations = {
       sectionAria: "Areas and export settings",
       title: "Areas",
       empty: "No areas yet",
+      emptyHint:
+        "Press a suggestion or a photo on the page to make it an area, or add the suggestions on all pages at once. Draw what no suggestion covers with Add areas > Draw an area.",
+      detectAll: "Add suggestions on all pages",
       summarySingle: "{count} area · {checked} to export",
       summaryMultiple: "{count} areas · {checked} to export",
       pageLabel: "p.{page}",

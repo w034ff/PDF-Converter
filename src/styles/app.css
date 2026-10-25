@@ -399,6 +399,16 @@ a:hover {
   border-bottom: 1px solid var(--color-border);
 }
 
+/* The × of a dialog has no border, so it reads as the dialog's own control
+   rather than one of its contents, and sits 8px from the top and right
+   edges: closer would clip its focus ring, which the dialog's
+   overflow: hidden cuts at the edge. */
+.icon-btn.modal-close {
+  align-self: flex-start;
+  margin: -8px -12px 0 0;
+  border-color: transparent;
+}
+
 .modal-title {
   margin: 0;
   font-size: 16px;
@@ -414,14 +424,6 @@ a:hover {
   padding: 20px;
   overflow-y: auto;
   scrollbar-gutter: stable;
-}
-
-.modal-footer {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px 20px;
-  border-top: 1px solid var(--color-border);
 }
 
 .about-app-info {
