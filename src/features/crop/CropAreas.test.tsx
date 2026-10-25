@@ -259,7 +259,9 @@ describe("pressing a candidate", () => {
     await flush();
 
     expect(chart).not.toHaveTextContent("グラフ");
+    expect(chart).toHaveClass("is-covered");
     expect(photo).toHaveTextContent("写真");
+    expect(photo).not.toHaveClass("is-covered");
     expect(screen.getByTestId("crop-area")).toHaveTextContent("グラフ");
 
     // 10 pt to the right still overlaps by 190 / 210 of the 200 pt width,
@@ -275,6 +277,32 @@ describe("pressing a candidate", () => {
     moveRight();
     await flush();
     expect(chart).toHaveTextContent("グラフ");
+    expect(chart).not.toHaveClass("is-covered");
+  });
+
+  it("leaves the line and the word of a photo's frame to the area in its place", async () => {
+    await openPdfInCropTab({ list_page_images: () => photos });
+    const frame = screen.getByTestId("crop-photo-frame");
+    expect(frame).not.toHaveClass("is-covered");
+    fireEvent.click(frame);
+    await flush();
+    expect(screen.getByTestId("crop-photo-frame")).toHaveClass("is-covered");
+  });
+
+  it("draws an area whose row is unchecked as one that is not exported", async () => {
+    await openPdfInCropTab({ detect_layout: () => candidates });
+    fireEvent.click(candidateOf("chart"));
+    await flush();
+    const area = () => screen.getByTestId("crop-area");
+    expect(area()).not.toHaveClass("is-unchecked");
+
+    const check = screen.getByRole("checkbox", {
+      name: "p.1 のグラフを書き出す",
+    });
+    fireEvent.click(check);
+    expect(area()).toHaveClass("is-unchecked");
+    fireEvent.click(check);
+    expect(area()).not.toHaveClass("is-unchecked");
   });
 });
 

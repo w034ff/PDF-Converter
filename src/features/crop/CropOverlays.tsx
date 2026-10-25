@@ -424,13 +424,13 @@ export function CropOverlays({
       rectPt: candidate.rectPt,
       imageIndex: candidate.kind === "photo" ? candidate.imageIndex : null,
     };
-    // An area in its place, such as the one made from it, puts its own word
-    // where the candidate's would be.
+    // An area in its place, such as the one made from it, puts its own line
+    // and word where the candidate's would be.
     const madeArea = findDuplicate(areas, area) !== undefined;
     return (
       <div
         key={`candidate-${index}`}
-        className={`crop-candidate${pressable}`}
+        className={`crop-candidate${pressable}${madeArea ? " is-covered" : ""}`}
         data-testid="crop-candidate"
         data-kind={candidate.kind}
         data-index={index}
@@ -459,10 +459,11 @@ export function CropOverlays({
       rectPt: image.rectPt,
       imageIndex: image.imageIndex,
     };
+    const madeArea = findDuplicate(areas, area) !== undefined;
     return (
       <div
         key={`frame-${image.imageIndex}`}
-        className={`crop-photo-frame${pressable}`}
+        className={`crop-photo-frame${pressable}${madeArea ? " is-covered" : ""}`}
         data-testid="crop-photo-frame"
         role="button"
         tabIndex={locked ? -1 : 0}
@@ -471,7 +472,7 @@ export function CropOverlays({
         onClick={() => add(area)}
         onKeyDown={(event) => activate(event, () => addFromKeyboard(area))}
       >
-        {findDuplicate(areas, area) === undefined && (
+        {!madeArea && (
           <span className="crop-tag">{t.crop.candidateKinds.photo}</span>
         )}
       </div>
@@ -482,7 +483,7 @@ export function CropOverlays({
     return (
       <div
         key={`area-${area.key}`}
-        className={`crop-area${area.key === selectedKey ? " is-selected" : ""}`}
+        className={`crop-area${area.key === selectedKey ? " is-selected" : ""}${area.checked ? "" : " is-unchecked"}`}
         data-testid="crop-area"
         data-key={area.key}
         data-kind={area.kind}

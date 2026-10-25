@@ -304,6 +304,13 @@
   border: 1px solid var(--color-page-candidate);
 }
 
+/* An area lies in its place and draws the line there. Under an area that is
+   not exported, whose line is dashed, this one would show in the gaps. */
+.crop-photo-frame.is-covered,
+.crop-candidate.is-covered {
+  border-color: transparent;
+}
+
 .crop-tag {
   position: absolute;
   left: -1px;
@@ -332,6 +339,11 @@
 
 .crop-area.is-selected {
   background: var(--color-page-area-tint);
+}
+
+/* An area whose row is unchecked: still an area, but not exported. */
+.crop-area.is-unchecked {
+  border-style: dashed;
 }
 
 /* The gap tells the ring from the line of the frame. */
