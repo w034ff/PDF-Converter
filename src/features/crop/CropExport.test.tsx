@@ -18,6 +18,7 @@ import {
   openPdfInCropTab,
   openSettings,
   pageImage,
+  rowPage,
   rowText,
   type Call,
   type Handler,
@@ -71,7 +72,7 @@ async function startExport() {
 }
 
 function statusOf(page: number): string {
-  const row = areaRows().find((r) => rowText(r).startsWith(`p.${page}`));
+  const row = areaRows().find((r) => rowPage(r) === `p.${page}`);
   return row === undefined ? "" : rowText(row);
 }
 

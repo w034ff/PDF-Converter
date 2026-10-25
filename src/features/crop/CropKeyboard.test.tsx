@@ -438,7 +438,7 @@ describe("Delete and Backspace", () => {
     await drawAreas(2);
     fireEvent.click(areaElements()[0]);
     const [, secondRow] = areaRows();
-    const list = secondRow.closest("ul");
+    const list = secondRow.closest(".crop-area-list");
     const check = secondRow.querySelector("input");
     if (check === null) {
       throw new Error("the row has no checkbox");

@@ -368,7 +368,8 @@ export const en: Translations = {
       detectAll: "Add suggestions on all pages",
       summarySingle: "{count} area · {checked} to export",
       summaryMultiple: "{count} areas · {checked} to export",
-      pageLabel: "p.{page}",
+      pageHeadSingle: "p.{page} · {count} area",
+      pageHeadMultiple: "p.{page} · {count} areas",
       overlaid: "Overlaid",
       overlaidHint:
         'Text, shapes or other images lie over this photo. "Photos only" leaves them out',

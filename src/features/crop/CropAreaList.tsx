@@ -19,7 +19,7 @@ import {
   CROP_PREVIEW_HEIGHT,
   CROP_PREVIEW_WIDTH,
   areaPreviewMaxSide,
-  areasInListOrder,
+  areasByPage,
   exportSize,
   exportSizeText,
   previewPlacement,
@@ -170,9 +170,6 @@ function CropAreaRow({ pdf, area }: CropAreaRowProps) {
         <AreaPreview pdf={pdf} area={area} />
         <span id={detailsId} className="crop-area-text">
           <span className="crop-area-head">
-            <span className="mono crop-area-page">
-              {formatMessage(t.crop.ranges.pageLabel, { page: area.page })}
-            </span>
             <span className="crop-area-kind">{kind}</span>
             {area.onTop === true && (
               <span
@@ -217,9 +214,40 @@ function CropAreaRow({ pdf, area }: CropAreaRowProps) {
   );
 }
 
+interface CropPageGroupProps {
+  pdf: CropPdf;
+  page: number;
+  areas: CropArea[];
+}
+
+/** One page's heading and the rows of its areas. */
+function CropPageGroup({ pdf, page, areas }: CropPageGroupProps) {
+  const { language } = useAppState();
+  const t = getTranslations(language.language);
+  const headId = useId();
+  const count = areas.length;
+  return (
+    <li className="crop-page-group">
+      <div id={headId} className="crop-page-head">
+        {formatMessage(
+          count === 1
+            ? t.crop.ranges.pageHeadSingle
+            : t.crop.ranges.pageHeadMultiple,
+          { page, count },
+        )}
+      </div>
+      <ul className="crop-page-rows" aria-labelledby={headId}>
+        {areas.map((area) => (
+          <CropAreaRow key={area.key} pdf={pdf} area={area} />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 /**
- * The rows of the areas (mockup `CropA`): by page and, within a page, in the
- * order they were added (design §10.1).
+ * The areas under a heading for each page (mockup `CropA`): by page and,
+ * within a page, in the order they were added (design §10.1).
  */
 export function CropAreaList({ pdf }: { pdf: CropPdf }) {
   const { crop, job } = useAppState();
@@ -255,8 +283,13 @@ export function CropAreaList({ pdf }: { pdf: CropPdf }) {
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
-      {areasInListOrder(crop.areas).map((area) => (
-        <CropAreaRow key={area.key} pdf={pdf} area={area} />
+      {areasByPage(crop.areas).map((group) => (
+        <CropPageGroup
+          key={group.page}
+          pdf={pdf}
+          page={group.page}
+          areas={group.areas}
+        />
       ))}
     </ul>
   );

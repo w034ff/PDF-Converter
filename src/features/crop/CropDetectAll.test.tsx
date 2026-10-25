@@ -15,6 +15,7 @@ import {
   installFakeObjectUrls,
   installFakeResizeObserver,
   openPdfInCropTab,
+  rowPage,
   rowText,
   type Call,
   type Handler,
@@ -61,7 +62,7 @@ async function answer(
 }
 
 function pages(): string[] {
-  return areaRows().map((row) => rowText(row).slice(0, 3));
+  return areaRows().map(rowPage);
 }
 
 function detectLayoutPages(calls: Call[]): unknown[] {
@@ -78,7 +79,7 @@ describe("starting the search of all pages", () => {
     expect(callsOf(calls, "start_detect_all").map((c) => c.args)).toEqual([
       { id: 7 },
     ]);
-    expect(areaRows().map((row) => rowText(row))).toEqual([
+    expect(areaRows().map((row) => `${rowPage(row)}${rowText(row)}`)).toEqual([
       expect.stringMatching(/^p\.1グラフ/),
       expect.stringMatching(/^p\.1表/),
     ]);

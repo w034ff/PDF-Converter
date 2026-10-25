@@ -367,7 +367,8 @@ export const ja = {
       detectAll: "全ページの候補を追加",
       summarySingle: "{count} 個 · 書き出す {checked} 個",
       summaryMultiple: "{count} 個 · 書き出す {checked} 個",
-      pageLabel: "p.{page}",
+      pageHeadSingle: "p.{page} · {count} 個",
+      pageHeadMultiple: "p.{page} · {count} 個",
       overlaid: "重なりあり",
       overlaidHint:
         "写真の上に文字・図形・ほかの画像などが重なっています。「写真だけを書き出す」で除けます",

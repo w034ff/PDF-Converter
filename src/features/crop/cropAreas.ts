@@ -238,3 +238,19 @@ export function exportSizeText(t: Translations, size: ExportSize): string {
 export function areasInListOrder(areas: readonly CropArea[]): CropArea[] {
   return [...areas].sort((a, b) => a.page - b.page || a.key - b.key);
 }
+
+/** The areas in list order, split by page; pages without areas are left out. */
+export function areasByPage(
+  areas: readonly CropArea[],
+): { page: number; areas: CropArea[] }[] {
+  const groups: { page: number; areas: CropArea[] }[] = [];
+  for (const area of areasInListOrder(areas)) {
+    const last = groups.at(-1);
+    if (last?.page === area.page) {
+      last.areas.push(area);
+    } else {
+      groups.push({ page: area.page, areas: [area] });
+    }
+  }
+  return groups;
+}

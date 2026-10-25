@@ -15,6 +15,8 @@ import {
   openPdfInCropTab,
   openSettings,
   pageImage,
+  pageHeads,
+  rowPage,
   rowText,
   type ObjectUrls,
 } from "./cropTestSupport";
@@ -39,8 +41,8 @@ function pickPage(page: number) {
   fireEvent.click(screen.getByRole("button", { name: `ページ ${page}` }));
 }
 
-async function addMenuItem(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+async function addMenuItem(name: string, menu = "範囲を追加 ▾") {
+  fireEvent.click(screen.getByRole("button", { name: menu }));
   fireEvent.click(screen.getByRole("menuitem", { name }));
   await flush();
 }
@@ -75,7 +77,7 @@ describe("pressing a frame", () => {
     await flush();
 
     const [row] = areaRows();
-    expect(rowText(row)).toContain("p.1");
+    expect(rowPage(row)).toBe("p.1");
     expect(rowText(row)).toContain("写真");
     expect(rowText(row)).toContain("元の画素 100 × 80");
     expect(row).toHaveAttribute("data-key", "1");
@@ -441,12 +443,36 @@ describe("the list of areas", () => {
     await flush();
     await addMenuItem("このページの候補をすべて追加");
 
-    expect(areaRows().map((row) => rowText(row))).toEqual([
+    expect(areaRows().map((row) => `${rowPage(row)}${rowText(row)}`)).toEqual([
       expect.stringMatching(/^p\.1表/),
       expect.stringMatching(/^p\.1グラフ/),
       expect.stringMatching(/^p\.3手で選んだ範囲/),
     ]);
     expect(areaRows().map((row) => row.dataset.key)).toEqual(["2", "3", "1"]);
+  });
+
+  it("puts the rows of each page under a heading with the page and its count", async () => {
+    await openPdfInCropTab({
+      detect_layout: () => [
+        candidate("table", [50, 300, 250, 400]),
+        candidate("chart", [50, 60, 250, 160]),
+      ],
+    });
+    pickPage(3);
+    await flush();
+    await addWholePage();
+    pickPage(1);
+    await flush();
+    await addMenuItem("このページの候補をすべて追加");
+
+    expect(pageHeads()).toEqual(["p.1 · 2 個", "p.3 · 1 個"]);
+    const page1 = screen.getByRole("list", { name: "p.1 · 2 個" });
+    expect(within(page1).getAllByTestId("crop-area-row")).toHaveLength(2);
+    const page3 = screen.getByRole("list", { name: "p.3 · 1 個" });
+    expect(rowText(within(page3).getByTestId("crop-area-row"))).toContain(
+      "手で選んだ範囲",
+    );
+    expect(areaRows().every((row) => !rowText(row).includes("p."))).toBe(true);
   });
 
   it("says in the heading how many areas there are and how many are written", async () => {
@@ -676,5 +702,23 @@ describe("in English", () => {
     await drawWholePage();
     expect(screen.getByText("2 areas · 2 to export")).toBeInTheDocument();
     expect(screen.getByText("Export 2 areas as PNG")).toBeInTheDocument();
+  });
+
+  it("heads each page with its count in the singular and the plural", async () => {
+    await openPdfInCropTab(
+      {
+        detect_layout: () => [
+          candidate("table", [50, 300, 250, 400]),
+          candidate("chart", [50, 60, 250, 160]),
+        ],
+      },
+      cropPdf(),
+      "en",
+    );
+    await addMenuItem("Add all suggestions on this page", "Add areas ▾");
+    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    await flush();
+    await drawWholePage();
+    expect(pageHeads()).toEqual(["p.1 · 2 areas", "p.2 · 1 area"]);
   });
 });
