@@ -7,6 +7,7 @@ export * from "./FolderIcon";
 export * from "./InfoIcon";
 export * from "./ListRow";
 export * from "./LockIcon";
+export * from "./PdfFileIcon";
 export * from "./MenuButton";
 export * from "./ModalDialog";
 export * from "./NoticeDisplay";

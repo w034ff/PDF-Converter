@@ -4,6 +4,7 @@ import {
   ErrorDisplay,
   LockIcon,
   NoticeDisplay,
+  PdfFileIcon,
 } from "../../components";
 import { PasswordDialog } from "./PasswordDialog";
 import {
@@ -470,6 +471,7 @@ export function PdfToImagesView() {
           />
         )}
         <DropZone
+          icon={<PdfFileIcon />}
           title={t.dropZone.titlePdfs}
           description={t.dropZone.descriptionPdfs}
           addFilesLabel={t.dropZone.addPdfs}
