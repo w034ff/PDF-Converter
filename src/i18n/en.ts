@@ -239,7 +239,7 @@ export const en: Translations = {
     empty: {
       title: "Drop a PDF here",
       description:
-        "Pick the figures, charts, tables and photos on a page and export them as images. Photos can be exported at their original pixels.",
+        "Automatically detects figures, charts, tables, and photos to export as images. Photos can be saved at their original quality.",
       open: "Open PDF",
     },
     openAnother: "Open another PDF",

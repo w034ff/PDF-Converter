@@ -184,7 +184,7 @@ describe("the crop tab: opening a PDF", () => {
 
       expect(
         screen.getByText(
-          "ページの図・グラフ・表・写真を選んで、画像として書き出します。写真は元の画素のまま書き出せます。",
+          "ページの図・グラフ・表・写真を自動で検出し、画像として書き出せます。写真は元の画質のまま保存できます。",
         ),
       ).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "PDF を開く" })).toBeEnabled();
