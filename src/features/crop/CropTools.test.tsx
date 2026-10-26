@@ -76,7 +76,7 @@ function isDrawing(): boolean {
 }
 
 function addMenuButton(): HTMLElement {
-  return screen.getByRole("button", { name: "範囲を追加 ▾" });
+  return screen.getByRole("button", { name: "範囲を追加" });
 }
 
 function suggestion(kind: string): HTMLElement {
@@ -136,7 +136,7 @@ describe("putting a wrong suggestion aside", () => {
     expect(viewport()).toHaveFocus();
     expect(areaRows()).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "このページの候補をすべて追加" }),
     );

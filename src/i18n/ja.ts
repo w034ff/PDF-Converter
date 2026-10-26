@@ -256,7 +256,7 @@ export const ja = {
       zoomOut: "縮小",
       zoomIn: "拡大",
       showCandidates: "候補を表示",
-      addAreas: "範囲を追加 ▾",
+      addAreas: "範囲を追加",
       keyHints: "キー操作",
       keyHintsTitle: "キー操作（?）",
     },

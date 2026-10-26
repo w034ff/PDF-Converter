@@ -370,7 +370,7 @@ export function releaseAt(point: readonly [number, number]) {
  */
 export function pickDrawTool() {
   fireEvent.click(
-    screen.getByRole("button", { name: /^(範囲を追加|Add areas) ▾$/ }),
+    screen.getByRole("button", { name: /^(範囲を追加|Add areas)$/ }),
   );
   fireEvent.click(
     screen.getByRole("menuitem", { name: /^(範囲を描く|Draw an area)$/ }),

@@ -257,7 +257,7 @@ export const en: Translations = {
       zoomOut: "Zoom out",
       zoomIn: "Zoom in",
       showCandidates: "Show suggestions",
-      addAreas: "Add areas ▾",
+      addAreas: "Add areas",
       keyHints: "Keyboard shortcuts",
       keyHintsTitle: "Keyboard shortcuts (?)",
     },

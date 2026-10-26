@@ -353,11 +353,12 @@ export function CropPagePane({
         </div>
         <MenuButton
           className="btn btn-ghost crop-add-areas"
+          label={t.crop.toolbar.addAreas}
           menuLabel={t.crop.addMenu.label}
           items={addItems}
           disabled={busy}
         >
-          {t.crop.toolbar.addAreas}
+          {`${t.crop.toolbar.addAreas} ▾`}
         </MenuButton>
         <button
           ref={hintsButtonRef}

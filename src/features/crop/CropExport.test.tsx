@@ -415,7 +415,7 @@ describe("what a running conversion locks", () => {
     expect(
       screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
     ).toBeDisabled();
-    expect(screen.getByRole("button", { name: "範囲を追加 ▾" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "範囲を追加" })).toBeDisabled();
   });
 
   it("keeps the settings and the opening of another PDF from being changed", async () => {
@@ -481,7 +481,7 @@ describe("what a running conversion locks", () => {
       unprocessed: 0,
       cancelled: false,
     });
-    expect(screen.getByRole("button", { name: "範囲を追加 ▾" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "範囲を追加" })).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "別の PDF を開く" }),
     ).toBeEnabled();
