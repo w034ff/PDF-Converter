@@ -401,12 +401,12 @@ export const en: Translations = {
     },
     settings: {
       title: "Export settings",
-      photoNative: "Export photos at original pixels",
+      photoNative: "Export photos at original quality",
       photoNativeHint:
-        "Written in their own number of pixels, whatever the resolution",
+        "Written at their original quality, whatever the resolution",
       photoOnly: "Photos only",
       photoOnlyHint: "Leaves out text and frames drawn over a photo",
-      summaryPhotoNative: "Photos at original pixels",
+      summaryPhotoNative: "Photos at original quality",
       summaryPhotoOnly: "Photos only",
       summarySeparator: " · ",
     },
