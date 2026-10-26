@@ -80,11 +80,7 @@ describe("the crop tab: opening a PDF", () => {
         "true",
       );
       expect(screen.queryByRole("button", { name: "PDF を保存" })).toBeNull();
-      expect(
-        screen.getByText(
-          "PDF をドロップするか、「PDF を開く」を押してください",
-        ),
-      ).toBeInTheDocument();
+      expect(screen.getByText("PDF をドロップ")).toBeInTheDocument();
     });
 
     it("is named Crop in English", () => {
@@ -188,7 +184,7 @@ describe("the crop tab: opening a PDF", () => {
 
       expect(
         screen.getByText(
-          "ページの図・グラフ・表・写真を選んで、画像として書き出します。写真は元の画素のまま書き出せます。",
+          "ページの図・グラフ・表・写真を自動で検出し、画像として書き出せます。写真は元の画質のまま保存できます。",
         ),
       ).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "PDF を開く" })).toBeEnabled();
@@ -214,9 +210,7 @@ describe("the crop tab: opening a PDF", () => {
       openCropTab("Crop");
       await flush();
 
-      expect(
-        screen.getByText('Drop a PDF here or press "Open PDF"'),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Drop a PDF here")).toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: "Open PDF" }),
       ).toBeInTheDocument();

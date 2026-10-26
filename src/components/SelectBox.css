@@ -1,0 +1,26 @@
+.select-box {
+  position: relative;
+  display: flex;
+}
+
+/* The right padding leaves room for the arrow and the same gap again before
+   the text. */
+.select-box > select {
+  flex: 1;
+  appearance: none;
+  padding-right: 30px;
+}
+
+/* 10px inside the 1px border. Presses go through to the select. */
+.select-box > svg {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  transform: translateY(-50%);
+  color: var(--color-text-primary);
+  pointer-events: none;
+}
+
+.select-box:has(> select:disabled) > svg {
+  opacity: 0.5;
+}

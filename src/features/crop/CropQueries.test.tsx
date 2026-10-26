@@ -120,7 +120,7 @@ describe("the questions the photo areas bring", () => {
     const calls = await openPdfInCropTab(ipc.handlers);
     expect(queryCalls(calls)).toEqual(["list_page_images:1"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "全ページの候補をすべて追加" }),
     );
@@ -147,7 +147,7 @@ describe("the questions the photo areas bring", () => {
   it("asks whether anything lies over each photo, one at a time, in the order of the keys, after the images", async () => {
     const ipc = holdingIpc();
     const calls = await openPdfInCropTab(ipc.handlers);
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "全ページの候補をすべて追加" }),
     );
@@ -181,7 +181,7 @@ describe("the questions the photo areas bring", () => {
   it("does not hold up the images of the page that is shown", async () => {
     const ipc = holdingIpc();
     const calls = await openPdfInCropTab(ipc.handlers);
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "全ページの候補をすべて追加" }),
     );
@@ -278,7 +278,7 @@ describe("the questions the photo areas bring", () => {
   it("shows the size of a photo on another page once its images have come", async () => {
     const ipc = holdingIpc();
     await openPdfInCropTab(ipc.handlers);
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "全ページの候補をすべて追加" }),
     );

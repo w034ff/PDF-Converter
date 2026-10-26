@@ -42,7 +42,7 @@ function pickPage(page: number) {
   fireEvent.click(screen.getByRole("button", { name: `ページ ${page}` }));
 }
 
-async function addMenuItem(name: string, menu = "範囲を追加 ▾") {
+async function addMenuItem(name: string, menu = "範囲を追加") {
   fireEvent.click(screen.getByRole("button", { name: menu }));
   fireEvent.click(screen.getByRole("menuitem", { name }));
   await flush();
@@ -355,7 +355,7 @@ describe("selecting", () => {
 describe("the menu of areas to add", () => {
   it("has the three items, in a menu button, with drawing set apart", async () => {
     await openPdfInCropTab();
-    const button = screen.getByRole("button", { name: "範囲を追加 ▾" });
+    const button = screen.getByRole("button", { name: "範囲を追加" });
     expect(button).toHaveAttribute("aria-haspopup", "menu");
     expect(button).toHaveAttribute("aria-expanded", "false");
 
@@ -376,7 +376,7 @@ describe("the menu of areas to add", () => {
 
   it("closes on Esc, with the focus back on the button, and on a press outside", async () => {
     await openPdfInCropTab();
-    const button = screen.getByRole("button", { name: "範囲を追加 ▾" });
+    const button = screen.getByRole("button", { name: "範囲を追加" });
     fireEvent.click(button);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
@@ -391,7 +391,7 @@ describe("the menu of areas to add", () => {
     await openPdfInCropTab({
       detect_layout: () => [candidate("chart", [50, 60, 250, 160])],
     });
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     expect(
       screen.getByRole("menuitem", { name: "このページの候補をすべて追加" }),
     ).toHaveFocus();
@@ -404,7 +404,7 @@ describe("the menu of areas to add", () => {
   describe("this page's candidates", () => {
     it("cannot be added when the page has none", async () => {
       await openPdfInCropTab();
-      fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+      fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
       expect(
         screen.getByRole("menuitem", { name: "このページの候補をすべて追加" }),
       ).toBeDisabled();
@@ -412,7 +412,7 @@ describe("the menu of areas to add", () => {
 
     it("cannot be added while the page is being analyzed", async () => {
       await openPdfInCropTab({ detect_layout: () => new Promise(() => {}) });
-      fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+      fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
       expect(
         screen.getByRole("menuitem", { name: "このページの候補をすべて追加" }),
       ).toBeDisabled();
@@ -466,7 +466,7 @@ describe("the menu of areas to add", () => {
           throw { code: "LayoutUnavailable", detail: null };
         },
       });
-      fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+      fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
       expect(
         screen.getByRole("menuitem", { name: "全ページの候補をすべて追加" }),
       ).toBeDisabled();
@@ -766,7 +766,7 @@ describe("the page thumbnails", () => {
 describe("in English", () => {
   it("says the counts in the singular and the plural", async () => {
     await openPdfInCropTab({}, cropPdf(), "en");
-    fireEvent.click(screen.getByRole("button", { name: "Add areas ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add areas" }));
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
@@ -803,7 +803,7 @@ describe("in English", () => {
       cropPdf(),
       "en",
     );
-    await addMenuItem("Add all suggestions on this page", "Add areas ▾");
+    await addMenuItem("Add all suggestions on this page", "Add areas");
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
     await flush();
     await drawWholePage();

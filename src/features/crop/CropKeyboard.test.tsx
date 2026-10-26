@@ -527,7 +527,7 @@ describe("Esc", () => {
     await openWithAll();
     fireEvent.click(screen.getByTestId("crop-candidate"));
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     const item = screen.getByRole("menuitem", {
       name: "このページの候補をすべて追加",
     });

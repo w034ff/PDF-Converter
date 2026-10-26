@@ -6,12 +6,12 @@ describe("DropZone", () => {
   it("renders title and description", () => {
     render(
       <DropZone
-        title="画像をここにドロップ"
+        title="画像をドロップ"
         description="PNG、JPEG、WebP、BMP に対応。"
       />,
     );
 
-    expect(screen.getByText("画像をここにドロップ")).toBeInTheDocument();
+    expect(screen.getByText("画像をドロップ")).toBeInTheDocument();
     expect(
       screen.getByText("PNG、JPEG、WebP、BMP に対応。"),
     ).toBeInTheDocument();

@@ -5,7 +5,7 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from "react";
-import { ErrorDisplay } from "./components";
+import { ErrorDisplay, SelectBox } from "./components";
 import { AboutDialog } from "./features/about/AboutDialog";
 import { ImagesToPdfAction } from "./features/images-to-pdf/ImagesToPdfAction";
 import { ImagesToPdfSettings } from "./features/images-to-pdf/ImagesToPdfSettings";
@@ -128,15 +128,17 @@ function AppShell() {
           </nav>
 
           <div className="app-header-actions">
-            <select
-              aria-label={t.app.languageLabel}
-              className="lang-select"
-              value={language.language}
-              onChange={handleLanguageChange}
-            >
-              <option value="ja">日本語</option>
-              <option value="en">English</option>
-            </select>
+            <SelectBox>
+              <select
+                aria-label={t.app.languageLabel}
+                className="lang-select"
+                value={language.language}
+                onChange={handleLanguageChange}
+              >
+                <option value="ja">日本語</option>
+                <option value="en">English</option>
+              </select>
+            </SelectBox>
             <button
               ref={aboutButtonRef}
               type="button"

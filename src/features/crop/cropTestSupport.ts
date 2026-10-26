@@ -370,7 +370,7 @@ export function releaseAt(point: readonly [number, number]) {
  */
 export function pickDrawTool() {
   fireEvent.click(
-    screen.getByRole("button", { name: /^(範囲を追加|Add areas) ▾$/ }),
+    screen.getByRole("button", { name: /^(範囲を追加|Add areas)$/ }),
   );
   fireEvent.click(
     screen.getByRole("menuitem", { name: /^(範囲を描く|Draw an area)$/ }),
@@ -417,7 +417,12 @@ export function pickView(name: string | RegExp) {
 
 /** Shows or hides the candidates, with "候補を表示" in the view menu. */
 export function toggleCandidates() {
-  pickView(/^(候補を表示|Show suggestions)$/);
+  fireEvent.click(viewMenuButton());
+  fireEvent.click(
+    screen.getByRole("menuitemcheckbox", {
+      name: /^(候補を表示|Show suggestions)$/,
+    }),
+  );
 }
 
 /** Checks that page `page` of `total` is the one shown, by its thumbnail. */

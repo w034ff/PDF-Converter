@@ -434,4 +434,19 @@ describe("the tool", () => {
     expect(state.tool).toBe("draw");
     expect(canUndo(state)).toBe(false);
   });
+
+  for (const action of [
+    { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) },
+    { type: "CROP_PDF_UNLOCKED", pdf: pdf(1) },
+    { type: "CROP_PDF_CLOSED" },
+  ] as const) {
+    it(`goes back to select on ${action.type}`, () => {
+      const state = reduce(
+        open(),
+        { type: "CROP_TOOL_SET", tool: "draw" },
+        action,
+      );
+      expect(state.tool).toBe("select");
+    });
+  }
 });

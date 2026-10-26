@@ -1,5 +1,9 @@
 import type { ChangeEvent } from "react";
-import { SegmentedControl, type SegmentedOption } from "../../components";
+import {
+  SegmentedControl,
+  SelectBox,
+  type SegmentedOption,
+} from "../../components";
 import { OutputDirField } from "../output/OutputDirField";
 import { getTranslations } from "../../i18n";
 import type { OutputMode, PageOrientationChoice } from "../../ipc";
@@ -70,20 +74,22 @@ export function ImagesToPdfSettings() {
         <label className="label" htmlFor="pageSize">
           {t.imagesToPdf.pageSizeLabel}
         </label>
-        <select
-          id="pageSize"
-          className="settings-control"
-          value={imagesToPdf.pageSize}
-          onChange={handlePageSizeChange}
-          disabled={disabled}
-        >
-          <option value="fit">{t.imagesToPdf.pageSizeFit}</option>
-          {PAPER_SIZE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <SelectBox>
+          <select
+            id="pageSize"
+            className="settings-control"
+            value={imagesToPdf.pageSize}
+            onChange={handlePageSizeChange}
+            disabled={disabled}
+          >
+            <option value="fit">{t.imagesToPdf.pageSizeFit}</option>
+            {PAPER_SIZE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </SelectBox>
         <span className="hint">
           {isFit
             ? t.imagesToPdf.pageSizeFitHint

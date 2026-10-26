@@ -47,7 +47,7 @@ function pickPage(page: number) {
 }
 
 async function startDetectAll() {
-  fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+  fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
   fireEvent.click(
     screen.getByRole("menuitem", { name: "全ページの候補をすべて追加" }),
   );
@@ -193,7 +193,7 @@ describe("the answers of the pages", () => {
       unprocessed: 3,
       cancelled: false,
     });
-    fireEvent.click(screen.getByRole("button", { name: "範囲を追加 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "範囲を追加" }));
     expect(
       screen.getByRole("menuitem", { name: "全ページの候補をすべて追加" }),
     ).toBeDisabled();
@@ -209,7 +209,7 @@ describe("the answers of the pages", () => {
   it("add areas while the conversion runs, although the areas are locked", async () => {
     await openPdfInCropTab({ detect_layout: () => [] });
     await startDetectAll();
-    expect(screen.getByRole("button", { name: "範囲を追加 ▾" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "範囲を追加" })).toBeDisabled();
     await answer(2, [chart]);
     expect(areaRows()).toHaveLength(1);
   });
@@ -283,7 +283,7 @@ describe("the result of the search", () => {
     await openPdfInCropTab({ detect_layout: () => [] }, cropPdf(), language);
     fireEvent.click(
       screen.getByRole("button", {
-        name: language === "ja" ? "範囲を追加 ▾" : "Add areas ▾",
+        name: language === "ja" ? "範囲を追加" : "Add areas",
       }),
     );
     fireEvent.click(

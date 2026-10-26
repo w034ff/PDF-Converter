@@ -189,7 +189,8 @@
 }
 
 /* Wide enough for "100%" so the buttons beside it do not move as it
-   changes. */
+   changes. The percent sits at the left and the arrow at the right edge, as
+   on a select box, so the arrow stays put when the percent gains a digit. */
 .crop-zoom-menu {
   font: inherit;
   font-size: 13px;
@@ -199,7 +200,7 @@
   padding: 0 8px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 4px;
   border: 0;
   border-left: 1px solid var(--color-border-subtle);
@@ -223,11 +224,6 @@
 
 .crop-zoom .menu-button-menu.is-start {
   left: -1px;
-}
-
-.crop-zoom-caret {
-  font-size: 10px;
-  color: var(--color-text-secondary);
 }
 
 /* The padding is not part of the room the page is fitted into (the view
@@ -575,6 +571,17 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* The same arrow as the menus and select boxes, turned up while the panel
+   is open. Grey, as the summary under it: it only adds to the heading. */
+.crop-settings-chevron {
+  display: flex;
+  color: var(--color-text-secondary);
+}
+
+.crop-settings-chevron.is-open > svg {
+  transform: rotate(180deg);
 }
 
 .crop-settings-body {

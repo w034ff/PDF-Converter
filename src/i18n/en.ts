@@ -237,9 +237,9 @@ export const en: Translations = {
   },
   crop: {
     empty: {
-      title: 'Drop a PDF here or press "Open PDF"',
+      title: "Drop a PDF here",
       description:
-        "Pick the figures, charts, tables and photos on a page and export them as images. Photos can be exported at their original pixels.",
+        "Automatically detects figures, charts, tables, and photos to export as images. Photos can be saved at their original quality.",
       open: "Open PDF",
     },
     openAnother: "Open another PDF",
@@ -257,7 +257,7 @@ export const en: Translations = {
       zoomOut: "Zoom out",
       zoomIn: "Zoom in",
       showCandidates: "Show suggestions",
-      addAreas: "Add areas ▾",
+      addAreas: "Add areas",
       keyHints: "Keyboard shortcuts",
       keyHintsTitle: "Keyboard shortcuts (?)",
     },
@@ -290,8 +290,14 @@ export const en: Translations = {
               action: "Move the area by 1 pt (10 pt with Shift)",
             },
             {
-              keys: [["Alt", "Arrows"]],
-              action: "Resize the area (move the right and bottom edges)",
+              keys: [
+                ["Alt", "Arrows"],
+                ["Alt", "Shift", "Arrows"],
+              ],
+              // The no-break spaces keep each number with its unit, as the row
+              // wraps.
+              action:
+                "Move the right and bottom edges by 1\u00a0pt (10\u00a0pt with Shift)",
             },
             { keys: [["Ctrl", "Z"]], action: "Undo" },
             {

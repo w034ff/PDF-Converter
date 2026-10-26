@@ -11,8 +11,8 @@ export const ja = {
     navAria: "変換の種類",
   },
   dropZone: {
-    titleImages: "画像をここにドロップ",
-    titlePdfs: "PDF をここにドロップ",
+    titleImages: "画像をドロップ",
+    titlePdfs: "PDF をドロップ",
     descriptionImages:
       "PNG、JPEG、WebP、BMP、TIFF に対応。フォルダをドロップすると、中の画像をまとめて追加します",
     descriptionPdfs: "フォルダをドロップすると、中の PDF をまとめて追加します",
@@ -236,9 +236,9 @@ export const ja = {
   },
   crop: {
     empty: {
-      title: "PDF をドロップするか、「PDF を開く」を押してください",
+      title: "PDF をドロップ",
       description:
-        "ページの図・グラフ・表・写真を選んで、画像として書き出します。写真は元の画素のまま書き出せます。",
+        "ページの図・グラフ・表・写真を自動で検出し、画像として書き出せます。写真は元の画質のまま保存できます。",
       open: "PDF を開く",
     },
     openAnother: "別の PDF を開く",
@@ -256,7 +256,7 @@ export const ja = {
       zoomOut: "縮小",
       zoomIn: "拡大",
       showCandidates: "候補を表示",
-      addAreas: "範囲を追加 ▾",
+      addAreas: "範囲を追加",
       keyHints: "キー操作",
       keyHintsTitle: "キー操作（?）",
     },
@@ -289,8 +289,11 @@ export const ja = {
               action: "範囲を 1 pt 動かす（Shift で 10 pt）",
             },
             {
-              keys: [["Alt", "矢印"]],
-              action: "範囲の大きさを変える（右と下の辺を伸縮）",
+              keys: [
+                ["Alt", "矢印"],
+                ["Alt", "Shift", "矢印"],
+              ],
+              action: "右と下の辺を 1 pt 動かす（Shift で 10 pt）",
             },
             { keys: [["Ctrl", "Z"]], action: "元に戻す" },
             {

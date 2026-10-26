@@ -5,7 +5,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { MenuButton, type MenuButtonItem } from "../../components";
+import {
+  ChevronDownIcon,
+  MenuButton,
+  type MenuButtonItem,
+} from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import {
@@ -161,14 +165,31 @@ export function CropPagePane({
   const [hints, setHints] = useState<"button" | "key" | null>(null);
   const tool = busy ? "select" : crop.tool;
   const openHintsByKey = useCallback(() => setHints("key"), [setHints]);
+  // The area Enter drew, which takes the focus once it is drawn, so that the
+  // arrow keys work on it next as on an area added from a suggestion.
+  const drawnFocusKeyRef = useRef<number | null>(null);
   const drawWholePage = useCallback(() => {
+    drawnFocusKeyRef.current = crop.nextAreaKey;
     dispatch({
       type: "CROP_AREA_DRAWN",
       page,
       rectPt: [0, 0, size.widthPt, size.heightPt],
     });
     dispatch({ type: "CROP_TOOL_SET", tool: "select" });
-  }, [dispatch, page, size]);
+  }, [dispatch, page, size, crop.nextAreaKey]);
+  useEffect(() => {
+    const key = drawnFocusKeyRef.current;
+    if (key === null) {
+      return;
+    }
+    const element = viewportRef.current?.querySelector(
+      `.crop-area[data-key="${key}"]`,
+    );
+    if (element instanceof HTMLElement) {
+      element.focus();
+      drawnFocusKeyRef.current = null;
+    }
+  });
   useCropKeys({
     tool,
     canDraw: !busy,
@@ -278,6 +299,7 @@ export function CropPagePane({
       id: "candidates",
       label: t.crop.toolbar.showCandidates,
       checked: crop.showCandidates,
+      toggles: true,
       separatorBefore: true,
       onSelect: () =>
         dispatch({
@@ -318,9 +340,7 @@ export function CropPagePane({
             <span data-testid="crop-zoom-percent">
               {percent === null ? "" : `${percent}%`}
             </span>
-            <span className="crop-zoom-caret" aria-hidden="true">
-              ▾
-            </span>
+            <ChevronDownIcon />
           </MenuButton>
           <button
             type="button"
@@ -336,11 +356,13 @@ export function CropPagePane({
         </div>
         <MenuButton
           className="btn btn-ghost crop-add-areas"
+          label={t.crop.toolbar.addAreas}
           menuLabel={t.crop.addMenu.label}
           items={addItems}
           disabled={busy}
         >
           {t.crop.toolbar.addAreas}
+          <ChevronDownIcon />
         </MenuButton>
         <button
           ref={hintsButtonRef}
