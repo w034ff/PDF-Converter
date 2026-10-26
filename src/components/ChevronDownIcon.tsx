@@ -1,7 +1,7 @@
 /**
- * The arrow of a button that opens a menu (design §10.1), drawn like the one
- * the WebView draws on a select box so that both read as the same control.
- * Decorative: the button carries its name in `aria-label`.
+ * The arrow of a control that opens a list: the menu buttons, and the select
+ * boxes through `SelectBox` (design §10.1). Decorative: the control carries
+ * its own name.
  */
 export function ChevronDownIcon() {
   return (

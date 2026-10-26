@@ -12,4 +12,5 @@ export * from "./ModalDialog";
 export * from "./NoticeDisplay";
 export * from "./ProgressBar";
 export * from "./SegmentedControl";
+export * from "./SelectBox";
 export * from "./ToggleButton";

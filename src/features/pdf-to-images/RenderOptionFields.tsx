@@ -1,5 +1,9 @@
 import { useId, type ChangeEvent, type ReactNode } from "react";
-import { SegmentedControl, type SegmentedOption } from "../../components";
+import {
+  SegmentedControl,
+  SelectBox,
+  type SegmentedOption,
+} from "../../components";
 import { formatMessage, getTranslations, type Translations } from "../../i18n";
 import type { RenderColorChoice, RenderFormatChoice } from "../../ipc";
 import {
@@ -121,28 +125,30 @@ export function RenderOptionFields({
         <label className="label" htmlFor={dpiSelectId}>
           {t.pdfToImages.settings.dpiLabel}
         </label>
-        <select
-          id={dpiSelectId}
-          className="settings-control"
-          value={isCustomDpi ? "custom" : String(dpi)}
-          onChange={handleDpiSelectChange}
-          disabled={disabled}
-        >
-          {DPI_CHOICES.map((choice) => {
-            const key = DPI_LABEL_KEYS[choice];
-            const label = key
-              ? t.pdfToImages.settings.dpiChoices[key]
-              : `${choice} dpi`;
-            return (
-              <option key={choice} value={choice}>
-                {label}
-              </option>
-            );
-          })}
-          <option value="custom">
-            {t.pdfToImages.settings.dpiChoices.custom}
-          </option>
-        </select>
+        <SelectBox>
+          <select
+            id={dpiSelectId}
+            className="settings-control"
+            value={isCustomDpi ? "custom" : String(dpi)}
+            onChange={handleDpiSelectChange}
+            disabled={disabled}
+          >
+            {DPI_CHOICES.map((choice) => {
+              const key = DPI_LABEL_KEYS[choice];
+              const label = key
+                ? t.pdfToImages.settings.dpiChoices[key]
+                : `${choice} dpi`;
+              return (
+                <option key={choice} value={choice}>
+                  {label}
+                </option>
+              );
+            })}
+            <option value="custom">
+              {t.pdfToImages.settings.dpiChoices.custom}
+            </option>
+          </select>
+        </SelectBox>
         {isCustomDpi && (
           // The box is drawn by the label so that the unit sits inside it and
           // a click on the unit focuses the input.
