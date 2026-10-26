@@ -20,6 +20,9 @@ import {
 import { CROP_DRAG_THRESHOLD_PX, CSS_PX_PER_PT } from "./cropView";
 import { historyKeyOf } from "./useCropKeys";
 
+/** `button` of a press with the middle button (the wheel). */
+const MIDDLE_BUTTON = 1;
+
 type DragMode =
   | { kind: "pan"; scrollLeft: number; scrollTop: number }
   | { kind: "draw"; start: PointPt }
@@ -75,7 +78,8 @@ export interface AreaDrag {
   panning: boolean;
   /** Spread on the element the page's overlay is drawn in. */
   overlayProps: {
-    onPointerDownCapture: () => void;
+    onPointerDownCapture: (event: PointerEvent<HTMLElement>) => void;
+    onMouseDownCapture: (event: MouseEvent<HTMLElement>) => void;
     onPointerDown: (event: PointerEvent<HTMLElement>) => void;
     onPointerMove: (event: PointerEvent<HTMLElement>) => void;
     onPointerUp: (event: PointerEvent<HTMLElement>) => void;
@@ -146,7 +150,8 @@ function previewOf(drag: Drag, pageSize: PageSizePt): DragPreview | null {
  * that stays under `CROP_DRAG_THRESHOLD_PX` is left to the `click` of what it
  * landed on, and one that goes further moves or resizes the area it landed
  * on, or else scrolls the page; with the "draw" tool it draws a new area
- * wherever it began. The shape of a drag in progress is only here; the state
+ * wherever it began. A drag with the middle button scrolls the page wherever
+ * it began, over areas too, and with either tool. The shape of a drag in progress is only here; the state
  * changes once, on release.
  *
  * The pointer is captured by the element the press landed on, so the moves
@@ -227,9 +232,13 @@ export function useAreaDrag({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [dragging]);
 
-  function begin(event: PointerEvent<HTMLElement>, mode: DragMode) {
-    if (event.target instanceof Element) {
-      event.target.setPointerCapture(event.pointerId);
+  function begin(
+    event: PointerEvent<HTMLElement>,
+    mode: DragMode,
+    captureOn: EventTarget = event.target,
+  ) {
+    if (captureOn instanceof Element) {
+      captureOn.setPointerCapture(event.pointerId);
     }
     setBoth({
       pointerId: event.pointerId,
@@ -264,6 +273,27 @@ export function useAreaDrag({
         scrollTop: viewport.scrollTop,
       });
     }
+  }
+
+  // Taken before the area, handle or frame under the press sees it. Not
+  // calling the default off would start the WebView's autoscroll.
+  function beginMiddlePan(event: PointerEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const current = dragRef.current;
+    if (current !== null && current.pointerId !== event.pointerId) {
+      return;
+    }
+    // No click follows a middle press, so the overlay can hold the pointer.
+    begin(
+      event,
+      {
+        kind: "pan",
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop,
+      },
+      event.currentTarget,
+    );
   }
 
   function beginDraw(event: PointerEvent<HTMLElement>) {
@@ -375,8 +405,19 @@ export function useAreaDrag({
     preview: dragging ? previewOf(drag, pageSize) : null,
     panning: dragging && drag.mode.kind === "pan",
     overlayProps: {
-      onPointerDownCapture: () => {
+      onPointerDownCapture: (event) => {
+        if (event.button === MIDDLE_BUTTON) {
+          beginMiddlePan(event);
+          return;
+        }
         suppressClickRef.current = false;
+      },
+      // For a WebView that sends the mouse event although the pointer event
+      // called the default off.
+      onMouseDownCapture: (event) => {
+        if (event.button === MIDDLE_BUTTON) {
+          event.preventDefault();
+        }
       },
       onPointerDown: tool === "draw" ? beginDraw : beginPan,
       onPointerMove: handleMove,

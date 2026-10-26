@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IpcError } from "../../ipc";
 import {
   areaRows,
+  boxPt,
   callsOf,
   candidate,
+  clientAt,
   dragFromTo,
   drawFromTo,
   emitJobFinished,
@@ -73,6 +75,11 @@ function isDrawing(): boolean {
   const drawing = overlay().classList.contains("is-drawing");
   expect(screen.queryByText(DRAWING_NOTE) !== null).toBe(drawing);
   return drawing;
+}
+
+/** A pointer event of the middle button at `point`, in points. */
+function middleAt(point: readonly [number, number]) {
+  return { ...clientAt(point), button: 1 };
 }
 
 function addMenuButton(): HTMLElement {
@@ -432,6 +439,40 @@ describe("dragging the page", () => {
     await flush();
     expect(viewport().scrollLeft).toBeLessThan(left);
     expect(areaRows()).toHaveLength(0);
+  });
+
+  it("scrolls the view with the middle button over an area, and leaves the area be", async () => {
+    await openNested();
+    fireEvent.click(suggestion("figure"));
+    await flush();
+    const before = boxPt(screen.getByTestId("crop-area"));
+    viewport().scrollTop = 200;
+    // Calling the default off keeps the WebView's autoscroll from starting.
+    expect(
+      fireEvent.pointerDown(
+        screen.getByTestId("crop-area"),
+        middleAt([300, 600]),
+      ),
+    ).toBe(false);
+    fireEvent.pointerMove(overlay(), middleAt([300, 560]));
+    fireEvent.pointerUp(overlay(), middleAt([300, 560]));
+    await flush();
+    expect(viewport().scrollTop).toBeGreaterThan(200);
+    expect(boxPt(screen.getByTestId("crop-area"))).toEqual(before);
+    expect(fireEvent.mouseDown(overlay(), { button: 1 })).toBe(false);
+  });
+
+  it("scrolls the view with the middle button while drawing, and draws nothing", async () => {
+    await openNested();
+    pickDrawTool();
+    viewport().scrollTop = 200;
+    fireEvent.pointerDown(overlay(), middleAt([300, 600]));
+    fireEvent.pointerMove(overlay(), middleAt([300, 560]));
+    fireEvent.pointerUp(overlay(), middleAt([300, 560]));
+    await flush();
+    expect(viewport().scrollTop).toBeGreaterThan(200);
+    expect(areaRows()).toHaveLength(0);
+    expect(isDrawing()).toBe(true);
   });
 
   it("works while a conversion runs", async () => {
