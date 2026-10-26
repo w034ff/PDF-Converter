@@ -1,3 +1,4 @@
+export * from "./ChevronDownIcon";
 export * from "./CloseIcon";
 export * from "./ContextMenu";
 export * from "./DropZone";

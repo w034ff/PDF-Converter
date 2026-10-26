@@ -5,7 +5,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { MenuButton, type MenuButtonItem } from "../../components";
+import {
+  ChevronDownIcon,
+  MenuButton,
+  type MenuButtonItem,
+} from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import {
@@ -335,9 +339,7 @@ export function CropPagePane({
             <span data-testid="crop-zoom-percent">
               {percent === null ? "" : `${percent}%`}
             </span>
-            <span className="crop-zoom-caret" aria-hidden="true">
-              ▾
-            </span>
+            <ChevronDownIcon />
           </MenuButton>
           <button
             type="button"
@@ -358,7 +360,8 @@ export function CropPagePane({
           items={addItems}
           disabled={busy}
         >
-          {`${t.crop.toolbar.addAreas} ▾`}
+          {t.crop.toolbar.addAreas}
+          <ChevronDownIcon />
         </MenuButton>
         <button
           ref={hintsButtonRef}
