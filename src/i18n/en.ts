@@ -237,7 +237,7 @@ export const en: Translations = {
   },
   crop: {
     empty: {
-      title: 'Drop a PDF here or press "Open PDF"',
+      title: "Drop a PDF here",
       description:
         "Pick the figures, charts, tables and photos on a page and export them as images. Photos can be exported at their original pixels.",
       open: "Open PDF",

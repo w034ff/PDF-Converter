@@ -310,7 +310,7 @@ describe("ImagesToPdf (T11)", () => {
 
     // DropZone is rendered
     expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
-    expect(screen.getByText("画像をここにドロップ")).toBeInTheDocument();
+    expect(screen.getByText("画像をドロップ")).toBeInTheDocument();
 
     // Click "画像を追加" in DropZone
     const addBtn = screen.getByRole("button", { name: "画像を追加" });

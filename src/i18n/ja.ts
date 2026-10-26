@@ -11,8 +11,8 @@ export const ja = {
     navAria: "変換の種類",
   },
   dropZone: {
-    titleImages: "画像をここにドロップ",
-    titlePdfs: "PDF をここにドロップ",
+    titleImages: "画像をドロップ",
+    titlePdfs: "PDF をドロップ",
     descriptionImages:
       "PNG、JPEG、WebP、BMP、TIFF に対応。フォルダをドロップすると、中の画像をまとめて追加します",
     descriptionPdfs: "フォルダをドロップすると、中の PDF をまとめて追加します",
@@ -236,7 +236,7 @@ export const ja = {
   },
   crop: {
     empty: {
-      title: "PDF をドロップするか、「PDF を開く」を押してください",
+      title: "PDF をドロップ",
       description:
         "ページの図・グラフ・表・写真を選んで、画像として書き出します。写真は元の画素のまま書き出せます。",
       open: "PDF を開く",
