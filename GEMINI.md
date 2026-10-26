@@ -3,7 +3,7 @@
 Rules for the implementer of this repository. Read this file and the documents below before starting any task.
 
 - `docs/requirements.md` — what the app must do
-- `docs/design.md` — how it is built (the source of truth for implementation)
+- `docs/design.md` — how it is built: the rules the implementation must keep (feature designs are in `docs/design/`; the code and its tests hold the details)
 - `docs/work-plan.md` — tasks, completion criteria, the report format and the review process
 - `docs/mockup/project/*.dc.html` — the visual reference for each screen (`Accent*.dc.html` only compare colours and are not screens)
 
@@ -11,7 +11,7 @@ Rules for the implementer of this repository. Read this file and the documents b
 
 - Work on exactly one task from `docs/work-plan.md` at a time, on a branch named `task/<ID>-<short-name>`.
 - Stay inside the task. Do not refactor unrelated code, update unrelated dependencies, or add features that the task does not ask for.
-- Do not edit `docs/requirements.md` or `docs/design.md`.
+- Do not edit `docs/requirements.md`, `docs/design.md` or `docs/design/`.
 - Every commit runs the pre-commit hook (`.githooks/pre-commit`, `docs/work-plan.md` §2.3). Never bypass it (`--no-verify` or any other way) and never change git settings or hooks.
 - Before writing the report, run every command in `docs/work-plan.md` §5 and make sure all of them pass.
 - Never push and never open a PR. The reviewer reviews your branch locally, and the PR is opened from it once the review passes (`docs/work-plan.md` §2).
