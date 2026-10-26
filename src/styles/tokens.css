@@ -90,7 +90,9 @@
     --color-accent-hover: #e88a6f;
     --color-accent-subtle: #3a251e;
 
-    --color-success: #43a047;
+    /* At least 4.5:1 on --color-row-selected, the lightest ground a row
+       status is written on. */
+    --color-success: #66bb6a;
     --color-error: #ff7a8a;
     --color-error-tint: rgba(255, 122, 138, 0.2);
     --color-text-on-error: #1c1b18;
