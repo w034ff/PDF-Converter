@@ -66,51 +66,67 @@
 │   │   ├── tiff.rs           TIFF の IFD と画素の読み込み（§4.1.1）
 │   │   ├── layout.rs         ページの大きさと画像の配置（§4.2）
 │   │   ├── pdf_write.rs      krilla で PDF を書く（§4.3）
+│   │   ├── jpeg_strip.rs     JPEG のセグメントの解析と、メタデータの除去（§4.3）
+│   │   ├── utc_time.rs       PDF/A の作成日時（UTC。日時の依存なしで計算する。§4.3）
 │   │   ├── pdf_encrypt.rs    書き出す PDF の暗号化とパスワードの規則（§4.3.1）
 │   │   ├── page_range.rs     ページの範囲の解釈（§4.5）
 │   │   ├── naming.rs         出力名の決定（§6.4）
 │   │   ├── region.rs         切り出しの範囲の幾何（座標、行の判定と番号、写真の範囲との一致。§4.6、§6.4）。crates/worker の layout.rs も写真との一致に使う
+│   │   ├── thumbnail.rs      画像の一覧のサムネイル（§6.1）
 │   │   └── error.rs
-│   ├── examples/gen_fixtures.rs   フィクスチャの生成（§11.1）
+│   ├── examples/
+│   │   ├── gen_fixtures.rs   フィクスチャの生成（§11.1）
+│   │   └── write_pdfa_samples.rs / write_encrypted_samples.rs   手で確かめる PDF/A・パスワード付きの見本（§11.2）
 │   └── tests/
 ├── crates/worker/            ワーカー（pdfium を使う唯一の crate）。パッケージ名は pdfconv-worker
-│   └── src/
-│       ├── protocol.rs       メッセージの型と読み書き（メインプロセスと共有）
-│       ├── server.rs         ワーカーの本体（§5）
-│       ├── crop.rs           切り出しの範囲の描画、埋め込み画像の一覧、重なりの判定（§4.6）
-│       ├── layout.rs         レイアウトの解析（`ort`。§4.7）
-│       ├── client.rs         メインプロセスの側の 1 つのワーカー（起動、要求、時間切れ、異常終了）
-│       ├── windows_job.rs    Windows のジョブオブジェクト（§5.3）
-│       └── main.rs           テスト用の単独のワーカー（`pdfconv-worker`）
+│   ├── src/
+│   │   ├── lib.rs            ワーカーとして起動する印（`WORKER_FLAG`）と、ページの数・描画の上限などの定数
+│   │   ├── protocol.rs       メッセージの型と読み書き（メインプロセスと共有）
+│   │   ├── server.rs         ワーカーの本体（§5）
+│   │   ├── crop.rs           切り出しの範囲の描画、埋め込み画像の一覧、重なりの判定（§4.6）
+│   │   ├── layout.rs         レイアウトの解析（`ort`。§4.7）
+│   │   ├── client.rs         メインプロセスの側の 1 つのワーカー（起動、要求、時間切れ、異常終了）
+│   │   ├── windows_job.rs    Windows のジョブオブジェクト（§5.3）
+│   │   └── main.rs           テスト用の単独のワーカー（`pdfconv-worker`）
+│   └── tests/
 ├── src-tauri/
 │   ├── src/
 │   │   ├── main.rs           `--pdf-worker` なら worker を実行、それ以外はアプリ
+│   │   ├── lib.rs            アプリの起動、共有の状態、D&D の振り分け（§7.2）
 │   │   ├── commands.rs       IPC コマンド（§7）
+│   │   ├── error.rs          エラーコードと、IPC での形（§6.6）
 │   │   ├── items.rs          ファイルの ID の表と一覧の項目
 │   │   ├── worker_pool.rs    ワーカーの数の管理と貸し出し（§5.2）。1 つのワーカーの扱いは crates/worker の client.rs
-│   │   ├── jobs.rs           変換の実行・進捗・キャンセル（§6）
-│   │   ├── crop.rs           切り出しの PDF、解析のワーカー、書き出し（§6.10）
-│   │   └── settings.rs       設定の読み書き（§6.7）
+│   │   ├── jobs.rs           変換の実行・進捗・キャンセル、出力の書き込み（§6）
+│   │   ├── crop.rs           切り出しの PDF、ページへの問い合わせ、解析のワーカー（§6.10）
+│   │   ├── crop_export.rs    切り出しの範囲の書き出し（§6.10）
+│   │   ├── settings.rs       設定の読み書き（§6.7）
+│   │   ├── pdfium.rs         同梱の pdfium の場所（§8）
+│   │   └── layout_files.rs   同梱の onnxruntime とレイアウトの解析のモデルの場所（§8.5）
+│   ├── tests/                メインプロセスの結合テスト（§11.3）
 │   ├── pdfium/               取得した pdfium（コミットしない、§8.1）
 │   ├── onnxruntime/          取得した onnxruntime（コミットしない、§8.5）
 │   ├── layout-model/         取得したレイアウトの解析のモデル（コミットしない、§8.5）
 │   ├── capabilities/main.json
-│   └── tauri.conf.json
+│   └── tauri.conf.json / tauri.linux.conf.json / tauri.windows.conf.json
 ├── src/                      フロントエンド
 │   ├── features/images-to-pdf/
 │   ├── features/pdf-to-images/
 │   ├── features/crop/
 │   ├── features/about/
+│   ├── features/items/、job/、output/、settings/、shortcuts/   タブをまたいで使う処理（D&D、変換の実行と下部バー、保存先、設定の保存、ブラウザのショートカットの無効化）
 │   ├── components/           一覧、切り替えボタン、進捗など
+│   ├── state/                画面の状態（§10.2）
 │   ├── ipc/、ipc/generated/
 │   ├── i18n/
 │   ├── licenses/
 │   └── styles/
-├── scripts/                  fetch-pdfium.ts、fetch-layout.ts、quantize-layout-model.py、generate-licenses.ts、layout-model/（モデルのライセンス）
+├── scripts/                  fetch-pdfium.ts、fetch-layout.ts（と取得する版の *-version.json）、quantize-layout-model.py、generate-licenses.ts、check-layers.ts（crates が Tauri に依存しないことの検査）、check-release-version.ts、make-manual-test-files.ts、layout-model/（モデルのライセンス）
 ├── docs/
 ├── about.toml / deny.toml
 ├── GEMINI.md
-└── .github/workflows/        ci.yml / release.yml / audit.yml / dependency-review.yml / pdfium-update.yml
+├── .githooks/pre-commit      コミットの前の検査（work-plan §2.3）
+└── .github/workflows/        ci.yml / release.yml / bundle-check.yml / audit.yml / dependency-review.yml / pdfium-update.yml
 ```
 
 ## 4. 変換の処理（crates/core）
