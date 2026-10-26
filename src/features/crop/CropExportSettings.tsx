@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { ChevronDownIcon } from "../../components";
 import { getTranslations } from "../../i18n";
 import {
   isJobActive,
@@ -63,8 +64,10 @@ export function CropExportSettings() {
       >
         <span className="crop-settings-heading">
           <span className="label">{t.crop.settings.title}</span>
-          <span className="hint" aria-hidden="true">
-            {crop.settingsOpen ? "▴" : "▾"}
+          <span
+            className={`crop-settings-chevron${crop.settingsOpen ? " is-open" : ""}`}
+          >
+            <ChevronDownIcon />
           </span>
         </span>
         {!crop.settingsOpen && (

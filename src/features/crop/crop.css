@@ -573,6 +573,17 @@
   align-items: center;
 }
 
+/* The same arrow as the menus and select boxes, turned up while the panel
+   is open. Grey, as the summary under it: it only adds to the heading. */
+.crop-settings-chevron {
+  display: flex;
+  color: var(--color-text-secondary);
+}
+
+.crop-settings-chevron.is-open > svg {
+  transform: rotate(180deg);
+}
+
 .crop-settings-body {
   display: flex;
   flex-direction: column;
