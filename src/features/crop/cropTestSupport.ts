@@ -417,7 +417,12 @@ export function pickView(name: string | RegExp) {
 
 /** Shows or hides the candidates, with "候補を表示" in the view menu. */
 export function toggleCandidates() {
-  pickView(/^(候補を表示|Show suggestions)$/);
+  fireEvent.click(viewMenuButton());
+  fireEvent.click(
+    screen.getByRole("menuitemcheckbox", {
+      name: /^(候補を表示|Show suggestions)$/,
+    }),
+  );
 }
 
 /** Checks that page `page` of `total` is the one shown, by its thumbnail. */

@@ -288,8 +288,10 @@ describe("the page", () => {
 /** The names of the view menu's checked items; the menu is closed again after. */
 function checkedViews(): string[] {
   fireEvent.click(viewMenuButton());
-  const names = screen
-    .getAllByRole("menuitemradio")
+  const names = [
+    ...screen.getAllByRole("menuitemradio"),
+    ...screen.getAllByRole("menuitemcheckbox"),
+  ]
     .filter((item) => item.getAttribute("aria-checked") === "true")
     .map((item) => item.textContent.replace("✓", ""));
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
@@ -565,7 +567,7 @@ describe("the frames and candidates", () => {
       detect_layout: () => candidates,
     });
     const shownItem = () =>
-      screen.getByRole("menuitemradio", { name: "候補を表示" });
+      screen.getByRole("menuitemcheckbox", { name: "候補を表示" });
     expect(screen.getAllByTestId("crop-candidate")).toHaveLength(2);
     fireEvent.click(viewMenuButton());
     expect(shownItem()).toHaveAttribute("aria-checked", "true");

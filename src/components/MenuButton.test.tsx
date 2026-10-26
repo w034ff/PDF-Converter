@@ -220,7 +220,7 @@ describe("MenuButton", () => {
     expect(screen.getByRole("menu", { name: "Start" })).toHaveClass("is-start");
   });
 
-  it("checks the items of a choice, and sets items apart with a rule", () => {
+  it("checks the items of a choice or a toggle, and sets items apart with a rule", () => {
     const onSelect = vi.fn();
     renderMenu([
       { id: "a", label: "Fit", checked: true, onSelect },
@@ -232,13 +232,24 @@ describe("MenuButton", () => {
         onSelect,
       },
       { id: "c", label: "Plain", onSelect },
+      { id: "d", label: "Grid", checked: true, toggles: true, onSelect },
     ]);
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
 
     const menu = screen.getByRole("menu");
     expect(
       [...menu.children].map((child) => child.getAttribute("role")),
-    ).toEqual(["menuitemradio", "separator", "menuitemradio", "menuitem"]);
+    ).toEqual([
+      "menuitemradio",
+      "separator",
+      "menuitemradio",
+      "menuitem",
+      "menuitemcheckbox",
+    ]);
+    expect(screen.getByRole("menuitemcheckbox")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     const [fit, half] = screen.getAllByRole("menuitemradio");
     expect(fit).toHaveAttribute("aria-checked", "true");
     expect(fit).toHaveTextContent("✓Fit");

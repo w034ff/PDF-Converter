@@ -299,6 +299,7 @@ export function CropPagePane({
       id: "candidates",
       label: t.crop.toolbar.showCandidates,
       checked: crop.showCandidates,
+      toggles: true,
       separatorBefore: true,
       onSelect: () =>
         dispatch({

@@ -15,10 +15,16 @@ export interface MenuItem {
   /** An item that cannot be chosen now is shown but skipped by the arrow keys. */
   disabled?: boolean;
   /**
-   * Set on the items of a menu that picks one of several states: the item is
-   * a `menuitemradio` and shows a check while it is the state in use.
+   * Set on an item that stands for a state, which shows a check while the
+   * state is in use. The item is a `menuitemradio`, one of several states to
+   * pick from, unless `toggles` says otherwise.
    */
   checked?: boolean;
+  /**
+   * With `checked`: the item turns one setting on and off instead of picking
+   * one of several states, so it is a `menuitemcheckbox`.
+   */
+  toggles?: boolean;
   /** Draws a rule above the item, to set it apart from the ones before. */
   separatorBefore?: boolean;
   onSelect: () => void;
@@ -43,6 +49,13 @@ export interface MenuListProps {
   onDismiss: () => void;
   /** Tab took the focus out of the menu, which closes with it. */
   onLeave: () => void;
+}
+
+function roleOf(item: MenuItem): string {
+  if (item.checked === undefined) {
+    return "menuitem";
+  }
+  return item.toggles === true ? "menuitemcheckbox" : "menuitemradio";
 }
 
 /**
@@ -154,7 +167,7 @@ export function MenuList({
               itemRefs.current[index] = element;
             }}
             type="button"
-            role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+            role={roleOf(item)}
             aria-checked={item.checked}
             tabIndex={-1}
             className="menu-button-item"
