@@ -52,6 +52,10 @@ pub struct ImageInfo {
     pub dpi_y: u32,
     /// Number of pages in the image file (1 for non-TIFF images) (design §4.1).
     pub page_count: u32,
+    /// Bytes of the pixels that reading the image produces: width × height × bytes per pixel,
+    /// for a TIFF the largest page. The main process estimates its decoding memory from this
+    /// before it reads the file (design §5.3).
+    pub decoded_bytes: u64,
 }
 
 /// Maximum number of header bytes peeked for extracting JPEG density segments.
@@ -112,7 +116,7 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
 
     reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
 
-    let (width, height, orientation, exif_chunk) = {
+    let (width, height, orientation, exif_chunk, bytes_per_pixel) = {
         let mut img_reader = image::ImageReader::new(&mut reader);
         img_reader.set_format(image_crate_fmt);
 
@@ -123,7 +127,8 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
         let (width, height) = decoder.dimensions();
         let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
         let exif_chunk = decoder.exif_metadata().ok().flatten();
-        (width, height, orientation, exif_chunk)
+        let bytes_per_pixel = u64::from(decoder.color_type().bytes_per_pixel());
+        (width, height, orientation, exif_chunk, bytes_per_pixel)
     };
 
     let total_pixels = u64::from(width).saturating_mul(u64::from(height));
@@ -172,6 +177,7 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
         dpi_x,
         dpi_y,
         page_count: 1,
+        decoded_bytes: total_pixels.saturating_mul(bytes_per_pixel),
     })
 }
 
@@ -585,6 +591,59 @@ mod tests {
             assert_eq!(info.dpi_y, dpi, "dpi_y mismatch for {name}");
             assert_eq!(info.page_count, 1, "page_count mismatch for {name}");
         }
+    }
+
+    #[test]
+    fn decoded_bytes_equals_the_pixels_read_for_every_non_tiff_fixture() {
+        let mut checked = Vec::new();
+        for entry in std::fs::read_dir(FIXTURES_DIR).expect("read fixtures dir") {
+            let path = entry.expect("fixtures entry").path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !matches!(extension, "png" | "jpg" | "webp" | "bmp") || name == "corrupt.png" {
+                continue;
+            }
+            let bytes = std::fs::read(&path).expect("read fixture");
+            let info = probe_reader(Cursor::new(&bytes))
+                .unwrap_or_else(|e| panic!("failed to probe {name}: {e:?}"));
+            let pixels = crate::pdf_write::decode_image_pixels(&bytes)
+                .unwrap_or_else(|e| panic!("failed to decode {name}: {e:?}"));
+            let read_bytes = u64::from(pixels.width())
+                * u64::from(pixels.height())
+                * u64::from(pixels.color().bytes_per_pixel());
+            assert_eq!(info.decoded_bytes, read_bytes, "decoded_bytes for {name}");
+            assert!(info.decoded_bytes > 0, "decoded_bytes is zero for {name}");
+            checked.push(name);
+        }
+        // The fixtures cover every colour model the writer reads: 8 and 16-bit PNG with and
+        // without alpha, JPEG grey/RGB/CMYK, WebP and BMP with and without alpha.
+        for required in [
+            "logo_alpha.png",
+            "deep16.png",
+            "logo_alpha.webp",
+            "photo.jpg",
+            "photo_cmyk.jpg",
+            "opaque.bmp",
+            "alpha32.bmp",
+        ] {
+            assert!(
+                checked.iter().any(|n| n == required),
+                "{required} unchecked"
+            );
+        }
+    }
+
+    #[test]
+    fn decoded_bytes_counts_bytes_per_pixel_of_the_colour_type() {
+        let bytes_of = |name: &str| {
+            probe(&Path::new(FIXTURES_DIR).join(name))
+                .unwrap_or_else(|e| panic!("failed to probe {name}: {e:?}"))
+                .decoded_bytes
+        };
+        assert_eq!(bytes_of("deep16.png"), 256 * 128 * 8);
+        assert_eq!(bytes_of("opaque.bmp"), 150 * 100 * 3);
+        assert_eq!(bytes_of("alpha32.bmp"), 150 * 100 * 4);
+        assert_eq!(bytes_of("photo_cmyk.jpg"), 320 * 240 * 3);
     }
 
     #[test]

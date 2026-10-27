@@ -225,6 +225,7 @@ mod tests {
             dpi_x,
             dpi_y,
             page_count: 1,
+            decoded_bytes: 0,
         }
     }
 

@@ -1,11 +1,11 @@
 //! A Windows job object that caps a worker's memory and ends the worker when
 //! the main process exits (design §5.3).
 //!
-//! This is the only module in the workspace allowed to use `unsafe`: no
-//! maintained safe wrapper sets `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (win32job
-//! 2.0 only offers the working-set limit, which trims memory instead of
-//! failing allocations). Each call below passes either a handle this module
-//! owns or one borrowed from a live `Child`.
+//! This module and the Windows function of `system_memory.rs` are the only code in the
+//! workspace allowed to use `unsafe` (design §5.3). Here no maintained safe wrapper sets
+//! `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (win32job 2.0 only offers the working-set limit, which
+//! trims memory instead of failing allocations). Each call below passes either a handle this
+//! module owns or one borrowed from a live `Child`.
 #![allow(unsafe_code)]
 
 use std::ffi::c_void;
