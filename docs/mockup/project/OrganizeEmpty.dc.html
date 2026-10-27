@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>整理：空の状態</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4492b}a:hover{color:#8a3520}
+.btn{font:inherit;font-size:13px;border-radius:6px;padding:0 12px;min-height:32px;cursor:pointer;white-space:nowrap}
+.btn-primary{background:#b4492b;color:#fff;border:1px solid #b4492b;font-weight:500}
+.btn-ghost{background:#fff;color:#1f1f1f;border:1px solid #cfcbc4}
+.btn-ghost:disabled{color:#a9a59d}
+.icon-btn{font:inherit;font-size:14px;width:32px;min-height:32px;border-radius:6px;border:1px solid #cfcbc4;background:#fff;color:#1f1f1f;cursor:pointer;padding:0}
+.seg{display:flex;border:1px solid #cfcbc4;border-radius:6px;overflow:hidden}
+.seg button{flex:1;font:inherit;font-size:13px;min-height:32px;border:0;border-left:1px solid #cfcbc4;background:#fff;color:#1f1f1f;cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:#b4492b;color:#fff}
+.label{font-size:13px;font-weight:500;color:#1f1f1f}
+.hint{font-size:12px;color:#5c5a56}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;color:#5c5a56}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:500}
+.check input{width:16px;height:16px;margin:2px 0 0;accent-color:#b4492b;flex:none}
+.chip{display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 10px;border:1px solid #dcd9d3;border-radius:14px;background:#fff;font-size:12px;white-space:nowrap}
+.chip button{width:22px;height:22px;border:0;border-radius:11px;background:none;color:#5c5a56;cursor:pointer;font-size:13px;padding:0}
+.dot{width:8px;height:8px;border-radius:4px;flex:none}
+</style>
+</helmet>
+<div style="height: 800px; display: flex; flex-direction: column; background: #f4f3f0; color: #1f1f1f; font-family: 'Noto Sans JP', system-ui, sans-serif; overflow: hidden">
+  <header style="height: 48px; display: flex; align-items: center; gap: 24px; padding: 0 16px; background: #ffffff; border-bottom: 1px solid #dcd9d3; flex: none">
+    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; white-space: nowrap">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b4492b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>
+      PDF Converter
+    </div>
+    <nav style="display: flex; align-self: stretch" aria-label="変換の種類">
+      <a href="ImagesMerge.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none; white-space: nowrap">画像 → PDF</a><a href="PdfSingle.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none; white-space: nowrap">PDF → 画像</a><a href="CropA.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none; white-space: nowrap">切り出し</a><a href="#" aria-current="page" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; font-weight: 500; color: #1f1f1f; text-decoration: none; border-bottom: 2px solid #b4492b; white-space: nowrap">整理</a>
+    </nav>
+    <div style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+      <label class="hint" for="lang">言語</label>
+      <select id="lang" style="font: inherit; font-size: 13px; min-height: 32px; border: 1px solid #cfcbc4; border-radius: 6px; padding: 0 8px; background: #fff"><option>日本語</option><option>English</option></select>
+      <button class="btn btn-ghost" aria-label="このアプリについて" style="width: 36px; padding: 0">i</button>
+    </div>
+  </header>
+  <div style="flex: 1; display: flex; min-height: 0">
+    <aside style="flex: 1 1 280px; max-width: 300px; background: #ffffff; border-right: 1px solid #dcd9d3; padding: 20px 16px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; overflow: auto">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span class="label">保存の方法</span>
+        <div class="seg" role="group" aria-label="保存の方法">
+          <button aria-pressed="true">1 つの PDF</button>
+          <button aria-pressed="false">分けて保存</button>
+        </div>
+        <span class="hint">並んだ順に、1 つの PDF にまとめます。</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <label class="check"><input type="checkbox"> パスワードを付ける</label>
+      </div>
+      <div style="margin-top: auto; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid #ebe8e2; padding-top: 12px">
+        <span class="label">保存した PDF について</span>
+        <span class="hint">注釈とフォームは、見た目どおりページに固めます。しおりとリンクは付け直します。作成者などの文書情報は入れません。</span>
+      </div>
+    </aside>
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px 24px 0; box-sizing: border-box">
+      <div style="flex: 1; margin-bottom: 24px; border: 2px dashed #b9b5ad; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: #faf9f7; text-align: center; padding: 24px">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8a867e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="9" rx="1"></rect><rect x="14" y="4" width="7" height="9" rx="1"></rect><rect x="8.5" y="15" width="7" height="6" rx="1"></rect></svg>
+        <div style="font-size: 16px; font-weight: 500">PDF をドロップするか、「PDF を追加」を押してください</div>
+        <div class="hint" style="max-width: 560px">ページを並べ替え・削除・回転して、1 つの PDF にまとめたり、分けて保存したりします。</div>
+        <div style="display: flex; gap: 8px">
+          <button class="btn btn-primary" style="min-height: 36px; padding: 0 16px">PDF を追加</button>
+          <button class="btn btn-ghost" style="min-height: 36px; padding: 0 16px">フォルダを追加</button>
+        </div>
+      </div>
+    </main>
+  </div>
+  <footer style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: #ffffff; border-top: 1px solid #dcd9d3; flex: none">
+    <span class="hint">PDF を追加してください</span>
+    <button class="btn btn-primary" disabled style="margin-left: auto; opacity: 0.5">PDF を保存</button>
+  </footer>
+</div>
+</x-dc>
+</body>
+</html>

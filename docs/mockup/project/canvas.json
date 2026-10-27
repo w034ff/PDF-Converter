@@ -89,6 +89,38 @@
       "h": 640,
       "title": "切り出し：最小の大きさ（960×640、書き出しの設定をたたんだ状態）",
       "expand": "fill"
+    },
+    "OrganizeEmpty.dc.html": {
+      "x": 0,
+      "y": 4880,
+      "w": 1200,
+      "h": 800,
+      "title": "整理：空の状態",
+      "expand": "fill"
+    },
+    "OrganizeSingle.dc.html": {
+      "x": 1280,
+      "y": 4880,
+      "w": 1200,
+      "h": 800,
+      "title": "整理：1 つの PDF に保存（3 つの PDF を並べ替え、2 ページを選び、1 ページを回した状態）",
+      "expand": "fill"
+    },
+    "OrganizeSplit.dc.html": {
+      "x": 2560,
+      "y": 4880,
+      "w": 1200,
+      "h": 800,
+      "title": "整理：分けて保存（区切りを 3 つ入れ、4 つの PDF に分ける状態）",
+      "expand": "fill"
+    },
+    "OrganizeSplit960.dc.html": {
+      "x": 3840,
+      "y": 4880,
+      "w": 960,
+      "h": 640,
+      "title": "整理：最小の大きさ（960×640、上部バーに 4 つのタブ）",
+      "expand": "fill"
     }
   },
   "createdOnFiles": {
@@ -131,6 +163,14 @@
       "w": 240,
       "x": 0,
       "y": 3360
+    },
+    "rowOrganize": {
+      "kind": "title1",
+      "maxW": 4800,
+      "text": "整理",
+      "w": 240,
+      "x": 0,
+      "y": 4580
     }
   },
   "order": [
@@ -144,7 +184,11 @@
     "AccentC.dc.html",
     "CropEmpty.dc.html",
     "CropA.dc.html",
-    "CropA960.dc.html"
+    "CropA960.dc.html",
+    "OrganizeEmpty.dc.html",
+    "OrganizeSingle.dc.html",
+    "OrganizeSplit.dc.html",
+    "OrganizeSplit960.dc.html"
   ],
   "pages": [],
   "title": "PDF Converter 画面案"
