@@ -1146,7 +1146,13 @@ fn blank_image_pdf_over(
             )
         })
         .collect();
-    let content = format!("{underneath}{placed}");
+    blank_image_pdf_with_form(&format!("{underneath}{placed}"), "", width, height)
+}
+
+/// A one-page PDF (612 × 792 pt) whose page runs `content` and whose form
+/// `/Fm` runs `form` in page space; both can draw `/Im`, a black RGB image of
+/// `width` × `height` pixels.
+fn blank_image_pdf_with_form(content: &str, form: &str, width: u32, height: u32) -> Vec<u8> {
     let image = zero_zlib_stream(u64::from(width) * u64::from(height) * 3);
     let stream = |entries: &str, data: &[u8]| {
         [
@@ -1160,7 +1166,7 @@ fn blank_image_pdf_over(
         b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R \
-          /Resources << /XObject << /Im 5 0 R >> >> >>"
+          /Resources << /XObject << /Im 5 0 R /Fm 6 0 R >> >> >>"
             .to_vec(),
         stream("", content.as_bytes()),
         stream(
@@ -1169,6 +1175,11 @@ fn blank_image_pdf_over(
                  /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"
             ),
             &image,
+        ),
+        stream(
+            "/Type /XObject /Subtype /Form /BBox [0 0 612 792] \
+             /Resources << /XObject << /Im 5 0 R >> >>",
+            form.as_bytes(),
         ),
     ];
     let mut pdf = b"%PDF-1.4\n".to_vec();
@@ -1331,6 +1342,67 @@ fn a_page_of_a_hundred_small_images_is_listed() {
         "PageImages of crop_align.pdf page 1: {:.1} ms",
         started.elapsed().as_secs_f64() * 1000.0
     );
+}
+
+/// Draws `/Im` over 100 × 100 pt at (`x`, `y`), under `clip` if any.
+fn image_at(x: u32, y: u32, clip: Option<[u32; 4]>) -> String {
+    let clip = clip.map_or(String::new(), |[cx, cy, cw, ch]| {
+        format!("{cx} {cy} {cw} {ch} re W n ")
+    });
+    format!("q {clip}100 0 0 100 {x} {y} cm /Im Do Q\n")
+}
+
+#[test]
+fn page_images_finds_the_same_ranges_when_it_checks_images_together() {
+    // A clip that shows nothing of an image away from the page's corner.
+    const HIDDEN: Option<[u32; 4]> = Some([0, 0, 1, 1]);
+    // `PageImages` checks images whose frames are apart on one isolated page.
+    // A hidden image under a shown one must not take the shown one's range,
+    // and several images kept in one form must each stay as they are.
+    let content = [
+        image_at(50, 600, None),
+        "/Fm Do\n".to_owned(),
+        image_at(50, 300, HIDDEN),
+        image_at(100, 300, None),
+    ]
+    .concat();
+    // The shown one first: removing the wrong objects of the form then loses it.
+    let form = [
+        image_at(200, 600, None),
+        image_at(350, 600, HIDDEN),
+        image_at(450, 600, Some([450, 600, 50, 100])),
+    ]
+    .concat();
+    let mut pdf = TemporaryPdf::open(
+        "together",
+        &blank_image_pdf_with_form(&content, &form, 20, 20),
+    );
+    let images = page_images(&mut pdf.worker, 1);
+
+    let indices: Vec<u32> = images.iter().map(|i| i.image_index).collect();
+    assert_eq!(indices, [0, 1, 3, 5]);
+    let range = |i: usize| {
+        let r = images[i].rect_pt;
+        [r.x0, r.y0, r.x1, r.y1]
+    };
+    let whole = |x: f64, y: f64| [x, 692.0 - y, x + 100.0, 792.0 - y];
+    let close = |a: [f64; 4], b: [f64; 4]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-6);
+    for (listed, expected) in [
+        (0, whole(50.0, 600.0)),
+        (1, whole(200.0, 600.0)),
+        (3, whole(100.0, 300.0)),
+    ] {
+        assert!(close(range(listed), expected), "{:?}", range(listed));
+    }
+    // The clip shows the left half; the range is its box a grid pixel (5 pt)
+    // wider, cut to the frame.
+    let [x0, y0, x1, y1] = range(2);
+    assert!(
+        close([x0, y0, y1, 0.0], [450.0, 92.0, 192.0, 0.0]),
+        "{:?}",
+        range(2)
+    );
+    assert!(x1 > 500.0 && x1 <= 511.0, "{x1}");
 }
 
 /// How many times longer `PageImages` may take on a page with twice as many
