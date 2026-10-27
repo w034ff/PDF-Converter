@@ -176,7 +176,12 @@ impl PdfWriter {
             return Ok(AddImageResult::Ok { pages_added: count });
         }
 
-        let dynamic_img = decode_image_pixels(image_bytes)?;
+        // Every image is decoded here, so that a corrupt one fails as `DecodeFailed` and is not
+        // added (design §4.3). Only BMP is embedded from these pixels; for the other formats they
+        // are dropped now, before krilla decodes the image again, so that the two decoded copies
+        // are not held at once.
+        let pixels = decode_image_pixels(image_bytes)?;
+        let bmp_pixels = (info.format == ImageFormat::Bmp).then_some(pixels);
 
         // JPEG has metadata stripped before embedding (design §4.3).
         // PNG and WebP are decoded to pixels by krilla and losslessly recompressed.
@@ -200,7 +205,7 @@ impl PdfWriter {
             ImageFormat::WebP => Image::from_webp(image_bytes.to_vec().into(), interpolate)
                 .map_err(|_| ProbeError::DecodeFailed)?,
             ImageFormat::Bmp => {
-                let rgba = dynamic_img.to_rgba8();
+                let rgba = bmp_pixels.ok_or(ProbeError::DecodeFailed)?.to_rgba8();
                 Image::from_rgba8(rgba.into_raw(), info.width, info.height)
             }
             ImageFormat::Tiff => unreachable!(),
