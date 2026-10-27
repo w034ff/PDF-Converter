@@ -5,9 +5,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use pdf_converter_lib::AppState;
+use pdf_converter_lib::decode_budget::DecodeBudget;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{
     AddResult, ImageFormatName, ImageItem, PdfItem, Skipped, add_dropped, add_images,
@@ -466,6 +468,41 @@ fn an_image_thumbnail_is_a_png_with_the_longer_side_fixed() {
 
     // `page` is for PDFs only.
     let png = make_thumbnail(&state, id, Some(99), None).expect("making the thumbnail");
+    assert_eq!(png_size(&png), (THUMBNAIL_SIDE, 107));
+}
+
+#[test]
+fn an_image_thumbnail_waits_for_the_decode_budget() {
+    const SMALL_BUDGET: u64 = 1000;
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let path = put(dir.path(), "photo.jpg", "photo.jpg");
+    let mut state = state();
+    state.decode_budget = Arc::new(DecodeBudget::new(SMALL_BUDGET));
+    let id = add_images(&state, &[path]).added[0].id;
+    let held = state
+        .decode_budget
+        .acquire(SMALL_BUDGET, &|| false)
+        .expect("an unused budget is lent at once");
+
+    let (sender, receiver) = mpsc::channel();
+    let thumbnail = {
+        let state = state.clone();
+        std::thread::spawn(move || {
+            let _ = sender.send(make_thumbnail(&state, id, None, None));
+        })
+    };
+
+    // A thumbnail of this size takes a few milliseconds when it does not wait.
+    assert!(
+        receiver.recv_timeout(Duration::from_millis(500)).is_err(),
+        "the thumbnail was made while the budget was held"
+    );
+    drop(held);
+    let png = receiver
+        .recv_timeout(Duration::from_secs(60))
+        .expect("the thumbnail goes on when the budget is back")
+        .expect("making the thumbnail");
+    thumbnail.join().unwrap();
     assert_eq!(png_size(&png), (THUMBNAIL_SIDE, 107));
 }
 

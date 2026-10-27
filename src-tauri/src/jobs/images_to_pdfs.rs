@@ -17,6 +17,7 @@ use super::{
     begin_conversion, spawn_conversion,
 };
 use crate::AppState;
+use crate::decode_budget::DECODE_MEMORY_FACTOR_PDF;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::ItemKind;
 use crate::settings::OutputKind;
@@ -48,6 +49,7 @@ where
         filename: String,
         path: PathBuf,
         page_count: u32,
+        decoded_bytes: u64,
         initial_error: Option<IpcError>,
         initial_output_name: Option<String>,
     }
@@ -73,7 +75,14 @@ where
             target_names.push(filename.clone());
             total_pages = total_pages.saturating_add(entry.page_count);
         }
-        initial_tasks.push((id, filename, entry.path, entry.page_count, entry.error));
+        initial_tasks.push((
+            id,
+            filename,
+            entry.path,
+            entry.page_count,
+            entry.decoded_bytes,
+            entry.error,
+        ));
     }
 
     let resolved_names = resolve_image_to_pdf_names(&target_names, &existing);
@@ -87,21 +96,24 @@ where
     let mut resolved_iter = resolved_names.into_iter();
     let tasks: VecDeque<ImageTask> = initial_tasks
         .into_iter()
-        .map(|(id, filename, path, page_count, initial_error)| {
-            let initial_output_name = if initial_error.is_none() {
-                resolved_iter.next()
-            } else {
-                None
-            };
-            ImageTask {
-                id,
-                filename,
-                path,
-                page_count,
-                initial_error,
-                initial_output_name,
-            }
-        })
+        .map(
+            |(id, filename, path, page_count, decoded_bytes, initial_error)| {
+                let initial_output_name = if initial_error.is_none() {
+                    resolved_iter.next()
+                } else {
+                    None
+                };
+                ImageTask {
+                    id,
+                    filename,
+                    path,
+                    page_count,
+                    decoded_bytes,
+                    initial_error,
+                    initial_output_name,
+                }
+            },
+        )
         .collect();
 
     let total_items = tasks.len() as u32;
@@ -143,6 +155,7 @@ where
         let failed = Arc::clone(&failed);
         let unprocessed = Arc::clone(&unprocessed);
         let cancel_flag = Arc::clone(&state.cancel_flag);
+        let decode_budget = Arc::clone(&state.decode_budget);
         let write_failed = Arc::clone(&write_failed);
         let used_names = Arc::clone(&used_names_lower);
         let output_dir = output_dir_buf.clone();
@@ -194,6 +207,22 @@ where
                     total,
                     current: Some(task.filename.clone()),
                 });
+
+                // Borrowed before the file is read and held until this image's PDF is written
+                // and its bytes are let go (design §5.3). A wait that is cancelled leaves the
+                // image unstarted, like the ones still in the queue.
+                let Some(_permit) = decode_budget.acquire(
+                    task.decoded_bytes.saturating_mul(DECODE_MEMORY_FACTOR_PDF),
+                    &|| cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst),
+                ) else {
+                    let mut q = match queue.lock() {
+                        Ok(g) => g,
+                        Err(p) => p.into_inner(),
+                    };
+                    unprocessed.fetch_add(1 + q.len() as u32, Ordering::SeqCst);
+                    q.clear();
+                    break;
+                };
 
                 let bytes = match std::fs::read(&task.path) {
                     Ok(b) => b,

@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pdf_converter_lib::AppState;
+use pdf_converter_lib::decode_budget::DecodeBudget;
 use pdf_converter_lib::error::ErrorCode;
 use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items, unlock_pdf};
 use pdf_converter_lib::jobs::{
@@ -1223,6 +1224,227 @@ fn cancellation_during_merged_pdf_on_item_writes_no_file() {
     let finished = recorder.finished();
     assert!(finished.cancelled);
     assert_eq!(finished.succeeded, 0);
+}
+
+/// A budget so small that every image has to wait for it, and the permit that holds all of it.
+fn state_with_decode_budget_held() -> (
+    AppState,
+    pdf_converter_lib::decode_budget::DecodeBudgetPermit,
+) {
+    const SMALL_BUDGET: u64 = 1000;
+    let mut app_state = state();
+    app_state.decode_budget = Arc::new(DecodeBudget::new(SMALL_BUDGET));
+    let held = app_state
+        .decode_budget
+        .acquire(SMALL_BUDGET, &|| false)
+        .expect("an unused budget is lent at once");
+    (app_state, held)
+}
+
+/// How long the tests watch a job that waits for the decode budget to see that it goes no
+/// further. A job that does not wait finishes these small images within a fraction of it.
+const WAITING_JOB_OBSERVED_FOR: Duration = Duration::from_millis(500);
+
+/// The cancel of a waiting job must take effect within this (NFR-02).
+const CANCEL_TAKES_EFFECT_WITHIN: Duration = Duration::from_secs(1);
+
+/// Waits until a job has taken up its first image, and then a while longer.
+fn wait_until_a_job_waits(recorder: &TestRecorder) {
+    let start = std::time::Instant::now();
+    while !recorder.progress().iter().any(|p| p.current.is_some()) {
+        assert!(
+            start.elapsed() < Duration::from_secs(30),
+            "the job never took up an image"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(WAITING_JOB_OBSERVED_FOR);
+}
+
+fn add_photos(app_state: &AppState, dir: &Path, count: usize) -> Vec<u64> {
+    let paths: Vec<PathBuf> = (1..=count)
+        .map(|i| copy_fixture(dir, "photo.jpg", &format!("photo_{i}.jpg")))
+        .collect();
+    let added = add_images(app_state, &paths).added;
+    assert_eq!(added.len(), count);
+    added.iter().map(|item| item.id).collect()
+}
+
+#[test]
+fn images_wait_for_the_decode_budget_and_a_cancel_leaves_them_unprocessed() {
+    let (app_state, held) = state_with_decode_budget_held();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let ids = add_photos(&app_state, temp_in.path(), 3);
+
+    let recorder = TestRecorder::new();
+    let job = {
+        let app_state = app_state.clone();
+        let out_dir = temp_out.path().to_path_buf();
+        let callbacks = recorder.callbacks();
+        std::thread::spawn(move || {
+            run_images_to_pdfs(
+                &app_state,
+                &ids,
+                PageSizeChoice::Fit,
+                PageOrientationChoice::Auto,
+                &PdfOutput::new(PdfConformance::Standard, None),
+                &out_dir,
+                callbacks,
+            )
+        })
+    };
+
+    wait_until_a_job_waits(&recorder);
+    assert!(
+        recorder.items().is_empty(),
+        "an image was converted while the budget was held"
+    );
+    assert!(recorder.finished.lock().unwrap().is_none());
+
+    let cancelled_at = std::time::Instant::now();
+    app_state.cancel_flag.store(true, Ordering::SeqCst);
+    let finished = recorder.wait_finished(CANCEL_TAKES_EFFECT_WITHIN);
+    assert!(cancelled_at.elapsed() < CANCEL_TAKES_EFFECT_WITHIN);
+    job.join().unwrap().unwrap();
+
+    assert!(finished.cancelled);
+    assert_eq!(finished.succeeded, 0);
+    assert_eq!(finished.failed, 0);
+    assert_eq!(finished.unprocessed, 3);
+    assert!(
+        recorder.items().is_empty(),
+        "a waiting image must not send a job-item"
+    );
+    assert_no_temp_files(temp_out.path());
+    assert!(list_existing_files(temp_out.path()).unwrap().is_empty());
+    drop(held);
+}
+
+#[test]
+fn images_go_on_when_the_decode_budget_is_given_back() {
+    let (app_state, held) = state_with_decode_budget_held();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let ids = add_photos(&app_state, temp_in.path(), 3);
+
+    let recorder = TestRecorder::new();
+    let job = {
+        let app_state = app_state.clone();
+        let out_dir = temp_out.path().to_path_buf();
+        let callbacks = recorder.callbacks();
+        std::thread::spawn(move || {
+            run_images_to_pdfs(
+                &app_state,
+                &ids,
+                PageSizeChoice::Fit,
+                PageOrientationChoice::Auto,
+                &PdfOutput::new(PdfConformance::Standard, None),
+                &out_dir,
+                callbacks,
+            )
+        })
+    };
+
+    wait_until_a_job_waits(&recorder);
+    assert!(recorder.items().is_empty());
+
+    drop(held);
+    let finished = recorder.wait_finished(Duration::from_secs(60));
+    job.join().unwrap().unwrap();
+
+    assert!(!finished.cancelled);
+    assert_eq!(finished.succeeded, 3);
+    assert_eq!(finished.unprocessed, 0);
+    assert_eq!(list_existing_files(temp_out.path()).unwrap().len(), 3);
+}
+
+#[test]
+fn a_merged_pdf_waits_for_the_decode_budget_and_a_cancel_writes_no_file() {
+    let (app_state, held) = state_with_decode_budget_held();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let ids = add_photos(&app_state, temp_in.path(), 2);
+    let dest_path = temp_out.path().join("merged.pdf");
+
+    let recorder = TestRecorder::new();
+    let job = {
+        let app_state = app_state.clone();
+        let dest_path = dest_path.clone();
+        let callbacks = recorder.callbacks();
+        std::thread::spawn(move || {
+            run_save_merged_pdf(
+                &app_state,
+                &ids,
+                PageSizeChoice::Fit,
+                PageOrientationChoice::Auto,
+                &PdfOutput::new(PdfConformance::Standard, None),
+                &dest_path,
+                callbacks,
+            )
+        })
+    };
+
+    wait_until_a_job_waits(&recorder);
+    assert!(
+        recorder.items().is_empty(),
+        "an image was added while the budget was held"
+    );
+    assert!(recorder.finished.lock().unwrap().is_none());
+
+    let cancelled_at = std::time::Instant::now();
+    app_state.cancel_flag.store(true, Ordering::SeqCst);
+    let finished = recorder.wait_finished(CANCEL_TAKES_EFFECT_WITHIN);
+    assert!(cancelled_at.elapsed() < CANCEL_TAKES_EFFECT_WITHIN);
+    let result = job.join().unwrap().unwrap();
+
+    assert_eq!(result.saved_name, None);
+    assert!(!dest_path.exists());
+    assert_no_temp_files(temp_out.path());
+    assert!(finished.cancelled);
+    assert_eq!(finished.succeeded, 0);
+    assert_eq!(finished.unprocessed, 2);
+    drop(held);
+}
+
+#[test]
+fn a_merged_pdf_goes_on_when_the_decode_budget_is_given_back() {
+    let (app_state, held) = state_with_decode_budget_held();
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let ids = add_photos(&app_state, temp_in.path(), 2);
+    let dest_path = temp_out.path().join("merged.pdf");
+
+    let recorder = TestRecorder::new();
+    let job = {
+        let app_state = app_state.clone();
+        let dest_path = dest_path.clone();
+        let callbacks = recorder.callbacks();
+        std::thread::spawn(move || {
+            run_save_merged_pdf(
+                &app_state,
+                &ids,
+                PageSizeChoice::Fit,
+                PageOrientationChoice::Auto,
+                &PdfOutput::new(PdfConformance::Standard, None),
+                &dest_path,
+                callbacks,
+            )
+        })
+    };
+
+    wait_until_a_job_waits(&recorder);
+    assert!(recorder.items().is_empty());
+    assert!(!dest_path.exists());
+
+    drop(held);
+    let finished = recorder.wait_finished(Duration::from_secs(60));
+    let result = job.join().unwrap().unwrap();
+
+    assert_eq!(result.saved_name.as_deref(), Some("merged.pdf"));
+    assert!(dest_path.exists());
+    assert!(!finished.cancelled);
+    assert_eq!(finished.succeeded, 2);
 }
 
 #[test]

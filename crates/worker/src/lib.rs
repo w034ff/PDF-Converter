@@ -8,6 +8,7 @@ mod crop;
 mod layout;
 pub mod protocol;
 pub mod server;
+pub mod system_memory;
 #[cfg(windows)]
 mod windows_job;
 

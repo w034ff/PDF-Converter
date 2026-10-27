@@ -55,7 +55,8 @@ impl CustomImage for CustomTiffImage {
 /// - Total page count does not exceed [`MAX_TIFF_PAGES`].
 /// - Total pixels per page does not exceed [`MAX_IMAGE_PIXELS`].
 /// - Supported color and compression formats per design §4.1.1.
-/// - Returns dimensions, orientation and resolution from the first page.
+/// - Returns dimensions, orientation and resolution from the first page, and in
+///   [`ImageInfo::decoded_bytes`] the pixel bytes of the largest page.
 pub fn probe_tiff<R: BufRead + Seek>(reader: &mut R) -> Result<ImageInfo, ProbeError> {
     let mut decoder = Decoder::new(reader).map_err(|_| ProbeError::DecodeFailed)?;
     let mut limits = Limits::default();
@@ -64,6 +65,7 @@ pub fn probe_tiff<R: BufRead + Seek>(reader: &mut R) -> Result<ImageInfo, ProbeE
 
     let mut page_count: u32 = 0;
     let mut first_page: Option<(u32, u32, Orientation, u32, u32)> = None;
+    let mut decoded_bytes: u64 = 0;
 
     loop {
         page_count += 1;
@@ -78,6 +80,15 @@ pub fn probe_tiff<R: BufRead + Seek>(reader: &mut R) -> Result<ImageInfo, ProbeE
         }
 
         validate_page_format(&mut decoder)?;
+
+        let color_type = decoder.colortype().ok();
+        let extra_sample_0 = read_extra_sample_0(&mut decoder)?;
+        decoded_bytes = decoded_bytes.max(page_decoded_bytes(
+            width,
+            height,
+            color_type,
+            extra_sample_0,
+        ));
 
         if first_page.is_none() {
             let orientation = read_tiff_orientation(&mut decoder)?;
@@ -102,7 +113,56 @@ pub fn probe_tiff<R: BufRead + Seek>(reader: &mut R) -> Result<ImageInfo, ProbeE
         dpi_x,
         dpi_y,
         page_count,
+        decoded_bytes,
     })
+}
+
+/// The pixel bytes per pixel to assume when a page's colour type is not one that
+/// [`process_decoded_samples`] reads: the largest it produces (16-bit RGBA).
+const MAX_DECODED_BYTES_PER_PIXEL: u64 = 8;
+
+/// Bytes per pixel of the channels [`process_decoded_samples`] returns for a page of
+/// `color_type` (design §4.1.1): 1, 2 and 4-bit grey are expanded to 8 bits and YCbCr is
+/// converted to RGB. Returns `None` for a colour type it does not read.
+///
+/// Keep in step with the arms of [`process_decoded_samples`]; the tests compare the two.
+fn decoded_bytes_per_pixel(color_type: tiff::ColorType, extra_sample_0: u16) -> Option<u64> {
+    let has_alpha = matches!(extra_sample_0, 1 | 2);
+    match color_type {
+        tiff::ColorType::Gray(1 | 2 | 4 | 8) => Some(1),
+        tiff::ColorType::Gray(16) => Some(2),
+        tiff::ColorType::Multiband { bit_depth: 8, .. } => Some(1 + u64::from(has_alpha)),
+        tiff::ColorType::Multiband { bit_depth: 16, .. } => Some(2 * (1 + u64::from(has_alpha))),
+        tiff::ColorType::RGB(8) | tiff::ColorType::YCbCr(8) => Some(3),
+        tiff::ColorType::RGB(16) => Some(6),
+        tiff::ColorType::RGBA(8) => Some(4),
+        tiff::ColorType::RGBA(16) => Some(8),
+        _ => None,
+    }
+}
+
+/// Pixel bytes of one page once it is read (see [`ImageInfo::decoded_bytes`]).
+fn page_decoded_bytes(
+    width: u32,
+    height: u32,
+    color_type: Option<tiff::ColorType>,
+    extra_sample_0: u16,
+) -> u64 {
+    let bytes_per_pixel = color_type
+        .and_then(|color_type| decoded_bytes_per_pixel(color_type, extra_sample_0))
+        .unwrap_or(MAX_DECODED_BYTES_PER_PIXEL);
+    u64::from(width)
+        .saturating_mul(u64::from(height))
+        .saturating_mul(bytes_per_pixel)
+}
+
+/// The first value of the `ExtraSamples` tag of the current page, or 0 if it has none.
+fn read_extra_sample_0<R: Read + Seek>(decoder: &mut Decoder<R>) -> Result<u16, ProbeError> {
+    let extra_samples: Vec<u16> = decoder
+        .find_tag_unsigned_vec(Tag::ExtraSamples)
+        .map_err(|_| ProbeError::DecodeFailed)?
+        .unwrap_or_default();
+    Ok(extra_samples.first().copied().unwrap_or(0))
 }
 
 /// Validates that the current IFD directory represents a supported TIFF format (design §4.1.1).
@@ -334,12 +394,7 @@ fn decode_single_page<R: Read + Seek>(
     let orientation = read_tiff_orientation(decoder)?;
     let (dpi_x, dpi_y) = read_tiff_dpi(decoder)?;
 
-    let extra_samples: Vec<u16> = decoder
-        .find_tag_unsigned_vec(Tag::ExtraSamples)
-        .map_err(|_| ProbeError::DecodeFailed)?
-        .unwrap_or_default();
-
-    let extra_sample_0 = extra_samples.first().copied().unwrap_or(0);
+    let extra_sample_0 = read_extra_sample_0(decoder)?;
 
     let icc = decoder
         .find_tag(Tag::IccProfile)
@@ -384,6 +439,7 @@ fn decode_single_page<R: Read + Seek>(
         dpi_x,
         dpi_y,
         page_count: total_pages,
+        decoded_bytes: page_decoded_bytes(width, height, Some(color_type), extra_sample_0),
     };
 
     Ok((krilla_image, info))
@@ -761,12 +817,7 @@ pub fn decode_tiff_first_page_as_image(
     }
     validate_page_format(&mut decoder)?;
 
-    let extra_samples: Vec<u16> = decoder
-        .find_tag_unsigned_vec(Tag::ExtraSamples)
-        .map_err(|_| ProbeError::DecodeFailed)?
-        .unwrap_or_default();
-
-    let extra_sample_0 = extra_samples.first().copied().unwrap_or(0);
+    let extra_sample_0 = read_extra_sample_0(&mut decoder)?;
 
     let color_type = decoder.colortype().map_err(|_| ProbeError::DecodeFailed)?;
     let raw = decoder.read_image().map_err(|_| ProbeError::DecodeFailed)?;
@@ -955,6 +1006,237 @@ mod tests {
         let bytes = make_minimal_tiff(1, &[32], None, Some(3));
         let mut cursor = Cursor::new(bytes);
         assert_eq!(probe_tiff(&mut cursor), Err(ProbeError::UnsupportedFormat));
+    }
+
+    /// Fixtures that pass `probe_tiff` and that `decode_tiff_pages` reads.
+    const READABLE_TIFF_FIXTURES: &[&str] = &[
+        "scan_g4.tif",
+        "fax_standard.tif",
+        "gray_lzw.tif",
+        "gray16_deflate.tif",
+        "gray4_packbits.tif",
+        "rgb_lzw.tif",
+        "rgb16.tif",
+        "rgba_unassoc.tif",
+        "rgba_assoc.tif",
+        "gray_alpha.tif",
+        "photo_jpeg.tif",
+        "rotate90.tif",
+        "metadata.tif",
+    ];
+
+    /// Bytes of the colour and alpha channels `process_decoded_samples` returns for each
+    /// page, read the way `decode_single_page` reads them.
+    fn produced_page_bytes(bytes: &[u8]) -> Vec<u64> {
+        let mut decoder = Decoder::new(Cursor::new(bytes)).expect("open tiff");
+        let mut sizes = Vec::new();
+        loop {
+            let (width, height) = decoder.dimensions().expect("dimensions");
+            let extra_sample_0 = read_extra_sample_0(&mut decoder).expect("extra samples");
+            let color_type = decoder.colortype().expect("colortype");
+            let raw = decoder.read_image().expect("read page");
+            let (_, _, color, alpha) =
+                process_decoded_samples(width, height, color_type, extra_sample_0, raw)
+                    .expect("process page");
+            sizes.push((color.len() + alpha.map_or(0, |a| a.len())) as u64);
+            if decoder.more_images() {
+                decoder.next_image().expect("next page");
+            } else {
+                return sizes;
+            }
+        }
+    }
+
+    #[test]
+    fn decoded_bytes_is_the_largest_page_the_reader_produces_for_every_fixture() {
+        for name in READABLE_TIFF_FIXTURES {
+            let bytes = std::fs::read(Path::new(FIXTURES_DIR).join(name)).unwrap();
+            let produced = produced_page_bytes(&bytes);
+            let info = probe_tiff(&mut Cursor::new(&bytes)).unwrap();
+            let largest = produced.iter().copied().max().unwrap();
+            assert!(largest > 0, "{name}");
+            assert_eq!(info.decoded_bytes, largest, "probe_tiff for {name}");
+
+            let pages = decode_tiff_pages(&mut Cursor::new(&bytes), true, |_, _| {}, || false)
+                .unwrap()
+                .unwrap();
+            let per_page: Vec<u64> = pages.iter().map(|(_, i)| i.decoded_bytes).collect();
+            assert_eq!(per_page, produced, "decode_tiff_pages for {name}");
+        }
+    }
+
+    #[test]
+    fn decoded_bytes_of_a_ycbcr_fixture_is_rgb() {
+        let bytes = std::fs::read(Path::new(FIXTURES_DIR).join("photo_jpeg.tif")).unwrap();
+        let info = probe_tiff(&mut Cursor::new(&bytes)).unwrap();
+        assert_eq!(info.decoded_bytes, 160 * 120 * 3);
+    }
+
+    struct TestPage {
+        width: u32,
+        height: u32,
+        photo: u16,
+        bits: Vec<u16>,
+        extra: Vec<u16>,
+    }
+
+    impl TestPage {
+        fn new(width: u32, height: u32, photo: u16, bits: &[u16], extra: &[u16]) -> Self {
+            Self {
+                width,
+                height,
+                photo,
+                bits: bits.to_vec(),
+                extra: extra.to_vec(),
+            }
+        }
+    }
+
+    /// An uncompressed little-endian TIFF with one zero-filled page per entry of `pages`.
+    fn make_tiff_pages(pages: &[TestPage]) -> Vec<u8> {
+        let mut bytes = b"II".to_vec();
+        bytes.extend_from_slice(&42u16.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+
+        for (index, page) in pages.iter().enumerate() {
+            let bits_per_pixel: u32 = page.bits.iter().map(|&b| u32::from(b)).sum();
+            let row_bytes = (page.width * bits_per_pixel).div_ceil(8);
+            let pixels = vec![0u8; (row_bytes * page.height) as usize];
+
+            let shorts = |values: &[u16]| -> Vec<u8> {
+                values.iter().flat_map(|v| v.to_le_bytes()).collect()
+            };
+            let mut entries: Vec<(u16, u16, u32, Vec<u8>)> = vec![
+                (256, 4, 1, page.width.to_le_bytes().to_vec()),
+                (257, 4, 1, page.height.to_le_bytes().to_vec()),
+                (258, 3, page.bits.len() as u32, shorts(&page.bits)),
+                (259, 3, 1, shorts(&[1])),
+                (262, 3, 1, shorts(&[page.photo])),
+                (273, 4, 1, Vec::new()),
+                (277, 3, 1, shorts(&[page.bits.len() as u16])),
+                (278, 4, 1, page.height.to_le_bytes().to_vec()),
+                (279, 4, 1, (pixels.len() as u32).to_le_bytes().to_vec()),
+            ];
+            if !page.extra.is_empty() {
+                entries.push((338, 3, page.extra.len() as u32, shorts(&page.extra)));
+            }
+            entries.sort_by_key(|e| e.0);
+
+            let ifd_start = bytes.len();
+            let overflow_start = ifd_start + 2 + entries.len() * 12 + 4;
+            let mut overflow = Vec::new();
+            let mut fields = Vec::new();
+            for (tag, field_type, count, value) in &entries {
+                let mut field = [0u8; 4];
+                if value.len() <= 4 {
+                    field[..value.len()].copy_from_slice(value);
+                } else {
+                    field = ((overflow_start + overflow.len()) as u32).to_le_bytes();
+                    overflow.extend_from_slice(value);
+                }
+                fields.push((*tag, *field_type, *count, field));
+            }
+            let strip_start = overflow_start + overflow.len();
+            let next_ifd = if index + 1 == pages.len() {
+                0
+            } else {
+                (strip_start + pixels.len()) as u32
+            };
+
+            bytes.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+            for (tag, field_type, count, field) in fields {
+                bytes.extend_from_slice(&tag.to_le_bytes());
+                bytes.extend_from_slice(&field_type.to_le_bytes());
+                bytes.extend_from_slice(&count.to_le_bytes());
+                if tag == 273 {
+                    bytes.extend_from_slice(&(strip_start as u32).to_le_bytes());
+                } else {
+                    bytes.extend_from_slice(&field);
+                }
+            }
+            bytes.extend_from_slice(&next_ifd.to_le_bytes());
+            bytes.extend_from_slice(&overflow);
+            bytes.extend_from_slice(&pixels);
+        }
+        bytes
+    }
+
+    #[test]
+    fn decoded_bytes_per_pixel_for_each_colour_type() {
+        // (name, photometric, bits per sample, extra samples, bytes per pixel)
+        type Case<'a> = (&'a str, u16, &'a [u16], &'a [u16], u64);
+        let cases: &[Case] = &[
+            ("black and white (1-bit grey)", 1, &[1], &[], 1),
+            ("2-bit grey", 1, &[2], &[], 1),
+            ("4-bit grey", 1, &[4], &[], 1),
+            ("8-bit grey", 1, &[8], &[], 1),
+            ("16-bit grey", 1, &[16], &[], 2),
+            ("white is zero 1-bit", 0, &[1], &[], 1),
+            ("white is zero 8-bit", 0, &[8], &[], 1),
+            ("grey and associated alpha 8", 1, &[8, 8], &[1], 2),
+            ("grey and unassociated alpha 8", 1, &[8, 8], &[2], 2),
+            ("grey and alpha 16", 1, &[16, 16], &[2], 4),
+            ("grey with an unspecified extra sample", 1, &[8, 8], &[0], 1),
+            ("RGB 8", 2, &[8, 8, 8], &[], 3),
+            ("RGB 16", 2, &[16, 16, 16], &[], 6),
+            ("RGBA 8", 2, &[8, 8, 8, 8], &[2], 4),
+            ("RGBA 8 associated", 2, &[8, 8, 8, 8], &[1], 4),
+            ("RGBA 16", 2, &[16, 16, 16, 16], &[2], 8),
+            ("RGBA 16 associated", 2, &[16, 16, 16, 16], &[1], 8),
+            (
+                "RGB 8 with an unspecified extra sample",
+                2,
+                &[8, 8, 8, 8],
+                &[0],
+                3,
+            ),
+        ];
+        for &(name, photo, bits, extra, bytes_per_pixel) in cases {
+            let tiff = make_tiff_pages(&[TestPage::new(7, 5, photo, bits, extra)]);
+            let info =
+                probe_tiff(&mut Cursor::new(&tiff)).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+            assert_eq!(
+                info.decoded_bytes,
+                7 * 5 * bytes_per_pixel,
+                "probe for {name}"
+            );
+            assert_eq!(
+                produced_page_bytes(&tiff),
+                [7 * 5 * bytes_per_pixel],
+                "reader for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn decoded_bytes_is_the_largest_page_by_bytes_not_by_pixels() {
+        // The first page has the most pixels but the fewest bytes; the last has the most bytes.
+        let pages = [
+            TestPage::new(20, 20, 1, &[8], &[]),
+            TestPage::new(10, 10, 2, &[16, 16, 16, 16], &[2]),
+            TestPage::new(15, 15, 2, &[8, 8, 8], &[]),
+        ];
+        for order in [[0, 1, 2], [1, 2, 0], [2, 0, 1], [1, 0, 2]] {
+            let ordered: Vec<TestPage> = order
+                .iter()
+                .map(|&i| {
+                    let p = &pages[i];
+                    TestPage::new(p.width, p.height, p.photo, &p.bits, &p.extra)
+                })
+                .collect();
+            let tiff = make_tiff_pages(&ordered);
+            let info = probe_tiff(&mut Cursor::new(&tiff)).unwrap();
+            assert_eq!(info.page_count, 3);
+            assert_eq!(info.decoded_bytes, 10 * 10 * 8, "page order {order:?}");
+            let produced = produced_page_bytes(&tiff);
+            assert_eq!(info.decoded_bytes, produced.iter().copied().max().unwrap());
+
+            let decoded = decode_tiff_pages(&mut Cursor::new(&tiff), true, |_, _| {}, || false)
+                .unwrap()
+                .unwrap();
+            let per_page: Vec<u64> = decoded.iter().map(|(_, i)| i.decoded_bytes).collect();
+            assert_eq!(per_page, produced, "page order {order:?}");
+        }
     }
 
     fn make_minimal_tiff(

@@ -21,6 +21,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::crop;
+use crate::decode_budget::DECODE_MEMORY_FACTOR_THUMBNAIL;
 use crate::error::{ErrorCode, IpcError};
 use crate::worker_pool::PooledWorker;
 
@@ -59,6 +60,10 @@ pub struct Entry {
     pub canonical: PathBuf,
     /// Pages of a PDF; 0 for an image and for a PDF that failed to open.
     pub page_count: u32,
+    /// Bytes of the pixels that reading an image produces (`ImageInfo::decoded_bytes`); 0 for a
+    /// PDF and for an image that failed to probe. The decode budget is borrowed from this
+    /// (design §5.3).
+    pub decoded_bytes: u64,
     /// Why the file could not be read, if it could not.
     pub error: Option<IpcError>,
     /// Password entered by the user, if any (design §6.8).
@@ -376,6 +381,7 @@ fn add_files<I>(
     paths: &[PathBuf],
     load: impl Fn(&AppState, &Path) -> Result<I, IpcError>,
     page_count: impl Fn(&I) -> u32,
+    decoded_bytes: impl Fn(&I) -> u64,
 ) -> (Vec<Added<I>>, Skipped) {
     let mut added = Vec::new();
     let mut skipped = Skipped::default();
@@ -396,6 +402,7 @@ fn add_files<I>(
             path: path.clone(),
             canonical,
             page_count: loaded.as_ref().map_or(0, &page_count),
+            decoded_bytes: loaded.as_ref().map_or(0, &decoded_bytes),
             error: loaded.as_ref().err().cloned(),
             password: None,
         };
@@ -428,6 +435,7 @@ pub fn add_images(state: &AppState, paths: &[PathBuf]) -> AddResult<ImageItem> {
         paths,
         |_, path| probe(path).map_err(IpcError::from),
         |info| info.page_count,
+        |info| info.decoded_bytes,
     );
     let added = added
         .into_iter()
@@ -509,6 +517,7 @@ pub fn add_pdfs(state: &AppState, paths: &[PathBuf]) -> AddResult<PdfItem> {
         paths,
         |s, p| load_pdf(s, p, None),
         |info| info.page_count,
+        |_| 0,
     );
     let added = added
         .into_iter()
@@ -738,6 +747,17 @@ pub fn make_thumbnail(
             if max_side.is_some() {
                 return Err(IpcError::from_code(ErrorCode::InvalidParams));
             }
+            // Borrowed before the file is read, because the file's own bytes are part of the
+            // peak, and held until the PNG is made (design §5.3).
+            let _permit = state
+                .decode_budget
+                .acquire(
+                    entry
+                        .decoded_bytes
+                        .saturating_mul(DECODE_MEMORY_FACTOR_THUMBNAIL),
+                    &|| false,
+                )
+                .expect("a wait that is never cancelled ends with a permit");
             let bytes = std::fs::read(&entry.path)
                 .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))?;
             Ok(thumbnail_png(&bytes)?)
@@ -867,6 +887,7 @@ mod tests {
             path: PathBuf::from(canonical),
             canonical: PathBuf::from(canonical),
             page_count: 0,
+            decoded_bytes: 0,
             error: None,
             password: None,
         }
