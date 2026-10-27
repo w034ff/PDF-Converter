@@ -19,6 +19,10 @@ use pdfconv_worker::{RENDER_DPI_MAX, RENDER_DPI_MIN};
 
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The CI's limit on rendering an A4 page at 150 dpi (design §11.3). NFR-02's one second
+/// is checked by hand on the reference machine.
+const CI_RENDER_TIME_LIMIT: Duration = Duration::from_secs(3);
+
 fn open_req(path: impl Into<PathBuf>) -> Request {
     Request::Open {
         path: path.into(),
@@ -781,8 +785,8 @@ fn performance_render_a4_150dpi() {
     assert!(!body.is_empty());
     println!("A4 150dpi PNG render elapsed time: {elapsed:?}");
     assert!(
-        elapsed < Duration::from_secs(3),
-        "Render took {elapsed:?}, exceeding 3s limit"
+        elapsed < CI_RENDER_TIME_LIMIT,
+        "Render took {elapsed:?}, exceeding {CI_RENDER_TIME_LIMIT:?}"
     );
 }
 
