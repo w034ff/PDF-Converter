@@ -51,8 +51,10 @@ pdfium-render は、カタログ（表示の設定）と、注釈の辞書の値
 
 | 要求 | 内容 | 応答 |
 | --- | --- | --- |
-| `Organize { sources: [{ path, password }], pages: [{ source, page, rotation }], outputPassword }` | 1 つの出力を作る。`pages` は出力の順。`rotation` は 0・90・180・270（元の回転に足す）。`outputPassword` は `null` か書き出しのパスワード | 進捗 `{ done }`（写したページの数）を何度か、出力の本体を `OUTPUT_CHUNK_BYTES` ずつ分けた応答を何度か、最後に `{ bytes }`。失敗は `{ code, detail, source }`（`source` は失敗した元の PDF の番号。`PdfOpenFailed`・`PasswordProtected` など） |
+| `Organize { sources: [{ path, password }], pages: [{ source, page, rotation }], creator, outputPassword }` | 1 つの出力を作る。`pages` は出力の順で、`source` は `sources` の番号、`page` は元の PDF の 0 から数えたページ。`rotation` は 0・90・180・270 で、元の回転に足す。`creator` は文書情報の作成ソフト（メインプロセスがアプリの版から作る）。`outputPassword` は `null` か書き出しのパスワード。開いている PDF があれば先に閉じる | `OrganizeProgress { done }`（処理し終えたページの数）を何度か、`OrganizeChunk`（本体に出力の一部、`OUTPUT_CHUNK_BYTES` まで）を何度か、最後に `Organized { bytes }`（本体の合計）。元の PDF に起きた失敗は `OrganizeFailed { code, detail, source }`、それ以外の失敗は `Error` |
 
+- 出力の順に並んだページのうち、同じ元の PDF で続くものは 1 回の `copy_pages_from_document` で写す。写すたびに pdfium は共有のフォントなどを写し直すので、1 ページずつ写すと出力が大きくなるため。元の PDF は 1 回だけ開き、そのページを出力の位置に差し込む（あとから差し込む元の PDF のページの分だけ、差し込む位置を数え直す）。
+- 文書情報の書き直し・暗号化・書き出しは `crates/core` の関数で行う（`lopdf` を持つのは `crates/core` で、pdfium なしでテストできるため）。ワーカーは pdfium の出力のバイト列と、書き出しの送り手を渡す。
 - 1 つの要求に複数の応答を返すのは `Organize` だけにする。出力を 1 つの本体で返すと、ワーカーとメインプロセスの両方に出力が丸ごと載り、`MAX_BODY_BYTES` にも当たるため。メインプロセスは受けたそばから一時ファイルに書く（design §6.5）。ワーカーはファイルを書かない。
 - 時間の上限は、要求の全体ではなく、応答と応答の間に掛ける（`ORGANIZE_STEP_TIMEOUT`）。全体の時間は出力の大きさに比例し、上限を決められないため。進捗はページを写すたびに送るので、止まったワーカーは見分けられる。
 - キャンセルは、ワーカーを強制終了して行う（メインプロセスは一時ファイルを捨てる。NFR-02 の 1 秒）。pdfium の写す・固める処理は途中で止められないため。次の要求では新しいワーカーを起動する。
