@@ -7,8 +7,8 @@ members = [
 resolver = "2"
 
 [workspace.lints.rust]
-# Denied rather than forbidden so that crates/worker/src/windows_job.rs alone
-# can opt in; see the reason at the top of that module.
+# Denied rather than forbidden so that crates/worker/src/windows_job.rs and the
+# Windows function of crates/worker/src/system_memory.rs can opt in (design §5.3).
 unsafe_code = "deny"
 
 [workspace.lints.clippy]
