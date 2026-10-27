@@ -94,6 +94,7 @@
 │   │   ├── layout.rs         レイアウトの解析（`ort`。§4.7）
 │   │   ├── client.rs         メインプロセスの側の 1 つのワーカー（起動、要求、時間切れ、異常終了）
 │   │   ├── windows_job.rs    Windows のジョブオブジェクト（§5.3）
+│   │   ├── system_memory.rs  搭載メモリの取得（§5.3 のデコードの予算）
 │   │   └── main.rs           テスト用の単独のワーカー（`pdfconv-worker`）
 │   └── tests/
 ├── src-tauri/
@@ -104,6 +105,7 @@
 │   │   ├── error.rs          エラーコードと、IPC での形（§6.6）
 │   │   ├── items.rs          ファイルの ID の表と一覧の項目
 │   │   ├── worker_pool.rs    ワーカーの数の管理と貸し出し（§5.2）。1 つのワーカーの扱いは crates/worker の client.rs
+│   │   ├── decode_budget.rs  画像のデコードのメモリの予算（§5.3）
 │   │   ├── jobs/             変換の実行・進捗・キャンセル（§6）
 │   │   │   ├── mod.rs        変換の開始と後始末、イベントとそのペイロード
 │   │   │   ├── options.rs    設定パネルの選択肢の型、書き出す PDF の形式とパスワード
