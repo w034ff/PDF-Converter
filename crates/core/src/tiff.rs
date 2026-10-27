@@ -772,6 +772,7 @@ fn process_decoded_samples(
             }
             let mut color_channel = Vec::with_capacity(total_pixels * 3);
 
+            // JFIF's conversion (ITU-R BT.601, full range), design §4.3.
             for chunk in u8_data.as_chunks::<3>().0 {
                 let [y_val, cb_val, cr_val] = *chunk;
                 let y = f64::from(y_val);
