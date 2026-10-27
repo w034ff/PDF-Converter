@@ -7,6 +7,8 @@
 //! measure that one ([`display_matrix`]) instead of rebuilding it from
 //! `/Rotate` and `CropBox`.
 
+use std::collections::BTreeSet;
+
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfMatrix, PdfPage, PdfPageContentRegenerationStrategy, PdfPageObject,
     PdfPageObjectsCommon, PdfPoints, PdfRenderConfig,
@@ -425,17 +427,15 @@ fn visible_box(isolated: &PdfPage<'_>, grid: &Grid) -> Result<Option<PixelBox>, 
     Ok(touched_box(&white, &black, grid.width))
 }
 
-/// The part of the image's frame that shows, on the shown page: the visible
-/// box of a grid of at most [`VISIBLE_CHECK_PIXELS`], one grid pixel wider on
-/// each side, cut to the whole frame. `None` when nothing shows.
-fn visible_rect(
-    doc: &PdfDocument<'_>,
-    page_number: u32,
+/// The part of the image's frame that shows, on the shown page: `visible`, the
+/// visible box of `grid` (of at most [`VISIBLE_CHECK_PIXELS`]), one grid pixel
+/// wider on each side, cut to the whole frame. `None` when nothing shows.
+fn shown_rect(
     image: &ListedImage,
+    grid: &Grid,
+    visible: Option<PixelBox>,
 ) -> Result<Option<RectPt>, Response> {
-    let grid = image_grid(image, VISIBLE_CHECK_PIXELS)?;
-    let isolated = isolated_page(doc, page_number, &image.placed.path)?;
-    let Some(visible) = visible_box(&isolated, &grid)? else {
+    let Some(visible) = visible else {
         return Ok(None);
     };
     let to_display =
@@ -480,9 +480,22 @@ fn visible_rect(
 fn visible_image(
     doc: &PdfDocument<'_>,
     page_number: u32,
-    mut image: ListedImage,
+    image: ListedImage,
 ) -> Result<Option<ListedImage>, Response> {
-    let Some(rect) = visible_rect(doc, page_number, &image)? else {
+    let grid = image_grid(&image, VISIBLE_CHECK_PIXELS)?;
+    let isolated = isolated_page(doc, page_number, &[&image.placed.path])?;
+    let visible = visible_box(&isolated, &grid)?;
+    shown_image(image, &grid, visible)
+}
+
+/// `image` with its range set from `visible`, its visible box in `grid`, as
+/// [`visible_image`] does.
+fn shown_image(
+    mut image: ListedImage,
+    grid: &Grid,
+    visible: Option<PixelBox>,
+) -> Result<Option<ListedImage>, Response> {
+    let Some(rect) = shown_rect(&image, grid, visible)? else {
         return Ok(None);
     };
     if (rect.x1 - rect.x0).min(rect.y1 - rect.y0) < MIN_PHOTO_SIDE_PT {
@@ -516,13 +529,79 @@ pub(crate) fn page_images(
     page_number: u32,
 ) -> Result<Vec<EmbeddedImage>, Response> {
     let page = load_page(doc, page_number)?;
+    let candidates = candidate_images(&page)?;
+    let grids = candidates
+        .iter()
+        .map(|image| image_grid(image, VISIBLE_CHECK_PIXELS))
+        .collect::<Result<Vec<_>, _>>()?;
+    let frames: Vec<RectPt> = candidates.iter().map(|image| image.frame).collect();
+    let reaches = grids
+        .iter()
+        .map(grid_reach)
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut visible = vec![None; candidates.len()];
+    for group in apart_groups(&frames, &reaches) {
+        let paths: Vec<&[usize]> = group
+            .iter()
+            .map(|&i| candidates[i].placed.path.as_slice())
+            .collect();
+        let isolated = isolated_page(doc, page_number, &paths)?;
+        for &i in &group {
+            visible[i] = visible_box(&isolated, &grids[i])?;
+        }
+    }
     let mut images = Vec::new();
-    for candidate in candidate_images(&page)? {
-        if let Some(image) = visible_image(doc, page_number, candidate)? {
+    for ((candidate, grid), visible) in candidates.into_iter().zip(&grids).zip(visible) {
+        if let Some(image) = shown_image(candidate, grid, visible)? {
             images.push(image.info);
         }
     }
     Ok(images)
+}
+
+/// The display-space box that the pixels of `grid` reach, one grid pixel
+/// wider on each side.
+fn grid_reach(grid: &Grid) -> Result<RectPt, Response> {
+    let to_display =
+        invert(grid.matrix).ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+    let (right, bottom) = (f64::from(grid.width) + 1.0, f64::from(grid.height) + 1.0);
+    let corners = [(-1.0, -1.0), (right, -1.0), (-1.0, bottom), (right, bottom)]
+        .map(|(x, y)| apply(to_display, x, y));
+    Ok(RectPt {
+        x0: corners.iter().map(|c| c.0).fold(f64::INFINITY, f64::min),
+        y0: corners.iter().map(|c| c.1).fold(f64::INFINITY, f64::min),
+        x1: corners
+            .iter()
+            .map(|c| c.0)
+            .fold(f64::NEG_INFINITY, f64::max),
+        y1: corners
+            .iter()
+            .map(|c| c.1)
+            .fold(f64::NEG_INFINITY, f64::max),
+    })
+}
+
+fn overlaps(a: &RectPt, b: &RectPt) -> bool {
+    a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
+}
+
+/// Splits images (by index) into groups that can be isolated together and
+/// still each draw into its own grid as if it were alone: an image draws only
+/// inside its frame (`frames`), so in a group no frame comes within the reach
+/// ([`grid_reach`], `reaches`) of another member's grid. Reloading the page
+/// for each isolation is what costs (design §4.6, 埋め込み画像の一覧), and
+/// side-by-side images such as the tiles of a map then share one.
+fn apart_groups(frames: &[RectPt], reaches: &[RectPt]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for i in 0..frames.len() {
+        let apart =
+            |j: &usize| !overlaps(&reaches[i], &frames[*j]) && !overlaps(&reaches[*j], &frames[i]);
+        match groups.iter_mut().find(|group| group.iter().all(apart)) {
+            Some(group) => group.push(i),
+            None => groups.push(vec![i]),
+        }
+    }
+    groups
 }
 
 /// How the stored pixels of an image sit in the shown page.
@@ -657,7 +736,8 @@ fn photo_grid_matrix(
     Some(then(then(display_to_pixel, to_output), inset))
 }
 
-/// A page with everything but one image removed (design §4.6, 写真だけを書き出す).
+/// A page with everything but the images at `paths` removed (design §4.6,
+/// 写真だけを書き出す). Each path is a [`PlacedImage::path`].
 ///
 /// The page is loaded again so that the open one stays whole. Its content
 /// regeneration is stopped before anything is removed: otherwise
@@ -666,48 +746,80 @@ fn photo_grid_matrix(
 fn isolated_page<'a>(
     doc: &'a PdfDocument<'_>,
     page_number: u32,
-    path: &[usize],
+    paths: &[&[usize]],
 ) -> Result<PdfPage<'a>, Response> {
     let mut page = load_page(doc, page_number)?;
     page.set_content_regeneration_strategy(PdfPageContentRegenerationStrategy::Manual);
-    let failed = |e: pdfium_render::prelude::PdfiumError| {
-        error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}")))
-    };
     // pdfium looks up the object to remove from the front of the list, so a
     // removal is cheap only near the front; removing from the back would take
-    // time in the square of the object count. What comes before the kept
-    // object goes from index 0, what follows it from index 1.
-    let (keep, count) = (path[0], page.objects().len());
-    for _ in 0..keep {
-        page.objects_mut()
-            .remove_object_at_index(0)
-            .map_err(failed)?;
-    }
-    for _ in keep + 1..count {
-        page.objects_mut()
-            .remove_object_at_index(1)
-            .map_err(failed)?;
-    }
-    // Only the kept object is left, at index 0.
-    let mut parent = page.objects().get(0).map_err(failed)?;
-    for &keep in &path[1..] {
-        let PdfPageObject::XObjectForm(form) = &mut parent else {
-            return Err(error_response(CODE_PDF_OPEN_FAILED, None));
-        };
-        // From the front, as on the page.
-        let count = form.len();
-        for _ in 0..keep {
-            form.remove_object_at_index(0).map_err(failed)?;
+    // time in the square of the object count. Each removal is therefore just
+    // past the objects kept so far.
+    let kept = kept_heads(paths);
+    let count = page.objects().len();
+    let mut position = 0;
+    for index in 0..count {
+        if kept.contains(&index) {
+            position += 1;
+        } else {
+            page.objects_mut()
+                .remove_object_at_index(position)
+                .map_err(removal_failed)?;
         }
-        for _ in keep + 1..count {
-            form.remove_object_at_index(1).map_err(failed)?;
-        }
-        let kept = form.get(0).map_err(failed)?;
-        parent = kept;
     }
-    // `parent` borrows `page`; it must end before `page` is moved out.
-    drop(parent);
+    for (position, &index) in kept.iter().enumerate() {
+        let inner = paths_below(paths, index);
+        if !inner.is_empty() {
+            let mut form = page.objects().get(position).map_err(removal_failed)?;
+            keep_in_form(&mut form, &inner)?;
+        }
+    }
     Ok(page)
+}
+
+/// Removes from the form `object` everything but the images at `paths`,
+/// which are relative to it.
+fn keep_in_form(object: &mut PdfPageObject<'_>, paths: &[&[usize]]) -> Result<(), Response> {
+    let PdfPageObject::XObjectForm(form) = object else {
+        return Err(error_response(CODE_PDF_OPEN_FAILED, None));
+    };
+    // From the front, as on the page.
+    let kept = kept_heads(paths);
+    let count = form.len();
+    let mut position = 0;
+    for index in 0..count {
+        if kept.contains(&index) {
+            position += 1;
+        } else {
+            form.remove_object_at_index(position)
+                .map_err(removal_failed)?;
+        }
+    }
+    for (position, &index) in kept.iter().enumerate() {
+        let inner = paths_below(paths, index);
+        if !inner.is_empty() {
+            let mut child = form.get(position).map_err(removal_failed)?;
+            keep_in_form(&mut child, &inner)?;
+        }
+    }
+    Ok(())
+}
+
+/// The first index of each path, in order and once each.
+fn kept_heads(paths: &[&[usize]]) -> BTreeSet<usize> {
+    paths.iter().map(|path| path[0]).collect()
+}
+
+/// The rest of the paths that start at `index` and go on into a form.
+fn paths_below<'p>(paths: &[&'p [usize]], index: usize) -> Vec<&'p [usize]> {
+    paths
+        .iter()
+        .filter(|path| path[0] == index && path.len() > 1)
+        .map(|path| &path[1..])
+        .collect()
+}
+
+fn removal_failed(e: pdfium_render::prelude::PdfiumError) -> Response {
+    error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}")))
 }
 
 /// What to draw: the page (or the isolated image), into a bitmap of
@@ -792,7 +904,7 @@ pub(crate) fn image_on_top(
         ..
     } = image_grid(&image, check_pixels)?;
 
-    let isolated = isolated_page(doc, page_number, &image.placed.path)?;
+    let isolated = isolated_page(doc, page_number, &[&image.placed.path])?;
     let draw = |page: &PdfPage<'_>, background, annotations| {
         render_rgba(&Draw {
             page,
@@ -861,7 +973,7 @@ pub(crate) fn render_region(
     let photo_only = photo.is_some() && request.photo_only;
     let isolated = match &photo {
         Some(image) if photo_only || own_pixels.is_some() => {
-            Some(isolated_page(doc, request.page, &image.placed.path)?)
+            Some(isolated_page(doc, request.page, &[&image.placed.path])?)
         }
         _ => None,
     };
@@ -995,6 +1107,43 @@ mod tests {
 
         assert!(frame_on_page(place(100.0, 0.0, 10.0, 10.0), 100.0, 100.0).is_none());
         assert!(frame_on_page(place(-50.0, 0.0, 10.0, 10.0), 100.0, 100.0).is_none());
+    }
+
+    fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> RectPt {
+        RectPt { x0, y0, x1, y1 }
+    }
+
+    #[test]
+    fn a_grid_reaches_one_of_its_pixels_beyond_itself() {
+        // Two pixels a point over the frame from (10, 20) to (20, 30).
+        let grid = Grid {
+            width: 20,
+            height: 20,
+            matrix: [2.0, 0.0, 0.0, 2.0, -20.0, -40.0],
+            scaled_down: false,
+        };
+        let reach = grid_reach(&grid).unwrap();
+        assert_eq!(
+            (reach.x0, reach.y0, reach.x1, reach.y1),
+            (9.5, 19.5, 20.5, 30.5)
+        );
+    }
+
+    #[test]
+    fn images_share_a_group_only_out_of_each_others_reach() {
+        let frames = [
+            rect(0.0, 0.0, 10.0, 10.0),
+            // Apart from the first, but by less than a grid pixel.
+            rect(10.5, 0.0, 20.5, 10.0),
+            rect(30.0, 0.0, 40.0, 10.0),
+            // Overlaps the first two.
+            rect(5.0, 5.0, 15.0, 15.0),
+        ];
+        let reaches = frames.map(|f| rect(f.x0 - 1.0, f.y0 - 1.0, f.x1 + 1.0, f.y1 + 1.0));
+        assert_eq!(
+            apart_groups(&frames, &reaches),
+            vec![vec![0, 2], vec![1], vec![3]]
+        );
     }
 
     #[test]
