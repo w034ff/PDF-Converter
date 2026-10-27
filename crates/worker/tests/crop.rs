@@ -1127,7 +1127,17 @@ fn zero_zlib_stream(length: u64) -> Vec<u8> {
 /// A one-page PDF (612 × 792 pt) that draws one black RGB image of
 /// `width` × `height` pixels at each of `placements` (`cm` operands).
 fn blank_image_pdf(width: u32, height: u32, placements: &[Matrix]) -> Vec<u8> {
-    let content: String = placements
+    blank_image_pdf_over("", width, height, placements)
+}
+
+/// [`blank_image_pdf`] with the content stream `underneath` drawn first.
+fn blank_image_pdf_over(
+    underneath: &str,
+    width: u32,
+    height: u32,
+    placements: &[Matrix],
+) -> Vec<u8> {
+    let placed: String = placements
         .iter()
         .map(|m| {
             format!(
@@ -1136,6 +1146,7 @@ fn blank_image_pdf(width: u32, height: u32, placements: &[Matrix]) -> Vec<u8> {
             )
         })
         .collect();
+    let content = format!("{underneath}{placed}");
     let image = zero_zlib_stream(u64::from(width) * u64::from(height) * 3);
     let stream = |entries: &str, data: &[u8]| {
         [
@@ -1319,5 +1330,70 @@ fn a_page_of_a_hundred_small_images_is_listed() {
     println!(
         "PageImages of crop_align.pdf page 1: {:.1} ms",
         started.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
+/// How many times longer `PageImages` may take on a page with twice as many
+/// objects: about 2 when cutting out each image takes time in proportion to
+/// the objects, about 4 when it takes their square.
+const DOUBLED_OBJECTS_MAX_TIME_RATIO: f64 = 3.0;
+
+/// Fifty listed images drawn over `squares` small filled squares, each square
+/// a page object of its own.
+fn images_over_squares_pdf(squares: usize) -> Vec<u8> {
+    let underneath: String = (0..squares)
+        .map(|i| format!("{} {} 3 3 re f\n", (i * 7) % 600, (i * 13) % 780))
+        .collect();
+    let placements: Vec<Matrix> = (0..50)
+        .map(|i| {
+            let (column, row) = (f64::from(i % 10), f64::from(i / 10));
+            [
+                40.0,
+                0.0,
+                0.0,
+                40.0,
+                30.0 + column * 55.0,
+                30.0 + row * 55.0,
+            ]
+        })
+        .collect();
+    blank_image_pdf_over(&underneath, 20, 20, &placements)
+}
+
+/// The shorter of two `PageImages` of page 1, in seconds, after checking that
+/// all fifty images are listed.
+fn page_images_seconds(pdf: &mut TemporaryPdf) -> f64 {
+    (0..2)
+        .map(|_| {
+            let started = std::time::Instant::now();
+            let images = page_images(&mut pdf.worker, 1);
+            let seconds = started.elapsed().as_secs_f64();
+            assert_eq!(images.len(), 50);
+            seconds
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// Run with
+/// `cargo test -p pdfconv-worker --test crop --release -- --ignored --nocapture page_images_time_grows`
+/// to see the times it prints.
+#[test]
+#[ignore = "times PageImages on pages of tens of thousands of objects, which takes a while and depends on the machine"]
+fn page_images_time_grows_in_proportion_to_the_objects() {
+    const SQUARES: usize = 20_000;
+    let mut fewer = TemporaryPdf::open("squares", &images_over_squares_pdf(SQUARES));
+    let mut more = TemporaryPdf::open("more-squares", &images_over_squares_pdf(2 * SQUARES));
+    let (fewer_seconds, more_seconds) = (
+        page_images_seconds(&mut fewer),
+        page_images_seconds(&mut more),
+    );
+    println!(
+        "PageImages of 50 images over {SQUARES} squares: {fewer_seconds:.2} s, over {}: {more_seconds:.2} s",
+        2 * SQUARES
+    );
+    assert!(
+        more_seconds < fewer_seconds * DOUBLED_OBJECTS_MAX_TIME_RATIO,
+        "doubling the objects took {:.1} times as long",
+        more_seconds / fewer_seconds
     );
 }

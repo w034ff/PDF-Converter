@@ -673,12 +673,20 @@ fn isolated_page<'a>(
     let failed = |e: pdfium_render::prelude::PdfiumError| {
         error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}")))
     };
-    for index in (0..page.objects().len()).rev() {
-        if index != path[0] {
-            page.objects_mut()
-                .remove_object_at_index(index)
-                .map_err(failed)?;
-        }
+    // pdfium looks up the object to remove from the front of the list, so a
+    // removal is cheap only near the front; removing from the back would take
+    // time in the square of the object count. What comes before the kept
+    // object goes from index 0, what follows it from index 1.
+    let (keep, count) = (path[0], page.objects().len());
+    for _ in 0..keep {
+        page.objects_mut()
+            .remove_object_at_index(0)
+            .map_err(failed)?;
+    }
+    for _ in keep + 1..count {
+        page.objects_mut()
+            .remove_object_at_index(1)
+            .map_err(failed)?;
     }
     // Only the kept object is left, at index 0.
     let mut parent = page.objects().get(0).map_err(failed)?;
@@ -686,10 +694,13 @@ fn isolated_page<'a>(
         let PdfPageObject::XObjectForm(form) = &mut parent else {
             return Err(error_response(CODE_PDF_OPEN_FAILED, None));
         };
-        for index in (0..form.len()).rev() {
-            if index != keep {
-                form.remove_object_at_index(index).map_err(failed)?;
-            }
+        // From the front, as on the page.
+        let count = form.len();
+        for _ in 0..keep {
+            form.remove_object_at_index(0).map_err(failed)?;
+        }
+        for _ in keep + 1..count {
+            form.remove_object_at_index(1).map_err(failed)?;
         }
         let kept = form.get(0).map_err(failed)?;
         parent = kept;
