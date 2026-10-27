@@ -710,7 +710,7 @@ describe("the list of areas", () => {
 
     openSettings();
     fireEvent.click(
-      screen.getByRole("checkbox", { name: "写真は元の画素で書き出す" }),
+      screen.getByRole("checkbox", { name: "写真は元の画質で書き出す" }),
     );
     expect(rowText(areaRows()[0])).toContain("150 dpi · 417 × 417");
   });

@@ -10,7 +10,7 @@
 | 実装・テスト | Gemini 3.8 | タスクの実装とテスト、PR の作成、レビュー指摘への対応 |
 | オーナー | 利用者 | 判断が必要な事項の決定、GitHub リポジトリの作成、Windows 実機での確認、マージ |
 
-- `docs/requirements.md` と `docs/design.md` を更新するのは設計担当だけ。実装担当は設計どおりに作れない、または設計が曖昧な場合、実装を止めて PR の説明に「設計への質問」として書く。
+- `docs/requirements.md` と `docs/design.md`（機能ごとの `docs/design/` を含む）を更新するのは設計担当だけ。実装担当は設計どおりに作れない、または設計が曖昧な場合、実装を止めて PR の説明に「設計への質問」として書く。
 - 実装担当のコーディング規約は [GEMINI.md](../GEMINI.md)（T00 で SVG Tracer のものを元に作る）。
 - リポジトリはオーナーが GitHub に作る（公開、名前は `PDF-Converter` を想定）。Settings → Advanced Security で **Secret scanning** と **Push protection**、**Dependabot alerts** と **Dependabot security updates** を有効にする。main には SVG Tracer と同じルールセット（PR 必須、両 OS の CI 必須、ブランチが最新であること）を掛ける。
 - 実装担当の環境は新しい crate や npm パッケージを取得できないことがある。その場合、依存の追加は設計担当が小さな PR で先に行う。

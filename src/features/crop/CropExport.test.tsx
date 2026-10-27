@@ -423,7 +423,7 @@ describe("what a running conversion locks", () => {
     expect(screen.getByLabelText("解像度")).toBeDisabled();
     expect(screen.getByRole("button", { name: "WebP" })).toBeDisabled();
     expect(
-      screen.getByRole("checkbox", { name: "写真は元の画素で書き出す" }),
+      screen.getByRole("checkbox", { name: "写真は元の画質で書き出す" }),
     ).toBeDisabled();
     expect(
       screen.getByRole("checkbox", { name: "写真だけを書き出す" }),

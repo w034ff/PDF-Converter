@@ -68,7 +68,7 @@ function savedSettings(calls: ReturnType<typeof mockCropIpc>) {
   return callsOf(calls, "save_settings").map((call) => call.args);
 }
 
-const SUMMARY = "PNG · カラー · 150 dpi · 写真は元の画素";
+const SUMMARY = "PNG · カラー · 150 dpi · 写真は元の画質";
 
 describe("opening and closing", () => {
   it.each([400, 720, 1200])(
@@ -139,7 +139,7 @@ describe("opening and closing", () => {
 
     expect(
       screen.getByText(
-        "PNG · Full color · 150 dpi · Photos at original pixels",
+        "PNG · Full color · 150 dpi · Photos at original quality",
       ),
     ).toBeInTheDocument();
     expect(
@@ -157,7 +157,7 @@ describe("opening and closing", () => {
     fireEvent.click(screen.getByRole("button", { name: /書き出しの設定/ }));
 
     expect(
-      screen.getByText(`JPEG · カラー · 150 dpi · 写真は元の画素 · 写真だけ`),
+      screen.getByText(`JPEG · カラー · 150 dpi · 写真は元の画質 · 写真だけ`),
     ).toBeInTheDocument();
   });
 });
@@ -171,11 +171,11 @@ describe("the fields", () => {
     expect(screen.getByRole("group", { name: "色" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "解像度" })).toHaveValue("150");
     const native = screen.getByRole("checkbox", {
-      name: "写真は元の画素で書き出す",
+      name: "写真は元の画質で書き出す",
     });
     expect(native).toBeChecked();
     expect(
-      screen.getByText("解像度によらず、元の画素の数で書き出します"),
+      screen.getByText("解像度によらず、元の画質のまま書き出します"),
     ).toBeInTheDocument();
     const only = screen.getByRole("checkbox", { name: "写真だけを書き出す" });
     expect(only).not.toBeChecked();
@@ -208,7 +208,7 @@ describe("the fields", () => {
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("combobox", { name: "解像度" })).toHaveValue("300");
     expect(
-      screen.getByRole("checkbox", { name: "写真は元の画素で書き出す" }),
+      screen.getByRole("checkbox", { name: "写真は元の画質で書き出す" }),
     ).not.toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "写真だけを書き出す" }),
@@ -271,7 +271,7 @@ describe("saving", () => {
     });
     await flush();
     fireEvent.click(
-      screen.getByRole("checkbox", { name: "写真は元の画素で書き出す" }),
+      screen.getByRole("checkbox", { name: "写真は元の画質で書き出す" }),
     );
     await flush();
     fireEvent.click(
