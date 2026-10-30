@@ -31,21 +31,23 @@ use crate::items::{
     kind_of_extension, open_in_pool, pdf_thumbnail, request_on_pdf, unexpected_response,
 };
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload};
+use crate::organize::{self, OrganizeDropped};
 use crate::worker_pool::{WorkerPool, WorkerPoolError};
 
 /// Name of the event that carries the candidates of one page of
 /// `start_detect_all` (design §7.2).
 pub const LAYOUT_PAGE_EVENT: &str = "layout-page";
 
-/// Where the next drop goes: the lists of the other tabs or the crop tab
-/// (design §6.10). It is a value of its own rather than a flag so that a third
-/// place can be added.
+/// Where the next drop goes: the lists of the other tabs, the crop tab or the
+/// organize tab (design §6.10, organize §4). It is a value of its own rather
+/// than a flag so that another place can be added.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum DropTarget {
     #[default]
     Lists,
     Crop,
+    Organize,
 }
 
 /// A PDF of the crop tab (design §7.1). When `error` is set, the PDF could not
@@ -154,6 +156,7 @@ pub struct CropDropped {
 pub enum Dropped {
     Items(ItemsDropped),
     Crop(CropDropped),
+    Organize(OrganizeDropped),
 }
 
 fn rect_array(rect: &RectPt) -> [f64; 4] {
@@ -925,5 +928,6 @@ pub fn handle_drop(state: &AppState, paths: &[PathBuf]) -> Dropped {
     match state.crop.drop_target() {
         DropTarget::Lists => Dropped::Items(add_dropped(state, paths)),
         DropTarget::Crop => Dropped::Crop(crop_dropped(state, paths)),
+        DropTarget::Organize => Dropped::Organize(organize::add_dropped(state, paths)),
     }
 }

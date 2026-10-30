@@ -11,9 +11,10 @@ use pdf_converter_lib::jobs::{
     PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice,
 };
 use pdf_converter_lib::settings::{
-    CropOptions, ImagesToPdfOptions, Language, OutputKind, OutputMode, PdfToImagesOptions,
-    SETTINGS_FILE_NAME, SettingsFile, SettingsInput, apply_picked_dir, dir_label,
-    get_settings_internal, load_settings, restore_settings, save_settings_to_dir,
+    CropOptions, ImagesToPdfOptions, Language, OrganizeOptions, OrganizeOutput, OutputKind,
+    OutputMode, PdfToImagesOptions, SETTINGS_FILE_NAME, SettingsFile, SettingsInput,
+    apply_picked_dir, dir_label, get_settings_internal, load_settings, restore_settings,
+    save_settings_to_dir,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_worker::{DEFAULT_RENDER_DPI, RENDER_DPI_MAX, RENDER_DPI_MIN};
@@ -76,6 +77,11 @@ fn customized(images_dir: &Path, pdfs_dir: &Path) -> Value {
             "dpi": 72,
             "photoNative": false,
             "photoOnly": true,
+            "outputDir": null,
+        },
+        "organize": {
+            "output": "split",
+            "encrypt": true,
             "outputDir": null,
         },
     })
@@ -157,6 +163,14 @@ fn the_defaults_are_those_of_the_design() {
         }
     );
     assert_eq!(file.crop.output_dir, None);
+    assert_eq!(
+        file.organize.options,
+        OrganizeOptions {
+            output: OrganizeOutput::Single,
+            encrypt: false,
+        }
+    );
+    assert_eq!(file.organize.output_dir, None);
 }
 
 #[test]
@@ -980,6 +994,11 @@ fn get_settings_has_no_path() {
                 "photoOnly": true,
                 "outputDir": null,
             },
+            "organize": {
+                "output": "split",
+                "encrypt": true,
+                "outputDir": null,
+            },
         })
     );
     assert!(!json.to_string().contains(temp.path().to_str().unwrap()));
@@ -996,6 +1015,7 @@ fn get_settings_of_the_defaults_has_no_folders() {
             "imagesToPdf": { "output": "merge", "pageSize": "fit", "orientation": "auto", "pdfA": false, "encrypt": false, "outputDir": null },
             "pdfToImages": { "format": "png", "colorMode": "color", "dpi": 150, "outputDir": null },
             "crop": { "format": "png", "colorMode": "color", "dpi": 150, "photoNative": true, "photoOnly": false, "outputDir": null },
+            "organize": { "output": "single", "encrypt": false, "outputDir": null },
         })
     );
 }
@@ -1620,4 +1640,253 @@ fn a_folder_that_is_gone_is_cleared_for_crops_without_touching_the_others() {
     let loaded = load_settings(&config_dir);
     assert_eq!(loaded.crop.output_dir, None);
     assert_eq!(loaded.images_to_pdf.output_dir, Some(images_dir));
+}
+
+// ---- The organize settings (design §6.7, organize §4) ----
+
+fn organize_options() -> OrganizeOptions {
+    OrganizeOptions {
+        output: OrganizeOutput::Split,
+        encrypt: true,
+    }
+}
+
+#[test]
+fn a_file_without_organize_gives_its_defaults_and_the_rest_stays() {
+    let temp = TempDir::new().expect("temp dir");
+    let images_dir = new_dir(temp.path(), "images-out");
+    let pdfs_dir = new_dir(temp.path(), "pdfs-out");
+    let mut json = customized(&images_dir, &pdfs_dir);
+    json.as_object_mut().expect("an object").remove("organize");
+    write_settings(temp.path(), &json);
+
+    let loaded = load_settings(temp.path());
+
+    assert_eq!(loaded.schema_version, 1);
+    assert_eq!(loaded.organize, defaults().organize);
+    assert_eq!(loaded.language, Some(Language::En));
+    assert_eq!(loaded.pdf_to_images.options.dpi, 300);
+    assert_eq!(loaded.images_to_pdf.output_dir, Some(images_dir));
+}
+
+#[test]
+fn the_organize_items_are_read_from_the_file() {
+    let temp = TempDir::new().expect("temp dir");
+    let out = new_dir(temp.path(), "organize-out");
+    let mut json = customized(temp.path(), temp.path());
+    json["organize"]["outputDir"] = json!(out);
+    write_settings(temp.path(), &json);
+
+    let loaded = load_settings(temp.path());
+
+    assert_eq!(loaded.organize.options, organize_options());
+    assert_eq!(loaded.organize.output_dir, Some(out));
+}
+
+#[test]
+fn an_unknown_or_mistyped_organize_item_resets_only_that_item() {
+    assert_only_resets(
+        |json| json["organize"]["output"] = json!("parts"),
+        |file| file.organize.options.output = OrganizeOutput::Single,
+    );
+    assert_only_resets(
+        |json| json["organize"]["output"] = json!(1),
+        |file| file.organize.options.output = OrganizeOutput::Single,
+    );
+    assert_only_resets(
+        |json| json["organize"]["encrypt"] = json!("yes"),
+        |file| file.organize.options.encrypt = false,
+    );
+    assert_only_resets(
+        |json| json["organize"]["outputDir"] = json!(7),
+        |file| file.organize.output_dir = None,
+    );
+}
+
+#[test]
+fn a_missing_organize_item_resets_only_that_item() {
+    for (key, reset) in [
+        (
+            "output",
+            (|file: &mut SettingsFile| file.organize.options.output = OrganizeOutput::Single)
+                as fn(&mut SettingsFile),
+        ),
+        ("encrypt", |file| file.organize.options.encrypt = false),
+        ("outputDir", |file| file.organize.output_dir = None),
+    ] {
+        assert_only_resets(
+            |json| {
+                json["organize"]
+                    .as_object_mut()
+                    .expect("a section")
+                    .remove(key);
+            },
+            reset,
+        );
+    }
+}
+
+#[test]
+fn a_malformed_organize_section_resets_only_that_section() {
+    assert_only_resets(
+        |json| json["organize"] = json!("split"),
+        |file| file.organize = defaults().organize,
+    );
+}
+
+#[test]
+fn a_missing_or_relative_organize_folder_resets_only_the_folder() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    fs::create_dir(&config_dir).expect("creating the settings folder");
+    for folder in [
+        temp.path().join("gone").to_string_lossy().into_owned(),
+        "src".to_owned(),
+    ] {
+        let mut json = customized(temp.path(), temp.path());
+        json["organize"]["outputDir"] = json!(folder);
+        write_settings(&config_dir, &json);
+
+        let loaded = load_settings(&config_dir);
+
+        assert_eq!(loaded.organize.output_dir, None, "{folder}");
+        assert_eq!(loaded.organize.options, organize_options(), "{folder}");
+    }
+}
+
+#[test]
+fn the_state_gets_the_organize_folder_if_it_exists_at_startup() {
+    let temp = TempDir::new().expect("temp dir");
+    let out = new_dir(temp.path(), "organize-out");
+    let config_dir = new_dir(temp.path(), "config");
+    write_settings(
+        &config_dir,
+        &json!({ "schemaVersion": 1, "organize": { "outputDir": out } }),
+    );
+    let state = state();
+
+    restore_settings(&state, &config_dir);
+
+    assert_eq!(*state.organize_output_dir.lock().unwrap(), Some(out));
+    let settings = get_settings_internal(&state);
+    assert_eq!(
+        settings.organize.output_dir.map(|dir| dir.dir_label),
+        Some("organize-out".to_owned())
+    );
+
+    // A folder that is gone is "not chosen".
+    write_settings(
+        &config_dir,
+        &json!({ "schemaVersion": 1, "organize": { "outputDir": temp.path().join("gone") } }),
+    );
+    let state = self::state();
+    restore_settings(&state, &config_dir);
+    assert_eq!(*state.organize_output_dir.lock().unwrap(), None);
+    assert_eq!(get_settings_internal(&state).organize.output_dir, None);
+}
+
+#[test]
+fn get_settings_of_the_organize_part_has_the_options_and_a_label() {
+    let temp = TempDir::new().expect("temp dir");
+    let out = new_dir(temp.path(), "organize-out");
+    let config_dir = new_dir(temp.path(), "config");
+    let mut json = customized(temp.path(), temp.path());
+    json["organize"]["outputDir"] = json!(out);
+    write_settings(&config_dir, &json);
+    let state = state();
+    restore_settings(&state, &config_dir);
+
+    let json = serde_json::to_value(get_settings_internal(&state).organize).expect("serializing");
+
+    assert_eq!(
+        json,
+        json!({ "output": "split", "encrypt": true, "outputDir": { "dirLabel": "organize-out" } })
+    );
+}
+
+#[test]
+fn a_picked_organize_folder_goes_to_the_state_and_the_file_and_leaves_the_others() {
+    let temp = TempDir::new().expect("temp dir");
+    let images_dir = new_dir(temp.path(), "for-pdfs");
+    let out = new_dir(temp.path(), "organize-out");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    let _ = apply_picked_dir(&state, OutputKind::ImagesToPdf, images_dir.clone());
+
+    let (label, persisted) = apply_picked_dir(&state, OutputKind::Organize, out.clone());
+
+    assert_eq!(label.dir_label, "organize-out");
+    assert_eq!(persisted, Ok(()));
+    assert_eq!(
+        *state.organize_output_dir.lock().unwrap(),
+        Some(out.clone())
+    );
+    assert_eq!(
+        *state.images_output_dir.lock().unwrap(),
+        Some(images_dir.clone())
+    );
+    assert_eq!(*state.crop_output_dir.lock().unwrap(), None);
+    let loaded = load_settings(&config_dir);
+    assert_eq!(loaded.organize.output_dir, Some(out));
+    assert_eq!(loaded.images_to_pdf.output_dir, Some(images_dir));
+    assert_eq!(loaded.crop.output_dir, None);
+}
+
+#[test]
+fn an_organize_folder_that_is_gone_is_cleared_without_touching_the_others() {
+    let temp = TempDir::new().expect("temp dir");
+    let crop_dir = new_dir(temp.path(), "crop-out");
+    let out = new_dir(temp.path(), "organize-out");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+    let _ = apply_picked_dir(&state, OutputKind::Crop, crop_dir.clone());
+    let _ = apply_picked_dir(&state, OutputKind::Organize, out);
+
+    pdf_converter_lib::settings::clear_output_dir(&state, OutputKind::Organize).expect("clearing");
+
+    assert_eq!(*state.organize_output_dir.lock().unwrap(), None);
+    assert_eq!(
+        *state.crop_output_dir.lock().unwrap(),
+        Some(crop_dir.clone())
+    );
+    let loaded = load_settings(&config_dir);
+    assert_eq!(loaded.organize.output_dir, None);
+    assert_eq!(loaded.crop.output_dir, Some(crop_dir));
+}
+
+#[test]
+fn save_settings_keeps_the_organize_options_and_folder_as_they_were_read() {
+    let temp = TempDir::new().expect("temp dir");
+    let out = new_dir(temp.path(), "organize-out");
+    let config_dir = new_dir(temp.path(), "config");
+    let mut json = customized(temp.path(), temp.path());
+    json["organize"]["outputDir"] = json!(out);
+    write_settings(&config_dir, &json);
+    let state = state();
+    restore_settings(&state, &config_dir);
+
+    save(&state, &input()).expect("saving");
+
+    let loaded = load_settings(&config_dir);
+    assert_eq!(loaded.organize.options, organize_options());
+    assert_eq!(loaded.organize.output_dir, Some(out.clone()));
+    assert_eq!(state.settings.file().organize, loaded.organize);
+    assert_eq!(*state.organize_output_dir.lock().unwrap(), Some(out));
+    // What `save_settings` took is there too.
+    assert_eq!(loaded.language, Some(Language::En));
+    assert_eq!(loaded.crop.options, crop_options());
+}
+
+#[test]
+fn save_settings_keeps_the_organize_defaults_of_a_file_that_had_none() {
+    let temp = TempDir::new().expect("temp dir");
+    let config_dir = temp.path().join("config");
+    let state = state();
+    restore_settings(&state, &config_dir);
+
+    save(&state, &input()).expect("saving");
+
+    assert_eq!(load_settings(&config_dir).organize, defaults().organize);
 }

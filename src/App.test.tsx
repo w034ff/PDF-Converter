@@ -49,6 +49,7 @@ const SAVED_SETTINGS: Settings = {
     photoOnly: false,
     outputDir: null,
   },
+  organize: { output: "single", encrypt: false, outputDir: null },
 };
 
 /** What `save_settings` carries for the crop tab until it is touched. */

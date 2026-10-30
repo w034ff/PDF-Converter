@@ -41,7 +41,7 @@ const OUTPUT_FILE_MODE: u32 = 0o666;
 /// `tempfile` creates it readable by its owner only, and the rename keeps that.
 /// Unix therefore asks for [`OUTPUT_FILE_MODE`] instead; Windows files have no
 /// such mode.
-pub(super) fn create_output_temp(output_dir: &Path) -> std::io::Result<tempfile::NamedTempFile> {
+pub(crate) fn create_output_temp(output_dir: &Path) -> std::io::Result<tempfile::NamedTempFile> {
     let mut builder = tempfile::Builder::new();
     builder.prefix(".");
     #[cfg(unix)]
@@ -107,6 +107,18 @@ pub fn save_atomic(
     temp.flush()
         .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
 
+    persist_unique(temp, output_dir, initial_output_name, used_names_lower)
+}
+
+/// Gives the finished temporary file `temp` the name `initial_output_name` in `output_dir`,
+/// without replacing a file, as [`save_atomic`] does after it has written the bytes: a name that
+/// is taken at that moment gets the next number (design §6.4, §6.5).
+pub fn persist_unique(
+    mut temp: tempfile::NamedTempFile,
+    output_dir: &Path,
+    initial_output_name: &str,
+    used_names_lower: &Mutex<HashSet<String>>,
+) -> Result<String, IpcError> {
     let (stem, ext) = split_stem_and_ext(initial_output_name);
     let mut candidate = initial_output_name.to_string();
     let mut suffix_num = 0usize;

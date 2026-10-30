@@ -13,7 +13,8 @@ pub use options::{
     PageOrientationChoice, PageSizeChoice, PdfOutput, RenderColorChoice, RenderFormatChoice,
     output_password, pdf_conformance,
 };
-pub use output::{check_output_dir, list_existing_files, save_atomic};
+pub(crate) use output::create_output_temp;
+pub use output::{check_output_dir, list_existing_files, persist_unique, save_atomic};
 pub use pdfs_to_images::{
     CheckPageRangeResult, check_page_range_internal, run_pdfs_to_images,
     start_pdfs_to_images_internal,
@@ -76,6 +77,10 @@ pub struct JobItemPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub failed_pages: Option<Vec<u32>>,
+    /// The organize PDF an output failed on (design organize §4); `None` in the other jobs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub source_id: Option<u64>,
 }
 
 /// Final summary emitted via `job-finished` event (design §7.2).

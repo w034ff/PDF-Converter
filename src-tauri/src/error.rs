@@ -28,11 +28,12 @@ pub enum ErrorCode {
     OutputDirNotWritable,
     CmykNotAllowedInPdfA,
     LayoutUnavailable,
+    OutputTooLarge,
 }
 
 impl ErrorCode {
     /// Every code, so that [`ErrorCode::from_name`] cannot miss one.
-    const ALL: [Self; 19] = [
+    const ALL: [Self; 20] = [
         Self::UnsupportedFormat,
         Self::DecodeFailed,
         Self::PdfOpenFailed,
@@ -52,6 +53,7 @@ impl ErrorCode {
         Self::OutputDirNotWritable,
         Self::CmykNotAllowedInPdfA,
         Self::LayoutUnavailable,
+        Self::OutputTooLarge,
     ];
 
     /// The name of the code as it appears in design §6.6.
@@ -76,6 +78,7 @@ impl ErrorCode {
             Self::OutputDirNotWritable => "OutputDirNotWritable",
             Self::CmykNotAllowedInPdfA => "CmykNotAllowedInPdfA",
             Self::LayoutUnavailable => "LayoutUnavailable",
+            Self::OutputTooLarge => "OutputTooLarge",
         }
     }
 

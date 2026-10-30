@@ -3,6 +3,7 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import {
   addImages,
   activateCropPdf,
+  addOrganizePdfs,
   addPdfs,
   cancelJob,
   checkOnTop,
@@ -31,17 +32,23 @@ import {
   onJobItem,
   onJobProgress,
   onLayoutPage,
+  onOrganizeDropped,
   openCropPdf,
+  ORGANIZE_DROPPED_EVENT,
   pickOutputDir,
   removeItems,
+  removeOrganizePdfs,
   saveMergedPdf,
+  saveOrganizedPdf,
   saveSettings,
   setDropTarget,
   startCropExport,
   startDetectAll,
   startImagesToPdfs,
+  startOrganizeSplit,
   startPdfsToImages,
   unlockCropPdf,
+  unlockOrganizePdf,
   unlockPdf,
   type AddResult,
   type Candidate,
@@ -54,6 +61,11 @@ import {
   type JobItemPayload,
   type JobProgressPayload,
   type LayoutPagePayload,
+  type OrganizeAdded,
+  type OrganizeDropped,
+  type OrganizePageInput,
+  type OrganizePdf,
+  type OrganizeUnlocked,
   type PageImage,
   type PageSizeChoice,
   type PdfItem,
@@ -63,6 +75,19 @@ import {
 } from ".";
 
 const NO_SKIPS = { unsupported: 0, folders: 0, duplicates: 0 };
+
+const ORGANIZE_PDF: OrganizePdf = {
+  id: 5,
+  name: "a.pdf",
+  pageCount: 2,
+  pages: [
+    { widthPt: 595.28, heightPt: 841.89 },
+    { widthPt: 841.89, heightPt: 595.28 },
+  ],
+  fileBytes: 12345,
+  encrypted: false,
+  error: null,
+};
 
 describe("ipc", () => {
   afterEach(() => clearMocks());
@@ -251,9 +276,11 @@ describe("ipc", () => {
 
       await setDropTarget("crop");
       await setDropTarget("lists");
+      await setDropTarget("organize");
       expect(calls).toEqual([
         ["set_drop_target", { target: "crop" }],
         ["set_drop_target", { target: "lists" }],
+        ["set_drop_target", { target: "organize" }],
       ]);
     });
 
@@ -401,6 +428,7 @@ describe("ipc", () => {
           photoOnly: false,
           outputDir: null,
         },
+        organize: { output: "single", encrypt: false, outputDir: null },
       };
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
@@ -519,6 +547,19 @@ describe("ipc", () => {
 
       expect(await pickOutputDir("crop")).toEqual({ dirLabel: "crops" });
       expect(calls).toEqual([["pick_output_dir", { kind: "crop" }]]);
+    });
+
+    it("asks pick_output_dir for the organize folder", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return { dirLabel: "organized" };
+      });
+
+      expect(await pickOutputDir("organize")).toEqual({
+        dirLabel: "organized",
+      });
+      expect(calls).toEqual([["pick_output_dir", { kind: "organize" }]]);
     });
 
     it("returns null from pick_output_dir when the dialog was cancelled", async () => {
@@ -679,11 +720,143 @@ describe("ipc", () => {
     });
   });
 
+  describe("organize commands", () => {
+    it("asks add_organize_pdfs for the source and returns null when cancelled", async () => {
+      const added: OrganizeAdded = {
+        added: [ORGANIZE_PDF],
+        skipped: { unsupported: 1, folders: 0, duplicates: 2 },
+      };
+      const calls: unknown[] = [];
+      let answer: OrganizeAdded | null = added;
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return answer;
+      });
+
+      expect(await addOrganizePdfs("files")).toEqual(added);
+      answer = null;
+      expect(await addOrganizePdfs("folder")).toBeNull();
+      expect(calls).toEqual([
+        ["add_organize_pdfs", { source: "files" }],
+        ["add_organize_pdfs", { source: "folder" }],
+      ]);
+    });
+
+    it("sends only IDs to remove_organize_pdfs", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await removeOrganizePdfs([5, 6]);
+      expect(calls).toEqual([["remove_organize_pdfs", { ids: [5, 6] }]]);
+    });
+
+    it("sends id and password to unlock_organize_pdf and returns the PDFs", async () => {
+      const unlocked: OrganizeUnlocked = {
+        items: [{ ...ORGANIZE_PDF, encrypted: true }],
+      };
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return unlocked;
+      });
+
+      expect(await unlockOrganizePdf(5, "secret")).toEqual(unlocked);
+      expect(calls).toEqual([
+        ["unlock_organize_pdf", { id: 5, password: "secret" }],
+      ]);
+    });
+
+    it("rejects unlock_organize_pdf with the PasswordProtected Rust returned", async () => {
+      mockIPC(() => {
+        throw { code: "PasswordProtected", detail: null };
+      });
+
+      await expect(unlockOrganizePdf(5, "wrong")).rejects.toEqual({
+        code: "PasswordProtected",
+        detail: null,
+      });
+    });
+
+    it("sends the pages and the password to save_organized_pdf", async () => {
+      const pages: OrganizePageInput[] = [
+        { id: 5, page: 2, rotation: 90 },
+        { id: 6, page: 1, rotation: 0 },
+      ];
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return { savedName: "a.pdf" };
+      });
+
+      expect(await saveOrganizedPdf(pages, "secret")).toEqual({
+        savedName: "a.pdf",
+      });
+      expect(calls).toEqual([
+        ["save_organized_pdf", { pages, password: "secret" }],
+      ]);
+    });
+
+    it("tells a cancelled dialog from an organize that saved no PDF", async () => {
+      mockIPC(() => null);
+      expect(await saveOrganizedPdf([], null)).toBeNull();
+
+      clearMocks();
+      mockIPC(() => ({ savedName: null }));
+      expect(await saveOrganizedPdf([], null)).toEqual({ savedName: null });
+    });
+
+    it("rejects save_organized_pdf with the OutputTooLarge Rust returned", async () => {
+      mockIPC(() => {
+        throw { code: "OutputTooLarge", detail: "613 MB / 512 MB" };
+      });
+
+      await expect(saveOrganizedPdf([], null)).rejects.toEqual({
+        code: "OutputTooLarge",
+        detail: "613 MB / 512 MB",
+      });
+    });
+
+    it("sends the parts and the password to start_organize_split", async () => {
+      const parts: OrganizePageInput[][] = [
+        [{ id: 5, page: 1, rotation: 0 }],
+        [
+          { id: 5, page: 2, rotation: 180 },
+          { id: 6, page: 3, rotation: 270 },
+        ],
+      ];
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+
+      await startOrganizeSplit(parts, null);
+      expect(calls).toEqual([
+        ["start_organize_split", { parts, password: null }],
+      ]);
+    });
+
+    it("rejects start_organize_split with InvalidParams as Rust returned it", async () => {
+      mockIPC(() => {
+        throw { code: "InvalidParams", detail: null };
+      });
+
+      await expect(startOrganizeSplit([], null)).rejects.toEqual({
+        code: "InvalidParams",
+        detail: null,
+      });
+    });
+  });
+
   describe("errors", () => {
     it("knows the codes of design §6.6", () => {
       expect(isErrorCode("PasswordProtected")).toBe(true);
       expect(isErrorCode("ConversionRunning")).toBe(true);
       expect(isErrorCode("LayoutUnavailable")).toBe(true);
+      expect(isErrorCode("OutputTooLarge")).toBe(true);
       expect(isErrorCode("PdfiumUnavailable")).toBe(false);
       expect(isErrorCode("toString")).toBe(false);
       expect(isErrorCode(1)).toBe(false);
@@ -741,6 +914,7 @@ describe("ipc", () => {
           photoOnly: false,
           outputDir: null,
         },
+        organize: { output: "single", encrypt: false, outputDir: null },
       };
       expect(isSettings(valid)).toBe(true);
 
@@ -942,6 +1116,22 @@ describe("ipc", () => {
       expect(isSettings(withCrop({ photoNative: "true" }))).toBe(false);
       expect(isSettings(withCrop({ photoOnly: 0 }))).toBe(false);
       expect(isSettings(withCrop({ outputDir: "crops" }))).toBe(false);
+
+      // The organize part must be there and is checked too
+      const withOrganize = (change: Record<string, unknown>) => ({
+        ...valid,
+        organize: { ...valid.organize, ...change },
+      });
+      expect(isSettings(withOrganize({ output: "split" }))).toBe(true);
+      expect(isSettings(withOrganize({ encrypt: true }))).toBe(true);
+      expect(isSettings(withOrganize({ outputDir: { dirLabel: "out" } }))).toBe(
+        true,
+      );
+      expect(isSettings({ ...valid, organize: undefined })).toBe(false);
+      expect(isSettings({ ...valid, organize: null })).toBe(false);
+      expect(isSettings(withOrganize({ output: "merge" }))).toBe(false);
+      expect(isSettings(withOrganize({ encrypt: "true" }))).toBe(false);
+      expect(isSettings(withOrganize({ outputDir: "out" }))).toBe(false);
     });
 
     describe("isPageSizePt", () => {
@@ -1067,6 +1257,42 @@ describe("ipc", () => {
       expect(received).toEqual([payload]);
     });
 
+    it("passes the payload of organize-dropped to the handler", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: OrganizeDropped[] = [];
+      const unlisten = await onOrganizeDropped((payload) => {
+        received.push(payload);
+      });
+      const payload: OrganizeDropped = {
+        added: [ORGANIZE_PDF],
+        skipped: { unsupported: 1, folders: 1, duplicates: 0 },
+        error: null,
+      };
+
+      await emit(ORGANIZE_DROPPED_EVENT, payload);
+      unlisten();
+      await emit(ORGANIZE_DROPPED_EVENT, payload);
+
+      expect(received).toEqual([payload]);
+    });
+
+    it("keeps organize-dropped apart from items-dropped", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: ItemsDropped[] = [];
+      const unlisten = await onItemsDropped((payload) => {
+        received.push(payload);
+      });
+
+      await emit(ORGANIZE_DROPPED_EVENT, {
+        added: [],
+        skipped: NO_SKIPS,
+        error: null,
+      });
+      unlisten();
+
+      expect(received).toEqual([]);
+    });
+
     it("keeps crop-dropped apart from items-dropped", async () => {
       mockIPC(() => undefined, { shouldMockEvents: true });
       const received: ItemsDropped[] = [];
@@ -1120,6 +1346,27 @@ describe("ipc", () => {
       expect(received).toEqual([payload]);
       expect(received[0].error).toBeUndefined();
       expect(received[0].failedPages).toBeUndefined();
+    });
+
+    it("passes sourceId of a job-item that failed on a PDF", async () => {
+      mockIPC(() => undefined, { shouldMockEvents: true });
+      const received: JobItemPayload[] = [];
+      const unlisten = await onJobItem((payload) => {
+        received.push(payload);
+      });
+      const payload: JobItemPayload = {
+        id: 2,
+        status: "failed",
+        outputs: [],
+        error: { code: "PdfOpenFailed", detail: null },
+        sourceId: 5,
+      };
+
+      await emit(JOB_ITEM_EVENT, payload);
+      unlisten();
+
+      expect(received).toEqual([payload]);
+      expect(received[0].sourceId).toBe(5);
     });
 
     it("handles job-item events with error and failedPages", async () => {

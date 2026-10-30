@@ -241,6 +241,7 @@ where
                         outputs: Vec::new(),
                         error: Some(err),
                         failed_pages: None,
+                        source_id: None,
                     });
                     continue;
                 }
@@ -254,6 +255,7 @@ where
                         outputs: Vec::new(),
                         error: None,
                         failed_pages: None,
+                        source_id: None,
                     });
                     continue;
                 }
@@ -268,6 +270,7 @@ where
                             outputs: Vec::new(),
                             error: Some(IpcError::from(&err)),
                             failed_pages: None,
+                            source_id: None,
                         });
                         continue;
                     }
@@ -283,6 +286,7 @@ where
                         outputs: Vec::new(),
                         error: Some(IpcError::from(&err)),
                         failed_pages: None,
+                        source_id: None,
                     });
                     continue;
                 }
@@ -389,6 +393,7 @@ where
                         // Pages that failed before the cancel still count as
                         // reached, so the screen must be told of them.
                         failed_pages: (!failed_pages.is_empty()).then_some(failed_pages),
+                        source_id: None,
                     });
                 } else if failed_pages.is_empty() && outputs.len() == task.pages.len() {
                     succeeded_count.fetch_add(1, Ordering::SeqCst);
@@ -398,6 +403,7 @@ where
                         outputs,
                         error: None,
                         failed_pages: None,
+                        source_id: None,
                     });
                 } else if !outputs.is_empty() {
                     // Partial failure: at least one page succeeded, some failed
@@ -408,6 +414,7 @@ where
                         outputs,
                         error: last_error,
                         failed_pages: Some(failed_pages),
+                        source_id: None,
                     });
                 } else {
                     failed_count.fetch_add(1, Ordering::SeqCst);
@@ -417,6 +424,7 @@ where
                         outputs: Vec::new(),
                         error: last_error,
                         failed_pages: Some(failed_pages),
+                        source_id: None,
                     });
                 }
             }

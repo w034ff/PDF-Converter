@@ -32,6 +32,8 @@ const DEFAULT_FORMAT: RenderFormatChoice = RenderFormatChoice::Png;
 const DEFAULT_RENDER_COLOR_MODE: RenderColorChoice = RenderColorChoice::Color;
 const DEFAULT_CROP_PHOTO_NATIVE: bool = true;
 const DEFAULT_CROP_PHOTO_ONLY: bool = false;
+const DEFAULT_ORGANIZE_OUTPUT: OrganizeOutput = OrganizeOutput::Single;
+const DEFAULT_ORGANIZE_ENCRYPT: bool = false;
 
 /// The UI language the user chose (design §6.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -49,6 +51,14 @@ pub enum OutputMode {
     Each,
 }
 
+/// Whether an organize makes one PDF or one PDF for each part (design organize §4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum OrganizeOutput {
+    Single,
+    Split,
+}
+
 /// The conversion an output folder belongs to (design §6.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +66,7 @@ pub enum OutputKind {
     ImagesToPdf,
     PdfToImages,
     Crop,
+    Organize,
 }
 
 /// What the frontend may know of an output folder: its name, never its path
@@ -98,6 +109,16 @@ pub struct CropOptions {
     pub photo_native: bool,
     /// Whether a photo range leaves out everything but the photo.
     pub photo_only: bool,
+}
+
+/// The organize options the user can change (design §6.7). `save_settings` does not take them
+/// yet: the screen sends them together with the rest of its state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeOptions {
+    pub output: OrganizeOutput,
+    /// Whether the PDFs get a password. The password itself is never saved (design §6.9).
+    pub encrypt: bool,
 }
 
 /// Argument of `save_settings`: [`Settings`] without the folders, which only
@@ -166,6 +187,15 @@ pub struct CropSettings {
     pub output_dir: Option<OutputDirLabel>,
 }
 
+/// The organize part of [`Settings`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeSettings {
+    pub output: OrganizeOutput,
+    pub encrypt: bool,
+    pub output_dir: Option<OutputDirLabel>,
+}
+
 /// Answer of `get_settings` (design §6.7). It holds no path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -174,6 +204,7 @@ pub struct Settings {
     pub images_to_pdf: ImagesToPdfSettings,
     pub pdf_to_images: PdfToImagesSettings,
     pub crop: CropSettings,
+    pub organize: OrganizeSettings,
 }
 
 /// The "images to PDF" part of the settings file.
@@ -206,6 +237,16 @@ pub struct CropFile {
     pub output_dir: Option<PathBuf>,
 }
 
+/// The organize part of the settings file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeFile {
+    #[serde(flatten)]
+    pub options: OrganizeOptions,
+    #[serde(serialize_with = "serialize_dir")]
+    pub output_dir: Option<PathBuf>,
+}
+
 /// What `settings.json` holds (design §6.7). Unlike [`Settings`] it has the
 /// folders' paths.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -216,6 +257,7 @@ pub struct SettingsFile {
     pub images_to_pdf: ImagesToPdfFile,
     pub pdf_to_images: PdfToImagesFile,
     pub crop: CropFile,
+    pub organize: OrganizeFile,
 }
 
 impl Default for SettingsFile {
@@ -248,6 +290,13 @@ impl Default for SettingsFile {
                     dpi: DEFAULT_RENDER_DPI,
                     photo_native: DEFAULT_CROP_PHOTO_NATIVE,
                     photo_only: DEFAULT_CROP_PHOTO_ONLY,
+                },
+                output_dir: None,
+            },
+            organize: OrganizeFile {
+                options: OrganizeOptions {
+                    output: DEFAULT_ORGANIZE_OUTPUT,
+                    encrypt: DEFAULT_ORGANIZE_ENCRYPT,
                 },
                 output_dir: None,
             },
@@ -287,6 +336,7 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
     let encrypt = !pdf_a && field(images, "encrypt").unwrap_or(DEFAULT_ENCRYPT);
     let pdfs = root.get("pdfToImages").and_then(Value::as_object);
     let crop = root.get("crop").and_then(Value::as_object);
+    let organize = root.get("organize").and_then(Value::as_object);
     SettingsFile {
         schema_version: SCHEMA_VERSION,
         language: field(Some(&root), "language"),
@@ -322,6 +372,13 @@ pub fn parse_settings_json(text: &str) -> SettingsFile {
             },
             output_dir: field(crop, "outputDir"),
         },
+        organize: OrganizeFile {
+            options: OrganizeOptions {
+                output: field(organize, "output").unwrap_or(DEFAULT_ORGANIZE_OUTPUT),
+                encrypt: field(organize, "encrypt").unwrap_or(DEFAULT_ORGANIZE_ENCRYPT),
+            },
+            output_dir: field(organize, "outputDir"),
+        },
     }
 }
 
@@ -337,6 +394,7 @@ pub fn load_settings(config_dir: &Path) -> SettingsFile {
         &mut file.images_to_pdf.output_dir,
         &mut file.pdf_to_images.output_dir,
         &mut file.crop.output_dir,
+        &mut file.organize.output_dir,
     ] {
         if dir
             .as_deref()
@@ -506,6 +564,7 @@ impl SettingsStore {
                 OutputKind::ImagesToPdf => &mut stored.file.images_to_pdf.output_dir,
                 OutputKind::PdfToImages => &mut stored.file.pdf_to_images.output_dir,
                 OutputKind::Crop => &mut stored.file.crop.output_dir,
+                OutputKind::Organize => &mut stored.file.organize.output_dir,
             };
             *slot = dir;
             stored.changes += 1;
@@ -532,6 +591,9 @@ pub fn restore_settings(state: &AppState, config_dir: &Path) {
     *output_dir_slot(state, OutputKind::Crop)
         .lock()
         .expect("output_dir lock") = file.crop.output_dir.clone();
+    *output_dir_slot(state, OutputKind::Organize)
+        .lock()
+        .expect("output_dir lock") = file.organize.output_dir.clone();
     state.settings.restore(config_dir.to_path_buf(), file);
 }
 
@@ -540,6 +602,7 @@ fn output_dir_slot(state: &AppState, kind: OutputKind) -> &Arc<Mutex<Option<Path
         OutputKind::ImagesToPdf => &state.images_output_dir,
         OutputKind::PdfToImages => &state.pdfs_output_dir,
         OutputKind::Crop => &state.crop_output_dir,
+        OutputKind::Organize => &state.organize_output_dir,
     }
 }
 
@@ -588,6 +651,11 @@ pub fn get_settings_internal(state: &AppState) -> Settings {
             photo_native: file.crop.options.photo_native,
             photo_only: file.crop.options.photo_only,
             output_dir: label_of(&state.crop_output_dir),
+        },
+        organize: OrganizeSettings {
+            output: file.organize.options.output,
+            encrypt: file.organize.options.encrypt,
+            output_dir: label_of(&state.organize_output_dir),
         },
     }
 }

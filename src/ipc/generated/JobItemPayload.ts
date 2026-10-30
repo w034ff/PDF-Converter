@@ -5,4 +5,8 @@ import type { JobItemStatus } from "./JobItemStatus";
 /**
  * Item completion notification emitted via `job-item` event (design §7.2).
  */
-export type JobItemPayload = { id: number, status: JobItemStatus, outputs: Array<string>, error?: IpcError, failedPages?: Array<number>, };
+export type JobItemPayload = { id: number, status: JobItemStatus, outputs: Array<string>, error?: IpcError, failedPages?: Array<number>, 
+/**
+ * The organize PDF an output failed on (design organize §4); `None` in the other jobs.
+ */
+sourceId?: number, };

@@ -413,6 +413,7 @@ describe("state reducers", () => {
           photoOnly: false,
           outputDir: null,
         },
+        organize: { output: "single", encrypt: false, outputDir: null },
       });
       expect(statePreset.imagesToPdf.orientation).toBe("portrait");
       expect(statePreset.imagesToPdf.pdfA).toBe(true);
@@ -446,6 +447,7 @@ describe("state reducers", () => {
           photoOnly: false,
           outputDir: null,
         },
+        organize: { output: "single", encrypt: false, outputDir: null },
       });
       expect(stateCustom.pdfToImages.dpi).toBe(600);
       expect(stateCustom.pdfToImages.isCustomDpi).toBe(true);

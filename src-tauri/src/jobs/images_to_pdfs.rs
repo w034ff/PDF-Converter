@@ -196,6 +196,7 @@ where
                         outputs: Vec::new(),
                         error: Some(err),
                         failed_pages: None,
+                        source_id: None,
                     });
                     continue;
                 }
@@ -236,6 +237,7 @@ where
                             outputs: Vec::new(),
                             error: Some(IpcError::from_code(ErrorCode::ReadFailed)),
                             failed_pages: None,
+                            source_id: None,
                         });
                         on_progress(JobProgressPayload {
                             done: cur_done,
@@ -272,6 +274,7 @@ where
                             outputs: Vec::new(),
                             error: None,
                             failed_pages: None,
+                            source_id: None,
                         });
                         let mut q = match queue.lock() {
                             Ok(g) => g,
@@ -291,6 +294,7 @@ where
                             outputs: Vec::new(),
                             error: Some(IpcError::from(probe_err)),
                             failed_pages: None,
+                            source_id: None,
                         });
                         on_progress(JobProgressPayload {
                             done: cur_done,
@@ -321,6 +325,7 @@ where
                             outputs: vec![saved_name],
                             error: None,
                             failed_pages: None,
+                            source_id: None,
                         });
                         on_progress(JobProgressPayload {
                             done: done.load(Ordering::SeqCst),
@@ -336,6 +341,7 @@ where
                             outputs: Vec::new(),
                             error: Some(err),
                             failed_pages: None,
+                            source_id: None,
                         });
                         on_progress(JobProgressPayload {
                             done: done.load(Ordering::SeqCst),
