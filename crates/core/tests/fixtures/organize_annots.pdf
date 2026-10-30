@@ -1,0 +1,112 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Fields [9 0 R 11 0 R 16 0 R] /NeedAppearances true /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 8 0 R >> >> >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Contents 6 0 R /Resources << /Font << /Helv 8 0 R >> >> /Annots [9 0 R 11 0 R 14 0 R 16 0 R 17 0 R 18 0 R 19 0 R] >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Contents 7 0 R /Resources << /Font << /Helv 8 0 R >> >> /Annots [20 0 R] >>
+endobj
+6 0 obj
+<<  /Length 113 >>
+stream
+0.95 0.95 0.85 rg 10 10 280 380 re f 0 g BT /Helv 14 Tf 20 20 Td (Page 1) Tj ET
+0.2 0.4 0.8 rg 20 60 100 20 re f
+
+endstream
+endobj
+7 0 obj
+<<  /Length 113 >>
+stream
+0.85 0.95 0.95 rg 10 10 280 380 re f 0 g BT /Helv 14 Tf 20 20 Td (Page 2) Tj ET
+0.2 0.4 0.8 rg 20 60 100 20 re f
+
+endstream
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /Rect [20 340 180 370] /F 4 /P 4 0 R /T (with_ap) /V (Hello AP) /DA (/Helv 12 Tf 0 g) /AP << /N 10 0 R >> >>
+endobj
+10 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 160 30] /Resources << /Font << /Helv 8 0 R >> >> /Length 77 >>
+stream
+/Tx BMC q 1 1 158 28 re W n BT /Helv 12 Tf 0 g 4 10 Td (Hello AP) Tj ET Q EMC
+endstream
+endobj
+11 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Btn /Rect [20 300 40 320] /F 4 /P 4 0 R /T (check) /V /Yes /AS /Yes /AP << /N << /Yes 12 0 R /Off 13 0 R >> >> >>
+endobj
+12 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Resources << /Font << /Helv 8 0 R >> >> /Length 65 >>
+stream
+0.1 0.6 0.2 rg 2 2 16 16 re f 1 g BT /Helv 14 Tf 4 5 Td (X) Tj ET
+endstream
+endobj
+13 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 20 20] /Resources << /Font << /Helv 8 0 R >> >> /Length 20 >>
+stream
+0.5 g 0 0 20 20 re S
+endstream
+endobj
+14 0 obj
+<< /Type /Annot /Subtype /FreeText /Rect [20 240 180 280] /F 4 /P 4 0 R /Contents (Free text) /DA (/Helv 12 Tf 0 g) /AP << /N 15 0 R >> >>
+endobj
+15 0 obj
+<< /Type /XObject /Subtype /Form /BBox [0 0 160 40] /Resources << /Font << /Helv 8 0 R >> >> /Length 73 >>
+stream
+1 0.9 0.9 rg 0 0 160 40 re f 0 g BT /Helv 12 Tf 6 14 Td (Free text) Tj ET
+endstream
+endobj
+16 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /Rect [20 190 180 220] /F 4 /P 4 0 R /T (no_ap) /V (Hello no AP) /DA (/Helv 12 Tf 0 g) >>
+endobj
+17 0 obj
+<< /Type /Annot /Subtype /Text /Rect [200 340 220 360] /F 0 /P 4 0 R /Contents (Note) /Name /Note /C [1 0.8 0] >>
+endobj
+18 0 obj
+<< /Type /Annot /Subtype /Highlight /Rect [20 140 180 160] /F 4 /P 4 0 R /C [1 1 0] /QuadPoints [20 160 180 160 20 140 180 140] >>
+endobj
+19 0 obj
+<< /Type /Annot /Subtype /Link /Rect [20 100 180 130] /F 4 /P 4 0 R /Border [0 0 1] /A << /S /URI /URI (https://example.com/page1) >> >>
+endobj
+20 0 obj
+<< /Type /Annot /Subtype /Link /Rect [20 100 180 130] /F 4 /P 5 0 R /Border [0 0 1] /A << /S /URI /URI (https://example.com/page2) >> >>
+endobj
+xref
+0 21
+0000000000 65535 f 
+0000000015 00000 n 
+0000000080 00000 n 
+0000000143 00000 n 
+0000000271 00000 n 
+0000000457 00000 n 
+0000000602 00000 n 
+0000000767 00000 n 
+0000000932 00000 n 
+0000001029 00000 n 
+0000001194 00000 n 
+0000001412 00000 n 
+0000001580 00000 n 
+0000001785 00000 n 
+0000001945 00000 n 
+0000002100 00000 n 
+0000002314 00000 n 
+0000002461 00000 n 
+0000002591 00000 n 
+0000002738 00000 n 
+0000002891 00000 n 
+trailer
+<< /Size 21 /Root 1 0 R >>
+startxref
+3044
+%%EOF

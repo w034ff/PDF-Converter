@@ -15,6 +15,7 @@ use pdfium_render::prelude::{
 
 use crate::crop::{self, RegionRequest};
 use crate::layout::Detector;
+use crate::organize::{self, OrganizeArgs};
 use crate::protocol::{
     PageDimensions, RenderColor, RenderFormat, Request, Response, read_message, write_message,
 };
@@ -31,7 +32,7 @@ pub const WORKER_MEMORY_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 pub const CRASH_ON_OPEN_FILE_NAME: &str = "crash-on-open-for-test.pdf";
 
 /// Error code for a pdfium library that cannot be loaded or used.
-const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
+pub(crate) const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
 
 /// Error code when opening or decoding a PDF fails.
 pub(crate) const CODE_PDF_OPEN_FAILED: &str = "PdfOpenFailed";
@@ -71,13 +72,25 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
         detector: Detector::new(onnxruntime, model),
     };
     while let Some((request, _body)) = read_message::<_, Request>(&mut input)? {
-        let (response, body) = state.handle(request);
-        write_message(&mut output, &response, &body)?;
+        match OrganizeArgs::from_request(request) {
+            Ok(args) => {
+                // Only `Organize` answers with several messages, so it bypasses `handle`.
+                state.document = None;
+                match state.pdfium() {
+                    Ok(pdfium) => organize::run(pdfium, args, &mut output)?,
+                    Err(response) => write_message(&mut output, &response, &[])?,
+                }
+            }
+            Err(request) => {
+                let (response, body) = state.handle(request);
+                write_message(&mut output, &response, &body)?;
+            }
+        }
     }
     Ok(())
 }
 
-fn check_page_count(count: u32) -> Result<(), Response> {
+pub(crate) fn check_page_count(count: u32) -> Result<(), Response> {
     // Every screen assumes an open PDF has a first page to show.
     if count == 0 {
         Err(Response::Error {
@@ -322,6 +335,8 @@ impl State {
                     Err(response) => (response, Vec::new()),
                 }
             }
+            // `run` sends `Organize` to `organize::run`, which answers with several messages.
+            Request::Organize { .. } => (error_response(CODE_INVALID_PARAMS, None), Vec::new()),
             Request::Close => {
                 self.document = None;
                 (Response::Close, Vec::new())
@@ -443,7 +458,7 @@ pub(crate) fn pixels_from_rgba(
     }
 }
 
-fn map_pdfium_open_error(error: &PdfiumError) -> Response {
+pub(crate) fn map_pdfium_open_error(error: &PdfiumError) -> Response {
     match error {
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::PasswordError) => {
             Response::Error {

@@ -72,6 +72,8 @@ const CHECKER_CELLS: u32 = 8;
 mod crop_pattern;
 #[path = "../tests/support/fixture_passwords.rs"]
 mod fixture_passwords;
+#[path = "../tests/support/organize_fixtures.rs"]
+mod organize_fixtures;
 
 /// `/P` with every permission bit of revision 3 set.
 const PERMISSIONS_ALL: i32 = -4;
@@ -291,6 +293,11 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
     );
 
     add("crop_align.pdf", crop_align_pdf());
+    add("organize_annots.pdf", organize_annots_pdf());
+    add("organize_meta.pdf", organize_meta_pdf());
+    add("organize_links.pdf", organize_links_pdf());
+    add("organize_outline_deep.pdf", organize_outline_deep_pdf());
+    add("organize_outline_ring.pdf", organize_outline_ring_pdf());
 
     let aniso_picture = dpi_rgb(300, 150);
     add(
@@ -2005,6 +2012,12 @@ fn pdf_stream(entries: &str, data: &[u8]) -> Vec<u8> {
 
 /// A classic PDF file of `objects` (object 1 first), `/Root 1 0 R`.
 fn assemble_pdf(objects: &[Vec<u8>]) -> Vec<u8> {
+    assemble_pdf_with_trailer(objects, "")
+}
+
+/// [`assemble_pdf`] with `trailer_entries` (for example `" /Info 9 0 R"`, with the leading space)
+/// added to the trailer.
+fn assemble_pdf_with_trailer(objects: &[Vec<u8>], trailer_entries: &str) -> Vec<u8> {
     let mut pdf = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n".to_vec();
     let mut offsets = Vec::new();
     for (index, body) in objects.iter().enumerate() {
@@ -2022,7 +2035,7 @@ fn assemble_pdf(objects: &[Vec<u8>]) -> Vec<u8> {
     }
     pdf.extend_from_slice(
         format!(
-            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+            "trailer\n<< /Size {} /Root 1 0 R{trailer_entries} >>\nstartxref\n{xref_offset}\n%%EOF\n",
             objects.len() + 1
         )
         .as_bytes(),
@@ -2192,6 +2205,505 @@ fn crop_align_pdf() -> Vec<u8> {
         );
     }
     assemble_pdf(&objects)
+}
+
+/// Size of the pages of `organize_annots.pdf` in pt.
+const ORGANIZE_PAGE_PT: (u32, u32) = (300, 400);
+
+/// A form XObject of `bbox` whose content is `content`, using the font `/Helv` (object 8).
+fn appearance_stream(bbox: [u32; 4], content: &str) -> Vec<u8> {
+    pdf_stream(
+        &format!(
+            "/Type /XObject /Subtype /Form /BBox [{} {} {} {}] \
+             /Resources << /Font << /Helv 8 0 R >> >>",
+            bbox[0], bbox[1], bbox[2], bbox[3]
+        ),
+        content.as_bytes(),
+    )
+}
+
+/// Two pages with every kind of annotation that organizing handles (design organize §1, step 4;
+/// design §11.1). Page 1 has, in object order: a text field with an appearance and a value, a
+/// checked box, a FreeText, a text field without an appearance (the form has `NeedAppearances`),
+/// a sticky note without the print flag, a highlight and a URL link. Page 2 has only a link.
+/// Written by hand: krilla writes no annotations.
+fn organize_annots_pdf() -> Vec<u8> {
+    let (w, h) = ORGANIZE_PAGE_PT;
+    let page = |content: u32, annots: &str| {
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w} {h}] /Contents {content} 0 R \
+             /Resources << /Font << /Helv 8 0 R >> >> /Annots [{annots}] >>"
+        )
+        .into_bytes()
+    };
+    let background = |label: &str, rgb: &str| {
+        format!(
+            "{rgb} rg 10 10 280 380 re f 0 g BT /Helv 14 Tf 20 20 Td ({label}) Tj ET\n\
+             0.2 0.4 0.8 rg 20 60 100 20 re f\n"
+        )
+    };
+    let widget = |kind: &str, rect: &str, rest: &str| {
+        format!(
+            "<< /Type /Annot /Subtype /Widget /FT /{kind} /Rect [{rect}] /F 4 /P 4 0 R {rest} >>"
+        )
+        .into_bytes()
+    };
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 >>".to_vec(),
+        b"<< /Fields [9 0 R 11 0 R 16 0 R] /NeedAppearances true \
+          /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 8 0 R >> >> >>"
+            .to_vec(),
+        page(6, "9 0 R 11 0 R 14 0 R 16 0 R 17 0 R 18 0 R 19 0 R"),
+        page(7, "20 0 R"),
+        pdf_stream("", background("Page 1", "0.95 0.95 0.85").as_bytes()),
+        pdf_stream("", background("Page 2", "0.85 0.95 0.95").as_bytes()),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+            .to_vec(),
+        // 9: text field with an appearance
+        widget(
+            "Tx",
+            "20 340 180 370",
+            "/T (with_ap) /V (Hello AP) /DA (/Helv 12 Tf 0 g) /AP << /N 10 0 R >>",
+        ),
+        appearance_stream(
+            [0, 0, 160, 30],
+            "/Tx BMC q 1 1 158 28 re W n BT /Helv 12 Tf 0 g 4 10 Td (Hello AP) Tj ET Q EMC",
+        ),
+        // 11: check box, on
+        widget(
+            "Btn",
+            "20 300 40 320",
+            "/T (check) /V /Yes /AS /Yes /AP << /N << /Yes 12 0 R /Off 13 0 R >> >>",
+        ),
+        appearance_stream(
+            [0, 0, 20, 20],
+            "0.1 0.6 0.2 rg 2 2 16 16 re f 1 g BT /Helv 14 Tf 4 5 Td (X) Tj ET",
+        ),
+        appearance_stream([0, 0, 20, 20], "0.5 g 0 0 20 20 re S"),
+        // 14: FreeText with an appearance
+        b"<< /Type /Annot /Subtype /FreeText /Rect [20 240 180 280] /F 4 /P 4 0 R \
+          /Contents (Free text) /DA (/Helv 12 Tf 0 g) /AP << /N 15 0 R >> >>"
+            .to_vec(),
+        appearance_stream(
+            [0, 0, 160, 40],
+            "1 0.9 0.9 rg 0 0 160 40 re f 0 g BT /Helv 12 Tf 6 14 Td (Free text) Tj ET",
+        ),
+        // 16: text field without an appearance
+        widget(
+            "Tx",
+            "20 190 180 220",
+            "/T (no_ap) /V (Hello no AP) /DA (/Helv 12 Tf 0 g)",
+        ),
+        // 17: sticky note without the print flag
+        b"<< /Type /Annot /Subtype /Text /Rect [200 340 220 360] /F 0 /P 4 0 R \
+          /Contents (Note) /Name /Note /C [1 0.8 0] >>"
+            .to_vec(),
+        // 18: highlight
+        b"<< /Type /Annot /Subtype /Highlight /Rect [20 140 180 160] /F 4 /P 4 0 R \
+          /C [1 1 0] /QuadPoints [20 160 180 160 20 140 180 140] >>"
+            .to_vec(),
+        // 19, 20: links
+        b"<< /Type /Annot /Subtype /Link /Rect [20 100 180 130] /F 4 /P 4 0 R /Border [0 0 1] \
+          /A << /S /URI /URI (https://example.com/page1) >> >>"
+            .to_vec(),
+        b"<< /Type /Annot /Subtype /Link /Rect [20 100 180 130] /F 4 /P 5 0 R /Border [0 0 1] \
+          /A << /S /URI /URI (https://example.com/page2) >> >>"
+            .to_vec(),
+    ];
+    assemble_pdf(&objects)
+}
+
+/// Pages of `organize_meta.pdf`.
+const ORGANIZE_META_PAGES: u32 = 3;
+
+/// Three pages, each with its own shape and as many bars as its number, and the document
+/// information and XMP packet that an organized output must not keep (design §11.1). Written by
+/// hand so that the bytes are fixed.
+fn organize_meta_pdf() -> Vec<u8> {
+    use organize_fixtures::*;
+
+    let content = |number: u32| {
+        let mut ops = String::from("0.9 0.9 0.9 rg 0 0 240 320 re f\n");
+        match number {
+            1 => ops.push_str("0.8 0.1 0.1 rg 40 80 160 120 re f\n"),
+            2 => ops.push_str("0.1 0.6 0.2 rg 120 60 m 220 240 l 20 240 l f\n"),
+            _ => ops.push_str(
+                "0.1 0.2 0.8 rg 40 60 m 200 60 l 200 100 l 40 100 l f 40 140 160 20 re f\n",
+            ),
+        }
+        ops.push_str("0 g\n");
+        for bar in 0..number {
+            ops.push_str(&format!("{} 285 14 20 re f\n", 20 + bar * 24));
+        }
+        ops
+    };
+    let first_page = 4;
+    let first_content = first_page + ORGANIZE_META_PAGES;
+    let info = first_content + ORGANIZE_META_PAGES;
+    let xmp = info + 1;
+    let kids: Vec<String> = (0..ORGANIZE_META_PAGES)
+        .map(|i| format!("{} 0 R", first_page + i))
+        .collect();
+    let mut objects: Vec<Vec<u8>> = vec![
+        format!("<< /Type /Catalog /Pages 2 0 R /Metadata {xmp} 0 R >>").into_bytes(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {ORGANIZE_META_PAGES} >>",
+            kids.join(" ")
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ];
+    for i in 0..ORGANIZE_META_PAGES {
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 320] /Contents {} 0 R \
+                 /Resources << >> >>",
+                first_content + i
+            )
+            .into_bytes(),
+        );
+    }
+    for i in 0..ORGANIZE_META_PAGES {
+        objects.push(pdf_stream("", content(i + 1).as_bytes()));
+    }
+    objects.push(
+        format!(
+            "<< /Author ({META_AUTHOR}) /Title ({META_TITLE}) /Creator ({META_CREATOR}) \
+             /Producer ({META_PRODUCER}) /CreationDate (D:{META_CREATION_DIGITS}+09'00') >>"
+        )
+        .into_bytes(),
+    );
+    objects.push(pdf_stream(
+        "/Type /Metadata /Subtype /XML",
+        format!(
+            "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n\
+             <x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF \
+             xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+             <rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
+             <dc:description>{META_XMP}</dc:description></rdf:Description></rdf:RDF></x:xmpmeta>\n\
+             <?xpacket end=\"w\"?>"
+        )
+        .as_bytes(),
+    ));
+    assemble_pdf_with_trailer(&objects, &format!(" /Info {info} 0 R"))
+}
+
+/// Object numbers of `organize_links.pdf`.
+mod links_obj {
+    use super::organize_fixtures::LINKS_PAGES;
+
+    pub const VIEWER_PREFERENCES: u32 = 3;
+    pub const OUTLINES: u32 = 4;
+    pub const NAME_TREE: u32 = 5;
+    pub const OLD_DESTINATIONS: u32 = 6;
+    /// Pages 1 to 4, then their content streams.
+    pub const FIRST_PAGE: u32 = 7;
+    pub const FIRST_CONTENT: u32 = FIRST_PAGE + LINKS_PAGES;
+    pub const FONT: u32 = FIRST_CONTENT + LINKS_PAGES;
+    pub const APPEARANCE: u32 = FONT + 1;
+    /// Part A, Chapter 1, Section 1.1, Chapter 2, Section 2.1, Website, Script.
+    pub const FIRST_BOOKMARK: u32 = APPEARANCE + 1;
+    pub const BOOKMARKS: u32 = 7;
+    pub const FIRST_ANNOTATION: u32 = FIRST_BOOKMARK + BOOKMARKS;
+
+    pub fn page(number: u32) -> u32 {
+        FIRST_PAGE + number - 1
+    }
+
+    pub fn bookmark(index: u32) -> u32 {
+        FIRST_BOOKMARK + index
+    }
+}
+
+/// A PDF text string of UTF-16BE, as a hexadecimal string.
+fn utf16_hex_string(text: &str) -> String {
+    let digits: String = text
+        .encode_utf16()
+        .map(|unit| format!("{unit:04X}"))
+        .collect();
+    format!("<FEFF{digits}>")
+}
+
+/// Four pages with a bookmark tree of three levels, links of every kind that organizing keeps or
+/// drops, named destinations in both forms, and the catalog's view settings (design organize §1,
+/// steps 2, 3 and 7; design §11.1). Each page has its own shape and as many bars as its number.
+/// Page 2 has a FreeText, so organizing flattens it and the frame of its link has to come from
+/// this file. Written by hand: krilla writes none of this.
+///
+/// - Bookmarks: Part A (no destination, open) > Chapter 1 (page 1, `/XYZ`) > Section 1.1 (page 2,
+///   `/Fit`); Chapter 2 (the name `chapter2` of the name tree, page 3, `/FitH`) > a section with a
+///   title outside ASCII (page 4, `/XYZ` with a zoom); Website (a URI action); Script (a
+///   JavaScript action, no children).
+/// - Page 1: a link to page 4 (`/FitR`), a link to the old-style name `legacy` (page 2, `/XYZ`),
+///   a URL link and a JavaScript link. Page 2: a `/GoTo` link to page 1. Page 4: a link to page 2.
+fn organize_links_pdf() -> Vec<u8> {
+    use links_obj as obj;
+    use organize_fixtures::*;
+
+    let content = |number: u32| {
+        let mut ops = String::from("0.92 0.92 0.92 rg 0 0 240 320 re f\n");
+        match number {
+            1 => ops.push_str("0.8 0.1 0.1 rg 40 80 160 120 re f\n"),
+            2 => ops.push_str("0.1 0.6 0.2 rg 120 90 m 220 270 l 20 270 l f\n"),
+            3 => ops.push_str("0.1 0.2 0.8 rg 40 60 160 30 re f 40 120 100 30 re f\n"),
+            _ => ops.push_str("0.9 0.6 0.1 rg 120 80 m 200 170 l 120 260 l 40 170 l f\n"),
+        }
+        ops.push_str("0 g\n");
+        for bar in 0..number {
+            ops.push_str(&format!("{} 295 14 20 re f\n", 20 + bar * 24));
+        }
+        ops
+    };
+    let page = |number: u32, annotations: &[u32]| {
+        let annots = annotations
+            .iter()
+            .map(|id| format!("{id} 0 R"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 320] /Contents {} 0 R \
+             /Resources << >> /Annots [{annots}] >>",
+            obj::FIRST_CONTENT + number - 1
+        )
+        .into_bytes()
+    };
+    let link = |rect: &str, rest: &str, page: u32| {
+        format!(
+            "<< /Type /Annot /Subtype /Link /Rect [{rect}] /F 4 /P {} 0 R {rest} >>",
+            obj::page(page)
+        )
+        .into_bytes()
+    };
+    let dest = |page: u32, view: &str| format!("[{} 0 R {view}]", obj::page(page));
+    let bookmark = |title: &str, parent: u32, rest: &str| {
+        format!("<< /Title {title} /Parent {parent} 0 R {rest} >>").into_bytes()
+    };
+    let b = obj::bookmark;
+    let a = obj::FIRST_ANNOTATION;
+
+    let mut objects: Vec<Vec<u8>> = vec![
+        format!(
+            "<< /Type /Catalog /Pages 2 0 R /PageLayout /TwoPageRight /PageMode /UseOutlines \
+             /ViewerPreferences {} 0 R /Outlines {} 0 R /Names << /Dests {} 0 R >> \
+             /Dests {} 0 R >>",
+            obj::VIEWER_PREFERENCES,
+            obj::OUTLINES,
+            obj::NAME_TREE,
+            obj::OLD_DESTINATIONS
+        )
+        .into_bytes(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {LINKS_PAGES} >>",
+            (1..=LINKS_PAGES)
+                .map(|number| format!("{} 0 R", obj::page(number)))
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+        .into_bytes(),
+        b"<< /DisplayDocTitle true /FitWindow true >>".to_vec(),
+        format!(
+            "<< /Type /Outlines /First {} 0 R /Last {} 0 R /Count 6 >>",
+            b(0),
+            b(6)
+        )
+        .into_bytes(),
+        format!("<< /Names [(chapter2) {}] >>", dest(3, "/FitH 250")).into_bytes(),
+        format!("<< /legacy {} >>", dest(2, "/XYZ 30 250 1.5")).into_bytes(),
+    ];
+    objects.push(page(1, &[a, a + 1, a + 2, a + 3]));
+    objects.push(page(2, &[a + 4, a + 5]));
+    objects.push(page(3, &[]));
+    objects.push(page(4, &[a + 6]));
+    for number in 1..=LINKS_PAGES {
+        objects.push(pdf_stream("", content(number).as_bytes()));
+    }
+    objects.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
+    objects.push(pdf_stream(
+        &format!(
+            "/Type /XObject /Subtype /Form /BBox [0 0 140 40] \
+             /Resources << /Font << /Helv {} 0 R >> >>",
+            obj::FONT
+        ),
+        b"1 0.9 0.9 rg 0 0 140 40 re f 0 g BT /Helv 12 Tf 6 14 Td (Free text) Tj ET",
+    ));
+
+    // 17..23: the bookmarks.
+    let title_3 = utf16_hex_string(LINKS_NON_ASCII_TITLE);
+    objects.push(bookmark(
+        "(Part A)",
+        obj::OUTLINES,
+        &format!(
+            "/First {} 0 R /Last {} 0 R /Count 2 /Next {} 0 R",
+            b(1),
+            b(1),
+            b(3)
+        ),
+    ));
+    objects.push(bookmark(
+        "(Chapter 1)",
+        b(0),
+        &format!(
+            "/Dest {} /First {} 0 R /Last {} 0 R /Count -1",
+            dest(1, "/XYZ 20 300 null"),
+            b(2),
+            b(2)
+        ),
+    ));
+    objects.push(bookmark(
+        "(Section 1.1)",
+        b(1),
+        &format!("/Dest {}", dest(2, "/Fit")),
+    ));
+    objects.push(bookmark(
+        "(Chapter 2)",
+        obj::OUTLINES,
+        &format!(
+            "/Prev {} 0 R /Next {} 0 R /Dest (chapter2) /First {} 0 R /Last {} 0 R /Count -1",
+            b(0),
+            b(5),
+            b(4),
+            b(4)
+        ),
+    ));
+    objects.push(bookmark(
+        &title_3,
+        b(3),
+        &format!("/Dest {}", dest(4, "/XYZ 10 200 2")),
+    ));
+    objects.push(bookmark(
+        "(Website)",
+        obj::OUTLINES,
+        &format!(
+            "/Prev {} 0 R /Next {} 0 R /A << /S /URI /URI ({LINKS_BOOKMARK_URL}) >>",
+            b(3),
+            b(6)
+        ),
+    ));
+    objects.push(bookmark(
+        "(Script)",
+        obj::OUTLINES,
+        &format!(
+            "/Prev {} 0 R /A << /S /JavaScript /JS (app.alert\\(1\\)) >>",
+            b(5)
+        ),
+    ));
+
+    // The annotations: four links on page 1, a link and a FreeText on page 2, a link on page 4.
+    objects.push(link(
+        "20 270 120 300",
+        &format!(
+            "/C [1 0 0] /Border [0 0 2] /H /O /Dest {}",
+            dest(4, "/FitR 10 20 200 300")
+        ),
+        1,
+    ));
+    objects.push(link(
+        "20 230 120 260",
+        "/Border [0 0 1] /BS << /W 1 /S /D /D [3] >> /Dest /legacy",
+        1,
+    ));
+    objects.push(link(
+        "20 190 120 220",
+        &format!("/C [0 0 1] /A << /S /URI /URI ({LINKS_PAGE_URL}) >>"),
+        1,
+    ));
+    objects.push(link(
+        "20 150 120 180",
+        "/Border [0 0 1] /A << /S /JavaScript /JS (app.alert\\(2\\)) >>",
+        1,
+    ));
+    objects.push(link(
+        "20 100 120 130",
+        &format!(
+            "/C [0 1 0] /Border [0 0 3] /A << /S /GoTo /D {} >>",
+            dest(1, "/Fit")
+        ),
+        2,
+    ));
+    objects.push(
+        format!(
+            "<< /Type /Annot /Subtype /FreeText /Rect [20 20 160 60] /F 4 /P {} 0 R \
+             /Contents (Free text) /DA (/Helv 12 Tf 0 g) /AP << /N {} 0 R >> >>",
+            obj::page(2),
+            obj::APPEARANCE
+        )
+        .into_bytes(),
+    );
+    objects.push(link(
+        "20 100 120 130",
+        &format!(
+            "/Border [0 0 1] /C [0.5 0 0.5] /Dest {}",
+            dest(2, "/XYZ null null null")
+        ),
+        4,
+    ));
+    assemble_pdf(&objects)
+}
+
+/// How many levels `organize_outline_deep.pdf` nests its bookmarks.
+const OUTLINE_DEEP_LEVELS: u32 = 70;
+
+/// A one-page PDF whose bookmarks are a chain of [`OUTLINE_DEEP_LEVELS`] levels, each the only
+/// child of the one above, every one leading to the page. Organizing follows the first levels
+/// only (design organize §1, step 2). Written by hand.
+fn organize_outline_deep_pdf() -> Vec<u8> {
+    let first_item = 6;
+    let mut objects = outline_limits_prefix();
+    for level in 1..=OUTLINE_DEEP_LEVELS {
+        let id = first_item + level - 1;
+        let parent = if level == 1 { 5 } else { id - 1 };
+        let child = if level < OUTLINE_DEEP_LEVELS {
+            format!("/First {} 0 R /Last {} 0 R /Count -1", id + 1, id + 1)
+        } else {
+            String::new()
+        };
+        objects.push(
+            format!("<< /Title (Level {level}) /Parent {parent} 0 R /Dest [3 0 R /Fit] {child} >>")
+                .into_bytes(),
+        );
+    }
+    objects[4] =
+        format!("<< /Type /Outlines /First {first_item} 0 R /Last {first_item} 0 R /Count 1 >>")
+            .into_bytes();
+    assemble_pdf(&objects)
+}
+
+/// A one-page PDF with three bookmarks at the top level whose chain of siblings loops back from
+/// the last to the first, which a damaged or hostile file can do. Organizing stops after a fixed
+/// number of bookmarks (design organize §1, step 2). Written by hand.
+fn organize_outline_ring_pdf() -> Vec<u8> {
+    let mut objects = outline_limits_prefix();
+    objects[4] = b"<< /Type /Outlines /First 6 0 R /Last 8 0 R /Count 3 >>".to_vec();
+    for (index, title) in ["Ring A", "Ring B", "Ring C"].iter().enumerate() {
+        let id = 6 + index;
+        let previous = if index > 0 {
+            format!("/Prev {} 0 R", id - 1)
+        } else {
+            String::new()
+        };
+        let next = if index < 2 { id + 1 } else { 6 };
+        objects.push(
+            format!(
+                "<< /Title ({title}) /Parent 5 0 R /Dest [3 0 R /Fit] {previous} /Next {next} 0 R >>"
+            )
+            .into_bytes(),
+        );
+    }
+    assemble_pdf(&objects)
+}
+
+/// The first five objects of the two outline-limit fixtures: the catalog, the page tree, one
+/// page, its content and an outline root that the caller replaces.
+fn outline_limits_prefix() -> Vec<Vec<u8>> {
+    vec![
+        b"<< /Type /Catalog /Pages 2 0 R /Outlines 5 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 320] /Contents 4 0 R /Resources << >> >>"
+            .to_vec(),
+        pdf_stream("", b"0.8 0.8 0.2 rg 40 80 160 120 re f\n"),
+        Vec::new(),
+    ]
 }
 
 // ---------------------------------------------------------------------------

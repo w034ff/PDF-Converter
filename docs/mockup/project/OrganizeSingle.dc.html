@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>整理：1 つの PDF に保存</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4492b}a:hover{color:#8a3520}
+.btn{font:inherit;font-size:13px;border-radius:6px;padding:0 12px;min-height:32px;cursor:pointer;white-space:nowrap}
+.btn-primary{background:#b4492b;color:#fff;border:1px solid #b4492b;font-weight:500}
+.btn-ghost{background:#fff;color:#1f1f1f;border:1px solid #cfcbc4}
+.btn-ghost:disabled{color:#a9a59d}
+.icon-btn{font:inherit;font-size:14px;width:32px;min-height:32px;border-radius:6px;border:1px solid #cfcbc4;background:#fff;color:#1f1f1f;cursor:pointer;padding:0}
+.seg{display:flex;border:1px solid #cfcbc4;border-radius:6px;overflow:hidden}
+.seg button{flex:1;font:inherit;font-size:13px;min-height:32px;border:0;border-left:1px solid #cfcbc4;background:#fff;color:#1f1f1f;cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:#b4492b;color:#fff}
+.label{font-size:13px;font-weight:500;color:#1f1f1f}
+.hint{font-size:12px;color:#5c5a56}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;color:#5c5a56}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:500}
+.check input{width:16px;height:16px;margin:2px 0 0;accent-color:#b4492b;flex:none}
+.chip{display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 10px;border:1px solid #dcd9d3;border-radius:14px;background:#fff;font-size:12px;white-space:nowrap}
+.chip button{width:22px;height:22px;border:0;border-radius:11px;background:none;color:#5c5a56;cursor:pointer;font-size:13px;padding:0}
+.dot{width:8px;height:8px;border-radius:4px;flex:none}
+</style>
+</helmet>
+<div style="height: 800px; display: flex; flex-direction: column; background: #f4f3f0; color: #1f1f1f; font-family: 'Noto Sans JP', system-ui, sans-serif; overflow: hidden">
+  <header style="height: 48px; display: flex; align-items: center; gap: 24px; padding: 0 16px; background: #ffffff; border-bottom: 1px solid #dcd9d3; flex: none">
+    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; white-space: nowrap">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b4492b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>
+      PDF Converter
+    </div>
+    <nav style="display: flex; align-self: stretch" aria-label="変換の種類">
+      <a href="ImagesMerge.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none; white-space: nowrap">画像 → PDF</a><a href="PdfSingle.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none; white-space: nowrap">PDF → 画像</a><a href="CropA.dc.html" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; color: #5c5a56; text-decoration: none; white-space: nowrap">切り出し</a><a href="#" aria-current="page" style="display: flex; align-items: center; padding: 0 16px; font-size: 14px; font-weight: 500; color: #1f1f1f; text-decoration: none; border-bottom: 2px solid #b4492b; white-space: nowrap">整理</a>
+    </nav>
+    <div style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+      <label class="hint" for="lang">言語</label>
+      <select id="lang" style="font: inherit; font-size: 13px; min-height: 32px; border: 1px solid #cfcbc4; border-radius: 6px; padding: 0 8px; background: #fff"><option>日本語</option><option>English</option></select>
+      <button class="btn btn-ghost" aria-label="このアプリについて" style="width: 36px; padding: 0">i</button>
+    </div>
+  </header>
+  <div style="flex: 1; display: flex; min-height: 0">
+    <aside style="flex: 1 1 280px; max-width: 300px; background: #ffffff; border-right: 1px solid #dcd9d3; padding: 20px 16px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; overflow: auto">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span class="label">保存の方法</span>
+        <div class="seg" role="group" aria-label="保存の方法">
+          <button aria-pressed="true">1 つの PDF</button>
+          <button aria-pressed="false">分けて保存</button>
+        </div>
+        <span class="hint">並んだ順に、1 つの PDF にまとめます。</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <label class="check"><input type="checkbox"> パスワードを付ける</label>
+        <div style="display: flex; gap: 8px; align-items: flex-start; background: #f7f1e3; border: 1px solid #e6d9b8; border-radius: 6px; padding: 8px 10px">
+          <span style="flex: none; margin-top: 2px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5c5a56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="パスワード付き"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></span>
+          <span class="hint" style="color: #4a4436">パスワード付きの PDF があります。元の PDF のパスワードは引き継ぎません。</span>
+        </div>
+      </div>
+      <div style="margin-top: auto; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid #ebe8e2; padding-top: 12px">
+        <span class="label">保存した PDF について</span>
+        <span class="hint">注釈とフォームは、見た目どおりページに固めます。しおりとリンクは付け直します。作成者などの文書情報は入れません。</span>
+      </div>
+    </aside>
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px 24px 0; box-sizing: border-box">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <div role="list" aria-label="PDF" style="flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0">
+          <span class="chip"><span class="dot" style="background: #4f6d8f"></span>annual-report.pdf<span class="mono">8 ページ</span><button aria-label="annual-report.pdf を外す">✕</button></span>
+          <span class="chip"><span class="dot" style="background: #8a5a9c"></span>contract-signed.pdf<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5c5a56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="パスワード付き"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span class="mono">3 ページ</span><button aria-label="contract-signed.pdf を外す">✕</button></span>
+          <span class="chip"><span class="dot" style="background: #5e8a5a"></span>receipts-scan.pdf<span class="mono">5 ページ</span><button aria-label="receipts-scan.pdf を外す">✕</button></span>
+        </div>
+        <div style="flex: none; display: flex; gap: 8px">
+          <button class="btn btn-ghost" aria-haspopup="menu">PDF を追加 ▾</button>
+          <button class="btn btn-ghost">すべて外す</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #dcd9d3">
+        <span style="font-size: 13px; font-weight: 500; min-width: 120px">2 ページを選択中</span>
+        <button class="btn btn-ghost" style="display: flex; align-items: center; gap: 6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>左に回す</button>
+        <button class="btn btn-ghost" style="display: flex; align-items: center; gap: 6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 4v5h-5"></path></svg>右に回す</button>
+        <button class="btn btn-ghost" style="display: flex; align-items: center; gap: 6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M6 6l1 14h10l1-14"></path></svg>削除</button>
+        <button class="icon-btn" aria-label="キー操作の一覧" style="margin-left: auto">?</button>
+      </div>
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 12px 4px 16px">
+        <div role="list" aria-label="ページ" style="display: flex; flex-wrap: wrap; gap: 18px 16px; align-content: flex-start">
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dde8df; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.1</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #f0e2dc; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.2</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dfe6f0; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.3</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #e8e4da; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.4</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 119px; height: 84px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dfe6f0; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            <span class="mono" style="position: absolute; bottom: 6px; right: 6px; background: #fff; border: 1px solid #dcd9d3; border-radius: 4px; padding: 0 4px; font-size: 11px">90°</span>
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #5e8a5a"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.1</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">receipts-scan</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #f6e9e4; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 2px solid #b4492b; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dde8df; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            <span style="position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border-radius: 4px; background: #b4492b; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center">✓</span>
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.5</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #f6e9e4; outline: 2px solid #1f1f1f; outline-offset: 3px;">
+            <div style="width: 84px; height: 119px; background: #fff; border: 2px solid #b4492b; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #f0e2dc; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            <span style="position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border-radius: 4px; background: #b4492b; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center">✓</span>
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.6</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dfe6f0; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.7</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #e8e4da; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #4f6d8f"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.8</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">annual-report</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #f0e2dc; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #8a5a9c"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.1</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">contract-signed</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dfe6f0; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #8a5a9c"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.2</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">contract-signed</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #e8e4da; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #8a5a9c"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.3</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">contract-signed</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #e8e4da; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #5e8a5a"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.2</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">receipts-scan</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dde8df; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #5e8a5a"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.3</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">receipts-scan</span>
+          </figcaption>
+        </figure>
+        <figure style="margin: 0; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <div style="position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: transparent; ">
+            <div style="width: 84px; height: 119px; background: #fff; border: 1px solid #dcd9d3; border-radius: 3px; box-sizing: border-box; padding: 10px 9px; display: flex; flex-direction: column; gap: 4px">
+              <div style="height: 5px; width: 60%; background: #c9c5bd; border-radius: 2px"></div>
+              <div style="height: 3px; width: 100%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="height: 3px; width: 90%; background: #e4e1db; border-radius: 2px"></div>
+              <div style="flex: 1; background: #dfe6f0; border-radius: 2px; margin-top: 3px"></div>
+            </div>
+            
+          </div>
+          <figcaption style="display: flex; align-items: center; gap: 5px; max-width: 124px">
+            <span class="dot" style="background: #5e8a5a"></span>
+            <span style="font-size: 12px; font-weight: 500; flex: none">p.5</span>
+            <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">receipts-scan</span>
+          </figcaption>
+        </figure>
+        </div>
+      </div>
+    </main>
+  </div>
+  <footer style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: #ffffff; border-top: 1px solid #dcd9d3; flex: none">
+    <span class="hint">15 ページを 1 つの PDF に保存します（約 19 MB）</span>
+    <button class="btn btn-primary" style="margin-left: auto">PDF を保存</button>
+  </footer>
+</div>
+</x-dc>
+</body>
+</html>

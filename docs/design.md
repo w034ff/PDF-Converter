@@ -29,7 +29,8 @@
 │   ・ページを描画し、画像にして返す（サムネイルも同じ）           │
 │   ・切り出しの範囲の描画、埋め込み画像の一覧、レイアウトの解析   │
 │     （onnxruntime。§4.6、§4.7）                                   │
-│   ・ファイルを書かない。読むのは渡された PDF 1 つだけ             │
+│   ・ページを写して PDF をまとめる（整理。design/organize.md）     │
+│   ・ファイルを書かない。読むのはその要求で渡された PDF だけ       │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -234,7 +235,7 @@
 
 ### 4.3.1 PDF の暗号化（FR-02）
 
-- krilla の `finish` が作った PDF を `lopdf` で読み、krilla の出力のバイト列を捨ててから暗号化し、メモリに書く。暗号化した PDF を §6.5 の方式で書き込む。`lopdf` が読むのは、krilla がその場で書いた PDF だけにする（外から来た PDF は §9 のとおりワーカーの pdfium だけが読む）。
+- krilla の `finish` が作った PDF を `lopdf` で読み、krilla の出力のバイト列を捨ててから暗号化し、メモリに書く。暗号化した PDF を §6.5 の方式で書き込む。メインプロセスの `lopdf` が読むのは、krilla がその場で書いた PDF だけにする（外から来た PDF は §9 のとおりワーカーだけが読む）。整理（FR-12）の出力の暗号化は、ワーカーが同じ方式で行う（[design/organize.md](design/organize.md) §1）。
 - 方式は標準のセキュリティハンドラーの revision 6（AES-256）だけ。ストリームと文字列の両方とメタデータを暗号化し、制限（権限）は付けない。ファイルの鍵は OS の乱数から作り、lopdf が作るソルトと初期化ベクトルも OS の乱数で種を入れた乱数を使う。文書情報（作成ソフト）と XMP も暗号化され、パスワードなしでは見えない。
 - 所有者のパスワードは、閲覧のパスワードと同じにする。空にすると、空のパスワードで所有者として開けて暗号を外せてしまうため。制限を付けないので、所有者として開いても閲覧と変わらない。
 - `lopdf` の出力に次を足す。
@@ -312,7 +313,7 @@
 メインプロセスとワーカーは、標準入力と標準出力でメッセージをやりとりする。標準エラー出力はログとして読み捨てる。
 
 - 1 つのメッセージ = 4 バイトの長さ（リトルエンディアン）+ JSON のヘッダー + （あれば）バイナリの本体。本体の長さはヘッダーの `bodyLength` に入れる。画像を base64 にしないため。
-- 要求と応答は 1 対 1 で、ワーカーは一度に 1 つの要求だけを処理する。
+- 要求と応答は 1 対 1 で、ワーカーは一度に 1 つの要求だけを処理する。例外は `Organize` で、進捗と、出力を分けた本体を何度か返してから、最後の応答を返す（出力を 1 つの本体で返すと、ワーカーとメインプロセスの両方に出力が丸ごと載り、`MAX_BODY_BYTES` にも当たるため）。
 
 | 要求 | 内容 | 応答 |
 | --- | --- | --- |
@@ -323,18 +324,20 @@
 | `ImageOnTop { page, imageIndex }` | 写真の上に何かが載っているか（§4.6） | `{ onTop }` |
 | `Detect { page }` | 1 ページのレイアウトの解析（§4.7） | `{ candidates: [{ kind, score, rectPt, imageIndex }] }`。`kind` は `photo` / `figure` / `chart` / `table`、`imageIndex` は `photo` のときだけ |
 | `RenderRegion { page, rectPt, imageIndex, dpi, format, color, photoNative, photoOnly }` | 切り出しの 1 つの範囲を描いて書き出す（§4.6）。`imageIndex` は写真の範囲だけ。写真の範囲は、`photoNative` なら元の画素で、そうでなければ `rectPt` を dpi で描き、どちらも `photoOnly` ならほかの物を外す | 本体に画像のバイト列。ヘッダーに `{ width, height, scaledDown }` |
+| `Organize { sources, pages, outputPassword }` | 整理の 1 つの出力を作る（[design/organize.md](design/organize.md) §3）。開いている PDF は使わず、要求で渡された PDF を順に開いて閉じる | 進捗 `{ done }`、出力を `OUTPUT_CHUNK_BYTES` ずつ分けた本体、最後に `{ bytes }` |
 | `Close` | 開いている PDF を閉じる | `{}` |
 
 - エラーの応答は `{ code, detail }`（§6.6 のコード）。pdfium のパスワードのエラーは `PasswordProtected`、それ以外で開けないものは `PdfOpenFailed`。
 - ページ数が `MAX_PDF_PAGES` を超える PDF は、`Open` で `TooManyPages` を返す。
-- ワーカーはファイルを書かない。描画した画像はメインプロセスに返し、メインプロセスが §6.5 の方式で保存する。
+- ワーカーはファイルを書かない。描画した画像と整理の出力はメインプロセスに返し、メインプロセスが §6.5 の方式で保存する。
 - `Detect` は、onnxruntime とモデルを最初の `Detect` で読み込む。読み込めなければ `LayoutUnavailable` を返し、そのワーカーは以後の `Detect` に同じエラーを返す（ほかの要求は続けて受ける）。読み込みを試し直さないのは、一度失敗したあとに `ort::init_from` をもう一度呼ぶとワーカーが落ちるため。読み込めたあとの推論の失敗も `LayoutUnavailable` で返す（こちらはワーカーを使えないことにはしない）。メインプロセスはこの 2 つを区別しない（§5.2）。
 
 ### 5.2 ワーカーの管理（`worker_pool.rs`）
 
 - ワーカーは必要になったときに起動し、使い終わったら次の要求のために残す。数の上限は、論理 CPU 数 − 1 と `MAX_WORKERS` の小さい方（1 以上）。pdfium はスレッドの並列に対応しないので、並列はプロセスの数で行う。
 - 一覧の追加（ページ数の取得）、サムネイル、変換は、どれもプールからワーカーを借りて行う。
-- 応答の待ちには時間の上限を設ける（要求の種類ごとに決め、新しい要求を足したときに既定の値に落ちないようにする）: `Open` は `OPEN_TIMEOUT`、`Render`・`Thumbnail`・`PageImages`・`ImageOnTop`・`RenderRegion` は `RENDER_TIMEOUT`、`Detect` は `DETECT_TIMEOUT`（最初のモデルの読み込みを含む）。超えたらワーカーを強制終了し、その要求を `WorkerTimeout` で失敗させる。
+- 応答の待ちには時間の上限を設ける（要求の種類ごとに決め、新しい要求を足したときに既定の値に落ちないようにする）: `Open` は `OPEN_TIMEOUT`、`Render`・`Thumbnail`・`PageImages`・`ImageOnTop`・`RenderRegion` は `RENDER_TIMEOUT`、`Detect` は `DETECT_TIMEOUT`（最初のモデルの読み込みを含む）、`Organize` は応答と応答の間に `ORGANIZE_STEP_TIMEOUT`（全体の時間は出力の大きさに比例し、上限を決められないため）。超えたらワーカーを強制終了し、その要求を `WorkerTimeout` で失敗させる。
+- 整理のキャンセルは、`Organize` を処理しているワーカーを強制終了して行う（pdfium の写す・固める処理は途中で止められないため）。メインプロセスは書きかけの一時ファイルを捨てる。
 - ワーカーが応答の途中で終了した、または読めない応答を返した場合は、その要求を `WorkerCrashed` で失敗させ、ワーカーを捨てる。次の要求では新しいワーカーを起動する。
 - 1 つの PDF でワーカーが続けて落ちるのを避けるため、`WorkerCrashed` / `WorkerTimeout` になった PDF は、その一括変換の中で再試行しない。
 - 切り出しのレイアウトの解析（`Detect`）は、プールとは別の 1 つのワーカー（解析のワーカー）だけで行う。モデルを読み込んだワーカーが増えると、そのぶんメモリが増えるため（1 つで 0.5 GB 前後）。解析のワーカーは、切り出しの PDF を開いている間だけ持ち、PDF を入れ替えたら終わらせる。最初の `detect_layout` で起動して、その PDF を（パスワードがあれば付けて）`Open` し、以後の解析の要求は 1 つずつ順に送る。`WorkerCrashed`・`WorkerTimeout` になったらそのワーカーを捨て、次の要求で起動し直す。`LayoutUnavailable` を一度受けたら、その PDF を開いている間は覚えておき、以後の解析の要求にはワーカーを起動し直さずに同じエラーを返す（ワーカーの中の読み込みの失敗と推論の失敗を区別しない。推論の失敗はまれで、PDF を開き直せば試し直せる）。入れ替えるときに解析の要求が実行中なら、それを待たない（その要求が終わってからワーカーを捨てる。古い PDF の結果は、画面が `id` で見分けて捨てる）。ページの表示、写真の一覧、重なりの判定、書き出しは、ほかの機能と同じくプールのワーカーで行う。
@@ -345,7 +348,7 @@
 - ワーカー 1 つが使えるメモリを `WORKER_MEMORY_LIMIT` までにする。超えた確保は失敗し、ワーカーは終了する（`WorkerCrashed` として扱う）。
 - Linux: ワーカーが起動直後、pdfium を読み込む前に `setrlimit(RLIMIT_AS)` で自分に上限を掛ける。
 - Windows: メインプロセスがワーカーを起動したあと、ジョブオブジェクトに入れて `JOB_OBJECT_LIMIT_PROCESS_MEMORY` を掛ける。あわせて `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` を付け、メインプロセスが異常終了したときにワーカーが残らないようにする。最初の要求を送る前にジョブに入れるので、上限の外で pdfium が動くことはない。
-- Windows の API の unsafe な呼び出しは、ジョブオブジェクトの操作（`crates/worker/src/windows_job.rs`）と、下のデコードの予算のための搭載メモリの取得（`crates/worker/src/system_memory.rs` の Windows の関数）に閉じ込め、ワークスペースで unsafe を許すのはこの 2 か所だけにする（ワークスペースの `unsafe_code` は、この 2 か所が例外を宣言できるよう `deny` にする）。ジョブオブジェクトは、`JOB_OBJECT_LIMIT_PROCESS_MEMORY` を設定できる安全な包みの crate がないため（`win32job` 2.0 はワーキングセットの制限だけで、これは確保を失敗させない）。
+- Windows の API の unsafe な呼び出しは、ジョブオブジェクトの操作（`crates/worker/src/windows_job.rs`）と、下のデコードの予算のための搭載メモリの取得と、整理でワーカーが自分の使用量を読む関数（[design/organize.md](design/organize.md) §1。どちらも `crates/worker/src/system_memory.rs` の Windows の関数）に閉じ込め、ワークスペースで unsafe を許すのはこの 2 か所だけにする（ワークスペースの `unsafe_code` は、この 2 か所が例外を宣言できるよう `deny` にする）。ジョブオブジェクトは、`JOB_OBJECT_LIMIT_PROCESS_MEMORY` を設定できる安全な包みの crate がないため（`win32job` 2.0 はワーキングセットの制限だけで、これは確保を失敗させない）。
 - Linux で親が異常終了した場合は、ワーカーの標準入力が閉じ、ワーカーは次の読み込みで終了する。pdfium の処理の途中で止まっているワーカーは、その処理が終わるか時間切れになるまで残りうる。
 - スパイクでの最大は約 84 MB（23 ページの論文を 300 dpi）で、上限は十分な余裕を持つ。上限の値と仕組みが Windows でも働くことを、作業計画の最初のタスクで確かめる。
 - メインプロセスで画像の画素を読む処理（§4.3 の書き出し、§6.1 のサムネイル）は、プロセスで 1 つのメモリの予算（デコードの予算）の範囲で並べる。メインプロセスにはワーカーのような上限がなく、確保に失敗するとアプリごと終了するため。1 枚ずつの変換は §5.2 の数のスレッドで並び、サムネイルは表示された行の数だけ同時に頼まれる。計測では、`MAX_IMAGE_PIXELS` に近い 16 ビットの PNG で、変換を 4 つ並べると約 9 GB、サムネイルを 8 つ並べると約 8 GB を使った。結合（1 つの PDF）は 1 枚ずつ読むが、サムネイルと同時に動くので同じ予算を使う。
@@ -461,6 +464,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | OutputDirMissing | 変換を始める前に、保存先のフォルダがない、またはフォルダでない（§6.5） |
 | OutputDirNotWritable | 変換を始める前に、保存先のフォルダに一時ファイルを作れない（§6.5） |
 | LayoutUnavailable | 切り出しで、onnxruntime かモデルを読み込めない、または解析に失敗した（§4.7、§5.1） |
+| OutputTooLarge | 整理の 1 つの出力の見積もりが `MAX_ORGANIZE_OUTPUT_BYTES` を超える（[design/organize.md](design/organize.md) §2） |
 
 - 「対象のページなし」はエラーではなく、`job-item` の状態 `noPages` で表す（FR-04）。
 - 書き出す PDF のパスワードの誤り（使えない文字、長すぎる、2 回の入力が違う）は、画面がダイアログの中で示す（§10.1）。IPC のエラーコードは足さない。画面と同じ規則を Rust も確かめ（§4.3.1 の `OutputPassword`）、届いたら `InvalidParams` で拒む。
@@ -470,7 +474,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 ### 6.7 設定の保存（FR-07、FR-10）
 
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
-- 内容: `schemaVersion`、`language`、画面ごとの設定（`imagesToPdf`・`pdfToImages`・`crop`）。画面ごとの設定は、その画面の設定パネルの選択肢と保存先のフォルダ（`outputDir`）で、切り出しの `format`・`colorMode`・`dpi` は `pdfToImages` と同じ値。`dpi` は §4.4 の範囲の整数。項目と値の型は Rust の設定の型（ts-rs で生成した型）が正本。
+- 内容: `schemaVersion`、`language`、画面ごとの設定（`imagesToPdf`・`pdfToImages`・`crop`・`organize`）。画面ごとの設定は、その画面の設定パネルの選択肢と保存先のフォルダ（`outputDir`）で、切り出しの `format`・`colorMode`・`dpi` は `pdfToImages` と同じ値。`dpi` は §4.4 の範囲の整数。項目と値の型は Rust の設定の型（ts-rs で生成した型）が正本。
 - 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。切り出しの開いた PDF と範囲も保存しない。
 - `crop` がない設定ファイル（切り出しより前の版が書いたもの）は、欠けた項目として既定値になるので、`schemaVersion` は `1` のままでよい。
 - 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、パスワードは付けない（`false`）、PNG、カラー、150 dpi。切り出しは PNG、カラー、150 dpi、写真は元の画質で書き出す（`photoNative: true`）、写真だけを書き出さない（`photoOnly: false`）。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
@@ -498,7 +502,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 ### 6.9 書き出す PDF のパスワード（FR-02）
 
 - パスワードは、画面のダイアログ（§10.1）の状態から `save_merged_pdf`・`start_images_to_pdfs` の引数として Rust に渡り、その変換の間だけメインプロセスが `OutputPassword`（§4.3.1）として持つ。変換が終わるか、キャンセル・失敗したら捨てる。次の保存ではダイアログで入れ直す（ダイアログを閉じたら、画面の状態からも捨てる）。
-- 設定・ログ・一時ファイルには書かない。ワーカーには渡さない（書き出しはメインプロセスで行う）。メモリの消去（`zeroize` など）は §6.8 と同じ理由で行わない。
+- 設定・ログ・一時ファイルには書かない。画像 → PDF では、ワーカーには渡さない（書き出しはメインプロセスで行う）。整理（FR-12）では、暗号化をワーカーで行うので、`Organize` の要求でワーカーに渡す（[design/organize.md](design/organize.md) §3。ワーカーでも同じくログに書かず、`Debug` で伏せる）。メモリの消去（`zeroize` など）は §6.8 と同じ理由で行わない。
 - Rust も §4.3.1 の規則で確かめ、外れたら `InvalidParams` で拒んで何も始めない（画面が先に確かめるので、通常は起きない）。
 - パスワード付きの PDF は、このアプリの「PDF → 画像」でも §6.8 のとおり開ける。
 
@@ -533,7 +537,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `add_pdfs` | `source: "files" \| "folder"` | `{ added: PdfItem[], skipped: … } \| null` |
 | `remove_items` | `ids` | – |
 | `get_thumbnail` | `id, page?, maxSide?` | PNG のバイナリ（`tauri::ipc::Response`）。`maxSide` は省略で `THUMBNAIL_SIDE`、0 か `PAGE_VIEW_MAX_SIDE` を超えると `InvalidParams`。`id` は一覧の項目か、開いている切り出しの PDF（§6.10） |
-| `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages" \| "crop"` | `{ dirLabel } \| null` |
+| `pick_output_dir` | `kind: "imagesToPdf" \| "pdfToImages" \| "crop" \| "organize"` | `{ dirLabel } \| null` |
 | `save_merged_pdf` | `ids, pageSize, orientation, pdfA, password` | `{ savedName: string \| null } \| null`（保存ダイアログを開く）。`null` は保存ダイアログを取り消したときだけで、何も実行していない。変換を実行したときは必ずオブジェクトを返し、`savedName` は PDF を書いたときだけそのファイル名、キャンセルや 1 枚も成功しなかったときは `null`。 |
 | `start_images_to_pdfs` | `ids, pageSize, orientation, pdfA, password` | –（§6.2 の「1 枚ずつ」）。`orientation` は `pageSize` が用紙のときだけ使い、`fit` では無視する（`save_merged_pdf` も同じ）。`password` は `string \| null` で、`null` ならパスワードを付けない。`pdfA` が `true` で `password` が `null` でない、または `password` が §4.3.1 の規則に合わないときは `InvalidParams`（`save_merged_pdf` も同じ。保存ダイアログを開く前に拒む） |
 | `check_page_range` | `text, ids` | `{ totalPages, intervals: [start, end][], lastPage }` または `InvalidPageRange` |
@@ -543,19 +547,20 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `activate_crop_pdf` | `id` | –（保留の PDF を開いている PDF にし、前の PDF と解析のワーカーを捨てる。`id` が今の保留でなければ `UnknownHandle`） |
 | `discard_crop_pdf` | `id` | –（保留の PDF を捨てる。`id` が今の保留でなければ何もしない） |
 | `unlock_crop_pdf` | `id, password` | `CropPdf`（§6.10。規則とエラーは `unlock_pdf` と同じで、ほかの PDF は試さない） |
-| `set_drop_target` | `target: "lists" \| "crop"` | –（D&D の扱い。§6.10。起動時とページの読み込みの開始（`on_page_load` の `Started`）で `lists` に戻す） |
+| `set_drop_target` | `target: "lists" \| "crop" \| "organize"` | –（D&D の扱い。§6.10。起動時とページの読み込みの開始（`on_page_load` の `Started`）で `lists` に戻す） |
 | `list_page_images` | `id, page` | `PageImage[]`（§5.1 の `PageImages`。ページが範囲の外なら `InvalidParams`） |
 | `detect_layout` | `id, page` | `Candidate[]`（§5.1 の `Detect`）。変換中でも受け付ける（解析のワーカーはプールと別のため）。`LayoutUnavailable` はこのコマンドのエラーで返す |
 | `check_on_top` | `id, page, imageIndex` | `boolean`（`imageIndex` がそのページにない、またはページが範囲の外なら `InvalidParams`） |
 | `start_detect_all` | `id` | –（§6.10。`job-progress` はページで数え、ページごとに `layout-page` を送る） |
 | `start_crop_export` | `id, regions, format, colorMode, dpi, photoNative, photoOnly` | –（§6.10。`regions` は `{ key, page, rectPt, imageIndex }[]`（`imageIndex` は写真の範囲だけ `number`、ほかは `null`。写真の範囲の `rectPt` は画像の枠）。`photoNative` が `false` のときは、写真の範囲も `rectPt` を dpi で描く（`photoOnly` は効く）。次のどれかなら何も始めずに `InvalidParams`: `dpi` が §4.4 の範囲の外、`regions` が空、`key` が重なる、`page` がページの外、`rectPt` が `0 ≤ x0 < x1 ≤ widthPt`・`0 ≤ y0 < y1 ≤ heightPt`（そのページの `CropPdf` の大きさ）に収まらない、`imageIndex` がそのページの `PageImages` にない。`imageIndex` の確かめは、写真の範囲のあるページごとにプールのワーカーで `PageImages` を求めて行う） |
+| `add_organize_pdfs` / `remove_organize_pdfs` / `unlock_organize_pdf` / `save_organized_pdf` / `start_organize_split` | [design/organize.md](design/organize.md) §4 | 同左 |
 | `cancel_job` | – | – |
 | `get_about` | – | `{ version, pdfiumReady, pdfiumError }`（`pdfiumReady` は、ワーカーが pdfium を読み込めたか。pdfium の版は返さず、「このアプリについて」の第三者ライセンスの一覧に出る） |
 
 - `CropPdf`: `{ id, name, pageCount, pages: [{ widthPt, heightPt }], error }`（`widthPt`・`heightPt` は表示する向きの大きさ。開けない PDF は `pageCount` が 0、`pages` が空で、`error` を持つ）。切り出しのコマンド（`activate_crop_pdf`・`discard_crop_pdf` 以外）の `id` は、開いている切り出しの PDF のものだけを受け、ほかは `UnknownHandle`（§6.10）。`PageImage`: `{ imageIndex, rectPt, pxWidth, pxHeight, nativeSize }`（`nativeSize` は `{ width, height, scaledDown }` か `null`）。`Candidate`: `{ kind, score, rectPt, imageIndex }`。`rectPt` は `[x0, y0, x1, y1]`（§4.6 の座標）。
 - `ImageItem`: `{ id, name, width, height, format, pageCount, bytes, error }`。`width` と `height` は EXIF（TIFF）の向きを反映した表示上の画素の数（サムネイルと同じ向き）で、TIFF では最初のページのもの。`format` は `png`・`jpeg`・`webp`・`bmp`・`tiff`。`pageCount` は TIFF のページ数で、ほかの形式は 1。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。失敗した項目では、`width`・`height`・`pageCount`（`ImageItem` と `PdfItem` の両方）は 0、`format`・`firstPageSizePt` は `null`。
 - どのコマンドもパスを引数に取らない。`dirLabel` は表示用で、送り返されない。
-- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items`、`unlock_pdf`、`open_crop_pdf`、`activate_crop_pdf`、`unlock_crop_pdf` は `ConversionRunning` で拒む（`start_detect_all` と `start_crop_export` も変換に数える）。
+- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items`、`unlock_pdf`、`open_crop_pdf`、`activate_crop_pdf`、`unlock_crop_pdf`、整理のコマンド（`save_organized_pdf`・`start_organize_split` を含む）は `ConversionRunning` で拒む（`start_detect_all` と `start_crop_export` も変換に数える）。
 
 ### 7.2 イベント（Rust → フロントエンド）
 
@@ -614,8 +619,8 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 - 画像（TIFF を含む）はメインプロセスで読む。読み込みは純 Rust の crate（`image`、`tiff`）だけで行い、寸法と展開の大きさに上限を置く（§4.1、§4.1.1）。C のライブラリで読む PDF と違い、壊れたファイルで異常終了するおそれが小さいため、ワーカーに分けない。
 - PDF はワーカーでだけ開く（§1、§5）。メインプロセスに pdfium を読み込まない。`crates/worker` 以外の crate が `pdfium-render` に依存していないことを、`cargo-deny` の `bans`（`wrappers` の指定）で確かめる。`ort`（onnxruntime）も同じく `crates/worker` だけに置き、同じ方法で確かめる。
 - onnxruntime とモデルは §8.5 のとおり版と SHA-256 で照合して取得し、同梱する。モデルを読むのはワーカーだけで、入力は PDF を描いた画素だけ（モデルのファイルを利用者が差し替える手段は設けない）。
-- ワーカーには、開く PDF のパス、利用者が入れたパスワード（§6.8）、pdfium・onnxruntime・モデルの場所だけを渡す。ワーカーはファイルを書かない。
-- 書き出す PDF の暗号化（§4.3.1）はメインプロセスの `lopdf`（純 Rust）で行う。`lopdf` が読むのは krilla がその場で書いた PDF だけで、利用者が追加した PDF は読まない。書き出しのパスワードは §6.9 のとおり扱う。
+- ワーカーには、開く PDF のパス、利用者が入れたパスワード（§6.8）、整理の書き出しのパスワード（§6.9）、pdfium・onnxruntime・モデルの場所だけを渡す。ワーカーはファイルを書かない。
+- 画像 → PDF の暗号化（§4.3.1）はメインプロセスの `lopdf`（純 Rust）で行う。メインプロセスの `lopdf` が読むのは krilla がその場で書いた PDF だけで、利用者が追加した PDF は読まない。整理では、ワーカーの `lopdf` が、pdfium の出力と、一部の元の PDF（表示の設定とリンクの枠のため）を読む（[design/organize.md](design/organize.md) §1）。ワーカーの上限と時間の上限の中で動き、展開の大きさにも上限を置く。書き出しのパスワードは §6.9 のとおり扱う。
 - サムネイルと描画した画像は、`blob:` URL にして `<img>` で表示する。
 - WebView2 の起動オプションの `--host-resolver-rules` は、SVG Tracer の `MAP * ~NOTFOUND` に `EXCLUDE localhost` を加える。`tauri dev` の画面は Vite（`devUrl` の `http://localhost:5173`）から読むので、`localhost` の名前解決まで失敗させると Windows で開発用の画面が開かない（`ERR_NAME_NOT_RESOLVED`）。製品版で `localhost` の名前解決が通っても、CSP が許す接続先は画面自身（`'self'`）と IPC だけなので、画面から `localhost` には接続できない。PAC や外部のサーバーへの名前解決は、これまでどおりすべて失敗する。
 
@@ -628,7 +633,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 **共通**
 
 - ウィンドウの既定の大きさは 1200×800、最小は 960×640。画面の配置は、最小の大きさでも上部バー・ツールバーが 1 行に収まり、一覧とページが使える大きさに残ることで決める。
-- 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像 / 切り出し）、言語の切り替え、「このアプリについて」。
+- 上部バー: アプリ名、タブ（画像 → PDF / PDF → 画像 / 切り出し / 整理）、言語の切り替え、「このアプリについて」。
 - 押せない状態でも、選んだ値は状態と設定に残し、選んだ選択肢を示す。条件があって押せない欄は、隠さずに押せなくして理由を添える（画像 → PDF の「向き」は「画像と同じ大きさ」の間は押せない。出したり消したりすると、ドロップダウンを閉じた所に欄が現れて残像のように見え、下の欄も動くため）。
 - 選択肢が多く設定パネルの幅に収まらないもの（「ページの大きさ」、解像度）はドロップダウンにし、ほかは切り替えのボタンにする。押すと選択肢が開くものは、画面のどこでも同じ矢印のアイコンで示す（WebView の矢印は使わない）。
 - 用紙の選択肢には縦向きの寸法を添え、日英で同じ文字列にする（B 判が JIS か ISO かを寸法で見分けられるようにするため）。
