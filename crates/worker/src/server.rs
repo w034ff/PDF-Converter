@@ -31,6 +31,16 @@ pub const WORKER_MEMORY_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 #[cfg(feature = "test-hooks")]
 pub const CRASH_ON_OPEN_FILE_NAME: &str = "crash-on-open-for-test.pdf";
 
+/// Name of a source PDF that makes the worker abort on `Organize` for testing (design §11.3).
+/// `Open` takes a file of this name like any other, so a test can add it to a list first.
+#[cfg(feature = "test-hooks")]
+pub const CRASH_ON_ORGANIZE_FILE_NAME: &str = "crash-on-organize-for-test.pdf";
+
+/// Name of a source PDF that makes the worker stop answering `Organize` for testing, as
+/// `HangForTest` does (design §11.3).
+#[cfg(feature = "test-hooks")]
+pub const HANG_ON_ORGANIZE_FILE_NAME: &str = "hang-on-organize-for-test.pdf";
+
 /// Error code for a pdfium library that cannot be loaded or used.
 pub(crate) const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
 
@@ -74,6 +84,8 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
     while let Some((request, _body)) = read_message::<_, Request>(&mut input)? {
         match OrganizeArgs::from_request(request) {
             Ok(args) => {
+                #[cfg(feature = "test-hooks")]
+                fail_organize_for_test(&args);
                 // Only `Organize` answers with several messages, so it bypasses `handle`.
                 state.document = None;
                 match state.pdfium() {
@@ -88,6 +100,20 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
         }
     }
     Ok(())
+}
+
+/// Aborts or hangs when a source of `args` has one of the names the tests use.
+#[cfg(feature = "test-hooks")]
+fn fail_organize_for_test(args: &OrganizeArgs) {
+    for source in &args.sources {
+        match source.path.file_name().and_then(|name| name.to_str()) {
+            Some(CRASH_ON_ORGANIZE_FILE_NAME) => std::process::abort(),
+            Some(HANG_ON_ORGANIZE_FILE_NAME) => loop {
+                std::thread::park();
+            },
+            _ => {}
+        }
+    }
 }
 
 pub(crate) fn check_page_count(count: u32) -> Result<(), Response> {
@@ -582,5 +608,15 @@ mod tests {
     #[test]
     fn crash_on_open_file_name_constant() {
         assert_eq!(CRASH_ON_OPEN_FILE_NAME, "crash-on-open-for-test.pdf");
+    }
+
+    #[cfg(feature = "test-hooks")]
+    #[test]
+    fn organize_test_file_name_constants() {
+        assert_eq!(
+            CRASH_ON_ORGANIZE_FILE_NAME,
+            "crash-on-organize-for-test.pdf"
+        );
+        assert_eq!(HANG_ON_ORGANIZE_FILE_NAME, "hang-on-organize-for-test.pdf");
     }
 }
