@@ -148,7 +148,13 @@ impl Detector {
         let input = model_input(pixels, width, height)?;
         let boxes = run_model(session, input, width, height)?;
 
-        let images = crop::page_images(doc, page)?;
+        // Only an image box looks for an embedded image, so a page without
+        // one keeps its charts and tables even where listing images fails.
+        let images = if has_image_box(&boxes) {
+            crop::page_images(doc, page)?
+        } else {
+            Vec::new()
+        };
         Ok(candidates(&boxes, (width, height), page_pt, &images))
     }
 
@@ -328,6 +334,14 @@ pub(crate) fn candidates(
             })
         });
     classify(pictures, images)
+}
+
+/// Whether any box that [`candidates`] keeps by its score is of the image
+/// class, the one class matched with the embedded images.
+fn has_image_box(boxes: &[ModelBox]) -> bool {
+    boxes.iter().any(|b| {
+        b.score >= LAYOUT_SCORE_MIN && matches!(picture_kind(b.class), Some(PictureKind::Image))
+    })
 }
 
 /// A box of a class that becomes a candidate, in points on the page.
@@ -710,6 +724,24 @@ mod tests {
                 (CandidateKind::Chart, 0.5),
             ]
         );
+    }
+
+    #[test]
+    fn only_a_confident_image_box_asks_for_the_embedded_images() {
+        let area = rect(0.0, 0.0, 100.0, 100.0);
+        assert!(!has_image_box(&[
+            model_box(CHART, 0.9, area),
+            model_box(TABLE, 0.9, area),
+        ]));
+        assert!(!has_image_box(&[model_box(
+            IMAGE,
+            LAYOUT_SCORE_MIN - 0.01,
+            area
+        )]));
+        assert!(has_image_box(&[
+            model_box(CHART, 0.9, area),
+            model_box(IMAGE, LAYOUT_SCORE_MIN, area),
+        ]));
     }
 
     #[test]
