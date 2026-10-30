@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use pdfconv_worker::client::WorkerProcess;
 use pdfconv_worker::protocol::{
-    CandidateKind as WorkerCandidateKind, EmbeddedImage, LayoutCandidate, Password, PasswordError,
-    RectPt, Request, Response,
+    CandidateKind as WorkerCandidateKind, EmbeddedImage, LayoutCandidate,
+    NativeSize as WorkerNativeSize, Password, PasswordError, RectPt, Request, Response,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -74,8 +74,32 @@ pub struct PageImage {
     pub rect_pt: [f64; 4],
     pub px_width: u32,
     pub px_height: u32,
-    /// Whether the image can be written in its own pixels.
-    pub native: bool,
+    /// The size the image is written at in its own pixels, or `null` when it
+    /// cannot be. It is the whole image's: a clip or a mask that hides part
+    /// of it makes the written image smaller.
+    pub native_size: Option<NativeSize>,
+}
+
+/// The size of an image written in its own pixels, in the orientation it is
+/// shown in (design §7.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeSize {
+    pub width: u32,
+    pub height: u32,
+    /// Whether the image's pixels exceed the render limit, so it is written
+    /// smaller.
+    pub scaled_down: bool,
+}
+
+impl From<WorkerNativeSize> for NativeSize {
+    fn from(size: WorkerNativeSize) -> Self {
+        Self {
+            width: size.width,
+            height: size.height,
+            scaled_down: size.scaled_down,
+        }
+    }
 }
 
 /// What a layout candidate is (design §4.7, §7.1).
@@ -143,7 +167,7 @@ impl From<&EmbeddedImage> for PageImage {
             rect_pt: rect_array(&image.rect_pt),
             px_width: image.px_width,
             px_height: image.px_height,
-            native: image.native,
+            native_size: image.native_size.map(NativeSize::from),
         }
     }
 }

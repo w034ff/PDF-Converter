@@ -264,7 +264,7 @@ describe("ipc", () => {
           rectPt: [10, 20, 110, 220],
           pxWidth: 400,
           pxHeight: 800,
-          native: true,
+          nativeSize: { width: 400, height: 800, scaledDown: false },
         },
       ];
       const calls: unknown[] = [];

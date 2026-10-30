@@ -30,17 +30,10 @@ export const CROP_ZOOM_STEPS: readonly number[] = [
 
 /**
  * The longest side of a page image `get_thumbnail` is asked for, at most, in
- * pixels. Matches `PAGE_VIEW_MAX_SIDE` in `crates/worker/src/lib.rs`, above
- * which Rust refuses `maxSide`.
+ * pixels. Matches `PAGE_VIEW_MAX_SIDE` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`), above which Rust refuses `maxSide`.
  */
 export const PAGE_VIEW_MAX_SIDE = 2400;
-
-/**
- * The most pixels one rendered range may have. Matches
- * `pdfconv_worker::MAX_RENDER_PIXELS` in `crates/worker/src/lib.rs`, above
- * which a rectangle is refused and a photo is scaled down.
- */
-export const MAX_RENDER_PIXELS = 100_000_000;
 
 /**
  * The sizes a page image is asked for. A size between two is rounded up, so

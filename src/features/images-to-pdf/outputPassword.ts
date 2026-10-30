@@ -2,6 +2,7 @@
  * The rule for the password of a written PDF. It copies `OutputPassword::new` in
  * `crates/core/src/pdf_encrypt.rs` (design §4.3.1, §10.1); change them together. Rust checks the
  * rule again when the password arrives, so a mismatch is refused there as `InvalidParams`.
+ * `OUTPUT_PASSWORD_MAX_LENGTH` is checked against Rust by `src/ipc/rustConstants.test.ts`.
  */
 
 /** Longest password in characters. */

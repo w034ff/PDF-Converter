@@ -8,13 +8,15 @@ export const DPI_CHOICES: readonly number[] = [72, 150, 300];
 
 /**
  * Minimum render resolution in dpi.
- * Matches `RENDER_DPI_MIN` in `crates/worker/src/lib.rs`.
+ * Matches `RENDER_DPI_MIN` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`).
  */
 export const RENDER_DPI_MIN = 36;
 
 /**
  * Maximum render resolution in dpi.
- * Matches `RENDER_DPI_MAX` in `crates/worker/src/lib.rs`.
+ * Matches `RENDER_DPI_MAX` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`).
  */
 export const RENDER_DPI_MAX = 1000;
 

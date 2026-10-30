@@ -267,7 +267,9 @@ impl State {
                 }
             }
             Request::PageImages { page } => {
-                let result = self.document().and_then(|doc| crop::page_images(doc, page));
+                let result = self
+                    .document()
+                    .and_then(|doc| crop::page_images(doc, page, MAX_RENDER_PIXELS));
                 match result {
                     Ok(images) => (Response::PageImages { images }, Vec::new()),
                     Err(response) => (response, Vec::new()),

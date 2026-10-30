@@ -14,13 +14,13 @@ use ort::value::Tensor;
 use pdfconv_core::{PHOTO_MATCH_IOU, PageRect, iou};
 use pdfium_render::prelude::PdfDocument;
 
-use crate::crop;
 use crate::protocol::{
     CandidateKind, EmbeddedImage, LayoutCandidate, RectPt, RenderColor, Response,
 };
 use crate::server::{
     CODE_PDF_OPEN_FAILED, error_response, load_page, render_page_pixels, size_for_long_side,
 };
+use crate::{MAX_RENDER_PIXELS, crop};
 
 /// The longer side of the page as rendered for the model, in pixels; the
 /// rendering the spike matched against PaddleX with (design §4.7, 前処理).
@@ -151,7 +151,7 @@ impl Detector {
         // Only an image box looks for an embedded image, so a page without
         // one keeps its charts and tables even where listing images fails.
         let images = if has_image_box(&boxes) {
-            crop::page_images(doc, page)?
+            crop::page_images(doc, page, MAX_RENDER_PIXELS)?
         } else {
             Vec::new()
         };
@@ -491,7 +491,7 @@ mod tests {
             rect_pt: rect_pt(&rect),
             px_width: 10,
             px_height: 10,
-            native: true,
+            native_size: None,
         }
     }
 
