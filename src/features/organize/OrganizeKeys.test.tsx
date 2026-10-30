@@ -144,6 +144,21 @@ describe("moving the focus in the grid", () => {
     );
   });
 
+  it("does not leave a key at the edge to jump the grid on a later change", async () => {
+    await openOrganizeTab({ pdfs: [organizePdf(1, "big.pdf", 10_000)] });
+    focusCell(1, 1);
+    key("ArrowLeft");
+    await flush();
+
+    scrollArea().scrollTop = 5_000;
+    fireEvent.scroll(scrollArea());
+    await flush();
+    focusCell(1, 30 * COLUMNS + 1);
+    await flush();
+
+    expect(scrollArea().scrollTop).toBe(5_000);
+  });
+
   it("shows the page it reaches, scrolling the grid and giving it the focus", async () => {
     await openOrganizeTab({ pdfs: [organizePdf(1, "big.pdf", 10_000)] });
     focusCell(1, 1);

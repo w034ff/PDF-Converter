@@ -162,6 +162,21 @@ export function insertPointAt(
   return { index: row * columns + slot, row, slot };
 }
 
+/**
+ * Where the line of a drop in gap `slot` of a row is drawn. The gap before the
+ * first cell is outside the grid, and the padding of the scrolling area (4 px)
+ * would clip a line placed by the pitch alone, so it stops at this.
+ */
+const ORGANIZE_DROP_LINE_MIN_LEFT = -3;
+
+export function dropLineLeft(slot: number): number {
+  return Math.max(
+    slot * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) -
+      ORGANIZE_COLUMN_GAP / HALF,
+    ORGANIZE_DROP_LINE_MIN_LEFT,
+  );
+}
+
 /** The size a page is drawn at in its box, and the size of the picture inside it before it is turned. */
 export interface ThumbnailBox {
   /** The box, turned. */

@@ -232,6 +232,40 @@ describe("removing a PDF", () => {
     expect(state.history.past.flat().some((page) => page.id === 1)).toBe(false);
   });
 
+  it("leaves no step that changes nothing to undo or redo", () => {
+    let state = stateWith(pdf(1, 2), pdf(2, 2));
+    state = reduce(
+      state,
+      { type: "ORGANIZE_PAGES_DELETED", keys: [k(2, 1)] },
+      { type: "ORGANIZE_PAGES_ROTATED", keys: [k(1, 1)], direction: "right" },
+      { type: "ORGANIZE_PDF_REMOVED", id: 1 },
+    );
+
+    state = reduce(state, UNDO);
+    expect(grid(state)).toEqual(["2:1", "2:2"]);
+    expect(state.history.past).toEqual([]);
+
+    state = reduce(state, REDO);
+    expect(grid(state)).toEqual(["2:2"]);
+  });
+
+  it("starts over when the last PDF goes, keeping the settings and the notice", () => {
+    let state = reduce(
+      stateWith(pdf(1, 2)),
+      { type: "SET_ORGANIZE_ENCRYPT", encrypt: true },
+      { type: "ORGANIZE_PAGES_DELETED", keys: [k(1, 1)] },
+      { type: "ORGANIZE_PDF_REMOVED", id: 1 },
+    );
+
+    expect(state.edited).toBe(false);
+    expect(state.addedCount).toBe(0);
+    expect(state.history.past).toEqual([]);
+    expect(state.encrypt).toBe(true);
+
+    state = reduce(state, { type: "ORGANIZE_PDFS_ADDED", items: [pdf(2, 1)] });
+    expect(state.edited).toBe(false);
+  });
+
   it("ignores an ID that is not in the list", () => {
     const state = stateWith(pdf(1, 2));
 

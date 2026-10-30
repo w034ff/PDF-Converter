@@ -20,10 +20,9 @@ import {
 } from "../../state";
 import { PageCell } from "./PageCell";
 import {
-  ORGANIZE_CELL_WIDTH,
-  ORGANIZE_COLUMN_GAP,
   ORGANIZE_PAGE_BOX_SIDE,
   cellOffset,
+  dropLineLeft,
   focusIndexAfter,
   gridColumnCount,
   gridContentHeight,
@@ -134,6 +133,13 @@ export function PageGrid() {
   // state has changed. After a deletion it is whichever page the focus
   // landed on, which only the state knows.
   const revealRef = useRef<PageKey | typeof FOCUS_LANDING | null>(null);
+  // A key at the edge of the grid changes no state, and what it asks for must
+  // not wait for the next change that does (a press far away, say).
+  const [revealTurn, setRevealTurn] = useState(0);
+  function reveal(target: PageKey | typeof FOCUS_LANDING) {
+    revealRef.current = target;
+    setRevealTurn((turn) => turn + 1);
+  }
   useLayoutEffect(() => {
     const wanted = revealRef.current;
     const scroller = scrollRef.current;
@@ -162,7 +168,7 @@ export function PageGrid() {
       `[data-page-key="${CSS.escape(key)}"]`,
     );
     cell?.focus({ preventScroll: true });
-  }, [focused, indexByKey, columns, room.height]);
+  }, [revealTurn, focused, indexByKey, columns, room.height]);
 
   // The latest selection and lock, for a handler that must not change with them:
   // a new handler would redraw every cell on each press.
@@ -255,7 +261,7 @@ export function PageGrid() {
       const to = focusIndexAfter(key, from, columns, pages.length);
       event.preventDefault();
       const target = keyOfPage(pages[to]);
-      revealRef.current = target;
+      reveal(target);
       dispatch({
         type: "ORGANIZE_FOCUSED",
         key: target,
@@ -283,7 +289,7 @@ export function PageGrid() {
           direction,
           vertical ? columns : 1,
         );
-        revealRef.current = current;
+        reveal(current);
         dispatch({ type: "ORGANIZE_PAGES_MOVED", keys, insertIndex });
       }
       return;
@@ -319,7 +325,7 @@ export function PageGrid() {
     } else if (!locked && (key === "Delete" || key === "Backspace")) {
       event.preventDefault();
       // The cell that has the focus is the one going, and the focus must not be lost with it.
-      revealRef.current = FOCUS_LANDING;
+      reveal(FOCUS_LANDING);
       dispatch({
         type: "ORGANIZE_PAGES_DELETED",
         keys: operatedKeys(selected, current),
@@ -385,9 +391,7 @@ export function PageGrid() {
             className="organize-drop-line"
             aria-hidden="true"
             style={{
-              left:
-                dropPoint.slot * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) -
-                ORGANIZE_COLUMN_GAP / 2,
+              left: dropLineLeft(dropPoint.slot),
               top: cellOffset(dropPoint.row * columns, columns).top,
               height: ORGANIZE_PAGE_BOX_SIDE,
             }}

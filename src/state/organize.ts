@@ -280,10 +280,20 @@ function removePdf(state: OrganizeState, id: number): OrganizeState {
     return state;
   }
   const keyIsOfPdf = (key: PageKey) => key.startsWith(`${id}:`);
+  const pdfs = state.pdfs.filter((pdf) => pdf.id !== id);
+  if (pdfs.length === 0) {
+    // Nothing is left to undo or to lose.
+    return {
+      ...createInitialOrganizeState(),
+      notice: state.notice,
+      encrypt: state.encrypt,
+      output: state.output,
+    };
+  }
   const selected = [...state.selected].filter((key) => !keyIsOfPdf(key));
   return {
     ...state,
-    pdfs: state.pdfs.filter((pdf) => pdf.id !== id),
+    pdfs,
     pages: withPdfPagesRemoved(state.pages, id),
     selected:
       selected.length === state.selected.size
@@ -503,16 +513,33 @@ function deletePages(
   };
 }
 
+/**
+ * The place of the latest step that differs from `pages`, or -1. Removing a
+ * PDF can leave steps the same as their neighbours, and a key press that shows
+ * no change would read as a key that does not work.
+ */
+function latestDifferent(
+  steps: readonly OrganizePage[][],
+  pages: readonly OrganizePage[],
+): number {
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    if (!samePages(steps[index], pages)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 function undo(state: OrganizeState): OrganizeState {
   const { past, future, trimmed } = state.history;
-  const previous = past.at(-1);
-  if (previous === undefined) {
+  const at = latestDifferent(past, state.pages);
+  if (at < 0) {
     return state;
   }
-  const rest = past.slice(0, -1);
+  const rest = past.slice(0, at);
   return tidied({
     ...state,
-    pages: previous,
+    pages: past[at],
     edited: rest.length > 0 || trimmed,
     history: { past: rest, future: [...future, state.pages], trimmed },
   });
@@ -520,17 +547,17 @@ function undo(state: OrganizeState): OrganizeState {
 
 function redo(state: OrganizeState): OrganizeState {
   const { past, future, trimmed } = state.history;
-  const next = future.at(-1);
-  if (next === undefined) {
+  const at = latestDifferent(future, state.pages);
+  if (at < 0) {
     return state;
   }
   return tidied({
     ...state,
-    pages: next,
+    pages: future[at],
     edited: true,
     history: {
       past: [...past, state.pages],
-      future: future.slice(0, -1),
+      future: future.slice(0, at),
       trimmed,
     },
   });

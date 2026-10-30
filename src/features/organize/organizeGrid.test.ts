@@ -11,6 +11,7 @@ import {
   ORGANIZE_ROW_GAP,
   cellOffset,
   dragScrollStep,
+  dropLineLeft,
   focusIndexAfter,
   gridColumnCount,
   gridContentHeight,
@@ -353,5 +354,17 @@ describe("scrolling while dragging", () => {
     expect(dragScrollStep(bottom + 300, top, bottom)).toBe(
       ORGANIZE_DRAG_SCROLL_MAX_STEP_PX,
     );
+  });
+});
+
+describe("dropLineLeft", () => {
+  it("draws the line in the middle of the gap between two cells", () => {
+    expect(dropLineLeft(2)).toBe(
+      2 * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) - ORGANIZE_COLUMN_GAP / 2,
+    );
+  });
+
+  it("keeps the line before the first cell inside the scrolling area's padding", () => {
+    expect(dropLineLeft(0)).toBeGreaterThanOrEqual(-3);
   });
 });
