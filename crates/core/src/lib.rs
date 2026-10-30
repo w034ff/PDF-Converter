@@ -25,7 +25,11 @@ pub use naming::{
     CropRegion, PdfToImageInput, page_number_width, resolve_crop_names, resolve_image_to_pdf_names,
     resolve_pdf_to_image_names,
 };
-pub use organize::finish_organized;
+pub use organize::{
+    DestinationView, LINK_RECT_TOLERANCE_PT, LinkStyle, LinkStyleSource, LinkTarget, OutlineItem,
+    OutputLink, RAW_MAX_DECOMPRESSED, Relinking, SourceDetails, SourceLinkKey, ViewSettings,
+    finish_organized, read_source_details,
+};
 pub use page_range::{PageSet, ParsePageRangeError, parse_page_range};
 pub use pdf_encrypt::{
     MAX_OUTPUT_PASSWORD_LEN, OUTPUT_PASSWORD_CHARS, OutputPassword, OutputPasswordError,

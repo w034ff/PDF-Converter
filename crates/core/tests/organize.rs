@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use lopdf::{Dictionary, Document, LoadOptions, Object};
-use pdfconv_core::{OutputPassword, finish_organized};
+use pdfconv_core::{OutputPassword, Relinking, finish_organized};
 
 #[path = "support/organize_fixtures.rs"]
 mod organize_fixtures;
@@ -24,7 +24,14 @@ fn meta_pdf() -> Vec<u8> {
 fn finish(creator: &str, password: Option<&str>) -> Vec<u8> {
     let password = password.map(|text| OutputPassword::new(text.to_string()).expect("a password"));
     let mut out = Vec::new();
-    finish_organized(meta_pdf(), creator, password.as_ref(), &mut out).expect("finishing");
+    finish_organized(
+        meta_pdf(),
+        creator,
+        Relinking::default(),
+        password.as_ref(),
+        &mut out,
+    )
+    .expect("finishing");
     out
 }
 
@@ -150,5 +157,14 @@ fn a_password_encrypts_the_output_in_place() {
 #[test]
 fn bytes_that_are_not_a_pdf_are_a_write_error() {
     let mut out = Vec::new();
-    assert!(finish_organized(b"not a pdf".to_vec(), CREATOR, None, &mut out).is_err());
+    assert!(
+        finish_organized(
+            b"not a pdf".to_vec(),
+            CREATOR,
+            Relinking::default(),
+            None,
+            &mut out
+        )
+        .is_err()
+    );
 }
