@@ -87,8 +87,17 @@ jobs:
       - name: Rust Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+      # nextest runs the test binaries side by side, where cargo test runs
+      # them one after another; most of the time goes to tests that wait on
+      # worker processes. The repository has no doctests, which nextest would
+      # not run. 0.9.149 is a release at least 7 days old when chosen (design §9).
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149
+
       - name: Rust Test
-        run: cargo test --workspace --all-features --locked
+        run: cargo nextest run --workspace --all-features --locked
 
       # krilla reports its own PDF/A conformance, so veraPDF checks it too
       # (design §11.2). It exits with 1 when any file fails, which fails the
