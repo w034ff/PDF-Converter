@@ -7,7 +7,6 @@ import {
   cancelJob,
   checkOnTop,
   checkPageRange,
-  closeCropPdf,
   CROP_DROPPED_EVENT,
   detectLayout,
   discardCropPdf,
@@ -205,7 +204,7 @@ describe("ipc", () => {
       ]);
     });
 
-    it("sends only the ID to activate_crop_pdf, discard_crop_pdf and close_crop_pdf", async () => {
+    it("sends only the ID to activate_crop_pdf and discard_crop_pdf", async () => {
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
         calls.push([cmd, args]);
@@ -214,11 +213,9 @@ describe("ipc", () => {
 
       await activateCropPdf(3);
       await discardCropPdf(4);
-      await closeCropPdf();
       expect(calls).toEqual([
         ["activate_crop_pdf", { id: 3 }],
         ["discard_crop_pdf", { id: 4 }],
-        ["close_crop_pdf", {}],
       ]);
     });
 
@@ -267,7 +264,7 @@ describe("ipc", () => {
           rectPt: [10, 20, 110, 220],
           pxWidth: 400,
           pxHeight: 800,
-          native: true,
+          nativeSize: { width: 400, height: 800, scaledDown: false },
         },
       ];
       const calls: unknown[] = [];

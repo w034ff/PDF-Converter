@@ -15,7 +15,7 @@ use pdfium_render::prelude::{
 };
 
 use crate::is_render_dpi_in_range;
-use crate::protocol::{EmbeddedImage, RectPt, RenderColor, RenderFormat, Response};
+use crate::protocol::{EmbeddedImage, NativeSize, RectPt, RenderColor, RenderFormat, Response};
 use crate::server::{
     CODE_INVALID_PARAMS, CODE_PDF_OPEN_FAILED, CODE_RENDER_TOO_LARGE, encode_pixels,
     error_response, load_page, pixels_from_rgba,
@@ -60,6 +60,12 @@ pub const VISIBLE_CHECK_PIXELS: u64 = 250_000;
 
 /// How far outside the page a range may reach, in points (design §4.6).
 pub const RANGE_OUTSIDE_TOLERANCE_PT: f64 = 0.5;
+
+/// How much of a grid pixel, as a fraction, the page edge may leave on the
+/// page side before that pixel counts as on the page. The edge is mapped
+/// through floating-point matrices, so an edge that lies on a pixel boundary
+/// would otherwise take in the pixel next to it (design §4.6).
+pub const PAGE_EDGE_TOLERANCE_PX: f64 = 0.01;
 
 /// The relative size below which a matrix entry counts as zero when deciding
 /// whether an image is placed by flips and quarter turns only. Placement
@@ -262,7 +268,8 @@ fn is_quarter_turn_placement(m: Matrix) -> bool {
 }
 
 /// An image of a page with its placement. Until [`visible_image`] has run,
-/// `info.rect_pt` is the whole frame.
+/// `info.rect_pt` is the whole frame; `info.native_size` is set by
+/// [`page_images`] only.
 struct ListedImage {
     placed: PlacedImage,
     info: EmbeddedImage,
@@ -270,6 +277,34 @@ struct ListedImage {
     frame: RectPt,
     /// Image pixel (column, row from the top) → shown page, 1 pt = 1.
     pixel_to_display: Matrix,
+}
+
+impl ListedImage {
+    /// Whether the image is placed by flips and quarter turns only, so that
+    /// it can be written in its own pixels.
+    fn is_native(&self) -> bool {
+        is_quarter_turn_placement(self.pixel_to_display)
+    }
+
+    /// The size the image is written at in its own pixels with at most
+    /// `max_pixels`, whole and in the orientation it is shown in; `None`
+    /// unless [`Self::is_native`]. [`render_region`] writes the same size for
+    /// an image that nothing hides: the grid of [`image_grid`] is sized by
+    /// [`photo_output_size`] and then turned by [`Orientation::of`].
+    fn native_size(&self, max_pixels: u64) -> Option<NativeSize> {
+        if !self.is_native() {
+            return None;
+        }
+        let (grid_width, grid_height, scaled_down) =
+            photo_output_size(self.placed.px_width, self.placed.px_height, max_pixels);
+        let (width, height) =
+            Orientation::of(self.pixel_to_display).output_size(grid_width, grid_height);
+        Some(NativeSize {
+            width,
+            height,
+            scaled_down,
+        })
+    }
 }
 
 /// The images of a page that are large enough in pixels and lie on the page,
@@ -302,7 +337,7 @@ fn candidate_images(page: &PdfPage<'_>) -> Result<Vec<ListedImage>, Response> {
             rect_pt: frame,
             px_width: placed.px_width,
             px_height: placed.px_height,
-            native: is_quarter_turn_placement(pixel_to_display),
+            native_size: None,
         };
         candidates.push(ListedImage {
             placed,
@@ -329,7 +364,7 @@ struct Grid {
 /// pixel grid (design §4.6, 1 and 2) if it is placed by flips and quarter
 /// turns, otherwise the bounding box of its frame at the image's own density.
 fn image_grid(image: &ListedImage, max_pixels: u64) -> Result<Grid, Response> {
-    if image.info.native {
+    if image.is_native() {
         let (px_width, px_height) = (image.placed.px_width, image.placed.px_height);
         let (width, height, scaled_down) = photo_output_size(px_width, px_height, max_pixels);
         let matrix = photo_grid_matrix(image.pixel_to_display, px_width, px_height, width, height)
@@ -408,8 +443,52 @@ fn touched_box(white: &[u8], black: &[u8], width: u32) -> Option<PixelBox> {
     found
 }
 
-/// The box of pixels of `grid` in which the isolated image shows (design
-/// §4.6, 埋め込み画像の一覧).
+/// The box of pixels of `grid` that the shown page covers, a pixel that the
+/// page only partly covers included; `None` when it covers none. pdfium does
+/// not clip a render with a matrix to the page box, so what a grid draws
+/// outside it must be left out by hand.
+fn page_pixels(grid: &Grid, page_width: f64, page_height: f64) -> Option<PixelBox> {
+    let corners = [
+        (0.0, 0.0),
+        (page_width, 0.0),
+        (0.0, page_height),
+        (page_width, page_height),
+    ]
+    .map(|(x, y)| apply(grid.matrix, x, y));
+    let low = |axis: fn(&(f64, f64)) -> f64, size: u32| {
+        let edge = corners.iter().map(axis).fold(f64::INFINITY, f64::min);
+        (edge + PAGE_EDGE_TOLERANCE_PX)
+            .floor()
+            .clamp(0.0, f64::from(size)) as u32
+    };
+    let high = |axis: fn(&(f64, f64)) -> f64, size: u32| {
+        let edge = corners.iter().map(axis).fold(f64::NEG_INFINITY, f64::max);
+        (edge - PAGE_EDGE_TOLERANCE_PX)
+            .ceil()
+            .clamp(0.0, f64::from(size)) as u32
+    };
+    let page = PixelBox {
+        left: low(|c| c.0, grid.width),
+        top: low(|c| c.1, grid.height),
+        right: high(|c| c.0, grid.width),
+        bottom: high(|c| c.1, grid.height),
+    };
+    (page.right > page.left && page.bottom > page.top).then_some(page)
+}
+
+/// The box that `a` and `b` both cover; `None` when they share no pixel.
+fn intersect(a: PixelBox, b: PixelBox) -> Option<PixelBox> {
+    let both = PixelBox {
+        left: a.left.max(b.left),
+        top: a.top.max(b.top),
+        right: a.right.min(b.right),
+        bottom: a.bottom.min(b.bottom),
+    };
+    (both.right > both.left && both.bottom > both.top).then_some(both)
+}
+
+/// The box of pixels of `grid` in which the isolated image shows on the shown
+/// page (design §4.6, 埋め込み画像の一覧).
 fn visible_box(isolated: &PdfPage<'_>, grid: &Grid) -> Result<Option<PixelBox>, Response> {
     let draw = |background| {
         render_rgba(&Draw {
@@ -424,7 +503,11 @@ fn visible_box(isolated: &PdfPage<'_>, grid: &Grid) -> Result<Option<PixelBox>, 
     };
     let white = draw(PdfColor::WHITE)?;
     let black = draw(PdfColor::BLACK)?;
-    Ok(touched_box(&white, &black, grid.width))
+    let page_width = f64::from(isolated.width().value);
+    let page_height = f64::from(isolated.height().value);
+    Ok(touched_box(&white, &black, grid.width)
+        .zip(page_pixels(grid, page_width, page_height))
+        .and_then(|(touched, page)| intersect(touched, page)))
 }
 
 /// The part of the image's frame that shows, on the shown page: `visible`, the
@@ -523,10 +606,12 @@ fn listed_image(
 }
 
 /// The embedded images of page `page` (1-based), in drawing order, each with
-/// the range that shows (design §4.6).
+/// the range that shows (design §4.6). `max_pixels` is the limit that a photo
+/// in its own pixels is written within, as in [`render_region`].
 pub(crate) fn page_images(
     doc: &PdfDocument<'_>,
     page_number: u32,
+    max_pixels: u64,
 ) -> Result<Vec<EmbeddedImage>, Response> {
     let page = load_page(doc, page_number)?;
     let candidates = candidate_images(&page)?;
@@ -552,7 +637,8 @@ pub(crate) fn page_images(
     }
     let mut images = Vec::new();
     for ((candidate, grid), visible) in candidates.into_iter().zip(&grids).zip(visible) {
-        if let Some(image) = shown_image(candidate, grid, visible)? {
+        if let Some(mut image) = shown_image(candidate, grid, visible)? {
+            image.info.native_size = image.native_size(max_pixels);
             images.push(image.info);
         }
     }
@@ -639,6 +725,16 @@ impl Orientation {
     fn is_identity(self) -> bool {
         !self.transposed && !self.flip_x && !self.flip_y
     }
+
+    /// The width and height of an image of the stored `width` × `height`
+    /// once it is shown in this orientation.
+    fn output_size<T>(self, width: T, height: T) -> (T, T) {
+        if self.transposed {
+            (height, width)
+        } else {
+            (width, height)
+        }
+    }
 }
 
 /// Rearranges `source`, `width` × `height` pixels of `channels` bytes in the
@@ -654,11 +750,7 @@ fn reorient(
     if orientation.is_identity() {
         return (source, width, height);
     }
-    let (out_width, out_height) = if orientation.transposed {
-        (height, width)
-    } else {
-        (width, height)
-    };
+    let (out_width, out_height) = orientation.output_size(width, height);
     let mut out = vec![0u8; source.len()];
     for y in 0..out_height {
         let source_y = if orientation.flip_y {
@@ -897,12 +989,13 @@ pub(crate) fn image_on_top(
 ) -> Result<bool, Response> {
     let page = load_page(doc, page_number)?;
     let image = listed_image(doc, &page, page_number, image_index)?;
+    let grid = image_grid(&image, check_pixels)?;
     let Grid {
         width,
         height,
         matrix,
         ..
-    } = image_grid(&image, check_pixels)?;
+    } = grid;
 
     let isolated = isolated_page(doc, page_number, &[&image.placed.path])?;
     let draw = |page: &PdfPage<'_>, background, annotations| {
@@ -919,7 +1012,20 @@ pub(crate) fn image_on_top(
     let whole = draw(&page, PdfColor::WHITE, true)?;
     let photo_on_white = draw(&isolated, PdfColor::WHITE, false)?;
     let photo_on_black = draw(&isolated, PdfColor::BLACK, false)?;
-    Ok(count_covered_pixels(&whole, &photo_on_white, &photo_on_black) >= ON_TOP_MIN_PIXELS)
+    // Only what the shown page covers counts: something drawn over a part of
+    // the image that the page box hides is not on top of anything shown.
+    let page_width = f64::from(page.width().value);
+    let page_height = f64::from(page.height().value);
+    let Some(on_page) = page_pixels(&grid, page_width, page_height) else {
+        return Ok(false);
+    };
+    let on_page_only =
+        |rgba: Vec<u8>| crop(rgba, width as usize, height as usize, 4, Some(on_page)).0;
+    Ok(count_covered_pixels(
+        &on_page_only(whole),
+        &on_page_only(photo_on_white),
+        &on_page_only(photo_on_black),
+    ) >= ON_TOP_MIN_PIXELS)
 }
 
 /// The parameters of `RenderRegion` (design §5.1).
@@ -962,7 +1068,7 @@ pub(crate) fn render_region(
     };
     let own_pixels = photo
         .as_ref()
-        .filter(|image| request.photo_native && image.info.native);
+        .filter(|image| request.photo_native && image.is_native());
     if own_pixels.is_none() && !is_render_dpi_in_range(request.dpi) {
         return Err(error_response(CODE_INVALID_PARAMS, None));
     }
@@ -1271,6 +1377,115 @@ mod tests {
         }
     }
 
+    /// A listed image of `px_width` × `px_height` pixels placed by
+    /// `pixel_to_display`.
+    fn listed(px_width: u32, px_height: u32, pixel_to_display: Matrix) -> ListedImage {
+        let frame = rect(0.0, 0.0, 1.0, 1.0);
+        ListedImage {
+            placed: PlacedImage {
+                image_index: 0,
+                path: vec![0],
+                unit_to_page: IDENTITY,
+                px_width,
+                px_height,
+            },
+            info: EmbeddedImage {
+                image_index: 0,
+                rect_pt: frame,
+                px_width,
+                px_height,
+                native_size: None,
+            },
+            frame,
+            pixel_to_display,
+        }
+    }
+
+    fn native_size_of(image: &ListedImage, max_pixels: u64) -> Option<(u32, u32, bool)> {
+        image
+            .native_size(max_pixels)
+            .map(|size| (size.width, size.height, size.scaled_down))
+    }
+
+    #[test]
+    fn a_photo_is_written_in_the_orientation_of_its_placement_not_of_its_frame() {
+        const LIMIT: u64 = 100_000_000;
+        // 61 × 43 pixels (wider than tall), placed into a frame by each of the
+        // ways that keep the pixel grid. Only a quarter turn swaps the sides,
+        // whatever the shape of the frame.
+        let stretched = |width_pt: f64, height_pt: f64| {
+            (
+                // Upright: columns along x, rows along y.
+                [width_pt / 61.0, 0.0, 0.0, height_pt / 43.0, 0.0, 0.0],
+                // Quarter-turned: columns along y, rows along x.
+                [0.0, height_pt / 61.0, width_pt / 43.0, 0.0, 0.0, 0.0],
+            )
+        };
+        for (width_pt, height_pt) in [
+            // An ordinary wide frame, and a tall one.
+            (200.0, 150.0),
+            (150.0, 200.0),
+            // Stretched far from the image's shape: the frame is taller than
+            // wide while the upright image is wider than tall, and the other
+            // way round for the quarter turn.
+            (50.0, 200.0),
+            (200.0, 50.0),
+            // Nearly square on both counts.
+            (100.4, 100.0),
+            (99.6, 100.0),
+        ] {
+            let (upright, turned) = stretched(width_pt, height_pt);
+            for flip in [[1.0, 1.0], [-1.0, 1.0], [1.0, -1.0], [-1.0, -1.0]] {
+                let flipped = |m: Matrix| {
+                    [
+                        m[0] * flip[0],
+                        m[1] * flip[1],
+                        m[2] * flip[0],
+                        m[3] * flip[1],
+                        0.0,
+                        0.0,
+                    ]
+                };
+                assert_eq!(
+                    native_size_of(&listed(61, 43, flipped(upright)), LIMIT),
+                    Some((61, 43, false)),
+                    "upright {width_pt} x {height_pt} {flip:?}"
+                );
+                assert_eq!(
+                    native_size_of(&listed(61, 43, flipped(turned)), LIMIT),
+                    Some((43, 61, false)),
+                    "turned {width_pt} x {height_pt} {flip:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_scaled_down_photo_is_turned_after_it_is_scaled() {
+        let wide = (14_142, 7_071);
+        let upright = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let turned = [0.0, 1.0, 1.0, 0.0, 0.0, 0.0];
+        assert_eq!(
+            native_size_of(&listed(20_000, 10_000, upright), 100_000_000),
+            Some((wide.0, wide.1, true))
+        );
+        assert_eq!(
+            native_size_of(&listed(20_000, 10_000, turned), 100_000_000),
+            Some((wide.1, wide.0, true))
+        );
+        // The limit decides, not the constant.
+        assert_eq!(
+            native_size_of(&listed(20_000, 10_000, upright), 400_000_000),
+            Some((20_000, 10_000, false))
+        );
+    }
+
+    #[test]
+    fn a_photo_that_is_not_on_the_pixel_grid_has_no_native_size() {
+        let sheared = [120.0, 40.0, -30.0, 90.0, 0.0, 0.0];
+        assert_eq!(native_size_of(&listed(61, 43, sheared), 100_000_000), None);
+    }
+
     #[test]
     fn the_grid_matrix_pulls_every_edge_in_by_the_inset() {
         // 10 × 10 pixels shown at 1 pt each from (5, 5).
@@ -1355,6 +1570,90 @@ mod tests {
         );
     }
 
+    fn grid_of(width: u32, height: u32, matrix: Matrix) -> Grid {
+        Grid {
+            width,
+            height,
+            matrix,
+            scaled_down: false,
+        }
+    }
+
+    #[test]
+    fn the_page_covers_the_pixels_it_touches_even_in_part() {
+        // A 100 × 50 pt page at eight pixels to the point, its corner at
+        // pixel (10.5, 3) of a grid that reaches well past it.
+        let grid = grid_of(2000, 1000, [8.0, 0.0, 0.0, 8.0, 10.5, 3.0]);
+        assert_eq!(
+            page_pixels(&grid, 100.0, 50.0),
+            Some(PixelBox {
+                left: 10,
+                top: 3,
+                right: 811,
+                bottom: 403
+            })
+        );
+        // The grid ends inside the page: the box is cut to the grid.
+        let short = grid_of(500, 1000, [8.0, 0.0, 0.0, 8.0, -4.0, 3.0]);
+        assert_eq!(page_pixels(&short, 100.0, 50.0).unwrap().right, 500);
+    }
+
+    #[test]
+    fn a_page_edge_on_a_pixel_boundary_does_not_take_in_the_next_pixel() {
+        // The edges lie a hair inside the boundaries, as a mapped edge does.
+        let grid = grid_of(2000, 1000, [8.0, 0.0, 0.0, 8.0, 10.0006, 3.0006]);
+        assert_eq!(
+            page_pixels(&grid, 100.0, 50.0),
+            Some(PixelBox {
+                left: 10,
+                top: 3,
+                right: 810,
+                bottom: 403
+            })
+        );
+    }
+
+    #[test]
+    fn the_page_is_found_in_a_grid_turned_a_quarter_or_flipped() {
+        // Page x runs down the grid and page y runs across it, reversed.
+        let turned = grid_of(400, 800, [0.0, 8.0, -8.0, 0.0, 400.0, 0.0]);
+        assert_eq!(
+            page_pixels(&turned, 100.0, 50.0),
+            Some(PixelBox {
+                left: 0,
+                top: 0,
+                right: 400,
+                bottom: 800
+            })
+        );
+        let flipped = grid_of(1000, 1000, [-8.0, 0.0, 0.0, 8.0, 900.0, 0.0]);
+        let found = page_pixels(&flipped, 100.0, 50.0).unwrap();
+        assert_eq!((found.left, found.right), (100, 900));
+    }
+
+    #[test]
+    fn a_page_the_grid_does_not_reach_covers_no_pixel() {
+        let beside = grid_of(100, 100, [8.0, 0.0, 0.0, 8.0, -800.0, 0.0]);
+        assert_eq!(page_pixels(&beside, 100.0, 50.0), None);
+        let past = grid_of(100, 100, [8.0, 0.0, 0.0, 8.0, 100.0, 0.0]);
+        assert_eq!(page_pixels(&past, 100.0, 50.0), None);
+    }
+
+    #[test]
+    fn boxes_meet_in_the_pixels_they_share() {
+        let pixels = |left, top, right, bottom| PixelBox {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        assert_eq!(
+            intersect(pixels(0, 0, 10, 10), pixels(4, 2, 20, 8)),
+            Some(pixels(4, 2, 10, 8))
+        );
+        assert_eq!(intersect(pixels(0, 0, 10, 10), pixels(10, 0, 20, 10)), None);
+    }
+
     #[test]
     fn cropping_keeps_the_box_and_all_of_a_pixel() {
         // 4 × 3 pixels of two bytes each, numbered in reading order.
@@ -1402,7 +1701,7 @@ mod tests {
             .expect("crop_align.pdf");
 
         let render = |page: u32, image_index: u32, max_pixels: u64| {
-            let images = page_images(&doc, page).unwrap();
+            let images = page_images(&doc, page, max_pixels).unwrap();
             let image = images
                 .iter()
                 .find(|i| i.image_index == image_index)
@@ -1425,12 +1724,20 @@ mod tests {
                         scaled_down,
                     },
                     bytes,
-                ) => (
-                    width,
-                    height,
-                    scaled_down,
-                    image::load_from_memory(&bytes).unwrap(),
-                ),
+                ) => {
+                    // Nothing hides these images, so the listing says what is written.
+                    let listed = image.native_size.unwrap();
+                    assert_eq!(
+                        (listed.width, listed.height, listed.scaled_down),
+                        (width, height, scaled_down)
+                    );
+                    (
+                        width,
+                        height,
+                        scaled_down,
+                        image::load_from_memory(&bytes).unwrap(),
+                    )
+                }
                 other => panic!("{other:?}"),
             }
         };

@@ -3,7 +3,6 @@ import { en, ja } from "../../i18n";
 import type { PageImage } from "../../ipc";
 import {
   CROP_PAGE_SIDE_STEPS,
-  MAX_RENDER_PIXELS,
   PAGE_VIEW_MAX_SIDE,
   type CropArea,
   type CropPageResult,
@@ -15,7 +14,6 @@ import {
   areasInListOrder,
   exportSize,
   exportSizeText,
-  photoOutputSize,
   previewMaxSide,
   previewPlacement,
 } from "./cropAreas";
@@ -41,7 +39,7 @@ function image(overrides: Partial<PageImage> = {}): PageImage {
     rectPt: [0, 0, 100, 80],
     pxWidth: 1241,
     pxHeight: 964,
-    native: true,
+    nativeSize: { width: 1241, height: 964, scaledDown: false },
     ...overrides,
   };
 }
@@ -51,12 +49,6 @@ function done(...images: PageImage[]): CropPageResult<PageImage[]> {
 }
 
 const SETTINGS = { dpi: 150, photoNative: true };
-
-describe("MAX_RENDER_PIXELS", () => {
-  it("is the worker's limit", () => {
-    expect(MAX_RENDER_PIXELS).toBe(100_000_000);
-  });
-});
 
 describe("previewMaxSide", () => {
   const preview = 44;
@@ -140,42 +132,6 @@ describe("previewPlacement", () => {
   });
 });
 
-describe("photoOutputSize", () => {
-  it("keeps the size of an image within the limit", () => {
-    expect(photoOutputSize(1241, 964)).toEqual({
-      width: 1241,
-      height: 964,
-      scaledDown: false,
-    });
-  });
-
-  it("keeps an image of exactly the limit", () => {
-    expect(photoOutputSize(10_000, 10_000, 100_000_000).scaledDown).toBe(false);
-  });
-
-  it("scales an image over the limit by one factor", () => {
-    const size = photoOutputSize(20_000, 10_000, 100_000_000);
-    expect(size.scaledDown).toBe(true);
-    expect(size.width * size.height).toBeLessThanOrEqual(100_000_000);
-    expect(size.width / size.height).toBeCloseTo(2, 2);
-    expect(size.width).toBe(14_142);
-    expect(size.height).toBe(7_071);
-  });
-
-  it("does not go over the limit however the rounding falls", () => {
-    for (const [width, height] of [
-      [10_001, 10_001],
-      [33_333, 3_001],
-      [7, 9_999_999],
-    ]) {
-      const size = photoOutputSize(width, height, 100_000_000);
-      expect(size.width * size.height).toBeLessThanOrEqual(100_000_000);
-      expect(size.width).toBeGreaterThanOrEqual(1);
-      expect(size.height).toBeGreaterThanOrEqual(1);
-    }
-  });
-});
-
 describe("exportSize", () => {
   it("is the rectangle's points at the resolution, rounded", () => {
     // 297.5 pt × 150 / 72 = 619.79…; 210.5 pt → 438.54…
@@ -215,31 +171,30 @@ describe("exportSize", () => {
       });
     });
 
-    it("turns them when the area lies the other way round", () => {
-      expect(
-        exportSize(
-          photo,
-          done(image({ pxWidth: 964, pxHeight: 1241 })),
-          SETTINGS,
-        ),
-      ).toMatchObject({ kind: "native", width: 1241, height: 964 });
-      const tall = area({ ...photo, rectPt: [0, 0, 80, 100] });
-      expect(exportSize(tall, done(image()), SETTINGS)).toMatchObject({
+    it("is the size Rust gives, whatever shape the area has", () => {
+      // The image is wider than tall and the area is taller than wide, as
+      // when it is stretched on the page: only Rust knows it is not turned.
+      const stretched = area({ ...photo, rectPt: [0, 0, 50, 200] });
+      expect(exportSize(stretched, done(image()), SETTINGS)).toMatchObject({
+        width: 1241,
+        height: 964,
+      });
+      // And a turned image written taller than wide under a wider area.
+      const turned = image({
+        nativeSize: { width: 964, height: 1241, scaledDown: false },
+      });
+      expect(exportSize(photo, done(turned), SETTINGS)).toMatchObject({
         width: 964,
         height: 1241,
       });
     });
 
-    it("keeps the image's order when the area is square", () => {
-      const square = area({ ...photo, rectPt: [0, 0, 90, 90] });
-      expect(exportSize(square, done(image()), SETTINGS)).toMatchObject({
-        width: 1241,
-        height: 964,
+    it("says when Rust scaled it down", () => {
+      const huge = image({
+        pxWidth: 20_000,
+        pxHeight: 10_000,
+        nativeSize: { width: 14_142, height: 7_071, scaledDown: true },
       });
-    });
-
-    it("is scaled down over the limit", () => {
-      const huge = image({ pxWidth: 20_000, pxHeight: 10_000 });
       expect(exportSize(photo, done(huge), SETTINGS)).toEqual({
         kind: "native",
         width: 14_142,
@@ -250,7 +205,7 @@ describe("exportSize", () => {
 
     it("is the rectangle at the resolution when the image cannot be written as it is", () => {
       expect(
-        exportSize(photo, done(image({ native: false })), SETTINGS),
+        exportSize(photo, done(image({ nativeSize: null })), SETTINGS),
       ).toEqual({ kind: "dpi", dpi: 150, width: 208, height: 167 });
     });
 

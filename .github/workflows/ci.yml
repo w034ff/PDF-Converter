@@ -61,16 +61,24 @@ jobs:
       - name: Fetch onnxruntime and the layout model
         run: npm run layout:fetch
 
+      # The frontend checks run in Node and jsdom, not in the WebView the app
+      # uses, and nothing in src branches on the OS, so the Linux runner gives
+      # the answer for both. They stay in this job because the main ruleset
+      # requires the two Test checks by name (work-plan T00; NFR-06).
       - name: Code Format Check
+        if: runner.os == 'Linux'
         run: npm run format:check
 
       - name: Frontend Lint
+        if: runner.os == 'Linux'
         run: npm run lint
 
       - name: Frontend Typecheck
+        if: runner.os == 'Linux'
         run: npm run typecheck
 
       - name: Frontend Test
+        if: runner.os == 'Linux'
         run: npm test
 
       - name: Rust Format Check

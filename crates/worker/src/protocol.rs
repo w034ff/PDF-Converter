@@ -156,9 +156,24 @@ pub struct EmbeddedImage {
     pub rect_pt: RectPt,
     pub px_width: u32,
     pub px_height: u32,
-    /// Whether the image is placed by flips and quarter turns only, so that
-    /// it can be written out in its own pixels.
-    pub native: bool,
+    /// The size the image is written at in its own pixels, or `None` when it
+    /// is not placed by flips and quarter turns only and so cannot be. It is
+    /// the whole image's: a clip or a mask that hides part of it makes the
+    /// written image smaller (design §4.6).
+    pub native_size: Option<NativeSize>,
+}
+
+/// The size of an image written in its own pixels, in the orientation it is
+/// shown in, as `RenderRegion` answers it for an image that nothing hides
+/// (design §4.6, §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeSize {
+    pub width: u32,
+    pub height: u32,
+    /// Set when the image's pixels exceed `MAX_RENDER_PIXELS`, so that it is
+    /// written smaller.
+    pub scaled_down: bool,
 }
 
 /// What a layout candidate is (design §4.7, §5.1).
@@ -666,12 +681,16 @@ mod tests {
                 },
                 px_width: 61,
                 px_height: 43,
-                native: true,
+                native_size: Some(NativeSize {
+                    width: 43,
+                    height: 61,
+                    scaled_down: false,
+                }),
             }],
         };
         assert_eq!(
             serde_json::to_string(&images).unwrap(),
-            r#"{"type":"pageImages","images":[{"imageIndex":2,"rectPt":{"x0":1.0,"y0":2.0,"x1":3.0,"y1":4.0},"pxWidth":61,"pxHeight":43,"native":true}]}"#
+            r#"{"type":"pageImages","images":[{"imageIndex":2,"rectPt":{"x0":1.0,"y0":2.0,"x1":3.0,"y1":4.0},"pxWidth":61,"pxHeight":43,"nativeSize":{"width":43,"height":61,"scaledDown":false}}]}"#
         );
         assert_eq!(
             serde_json::to_string(&Response::ImageOnTop { on_top: true }).unwrap(),

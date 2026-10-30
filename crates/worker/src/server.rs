@@ -91,7 +91,13 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
 }
 
 pub(crate) fn check_page_count(count: u32) -> Result<(), Response> {
-    if count > MAX_PDF_PAGES {
+    // Every screen assumes an open PDF has a first page to show.
+    if count == 0 {
+        Err(Response::Error {
+            code: CODE_PDF_OPEN_FAILED.into(),
+            detail: None,
+        })
+    } else if count > MAX_PDF_PAGES {
         Err(Response::Error {
             code: CODE_TOO_MANY_PAGES.into(),
             detail: Some(format_number_with_commas(MAX_PDF_PAGES)),
@@ -274,7 +280,9 @@ impl State {
                 }
             }
             Request::PageImages { page } => {
-                let result = self.document().and_then(|doc| crop::page_images(doc, page));
+                let result = self
+                    .document()
+                    .and_then(|doc| crop::page_images(doc, page, MAX_RENDER_PIXELS));
                 match result {
                     Ok(images) => (Response::PageImages { images }, Vec::new()),
                     Err(response) => (response, Vec::new()),
@@ -542,7 +550,14 @@ mod tests {
 
     #[test]
     fn validates_page_count_bounds() {
-        assert!(check_page_count(0).is_ok());
+        assert_eq!(
+            check_page_count(0).unwrap_err(),
+            Response::Error {
+                code: CODE_PDF_OPEN_FAILED.into(),
+                detail: None,
+            }
+        );
+        assert!(check_page_count(1).is_ok());
         assert!(check_page_count(10_000).is_ok());
         let err = check_page_count(10_001).unwrap_err();
         assert_eq!(

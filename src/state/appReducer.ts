@@ -168,7 +168,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "CROP_REDO":
       return isJobActive(state.job) ? state : reduceCrop(state, action, true);
     case "CROP_PDF_ACTIVATED":
-    case "CROP_PDF_CLOSED":
     case "SET_CROP_FORMAT":
     case "SET_CROP_COLOR_MODE":
     case "SET_CROP_DPI":
