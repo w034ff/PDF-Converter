@@ -246,12 +246,6 @@ pub fn discard_crop_pdf(state: tauri::State<'_, AppState>, id: u64) {
     crop::discard_crop_pdf(&state, id);
 }
 
-/// Drops the open and the pending crop PDF (design §6.10, §7.1).
-#[tauri::command]
-pub fn close_crop_pdf(state: tauri::State<'_, AppState>) -> Result<(), IpcError> {
-    crop::close_crop_pdf(&state)
-}
-
 /// Opens the open crop PDF again with a password (design §6.8, §6.10, §7.1).
 #[tauri::command]
 pub async fn unlock_crop_pdf(

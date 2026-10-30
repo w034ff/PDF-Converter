@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::crop::{
     Candidate, CandidateKind, CropDropped, CropPdf, DetectAllCallbacks, DropTarget, Dropped,
-    LayoutPagePayload, activate_crop_pdf, check_on_top, close_crop_pdf, crop_dropped,
-    detect_layout, discard_crop_pdf, handle_drop, list_page_images, open_pdf,
-    start_detect_all_internal, unlock_crop_pdf,
+    LayoutPagePayload, activate_crop_pdf, check_on_top, crop_dropped, detect_layout,
+    discard_crop_pdf, handle_drop, list_page_images, open_pdf, start_detect_all_internal,
+    unlock_crop_pdf,
 };
 use pdf_converter_lib::error::{ErrorCode, IpcError};
 use pdf_converter_lib::items::{add_images, add_pdfs, make_thumbnail, remove_items, unlock_pdf};
@@ -268,27 +268,7 @@ fn a_new_pending_pdf_drops_the_one_before() {
 }
 
 #[test]
-fn closing_drops_the_open_and_the_pending_pdf() {
-    let state = state();
-    let current = open_active(&state, "crop_layout.pdf");
-    let pending = open(&state, "shapes.pdf");
-
-    close_crop_pdf(&state).expect("closing");
-
-    assert_eq!(
-        code(list_page_images(&state, current.id, 1)),
-        ErrorCode::UnknownHandle
-    );
-    assert_eq!(
-        code(activate_crop_pdf(&state, pending.id)),
-        ErrorCode::UnknownHandle
-    );
-    // With nothing open, closing is no error.
-    close_crop_pdf(&state).expect("closing again");
-}
-
-#[test]
-fn a_conversion_blocks_switching_closing_and_unlocking() {
+fn a_conversion_blocks_switching_and_unlocking() {
     let state = state();
     let current = open_active(&state, "crop_layout.pdf");
     let pending = open(&state, "shapes.pdf");
@@ -298,7 +278,6 @@ fn a_conversion_blocks_switching_closing_and_unlocking() {
         code(activate_crop_pdf(&state, pending.id)),
         ErrorCode::ConversionRunning
     );
-    assert_eq!(code(close_crop_pdf(&state)), ErrorCode::ConversionRunning);
     assert_eq!(
         code(unlock_crop_pdf(&state, current.id, "secret")),
         ErrorCode::ConversionRunning
@@ -855,22 +834,6 @@ fn switching_does_not_wait_for_an_analysis_under_way() {
     let second = open(&state, "shapes.pdf");
     let started = std::time::Instant::now();
     activate_crop_pdf(&state, second.id).expect("switching");
-    assert!(started.elapsed() < QUICK, "{:?}", started.elapsed());
-
-    let ended = analysis.join().expect("the analysis thread");
-    assert_eq!(code(ended), ErrorCode::WorkerTimeout);
-}
-
-#[cfg(feature = "test-hooks")]
-#[test]
-fn closing_does_not_wait_for_an_analysis_under_way() {
-    let state = state();
-    let pdf = open_active(&state, "crop_layout.pdf");
-    detect_layout(&state, pdf.id, 1).expect("starting the analysis worker");
-    let analysis = hang_in_background(&state, pdf.id, LONG_ANALYSIS);
-
-    let started = std::time::Instant::now();
-    close_crop_pdf(&state).expect("closing");
     assert!(started.elapsed() < QUICK, "{:?}", started.elapsed());
 
     let ended = analysis.join().expect("the analysis thread");

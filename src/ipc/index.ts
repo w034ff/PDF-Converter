@@ -373,11 +373,6 @@ export async function discardCropPdf(id: number): Promise<void> {
   return invokeWrapped<void>("discard_crop_pdf", { id });
 }
 
-/** Drops the open crop PDF and the pending one. */
-export async function closeCropPdf(): Promise<void> {
-  return invokeWrapped<void>("close_crop_pdf");
-}
-
 /**
  * Opens the open crop PDF again with its password (design §6.8, §6.10). Rejects
  * with `PasswordProtected` for a wrong password.
