@@ -806,7 +806,29 @@ function recordStep(
   }
 }
 
+/**
+ * `next` without the pages "全ページの候補" still waits for, once a step other
+ * than the search itself has gone into the history or out of it. The areas
+ * such a page brought later would belong to no step, so an undo would take
+ * them away unseen; the page's candidates stay on the page to add by hand.
+ */
+function endDetectWait(
+  state: CropState,
+  next: CropState,
+  action: CropAction,
+): CropState {
+  return next.history === state.history ||
+    action.type === "CROP_DETECT_ALL_STARTED" ||
+    next.detectAwaiting.length === 0
+    ? next
+    : { ...next, detectAwaiting: [] };
+}
+
 export function cropReducer(state: CropState, action: CropAction): CropState {
+  return endDetectWait(state, reduceCropHistory(state, action), action);
+}
+
+function reduceCropHistory(state: CropState, action: CropAction): CropState {
   switch (action.type) {
     case "CROP_UNDO": {
       const { past, future } = state.history;
