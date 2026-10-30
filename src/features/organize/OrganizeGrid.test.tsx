@@ -7,6 +7,7 @@ import {
   ORGANIZE_PAGE_MAX_SIDE,
   ORGANIZE_ROW_GAP,
   ORGANIZE_THUMBNAIL_DELAY_MS,
+  scrollTopToCenterRow,
 } from "./organizeGrid";
 import {
   LANDSCAPE,
@@ -21,7 +22,9 @@ import {
   organizePdf,
   pressCell,
   resizeRoom,
+  scrollArea,
   scrollGridTo,
+  releasePointer,
 } from "./organizeTestSupport";
 
 const ROOM_WIDTH = 700; // five columns
@@ -65,6 +68,27 @@ describe("the grid of ten thousand pages", () => {
     expect(screen.getByRole("listbox")).toHaveStyle({
       height: `${rows * ORGANIZE_CELL_HEIGHT + (rows - 1) * ORGANIZE_ROW_GAP}px`,
     });
+  });
+
+  it("shows the page last worked on when its tab comes back", async () => {
+    await openOrganizeTab({ pdfs: [BIG] });
+    scrollGridTo(50 * ROW_PITCH);
+    await flush();
+    const page = 50 * COLUMNS + 1;
+    pressCell(cellOf(1, page));
+    releasePointer();
+    await flush();
+
+    fireEvent.click(screen.getByRole("tab", { name: "切り出し" }));
+    await flush();
+    const tab = screen.getByRole("tab", { name: "整理" });
+    tab.focus();
+    fireEvent.click(tab);
+    await flush();
+
+    expect(scrollArea().scrollTop).toBe(scrollTopToCenterRow(50, ROOM_HEIGHT));
+    expect(drawnKeys()).toContain(`1:${page}`);
+    expect(document.activeElement).toBe(tab);
   });
 
   it("draws other pages when it is scrolled, as many as in the middle of any grid, and the one Tab enters", async () => {

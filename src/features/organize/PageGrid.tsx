@@ -31,6 +31,7 @@ import {
   isFocusKey,
   keyInsertIndex,
   rowOfIndex,
+  scrollTopToCenterRow,
   scrollTopToShowRow,
   visibleRowRange,
 } from "./organizeGrid";
@@ -169,6 +170,27 @@ export function PageGrid() {
     );
     cell?.focus({ preventScroll: true });
   }, [revealTurn, focused, indexByKey, columns, room.height]);
+
+  // The grid is drawn anew when its tab comes back, at the top. The page last
+  // worked on is shown once the room is known; the focus stays where the tab
+  // change left it.
+  const restoredRef = useRef(false);
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    if (restoredRef.current || room.width === 0 || scroller === null) {
+      return;
+    }
+    restoredRef.current = true;
+    const index = focused === null ? undefined : indexByKey.get(focused);
+    if (index === undefined) {
+      return;
+    }
+    const next = scrollTopToCenterRow(rowOfIndex(index, columns), room.height);
+    if (next !== scroller.scrollTop) {
+      scroller.scrollTop = next;
+      setScrollTop(next);
+    }
+  }, [focused, indexByKey, columns, room.width, room.height]);
 
   // The latest selection and lock, for a handler that must not change with them:
   // a new handler would redraw every cell on each press.

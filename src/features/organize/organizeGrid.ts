@@ -294,6 +294,15 @@ export function scrollTopToShowRow(
   return scrollTop;
 }
 
+/** The scroll position that puts row `row` in the middle of the room, as far as the top allows. */
+export function scrollTopToCenterRow(
+  row: number,
+  viewportHeight: number,
+): number {
+  const top = row * (ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP);
+  return Math.max(top - (viewportHeight - ORGANIZE_CELL_HEIGHT) / HALF, 0);
+}
+
 /**
  * How far one frame of a drag scrolls, in px: negative up. Zero in the middle
  * of the area; within `ORGANIZE_DRAG_SCROLL_EDGE_PX` of an edge the nearer it

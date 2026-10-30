@@ -12,6 +12,7 @@ import {
   cellOffset,
   dragScrollStep,
   dropLineLeft,
+  scrollTopToCenterRow,
   focusIndexAfter,
   gridColumnCount,
   gridContentHeight,
@@ -366,5 +367,19 @@ describe("dropLineLeft", () => {
 
   it("keeps the line before the first cell inside the scrolling area's padding", () => {
     expect(dropLineLeft(0)).toBeGreaterThanOrEqual(-3);
+  });
+});
+
+describe("scrollTopToCenterRow", () => {
+  it("puts the row in the middle of the room", () => {
+    const row = 10;
+    const top = row * (ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP);
+    expect(scrollTopToCenterRow(row, 600)).toBe(
+      top - (600 - ORGANIZE_CELL_HEIGHT) / 2,
+    );
+  });
+
+  it("stops at the top", () => {
+    expect(scrollTopToCenterRow(0, 600)).toBe(0);
   });
 });
