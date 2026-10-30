@@ -373,6 +373,23 @@ describe("scrolling while dragging", () => {
     releasePointer();
   });
 
+  it("follows the wheel, which scrolls the grid under a pointer that stays", async () => {
+    const area = await dragNear(400, 0);
+    const grid = screen.getByRole("listbox");
+    grid.getBoundingClientRect = () =>
+      rect(100 - area.scrollTop, 0, 700, 100_000);
+    runFrame();
+
+    area.scrollTop = 1_660;
+    runFrame();
+    releasePointer();
+    await flush();
+
+    const picked = insertPointAt(300, 400 - 100 + 1_660, COLUMNS, 400);
+    expect(picked.index).toBeGreaterThan(COLUMNS * 9);
+    expect(cellOf(1, 2)).toHaveAttribute("aria-posinset", String(picked.index));
+  });
+
   it("scrolls up near the top edge", async () => {
     const area = await dragNear(100 + 5, 2000);
 

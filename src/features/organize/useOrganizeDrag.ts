@@ -117,8 +117,9 @@ export function useOrganizeDrag(options: OrganizeDragOptions) {
           const step = dragScrollStep(current.clientY, rect.top, rect.bottom);
           if (step !== 0) {
             scroller.scrollTop += step;
-            refreshPoint(current);
           }
+          // Every frame: the wheel scrolls the grid under a pointer that does not move.
+          refreshPoint(current);
         }
         current.frame = requestAnimationFrame(scrollFrame);
       }
