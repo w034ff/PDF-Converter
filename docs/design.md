@@ -778,4 +778,4 @@ SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基�
 
 - 一括変換の中で特定の PDF だけでワーカーが落ちる状況は、`test-hooks` 機能のときだけ、ワーカーが名前 `CRASH_ON_OPEN_FILE_NAME` の PDF の `Open` で異常終了することで作る（T08）。機能を付けないビルドには含まれない。
 - 性能（NFR-02）: `shapes.pdf` の A4 のページを 150 dpi で描画する時間を `--release` のテストで測る。CI では 3 秒を超えたら失敗とし、1 秒以内は基準環境（開発者の PC）で手動確認する。
-- CI は Windows と Ubuntu で、SVG Tracer と同じ検査に加え、`npm run pdfium:fetch` のあとにワーカーのテストを実行する。Ubuntu では、§11.2 の PDF/A の検証（veraPDF）も行う。
+- CI は Windows と Ubuntu で、SVG Tracer と同じ検査に加え、`npm run pdfium:fetch` のあとにワーカーのテストを実行する。フロントエンドの検査（整形、lint、型検査、テスト）は Ubuntu だけで行う（NFR-06）。Ubuntu では、§11.2 の PDF/A の検証（veraPDF）も行う。
