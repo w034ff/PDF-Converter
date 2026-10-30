@@ -1211,6 +1211,56 @@ fn an_output_password_keeps_the_bookmarks_and_links() {
 }
 
 #[test]
+fn a_source_with_a_password_is_read_again_with_it() {
+    // lopdf reads an encrypted PDF without its password as a document with no pages, so the view
+    // settings and the frame of the flattened page come only if the worker passes it on.
+    const SOURCE_PASSWORD: &str = "source pass-1";
+    let plain = std::fs::read(fixture("organize_links.pdf")).expect("reading the fixture");
+    let locked = pdfconv_core::encrypt_pdf(
+        plain,
+        &pdfconv_core::OutputPassword::new(SOURCE_PASSWORD.to_owned()).expect("a password"),
+    )
+    .expect("encrypting the fixture");
+    let file = TemporaryFile::new("links-locked", &locked);
+    let mut worker = start();
+    let output = organize(
+        &mut worker,
+        vec![OrganizeSource {
+            path: file.0.clone(),
+            password: Some(Password::new(SOURCE_PASSWORD).expect("a password")),
+        }],
+        pages_in_order(4),
+    );
+
+    assert_eq!(inspect(&output.bytes, None), links_pdf_as_it_is());
+    assert!(has_view_settings(&output.bytes));
+    assert!(contains(
+        &output.bytes,
+        "/Rect[20 100 120 130]/Border[0 0 3]/C[0 1 0]/F 4"
+    ));
+}
+
+#[test]
+fn the_bookmarks_follow_the_order_of_the_sources_not_that_of_the_pages() {
+    let mut worker = start();
+    // The page of the second source comes first in the output.
+    let mut pages = vec![page(1, 0, 0)];
+    pages.extend((0..4).map(|index| page(0, index, 0)));
+    let output = organize(
+        &mut worker,
+        vec![
+            source("organize_links.pdf"),
+            source("organize_outline_deep.pdf"),
+        ],
+        pages,
+    );
+    let got = inspect(&output.bytes, None).bookmarks;
+    let links_bookmarks = links_pdf_as_it_is().bookmarks.len();
+    assert_eq!(got[0], bookmark(0, "Part A", None));
+    assert_eq!(got[links_bookmarks], bookmark(0, "Level 1", Some("p1 Fit")));
+}
+
+#[test]
 fn bookmarks_nested_too_deep_are_followed_only_so_far() {
     // The file nests 70 levels; the worker follows 64 of them.
     const FOLLOWED_LEVELS: usize = 64;
