@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { en, ja } from "../../i18n";
+import { initialJobState, type JobState } from "../../state";
 import {
   formatJobSummary,
   jobOutcome,
+  organizeSummaryShape,
   singlePdfPageCounts,
 } from "./jobSummary";
 
@@ -321,5 +323,122 @@ describe("jobOutcome", () => {
     );
     expect(jobOutcome({ ...base, succeeded: 1, noPages: 1 })).toBe("neutral");
     expect(jobOutcome({ ...base, unprocessed: 2 })).toBe("neutral");
+  });
+});
+
+describe("the summary of the organize tab's save in parts", () => {
+  const PDFS = [
+    {
+      id: 7,
+      name: "book.pdf",
+      pageCount: 2,
+      pages: [],
+      fileBytes: 10,
+      encrypted: false,
+      error: null,
+      colorIndex: 0,
+    },
+  ];
+  const FAILED = { code: "PdfOpenFailed", detail: null } as const;
+
+  function split(overrides: Partial<JobState>): JobState {
+    return {
+      ...initialJobState,
+      kind: "organize",
+      organizeOutput: "split",
+      phase: "finished",
+      ...overrides,
+    };
+  }
+
+  it("counts the PDFs saved when all of them were", () => {
+    const finished = { ...NOTHING, succeeded: 3 };
+    const shape = organizeSummaryShape(split({ finished }), PDFS, "ja");
+
+    expect(shape).toEqual({ kind: "organizedParts", saved: 3 });
+    expect(formatJobSummary(ja, finished, shape)).toBe(
+      "3 個の PDF を保存しました",
+    );
+    expect(formatJobSummary(en, finished, shape)).toBe("Saved 3 PDFs");
+    expect(
+      formatJobSummary(
+        en,
+        { ...NOTHING, succeeded: 1 },
+        { kind: "organizedParts", saved: 1 },
+      ),
+    ).toBe("Saved 1 PDF");
+  });
+
+  it("tells the first output that failed, by its number and the PDF to blame", () => {
+    const finished = { ...NOTHING, succeeded: 1, failed: 2 };
+    const job = split({
+      finished,
+      results: {
+        1: { id: 1, status: "ok", outputs: ["a.pdf"] },
+        3: { id: 3, status: "failed", outputs: [], error: FAILED, sourceId: 7 },
+        2: { id: 2, status: "failed", outputs: [], error: FAILED },
+      },
+    });
+
+    const shape = organizeSummaryShape(job, PDFS, "ja");
+
+    expect(shape).toMatchObject({
+      kind: "items",
+      firstFailure: { part: 2, name: null },
+    });
+    expect(formatJobSummary(ja, finished, shape)).toMatch(
+      /^変換が終わりました：成功 1 件 · 失敗 2 件（2 番目の PDF: .+）$/,
+    );
+    expect(
+      formatJobSummary(
+        ja,
+        finished,
+        organizeSummaryShape(
+          split({
+            finished,
+            results: {
+              3: {
+                id: 3,
+                status: "failed",
+                outputs: [],
+                error: FAILED,
+                sourceId: 7,
+              },
+            },
+          }),
+          PDFS,
+          "ja",
+        ),
+      ),
+    ).toMatch(/（3 番目の PDF: book\.pdf: .+）$/);
+    expect(formatJobSummary(en, finished, shape)).toMatch(
+      /^Conversion finished: 1 succeeded · 2 failed \(PDF 2: .+\)$/,
+    );
+  });
+
+  it("counts what was saved and left after Cancel, with no claim that nothing was saved", () => {
+    const finished = {
+      ...NOTHING,
+      succeeded: 1,
+      unprocessed: 2,
+      cancelled: true,
+    };
+    const shape = organizeSummaryShape(split({ finished }), PDFS, "ja");
+
+    expect(shape).toEqual({ kind: "items", partial: 0 });
+    expect(formatJobSummary(ja, finished, shape)).toBe(
+      "キャンセルしました：成功 1 件 · 未処理 2 件",
+    );
+  });
+
+  it("is told by how the save started: one PDF is told as one PDF", () => {
+    const finished = { ...NOTHING, succeeded: 1 };
+    const shape = organizeSummaryShape(
+      { ...split({ finished }), organizeOutput: "single" },
+      PDFS,
+      "ja",
+    );
+
+    expect(shape.kind).toBe("organizedPdf");
   });
 });

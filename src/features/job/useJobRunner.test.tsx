@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CropRegionInput, OutputDirLabel, Settings } from "../../ipc";
 import {
@@ -34,7 +35,15 @@ const REGIONS: CropRegionInput[] = [
   { key: 2, page: 3, rectPt: [5, 5, 50, 50], imageIndex: 6 },
 ];
 
+const ORGANIZE_PAGES = [
+  { id: 3, page: 2, rotation: 90 },
+  { id: 3, page: 1, rotation: 0 },
+];
+
 function Harness() {
+  const [replaced, setReplaced] = useState<number | null | undefined>(
+    undefined,
+  );
   useJobEvents();
   const runner = useJobRunner();
   const { job, crop, imagesToPdf, pdfToImages } = useAppState();
@@ -63,6 +72,17 @@ function Harness() {
       <button type="button" onClick={() => void runner.startDetectAll(7)}>
         detect all
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          void runner
+            .saveOrganizedPdf(ORGANIZE_PAGES, null)
+            .then((replacedId) => setReplaced(replacedId))
+        }
+      >
+        save organized
+      </button>
+      <output data-testid="replaced">{String(replaced)}</output>
       <output data-testid="job">
         {JSON.stringify({
           phase: job.phase,
@@ -210,6 +230,101 @@ describe("useJobRunner for the crop tab", () => {
     fireEvent.click(screen.getByRole("button", { name: "detect all" }));
     await waitFor(() =>
       expect(readJson("job")).toMatchObject({ error: "ConversionRunning" }),
+    );
+    expect(readJson("dirs")).toEqual({
+      crop: "crops",
+      pdfToImages: "images",
+      imagesToPdf: "pdfs",
+    });
+  });
+});
+
+describe("useJobRunner for the organize tab", () => {
+  afterEach(() => {
+    cleanup();
+    clearMocks();
+  });
+
+  it("starts the save as an organize conversion with no items, since its outputs are not items", async () => {
+    let answer: (value: unknown) => void = () => {};
+    const calls = mockCommands(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "save organized" }));
+
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        cmd: "save_organized_pdf",
+        args: { pages: ORGANIZE_PAGES, password: null },
+      }),
+    );
+    expect(readJson("job")).toMatchObject({
+      phase: "running",
+      kind: "organize",
+      targets: [],
+    });
+    answer({ savedName: "a.pdf", replacedId: null });
+    await waitFor(() =>
+      expect(screen.getByTestId("replaced")).toHaveTextContent("null"),
+    );
+  });
+
+  it("gives back the ID of the PDF the save replaced", async () => {
+    mockCommands(() => ({ savedName: "a.pdf", replacedId: 3 }));
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "save organized" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("replaced")).toHaveTextContent("3"),
+    );
+  });
+
+  it("goes back to nothing when the save dialog is cancelled", async () => {
+    mockCommands(() => null);
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "save organized" }));
+
+    await waitFor(() =>
+      expect(readJson("job")).toMatchObject({ phase: "idle", kind: null }),
+    );
+    expect(screen.getByTestId("replaced")).toHaveTextContent("null");
+  });
+
+  it("reports a refusal as a failure of the organize tab and leaves every folder", async () => {
+    mockCommands(() => {
+      throw { code: "OutputTooLarge", detail: "613 MB / 512 MB" };
+    });
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "save organized" }));
+
+    await waitFor(() =>
+      expect(readJson("job")).toMatchObject({
+        kind: "organize",
+        error: "OutputTooLarge",
+      }),
+    );
+    expect(readJson("dirs")).toEqual({
+      crop: "crops",
+      pdfToImages: "images",
+      imagesToPdf: "pdfs",
+    });
+  });
+
+  it("does not take a missing folder for the folder of another tab", async () => {
+    mockCommands(() => {
+      throw { code: "OutputDirMissing", detail: null };
+    });
+    renderHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "save organized" }));
+
+    await waitFor(() =>
+      expect(readJson("job")).toMatchObject({ error: "OutputDirMissing" }),
     );
     expect(readJson("dirs")).toEqual({
       crop: "crops",

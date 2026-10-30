@@ -10,7 +10,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use pdfconv_worker::client::{
-    DETECT_TIMEOUT, OPEN_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess,
+    DETECT_TIMEOUT, OPEN_TIMEOUT, ORGANIZE_STEP_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess,
 };
 use pdfconv_worker::protocol::{Request, Response};
 
@@ -101,6 +101,9 @@ pub struct WorkerPoolConfig {
     pub open_timeout: Duration,
     pub render_timeout: Duration,
     pub detect_timeout: Duration,
+    /// The longest wait between two answers of an `Organize` request, not for the whole
+    /// request, whose length grows with the output (design organize §3).
+    pub organize_step_timeout: Duration,
 }
 
 impl WorkerPoolConfig {
@@ -116,6 +119,7 @@ impl WorkerPoolConfig {
             open_timeout: OPEN_TIMEOUT,
             render_timeout: RENDER_TIMEOUT,
             detect_timeout: DETECT_TIMEOUT,
+            organize_step_timeout: ORGANIZE_STEP_TIMEOUT,
         }
     }
 
@@ -144,6 +148,12 @@ impl WorkerPoolConfig {
         self
     }
 
+    /// Sets the longest wait between two answers of an `Organize` request.
+    pub fn with_organize_step_timeout(mut self, timeout: Duration) -> Self {
+        self.organize_step_timeout = timeout;
+        self
+    }
+
     /// How long to wait for the answer to `request` (design §5.2). Every
     /// request is listed, so that a new one cannot fall to a default value
     /// without the compiler noticing.
@@ -156,9 +166,8 @@ impl WorkerPoolConfig {
             | Request::ImageOnTop { .. }
             | Request::RenderRegion { .. } => self.render_timeout,
             Request::Detect { .. } => self.detect_timeout,
-            // `Organize` answers with several messages and is not sent through the pool's
-            // single-answer `request`; its limit is `ORGANIZE_STEP_TIMEOUT`.
-            Request::Organize { .. } => self.render_timeout,
+            // The wait between two answers of the stream, not for the whole request.
+            Request::Organize { .. } => self.organize_step_timeout,
             #[cfg(feature = "test-hooks")]
             Request::AllocateForTest { .. } | Request::CrashForTest | Request::HangForTest => {
                 self.open_timeout
@@ -219,6 +228,11 @@ impl WorkerPool {
     /// The timeout for detecting a page's layout.
     pub fn detect_timeout(&self) -> Duration {
         self.inner.config.detect_timeout
+    }
+
+    /// The longest wait between two answers of an `Organize` request.
+    pub fn organize_step_timeout(&self) -> Duration {
+        self.inner.config.organize_step_timeout
     }
 
     /// How long to wait for the answer to `request`; see
@@ -372,12 +386,14 @@ mod tests {
     const OPEN: Duration = Duration::from_secs(1);
     const RENDER: Duration = Duration::from_secs(2);
     const DETECT: Duration = Duration::from_secs(3);
+    const ORGANIZE: Duration = Duration::from_secs(4);
 
     fn distinct_timeouts() -> WorkerPoolConfig {
         WorkerPoolConfig::new("worker", ["arg"])
             .with_open_timeout(OPEN)
             .with_render_timeout(RENDER)
             .with_detect_timeout(DETECT)
+            .with_organize_step_timeout(ORGANIZE)
     }
 
     #[test]
@@ -430,6 +446,15 @@ mod tests {
             ),
             (region, RENDER),
             (Request::Detect { page: 1 }, DETECT),
+            (
+                Request::Organize {
+                    sources: Vec::new(),
+                    pages: Vec::new(),
+                    creator: String::new(),
+                    output_password: None,
+                },
+                ORGANIZE,
+            ),
         ];
         for (request, expected) in cases {
             assert_eq!(config.timeout_for(&request), expected, "{request:?}");
@@ -453,6 +478,12 @@ mod tests {
     fn the_detect_timeout_defaults_to_the_workers_constant() {
         let config = WorkerPoolConfig::new("worker", ["arg"]);
         assert_eq!(config.detect_timeout, DETECT_TIMEOUT);
+    }
+
+    #[test]
+    fn the_organize_step_timeout_defaults_to_the_workers_constant() {
+        let config = WorkerPoolConfig::new("worker", ["arg"]);
+        assert_eq!(config.organize_step_timeout, ORGANIZE_STEP_TIMEOUT);
     }
 
     #[test]

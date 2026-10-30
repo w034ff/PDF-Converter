@@ -3,6 +3,11 @@ import { createInitialLanguageState, languageReducer } from "./language";
 import { imagesToPdfReducer, initialImagesToPdfState } from "./imagesToPdf";
 import { initialJobState, isJobActive, jobReducer } from "./job";
 import {
+  createInitialOrganizeState,
+  organizeReducer,
+  type OrganizeAction,
+} from "./organize";
+import {
   DPI_CHOICES,
   pdfToImagesReducer,
   initialPdfToImagesState,
@@ -26,6 +31,7 @@ export function createInitialAppState(
       imagesToPdf: { ...initialImagesToPdfState },
       pdfToImages: { ...initialPdfToImagesState },
       crop: createInitialCropState(),
+      organize: createInitialOrganizeState(),
       job: { ...initialJobState },
     };
   }
@@ -52,6 +58,7 @@ export function createInitialAppState(
       outputDir: settings.pdfToImages.outputDir,
     },
     crop: createInitialCropState(settings.crop),
+    organize: createInitialOrganizeState(settings.organize),
     job: { ...initialJobState },
   };
 }
@@ -93,6 +100,24 @@ function reduceCrop(
   }
   const next = { ...state, crop };
   return dropsResult ? dropStaleResult(state, next, "crop") : next;
+}
+
+/**
+ * Runs an organize action. `dropsResult` is for the actions that change what
+ * the last organize result describes: the pages, the PDFs and the password
+ * (design §10.1).
+ */
+function reduceOrganize(
+  state: AppState,
+  action: OrganizeAction,
+  dropsResult: boolean,
+): AppState {
+  const organize = organizeReducer(state.organize, action);
+  if (organize === state.organize) {
+    return state;
+  }
+  const next = { ...state, organize };
+  return dropsResult ? dropStaleResult(state, next, "organize") : next;
 }
 
 /**
@@ -220,6 +245,39 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ? withExportedItem(next, action.item.id)
         : next;
     }
+    // The pages and the breaks are frozen while a conversion runs, so the
+    // result it ends with describes the pages that were there.
+    case "ORGANIZE_PAGES_MOVED":
+    case "ORGANIZE_PAGES_ROTATED":
+    case "ORGANIZE_PAGES_DELETED":
+    case "ORGANIZE_BREAK_TOGGLED":
+    case "ORGANIZE_BREAKS_EACH_PAGE":
+    case "ORGANIZE_BREAKS_EACH_PDF":
+    case "ORGANIZE_BREAKS_CLEARED":
+    case "ORGANIZE_UNDO":
+    case "ORGANIZE_REDO":
+      return isJobActive(state.job)
+        ? state
+        : reduceOrganize(state, action, true);
+    case "ORGANIZE_PDFS_ADDED":
+    case "ORGANIZE_PDF_REMOVED":
+    case "ORGANIZE_PDFS_UNLOCKED":
+    case "ORGANIZE_CLEARED":
+    case "SET_ORGANIZE_ENCRYPT":
+    case "SET_ORGANIZE_OUTPUT":
+    case "SET_ORGANIZE_OUTPUT_DIR":
+      return reduceOrganize(state, action, true);
+    // A save that wrote over a PDF of the list drops it, and the result of
+    // that very save stays (design organize §4).
+    case "ORGANIZE_PDF_REPLACED":
+    case "ORGANIZE_NOTICE":
+    case "ORGANIZE_SELECTED_ONLY":
+    case "ORGANIZE_SELECTION_TOGGLED":
+    case "ORGANIZE_SELECTION_EXTENDED":
+    case "ORGANIZE_SELECTED_ALL":
+    case "ORGANIZE_SELECTION_CLEARED":
+    case "ORGANIZE_FOCUSED":
+      return reduceOrganize(state, action, false);
     // A conversion freezes the areas, so drawing one has nothing left to do;
     // it does not come back when the conversion ends (design §10.1).
     case "JOB_STARTED":
@@ -235,6 +293,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "JOB_PROGRESS":
     case "JOB_FINISHED":
     case "JOB_SAVED":
+    case "JOB_REPLACED":
     case "JOB_FAILED":
     case "JOB_NOT_STARTED":
     case "JOB_RESET":

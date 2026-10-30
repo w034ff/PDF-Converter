@@ -27,6 +27,8 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
   CmykNotAllowedInPdfA: "PDF/A では CMYK の画像を使えません",
   LayoutUnavailable:
     "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
+  OutputTooLarge:
+    "出力する PDF が大きすぎます（見積もり / 上限: {detail}）。区切りを入れて、分けて保存してください。",
 };
 
 export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
@@ -51,6 +53,8 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
   CmykNotAllowedInPdfA: "CMYK images can't be used in PDF/A",
   LayoutUnavailable:
     "Can't show suggestions (layout analysis is unavailable). You can still select areas by hand.",
+  OutputTooLarge:
+    "The output PDF is too large (estimate / limit: {detail}). Add breaks and save it in parts.",
 };
 
 /**

@@ -18,9 +18,14 @@ use pdf_converter_lib::jobs::{
     PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice,
     SaveMergedPdfResult,
 };
+use pdf_converter_lib::organize::{
+    OrganizeAdded, OrganizeDropped, OrganizePageInput, OrganizePdf, OrganizeUnlocked,
+};
+use pdf_converter_lib::organize_export::SaveOrganizedResult;
 use pdf_converter_lib::settings::{
-    CropOptions, CropSettings, ImagesToPdfOptions, ImagesToPdfSettings, Language, OutputDirLabel,
-    OutputKind, OutputMode, PdfToImagesOptions, PdfToImagesSettings, Settings, SettingsInput,
+    CropOptions, CropSettings, ImagesToPdfOptions, ImagesToPdfSettings, Language, OrganizeOutput,
+    OrganizeSettings, OutputDirLabel, OutputKind, OutputMode, PdfToImagesOptions,
+    PdfToImagesSettings, Settings, SettingsInput,
 };
 use ts_rs::{Config, TS};
 
@@ -71,6 +76,14 @@ fn export_typescript_bindings() {
     ImagesToPdfSettings::export_all(&cfg).expect("exporting ImagesToPdfSettings");
     PdfToImagesSettings::export_all(&cfg).expect("exporting PdfToImagesSettings");
     CropSettings::export_all(&cfg).expect("exporting CropSettings");
+    OrganizeOutput::export_all(&cfg).expect("exporting OrganizeOutput");
+    OrganizeSettings::export_all(&cfg).expect("exporting OrganizeSettings");
+    OrganizePdf::export_all(&cfg).expect("exporting OrganizePdf");
+    OrganizePageInput::export_all(&cfg).expect("exporting OrganizePageInput");
+    OrganizeAdded::export_all(&cfg).expect("exporting OrganizeAdded");
+    OrganizeDropped::export_all(&cfg).expect("exporting OrganizeDropped");
+    OrganizeUnlocked::export_all(&cfg).expect("exporting OrganizeUnlocked");
+    SaveOrganizedResult::export_all(&cfg).expect("exporting SaveOrganizedResult");
     Settings::export_all(&cfg).expect("exporting Settings");
     SettingsInput::export_all(&cfg).expect("exporting SettingsInput");
 }

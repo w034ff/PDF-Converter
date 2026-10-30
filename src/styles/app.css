@@ -352,7 +352,9 @@ a:hover {
 }
 
 .app-footer-action {
+  flex: none;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .app-footer-progress {

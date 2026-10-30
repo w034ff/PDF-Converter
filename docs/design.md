@@ -422,9 +422,9 @@ SVG Tracer の §5.3 と同じ規則にする。
 - 保存は、保存先のフォルダに一時ファイルを作って全内容を書き、`persist_noclobber` で最終名にする（SVG Tracer §5.4 と同じ）。書き込みの途中で失敗・中断しても、不完全なファイルは残らない。
 - 一時ファイルは、保存先のフォルダに `.` で始まる名前で作る（ほかのアプリの一覧に途中のファイルが見えないようにするため）。
 - Unix では、一時ファイルを `0666` で作る（OS が umask を引くので、通常は `0644` になる）。`tempfile` の既定は本人だけが読める `0600` で、名前を替えてもそのままなので、保存した PDF や画像を、ほかのアプリや別の利用者が読めなくなるため。設定ファイル（§6.7）は本人だけが読めればよいので、既定のままにする。Windows にはこの指定がない。
-- 保存先のフォルダは、「画像 → PDF」「PDF → 画像」「切り出し」で 1 つずつ Rust の状態に持つ。`pick_output_dir` と設定の復元（§6.7、T09）が入れ、`start_images_to_pdfs`・`start_pdfs_to_images`・`start_crop_export` はそれを使う。まだ選ばれていなければ `InvalidParams` で拒む。
+- 保存先のフォルダは、「画像 → PDF」「PDF → 画像」「切り出し」「整理」で 1 つずつ Rust の状態に持つ。`pick_output_dir` と設定の復元（§6.7、T09）が入れ、`start_images_to_pdfs`・`start_pdfs_to_images`・`start_crop_export`・`start_organize_split` はそれを使う。まだ選ばれていなければ `InvalidParams` で拒む。
 - 画面は、フォルダが未選択のまま「変換を開始」が押されたら、先に `pick_output_dir` でフォルダのダイアログを開き、選ばれたらそのまま変換を始める（選んだフォルダは設定パネルの欄にも出る）。ダイアログを取り消したら何も始めない。ボタンを無効にして先に設定パネルへ行かせるより、手順が 1 つ少ないため。
-- `start_images_to_pdfs`・`start_pdfs_to_images`・`start_crop_export` は、変換中かどうかの確かめのあと、変換を始める前に保存先のフォルダを確かめる。
+- `start_images_to_pdfs`・`start_pdfs_to_images`・`start_crop_export`・`start_organize_split` は、変換中かどうかの確かめのあと、変換を始める前に保存先のフォルダを確かめる。
   - 存在しない、またはフォルダでない: 何も始めず、§6.5 の Rust の状態と設定ファイルの `outputDir` を未選択（`null`）に戻して `OutputDirMissing` を返す。ほかの画面の保存先は変えない。
   - フォルダはあるが、そこに一時ファイル（上の `.` で始まる名前）を作れない: 何も始めず `OutputDirNotWritable` を返す。権限を直せば使えるので、保存先は未選択に戻さない。
   - `detail` は付けない（`io::Error` の文言にフォルダのパスが入り、フロントエンドにパスを渡さないため）。
@@ -476,8 +476,8 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - 保存先は `app_config_dir()` 配下の `settings.json`。読み書きの方式、壊れた設定や未知の `schemaVersion` で既定値に戻すこと、フォルダの扱いは SVG Tracer §5.6 と同じ。
 - 内容: `schemaVersion`、`language`、画面ごとの設定（`imagesToPdf`・`pdfToImages`・`crop`・`organize`）。画面ごとの設定は、その画面の設定パネルの選択肢と保存先のフォルダ（`outputDir`）で、切り出しの `format`・`colorMode`・`dpi` は `pdfToImages` と同じ値。`dpi` は §4.4 の範囲の整数。項目と値の型は Rust の設定の型（ts-rs で生成した型）が正本。
 - 一覧の中身とページの範囲は保存しない（次回は空の一覧で始める）。切り出しの開いた PDF と範囲も保存しない。
-- `crop` がない設定ファイル（切り出しより前の版が書いたもの）は、欠けた項目として既定値になるので、`schemaVersion` は `1` のままでよい。
-- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、パスワードは付けない（`false`）、PNG、カラー、150 dpi。切り出しは PNG、カラー、150 dpi、写真は元の画質で書き出す（`photoNative: true`）、写真だけを書き出さない（`photoOnly: false`）。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
+- `crop`・`organize` がない設定ファイル（切り出し・整理より前の版が書いたもの）は、欠けた項目として既定値になるので、`schemaVersion` は `1` のままでよい。
+- 既定値: 「1 つの PDF」、「画像と同じ大きさ」、用紙の向きは「自動」、PDF/A は使わない（`false`）、パスワードは付けない（`false`）、PNG、カラー、150 dpi。切り出しは PNG、カラー、150 dpi、写真は元の画質で書き出す（`photoNative: true`）、写真だけを書き出さない（`photoOnly: false`）。整理は「1 つの PDF」（`output: "single"`）、パスワードは付けない（`encrypt: false`）。言語は未設定（`null`。画面が `navigator.language` から決める）。フォルダは未選択（`null`）。
 - `language` は `"ja"`、`"en"`、`null` のいずれか。`outputDir` はフォルダの絶対パスか `null`。
 - `get_settings` はパスを返さない。`outputDir` の代わりに `pick_output_dir` と同じ `{ dirLabel }`（未選択なら `null`）を返す。`dirLabel` はフォルダの名前（パスの最後の要素）。
 - `save_settings` は、`revision`（数）と、`get_settings` の形から `outputDir` を除いたものを受け取る。`dpi` が §4.4 の範囲の外にある、`pdfA` と `encrypt` がどちらも `true` などの不正な値は `InvalidParams` で拒み、何も保存しない。`encrypt` はパスワードを付けるかどうかだけで、パスワードは保存しない（§6.9）。
@@ -568,8 +568,9 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | --- | --- |
 | `items-dropped` | `{ images: ImageItem[], pdfs: PdfItem[], skipped, error: IpcError \| null }`（変換中に落とされたときは何も加えず、`error` を `ConversionRunning` にする。切り出しのタブを表示しているときの D&D では送らない） |
 | `crop-dropped` | `{ cropPdf: CropPdf \| null, notOnePdf: boolean, error: IpcError \| null }`（切り出しのタブを表示しているときの D&D。§6.10。`cropPdf` は保留の PDF。PDF のファイルちょうど 1 つでなければ `notOnePdf` を `true` にして何も開かない。変換中は何も開かず `error` を `ConversionRunning` にする） |
+| `organize-dropped` | `{ added: OrganizePdf[], skipped, error: IpcError \| null }`（整理のタブを表示しているときの D&D。[design/organize.md](design/organize.md) §4。PDF でないファイルは `skipped` に数える。変換中は何も加えず `error` を `ConversionRunning` にする） |
 | `job-progress` | `{ done, total, current: string \| null }`（`total` はどちらもページの合計。画像 → PDF では TIFF の全ページを数える。§6.2） |
-| `job-item` | `{ id, status: "ok" \| "failed" \| "partial" \| "noPages" \| "cancelled", outputs: string[], error?, failedPages? }` |
+| `job-item` | `{ id, status: "ok" \| "failed" \| "partial" \| "noPages" \| "cancelled", outputs: string[], error?, failedPages?, sourceId? }`（整理では `id` が出力の番号で、`sourceId` は失敗した元の PDF。[design/organize.md](design/organize.md) §4） |
 | `job-finished` | `{ succeeded, failed, noPages, unprocessed, cancelled }` |
 | `layout-page` | `{ id, page, candidates: Candidate[], error: IpcError \| null }`（`start_detect_all` の 1 ページごと。解析に失敗したページは `candidates` が空で `error` を持つ。§6.10） |
 
@@ -682,7 +683,7 @@ SVG Tracer §7 と同じにする（capabilities は `core:*` の最小集合、
 
 ### 10.2 状態管理、多言語
 
-SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基準にした型付きの辞書）。reducer は「画像 → PDF」「PDF → 画像」「切り出し」「変換の実行」「言語」に分ける。
+SVG Tracer §8.3、§8.4 と同じ（`useReducer` と Context、`ja.ts` を基準にした型付きの辞書）。reducer は「画像 → PDF」「PDF → 画像」「切り出し」「整理」「変換の実行」「言語」に分ける。
 
 - 「切り出し」の状態は、開いた PDF、ページごとの埋め込み画像の一覧と候補（要求したページだけ）、範囲、選んでいる範囲、書き出し済みの範囲の `key`、取り消しの履歴、隠した候補、範囲を描く状態。別の PDF を開いたら、範囲にかかわるものを捨て、`key` を 1 から振り直す。ドラッグの途中の形は状態に持たない（離したときに 1 度だけ状態を変えるため）。
 - 「変換の実行」は 3 つの画面で共通にする（変換は同時に 1 つだけで、タブを切り替えても続くため）。`job-progress`・`job-item`・`job-finished` は `App` で 1 回だけ購読する。変換を始める前に状態を「実行中」にし、コマンドの戻りより先に届いたイベントも失わない。`job-progress` の `current` はファイル名だけで ID を持たないので、変換中の行は名前と渡した順から割り出す（同じ名前の 2 つが同時に変換中のときは、1 つだけが変換中に見える）。古い結果を消すのは、画面の状態が実際に変わった操作のときだけにする。

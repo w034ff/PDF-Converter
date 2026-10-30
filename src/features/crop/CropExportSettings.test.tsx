@@ -347,6 +347,7 @@ describe("saving", () => {
             photoNative: true,
             photoOnly: false,
           },
+          organize: { output: "single", encrypt: false },
         },
       },
     ]);

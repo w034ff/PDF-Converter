@@ -3,4 +3,4 @@
 /**
  * The conversion an output folder belongs to (design §6.5).
  */
-export type OutputKind = "imagesToPdf" | "pdfToImages" | "crop";
+export type OutputKind = "imagesToPdf" | "pdfToImages" | "crop" | "organize";

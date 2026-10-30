@@ -49,6 +49,9 @@ export function useEnsureOutputDir(tab: ActiveTab): EnsureOutputDirResult {
           case "crop":
             dispatch({ type: "SET_CROP_OUTPUT_DIR", outputDir: picked });
             break;
+          case "organize":
+            dispatch({ type: "SET_ORGANIZE_OUTPUT_DIR", outputDir: picked });
+            break;
         }
         await onConfirmed();
       }

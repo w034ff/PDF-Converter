@@ -18,6 +18,10 @@ import type { JobFinishedPayload } from "./generated/JobFinishedPayload";
 import type { JobItemPayload } from "./generated/JobItemPayload";
 import type { JobProgressPayload } from "./generated/JobProgressPayload";
 import type { LayoutPagePayload } from "./generated/LayoutPagePayload";
+import type { OrganizeAdded } from "./generated/OrganizeAdded";
+import type { OrganizeDropped } from "./generated/OrganizeDropped";
+import type { OrganizePageInput } from "./generated/OrganizePageInput";
+import type { OrganizeUnlocked } from "./generated/OrganizeUnlocked";
 import type { OutputDirLabel } from "./generated/OutputDirLabel";
 import type { OutputKind } from "./generated/OutputKind";
 import type { PageImage } from "./generated/PageImage";
@@ -28,6 +32,7 @@ import type { PdfItem } from "./generated/PdfItem";
 import type { RenderColorChoice } from "./generated/RenderColorChoice";
 import type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
+import type { SaveOrganizedResult } from "./generated/SaveOrganizedResult";
 import type { Settings } from "./generated/Settings";
 import type { SettingsInput } from "./generated/SettingsInput";
 import type { UnlockResult } from "./generated/UnlockResult";
@@ -57,6 +62,13 @@ export type { JobItemStatus } from "./generated/JobItemStatus";
 export type { JobProgressPayload } from "./generated/JobProgressPayload";
 export type { Language } from "./generated/Language";
 export type { LayoutPagePayload } from "./generated/LayoutPagePayload";
+export type { OrganizeAdded } from "./generated/OrganizeAdded";
+export type { OrganizeDropped } from "./generated/OrganizeDropped";
+export type { OrganizeOutput } from "./generated/OrganizeOutput";
+export type { OrganizePageInput } from "./generated/OrganizePageInput";
+export type { OrganizePdf } from "./generated/OrganizePdf";
+export type { OrganizeSettings } from "./generated/OrganizeSettings";
+export type { OrganizeUnlocked } from "./generated/OrganizeUnlocked";
 export type { OutputDirLabel } from "./generated/OutputDirLabel";
 export type { OutputKind } from "./generated/OutputKind";
 export type { OutputMode } from "./generated/OutputMode";
@@ -70,6 +82,7 @@ export type { PdfToImagesSettings } from "./generated/PdfToImagesSettings";
 export type { RenderColorChoice } from "./generated/RenderColorChoice";
 export type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 export type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
+export type { SaveOrganizedResult } from "./generated/SaveOrganizedResult";
 export type { Settings } from "./generated/Settings";
 export type { SettingsInput } from "./generated/SettingsInput";
 export type { Skipped } from "./generated/Skipped";
@@ -81,6 +94,9 @@ export const ITEMS_DROPPED_EVENT = "items-dropped";
 
 /** Name of the event Rust emits after a drop in the crop tab (design §7.2). */
 export const CROP_DROPPED_EVENT = "crop-dropped";
+
+/** Name of the event Rust emits after a drop in the organize tab (design §7.2). */
+export const ORGANIZE_DROPPED_EVENT = "organize-dropped";
 
 /** Name of the event Rust emits during conversion progress (design §7.2). */
 export const JOB_PROGRESS_EVENT = "job-progress";
@@ -114,6 +130,7 @@ const ERROR_CODES = {
   OutputDirNotWritable: true,
   CmykNotAllowedInPdfA: true,
   LayoutUnavailable: true,
+  OutputTooLarge: true,
 } satisfies Record<ErrorCode, true>;
 
 /** Whether a value is one of the error codes of design §6.6. */
@@ -249,7 +266,7 @@ export function isSettings(value: unknown): value is Settings {
   if (!isRecord(value)) {
     return false;
   }
-  const { language, imagesToPdf, pdfToImages, crop } = value;
+  const { language, imagesToPdf, pdfToImages, crop, organize } = value;
   return (
     (language === "ja" || language === "en" || language === null) &&
     isRecord(imagesToPdf) &&
@@ -270,7 +287,11 @@ export function isSettings(value: unknown): value is Settings {
     isRenderDpi(crop.dpi) &&
     typeof crop.photoNative === "boolean" &&
     typeof crop.photoOnly === "boolean" &&
-    isOutputDirLabel(crop.outputDir)
+    isOutputDirLabel(crop.outputDir) &&
+    isRecord(organize) &&
+    (organize.output === "single" || organize.output === "split") &&
+    typeof organize.encrypt === "boolean" &&
+    isOutputDirLabel(organize.outputDir)
   );
 }
 
@@ -384,7 +405,10 @@ export async function unlockCropPdf(
   return invokeWrapped<CropPdf>("unlock_crop_pdf", { id, password });
 }
 
-/** Tells Rust where a drop goes: the lists or the crop tab (design §6.10). */
+/**
+ * Tells Rust where a drop goes: the lists, the crop tab or the organize tab
+ * (design §6.10, organize §4).
+ */
 export async function setDropTarget(target: DropTarget): Promise<void> {
   return invokeWrapped<void>("set_drop_target", { target });
 }
@@ -457,7 +481,71 @@ export async function startCropExport(
 }
 
 /**
- * Fetches the PNG thumbnail of an item of a list or of the open crop PDF.
+ * Asks Rust to open a dialog for PDFs or a folder and add the PDFs in it to the
+ * organize list (design organize §4). Resolves to `null` when the dialog was
+ * cancelled.
+ */
+export async function addOrganizePdfs(
+  source: AddSource,
+): Promise<OrganizeAdded | null> {
+  return invokeWrapped<OrganizeAdded | null>("add_organize_pdfs", { source });
+}
+
+/** Removes PDFs from the organize list; an ID that is not in it is ignored. */
+export async function removeOrganizePdfs(ids: number[]): Promise<void> {
+  return invokeWrapped<void>("remove_organize_pdfs", { ids });
+}
+
+/**
+ * Opens a password-protected PDF of the organize list with its password and
+ * tries the password on the other PDFs of the list that wait for one (design
+ * §6.8). Rejects with `PasswordProtected` for a wrong password.
+ */
+export async function unlockOrganizePdf(
+  id: number,
+  password: string,
+): Promise<OrganizeUnlocked> {
+  return invokeWrapped<OrganizeUnlocked>("unlock_organize_pdf", {
+    id,
+    password,
+  });
+}
+
+/**
+ * Opens a save dialog and saves the pages as one PDF (design organize §4).
+ * Resolves to `null` when the dialog was cancelled, so nothing ran. Once the
+ * PDF has been made, `savedName` is `null` if it was not saved, and
+ * `replacedId` is the PDF of the list that the file replaced, which Rust has
+ * dropped from the list. Nothing starts, and it rejects, when the pages are
+ * refused: `InvalidParams`, `UnknownHandle`, the error of a PDF, or
+ * `OutputTooLarge`.
+ */
+export async function saveOrganizedPdf(
+  pages: OrganizePageInput[],
+  password: string | null,
+): Promise<SaveOrganizedResult | null> {
+  return invokeWrapped<SaveOrganizedResult | null>("save_organized_pdf", {
+    pages,
+    password,
+  });
+}
+
+/**
+ * Starts making one PDF for each of `parts` into the organize output folder, in
+ * the background (design organize §4). Each is reported by `job-item` with its
+ * number from 1 as the `id`. Rejects as `saveOrganizedPdf` does, and with
+ * `InvalidParams` when no folder is chosen.
+ */
+export async function startOrganizeSplit(
+  parts: OrganizePageInput[][],
+  password: string | null,
+): Promise<void> {
+  return invokeWrapped<void>("start_organize_split", { parts, password });
+}
+
+/**
+ * Fetches the PNG thumbnail of an item of a list, of a PDF of the organize
+ * list or of the open crop PDF.
  * `page` (from 1) is used for a PDF only and defaults to the first page.
  * `maxSide` is the length of the longer side of a PDF page in pixels; it
  * defaults to the thumbnail size and is refused for an image.
@@ -475,6 +563,15 @@ export async function onItemsDropped(
   handler: (payload: ItemsDropped) => void,
 ): Promise<UnlistenFn> {
   return listen<ItemsDropped>(ITEMS_DROPPED_EVENT, (event) => {
+    handler(event.payload);
+  });
+}
+
+/** Subscribes to what a drop in the organize tab added (design §7.2). */
+export async function onOrganizeDropped(
+  handler: (payload: OrganizeDropped) => void,
+): Promise<UnlistenFn> {
+  return listen<OrganizeDropped>(ORGANIZE_DROPPED_EVENT, (event) => {
     handler(event.payload);
   });
 }

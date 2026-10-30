@@ -58,6 +58,21 @@
   --color-page-area-text: #ffffff;
   --color-page-area-tint: rgba(180, 73, 43, 0.06);
 
+  /* The PDFs of the organize tab, told apart by a dot of a color and a name
+     (organize §4). Each is at least 3:1 on the grounds the dot is drawn on,
+     and none is near the accent or the colors of a state (tokens.test.ts). */
+  --organize-source-1: #4f6d8f;
+  --organize-source-2: #8a5a9c;
+  --organize-source-3: #5e8a5a;
+  --organize-source-4: #a8636f;
+  --organize-source-5: #078487;
+  --organize-source-6: #65710f;
+  /* The ground of a selected page; the accent is on its frame and its check. */
+  --organize-cell-selected: #f6e9e4;
+  /* The yellow note about the PDFs that had a password (OrganizeSingle). */
+  --organize-notice-bg: #f7f1e3;
+  --organize-notice-border: #e6d9b8;
+
   /* Typography */
   --font-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -105,5 +120,15 @@
     --color-bg-hover: #3a3834;
 
     --color-overlay-backdrop: rgba(0, 0, 0, 0.65);
+
+    --organize-source-1: #8ba3bf;
+    --organize-source-2: #b88bcb;
+    --organize-source-3: #8cc088;
+    --organize-source-4: #f6acc2;
+    --organize-source-5: #36d5d9;
+    --organize-source-6: #c4cb5e;
+    --organize-cell-selected: #3f2a22;
+    --organize-notice-bg: #2e2a1f;
+    --organize-notice-border: #54492c;
   }
 }

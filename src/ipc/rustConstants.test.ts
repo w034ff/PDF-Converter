@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { OUTPUT_PASSWORD_MAX_LENGTH } from "../features/images-to-pdf/outputPassword";
-import { PAGE_VIEW_MAX_SIDE, RENDER_DPI_MAX, RENDER_DPI_MIN } from "../state";
+import {
+  MAX_PDF_PAGES,
+  PAGE_VIEW_MAX_SIDE,
+  RENDER_DPI_MAX,
+  RENDER_DPI_MIN,
+} from "../state";
 
 /**
  * Constants of the front end that copy a Rust constant, because the screen
@@ -36,6 +41,12 @@ const RUST_COPIES: readonly {
     value: RENDER_DPI_MAX,
     rustFile: "crates/worker/src/lib.rs",
     rustName: "RENDER_DPI_MAX",
+  },
+  {
+    name: "MAX_PDF_PAGES",
+    value: MAX_PDF_PAGES,
+    rustFile: "crates/worker/src/lib.rs",
+    rustName: "MAX_PDF_PAGES",
   },
   {
     name: "OUTPUT_PASSWORD_MAX_LENGTH",

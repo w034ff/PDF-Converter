@@ -2,9 +2,10 @@
 import type { CropSettings } from "./CropSettings";
 import type { ImagesToPdfSettings } from "./ImagesToPdfSettings";
 import type { Language } from "./Language";
+import type { OrganizeSettings } from "./OrganizeSettings";
 import type { PdfToImagesSettings } from "./PdfToImagesSettings";
 
 /**
  * Answer of `get_settings` (design §6.7). It holds no path.
  */
-export type Settings = { language: Language | null, imagesToPdf: ImagesToPdfSettings, pdfToImages: PdfToImagesSettings, crop: CropSettings, };
+export type Settings = { language: Language | null, imagesToPdf: ImagesToPdfSettings, pdfToImages: PdfToImagesSettings, crop: CropSettings, organize: OrganizeSettings, };

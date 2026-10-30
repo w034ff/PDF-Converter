@@ -318,6 +318,7 @@ fn report(
                 outputs: vec![saved_name],
                 error: None,
                 failed_pages: None,
+                source_id: None,
             }
         }
         Err(error) => {
@@ -328,6 +329,7 @@ fn report(
                 outputs: Vec::new(),
                 error: Some(error),
                 failed_pages: None,
+                source_id: None,
             }
         }
     });

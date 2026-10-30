@@ -28,6 +28,7 @@ const ALL_ERROR_CODES: ErrorCode[] = [
   "OutputDirNotWritable",
   "CmykNotAllowedInPdfA",
   "LayoutUnavailable",
+  "OutputTooLarge",
 ];
 
 describe("i18n", () => {
@@ -51,7 +52,7 @@ describe("i18n", () => {
   });
 
   describe("formatErrorMessage", () => {
-    it("formats all 19 error codes in Japanese", () => {
+    it("formats all 20 error codes in Japanese", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "ja")).toBe(
         "対応していない形式です",
       );
@@ -109,9 +110,14 @@ describe("i18n", () => {
       expect(formatErrorMessage("LayoutUnavailable", null, "ja")).toBe(
         "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
       );
+      expect(
+        formatErrorMessage("OutputTooLarge", "613 MB / 512 MB", "ja"),
+      ).toBe(
+        "出力する PDF が大きすぎます（見積もり / 上限: 613 MB / 512 MB）。区切りを入れて、分けて保存してください。",
+      );
     });
 
-    it("formats all 19 error codes in English", () => {
+    it("formats all 20 error codes in English", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "en")).toBe(
         "Unsupported file format",
       );
@@ -168,6 +174,11 @@ describe("i18n", () => {
       );
       expect(formatErrorMessage("LayoutUnavailable", null, "en")).toBe(
         "Can't show suggestions (layout analysis is unavailable). You can still select areas by hand.",
+      );
+      expect(
+        formatErrorMessage("OutputTooLarge", "613 MB / 512 MB", "en"),
+      ).toBe(
+        "The output PDF is too large (estimate / limit: 613 MB / 512 MB). Add breaks and save it in parts.",
       );
     });
 

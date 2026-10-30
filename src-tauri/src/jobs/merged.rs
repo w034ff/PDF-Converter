@@ -108,6 +108,7 @@ where
                 outputs: Vec::new(),
                 error: Some(err),
                 failed_pages: None,
+                source_id: None,
             });
             on_progress(JobProgressPayload {
                 done,
@@ -139,6 +140,7 @@ where
                     outputs: Vec::new(),
                     error: Some(IpcError::from_code(ErrorCode::ReadFailed)),
                     failed_pages: None,
+                    source_id: None,
                 });
                 on_progress(JobProgressPayload {
                     done,
@@ -174,6 +176,7 @@ where
                     outputs: Vec::new(),
                     error: None,
                     failed_pages: None,
+                    source_id: None,
                 });
             }
             Ok(AddImageResult::Cancelled) => {
@@ -191,6 +194,7 @@ where
                     outputs: Vec::new(),
                     error: Some(IpcError::from(probe_err)),
                     failed_pages: None,
+                    source_id: None,
                 });
             }
         }

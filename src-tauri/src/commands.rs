@@ -23,6 +23,8 @@ use crate::jobs::{
     self, CheckPageRangeResult, PageOrientationChoice, PageSizeChoice, RenderColorChoice,
     RenderFormatChoice, SaveMergedPdfResult, pdf_conformance,
 };
+use crate::organize::{self, OrganizeAdded, OrganizePageInput, OrganizeUnlocked};
+use crate::organize_export::{self, SaveOrganizedResult};
 use crate::settings::{self, CropOptions, OutputDirLabel, OutputKind, Settings, SettingsInput};
 use crate::worker_pool::WorkerPool;
 
@@ -384,6 +386,130 @@ pub async fn start_crop_export(
     .map_err(task_failed)?
 }
 
+/// Asks for PDF files or a folder and adds the PDFs in them to the organize list. Returns `None`
+/// if the dialog was cancelled (design organize §4).
+#[tauri::command]
+pub async fn add_organize_pdfs(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    source: AddSource,
+) -> Result<Option<OrganizeAdded>, IpcError> {
+    if state.is_running.load(Ordering::SeqCst) {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || match source {
+        AddSource::Files => pick_files(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
+            .map(|paths| organize::add_pdfs(&state, &paths))
+            .transpose(),
+        AddSource::Folder => pick_folder(&window)?
+            .map(|dir| organize::add_pdfs_from_folder(&state, &dir))
+            .transpose(),
+    })
+    .await
+    .map_err(task_failed)?
+}
+
+/// Removes PDFs from the organize list. An ID that is not there is ignored.
+#[tauri::command]
+pub fn remove_organize_pdfs(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<u64>,
+) -> Result<(), IpcError> {
+    organize::remove_pdfs(&state, &ids)
+}
+
+/// Unlocks a password-protected PDF of the organize list and tries the password on the others
+/// (design §6.8, organize §4).
+#[tauri::command]
+pub async fn unlock_organize_pdf(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    password: String,
+) -> Result<OrganizeUnlocked, IpcError> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || organize::unlock_pdf(&state, id, &password))
+        .await
+        .map_err(task_failed)?
+}
+
+/// Opens a save dialog to save the pages as one PDF (design organize §4, design §7.1).
+///
+/// Returns `None` only when the dialog was cancelled, so nothing ran. Once the PDF has been made
+/// the result says whether it was saved.
+#[tauri::command]
+pub async fn save_organized_pdf(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    pages: Vec<OrganizePageInput>,
+    password: Option<String>,
+) -> Result<Option<SaveOrganizedResult>, IpcError> {
+    let state_inner = state.inner().clone();
+    // Refused before the save dialog opens, so that nothing is asked for a refused call.
+    let (running_guard, output) = organize_export::begin_single(&state_inner, &pages, password)?;
+
+    let Some(dest_path) = pick_save_pdf_path(&window, output.default_name().to_owned()).await?
+    else {
+        return Ok(None);
+    };
+
+    let w1 = window.clone();
+    let w2 = window.clone();
+    let w3 = window.clone();
+
+    let callbacks = jobs::JobCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_item: move |item| {
+            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
+        },
+        on_finished: running_guard.wrap_on_finished(move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        }),
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        organize_export::run_save_organized_pdf(&state_inner, &output, &dest_path, callbacks)
+    })
+    .await
+    .map_err(task_failed)?
+    .map(Some)
+}
+
+/// Starts making one PDF for each part of the pages, in the output folder of organize, in the
+/// background (design organize §4, design §7.1).
+#[tauri::command]
+pub async fn start_organize_split(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+    parts: Vec<Vec<OrganizePageInput>>,
+    password: Option<String>,
+) -> Result<(), IpcError> {
+    let w1 = window.clone();
+    let w2 = window.clone();
+    let w3 = window.clone();
+
+    let callbacks = jobs::JobCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_item: move |item| {
+            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
+        },
+        on_finished: move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        },
+    };
+
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        organize_export::start_organize_split_internal(&state, &parts, password, callbacks)
+    })
+    .await
+    .map_err(task_failed)?
+}
+
 /// Validates a page range string and counts matching pages across the specified PDF items (design §7.1).
 #[tauri::command]
 pub fn check_page_range(
@@ -447,23 +573,7 @@ pub async fn save_merged_pdf(
         format!("{stem}.pdf")
     };
 
-    let dialog_window = window.clone();
-    let picked_path = tauri::async_runtime::spawn_blocking(move || {
-        let patterns = filter_extensions(&[PDF_EXTENSION]);
-        let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
-        let dialog = dialog_window
-            .dialog()
-            .file()
-            .set_parent(&dialog_window)
-            .add_filter(PDF_FILTER_NAME, &patterns)
-            .set_file_name(&default_name);
-        save_dialog_start_dir(&dialog_window, dialog)
-            .blocking_save_file()
-            .map(dialog_path)
-            .transpose()
-    })
-    .await
-    .map_err(task_failed)??;
+    let picked_path = pick_save_pdf_path(&window, default_name).await?;
 
     let Some(dest_path) = picked_path else {
         return Ok(None);
@@ -586,6 +696,31 @@ pub async fn get_thumbnail(
     .await
     .map_err(task_failed)??;
     Ok(tauri::ipc::Response::new(png))
+}
+
+/// Opens the dialog that asks where to save a PDF, starting with `default_name`, a child of
+/// `window`. Returns `None` if it was cancelled.
+async fn pick_save_pdf_path(
+    window: &tauri::Window,
+    default_name: String,
+) -> Result<Option<PathBuf>, IpcError> {
+    let dialog_window = window.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let patterns = filter_extensions(&[PDF_EXTENSION]);
+        let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
+        let dialog = dialog_window
+            .dialog()
+            .file()
+            .set_parent(&dialog_window)
+            .add_filter(PDF_FILTER_NAME, &patterns)
+            .set_file_name(&default_name);
+        save_dialog_start_dir(&dialog_window, dialog)
+            .blocking_save_file()
+            .map(dialog_path)
+            .transpose()
+    })
+    .await
+    .map_err(task_failed)?
 }
 
 /// Opens a dialog, a child of `window`, to pick one file with one of

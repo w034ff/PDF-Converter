@@ -210,6 +210,27 @@ pub fn resolve_crop_names(
     result
 }
 
+/// Resolves the output filenames of an organize that is saved in parts (design organize §4,
+/// design §6.4): `stem_{number}.pdf`, one per entry of `stems`.
+///
+/// `stems[i]` is the name, without its extension, of the PDF the first page of part `i + 1`
+/// comes from. The number is the part's place from 1, zero-padded to the width of the number of
+/// parts: `1`..`9` for up to nine parts, `01`.. for ten or more. Collisions with `existing` or
+/// another assigned name get ` (n)`, compared case-insensitively, as for the other conversions;
+/// the earlier part keeps the plain name.
+pub fn resolve_organize_names(stems: &[String], existing: &HashSet<String>) -> Vec<String> {
+    let width = page_number_width(u32::try_from(stems.len()).unwrap_or(u32::MAX));
+    let mut used_lower: HashSet<String> = existing.iter().map(|s| s.to_lowercase()).collect();
+    stems
+        .iter()
+        .enumerate()
+        .map(|(index, stem)| {
+            let base_stem = format!("{stem}_{number:0width$}", number = index + 1);
+            allocate_unique_name(&base_stem, "pdf", &mut used_lower)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -621,5 +642,61 @@ mod tests {
     #[test]
     fn no_crop_regions_gives_no_names() {
         assert!(resolve_crop_names("a.pdf", 1, &[], "png", &HashSet::new()).is_empty());
+    }
+
+    #[test]
+    fn organize_parts_are_numbered_from_1_after_the_stem() {
+        let stems = [
+            "report".to_string(),
+            "memo".to_string(),
+            "report".to_string(),
+        ];
+        assert_eq!(
+            resolve_organize_names(&stems, &HashSet::new()),
+            ["report_1.pdf", "memo_2.pdf", "report_3.pdf"]
+        );
+    }
+
+    #[test]
+    fn organize_numbers_are_padded_to_the_number_of_parts() {
+        let nine = vec!["a".to_string(); 9];
+        let names = resolve_organize_names(&nine, &HashSet::new());
+        assert_eq!(names[0], "a_1.pdf");
+        assert_eq!(names[8], "a_9.pdf");
+
+        let ten = vec!["a".to_string(); 10];
+        let names = resolve_organize_names(&ten, &HashSet::new());
+        assert_eq!(names[0], "a_01.pdf");
+        assert_eq!(names[9], "a_10.pdf");
+
+        let hundred = vec!["a".to_string(); 100];
+        let names = resolve_organize_names(&hundred, &HashSet::new());
+        assert_eq!(names[0], "a_001.pdf");
+        assert_eq!(names[99], "a_100.pdf");
+    }
+
+    #[test]
+    fn organize_names_avoid_existing_files_ignoring_case() {
+        let existing: HashSet<String> = ["A_1.PDF".to_string(), "a_2 (1).pdf".to_string()].into();
+        let stems = ["a".to_string(), "a".to_string()];
+        assert_eq!(
+            resolve_organize_names(&stems, &existing),
+            ["a_1 (1).pdf", "a_2.pdf"]
+        );
+    }
+
+    #[test]
+    fn organize_names_keep_a_stem_that_ends_like_a_number() {
+        let stems = ["a".to_string(), "a_1".to_string()];
+        let existing: HashSet<String> = ["a_1_2.pdf".to_string()].into();
+        assert_eq!(
+            resolve_organize_names(&stems, &existing),
+            ["a_1.pdf", "a_1_2 (1).pdf"]
+        );
+    }
+
+    #[test]
+    fn organize_names_of_no_parts_are_empty() {
+        assert!(resolve_organize_names(&[], &HashSet::new()).is_empty());
     }
 }

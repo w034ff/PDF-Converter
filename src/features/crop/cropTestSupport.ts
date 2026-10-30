@@ -89,6 +89,7 @@ export const DEFAULT_SETTINGS: Settings = {
     photoOnly: false,
     outputDir: null,
   },
+  organize: { output: "single", encrypt: false, outputDir: null },
 };
 
 export interface Call {

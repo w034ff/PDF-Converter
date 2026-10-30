@@ -9,6 +9,7 @@ export const en: Translations = {
       imagesToPdf: "Images → PDF",
       pdfToImages: "PDF → Images",
       crop: "Crop",
+      organize: "Organize",
     },
     navAria: "Conversion kind",
   },
@@ -41,6 +42,7 @@ export const en: Translations = {
     noReadablePdfs:
       "No PDFs can be converted. Remove the ones that couldn't be loaded.",
     savePdf: "Save PDF",
+    startSaving: "Start saving",
     startConversion: "Start conversion",
     cancel: "Cancel",
     cancelling: "Cancelling…",
@@ -417,6 +419,163 @@ export const en: Translations = {
       willExportMultiple: "Export {count} areas as {format}",
       detecting: "Searching all pages for suggestions…",
       export: "Export",
+    },
+  },
+  organize: {
+    dropZone: {
+      title: "Drop PDFs here, or press “Add PDFs”",
+      description:
+        "Reorder, delete and rotate pages, then save them as one PDF or in parts.",
+      addPdfs: "Add PDFs",
+      addFolder: "Add folder",
+    },
+    pdfListAria: "PDFs",
+    addMenu: {
+      label: "Add PDFs",
+      files: "Choose files",
+      folder: "Choose a folder",
+    },
+    clearAll: "Remove all",
+    chip: {
+      pagesSingle: "{count} page",
+      pagesMultiple: "{count} pages",
+      removeAria: "Remove {name}",
+      enterPassword: "Enter password",
+      unreadable: "Could not read",
+      passwordProtected: "Password-protected",
+    },
+    clearDialog: {
+      title: "Remove all PDFs?",
+      body: "The order, rotations and deletions of the pages will be lost and cannot be undone.",
+      cancel: "Cancel",
+      confirm: "Remove all",
+    },
+    band: {
+      countNoneSingle: "{count} page",
+      countNoneMultiple: "{count} pages",
+      countSelectedSingle: "{count} page selected",
+      countSelectedMultiple: "{count} pages selected",
+      rotateLeft: "Rotate left",
+      rotateRight: "Rotate right",
+      delete: "Delete",
+      keyHints: "Keyboard shortcuts",
+      keyHintsTitle: "Keyboard shortcuts (?)",
+    },
+    grid: {
+      aria: "Pages",
+      pageLabel: "p.{page}",
+      cellAria: "{name} page {page}",
+      cellAriaRotated: "{name} page {page}, {degrees}°",
+      cellAriaPart: "{label}, first page of PDF {number}",
+      cellAriaPartFailed: "{label}, first page of PDF {number} (not saved)",
+      breakAria: "Break between p.{before} and p.{after}",
+      rotation: "{degrees}°",
+      empty: "No pages",
+      emptyHint: "Press Ctrl+Z to bring them back",
+    },
+    settings: {
+      outputTitle: "How to save",
+      outputSingle: "One PDF",
+      outputSplit: "Save in parts",
+      outputSingleHint: "Combines the pages into one PDF, in the order shown.",
+      outputSplitHint: "Saves each part between breaks as a separate PDF.",
+      breaksTitle: "Breaks",
+      breaksHint: "Press between pages to add or remove a break.",
+      breaksEachPage: "One page each",
+      breaksEachPdf: "By source PDF",
+      breaksClear: "Remove all",
+      password: "Add a password",
+      encryptedNotice:
+        "Some PDFs are password-protected. The passwords of the original PDFs are not carried over.",
+      aboutTitle: "About the saved PDF",
+      about:
+        "Annotations and forms are flattened onto the page as they look. Bookmarks and links are re-attached. Document information such as the author is not included.",
+    },
+    footer: {
+      noPdfs: "Add PDFs",
+      noPages: "No pages to save",
+      tooManyPages:
+        "One PDF has at most {max} pages (now {count}). Add breaks and save in parts",
+      willSplitSingle:
+        "Save {pages} page as {parts} PDF (about {size} MB in total)",
+      willSplitOnePart:
+        "Save {pages} pages as {parts} PDF (about {size} MB in total)",
+      willSplitMultiple:
+        "Save {pages} pages as {parts} PDFs (about {size} MB in total)",
+      splitTooManyPages:
+        "PDF {part} has {count} pages. One PDF has at most {max} pages",
+      willSaveSingle: "Save {count} page as one PDF (about {size} MB)",
+      willSaveMultiple: "Save {count} pages as one PDF (about {size} MB)",
+      leftOutSingle: " ({count} PDF is not included)",
+      leftOutMultiple: " ({count} PDFs are not included)",
+    },
+    result: {
+      savedSingle: "Saved {count} page as one PDF",
+      savedMultiple: "Saved {count} pages as one PDF",
+      replaced: "Removed the replaced {name} from the list",
+      failed: "The PDF was not saved ({name}: {message})",
+      failedWithoutName: "The PDF was not saved ({message})",
+      savedPartsSingle: "Saved {count} PDF",
+      savedPartsMultiple: "Saved {count} PDFs",
+      failedPart: " (PDF {part}: {name}: {message})",
+      failedPartWithoutName: " (PDF {part}: {message})",
+    },
+    keyHints: {
+      title: "Keyboard shortcuts",
+      close: "Close",
+      groups: [
+        {
+          title: "Selecting",
+          rows: [
+            {
+              keys: [["Arrows"], ["Home"], ["End"]],
+              action: "Move the focus (the selection stays)",
+            },
+            {
+              keys: [["Shift", "Arrows"]],
+              action: "Select from the anchor to the focused page",
+            },
+            {
+              keys: [["Space"]],
+              action: "Select or deselect the focused page",
+            },
+            { keys: [["Ctrl", "A"]], action: "Select all" },
+            { keys: [["Esc"]], action: "Deselect, or cancel a drag" },
+          ],
+        },
+        {
+          title: "Editing pages",
+          rows: [
+            {
+              keys: [["Alt", "Arrows"]],
+              action: "Move the selected pages (the focused page if none)",
+            },
+            { keys: [["R"]], action: "Rotate right" },
+            { keys: [["L"]], action: "Rotate left" },
+            { keys: [["Delete"], ["Backspace"]], action: "Delete" },
+            {
+              keys: [["B"]],
+              action:
+                "Add or remove the break before the focused page (when saving in parts)",
+            },
+            { keys: [["Ctrl", "Z"]], action: "Undo" },
+            {
+              keys: [
+                ["Ctrl", "Y"],
+                ["Ctrl", "Shift", "Z"],
+              ],
+              action: "Redo",
+            },
+          ],
+        },
+        {
+          title: "View and help",
+          rows: [
+            { keys: [["Tab"]], action: "Enter or leave the pages" },
+            { keys: [["?"]], action: "Open this list" },
+          ],
+        },
+      ],
     },
   },
   about: {

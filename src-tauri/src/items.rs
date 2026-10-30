@@ -23,6 +23,7 @@ use crate::AppState;
 use crate::crop;
 use crate::decode_budget::DECODE_MEMORY_FACTOR_THUMBNAIL;
 use crate::error::{ErrorCode, IpcError};
+use crate::organize;
 use crate::worker_pool::PooledWorker;
 
 /// The extension of a PDF, without the dot (design §6.1).
@@ -277,7 +278,7 @@ pub struct Skipped {
 }
 
 impl Skipped {
-    fn merged(self, other: Self) -> Self {
+    pub(crate) fn merged(self, other: Self) -> Self {
         Self {
             unsupported: self.unsupported + other.unsupported,
             folders: self.folders + other.folders,
@@ -639,7 +640,7 @@ pub fn add_pdfs_from_folder(state: &AppState, dir: &Path) -> Result<AddResult<Pd
     Ok(result)
 }
 
-fn count(len: usize) -> u32 {
+pub(crate) fn count(len: usize) -> u32 {
     u32::try_from(len).unwrap_or(u32::MAX)
 }
 
@@ -718,7 +719,8 @@ pub fn remove_items(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
 
 /// Makes the PNG thumbnail of an item (design §6.1, §7.1).
 ///
-/// `id` is an item of a list or the open crop PDF (design §6.10). `page` is
+/// `id` is an item of a list, an organize PDF (design organize §4) or the open crop PDF
+/// (design §6.10). `page` is
 /// used for a PDF only; it defaults to 1. `max_side` is the length of the
 /// longer side of a PDF page, up to `PAGE_VIEW_MAX_SIDE`; it defaults to
 /// `THUMBNAIL_SIDE` and is not accepted for an image, whose thumbnail has a
@@ -726,8 +728,8 @@ pub fn remove_items(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
 ///
 /// # Errors
 ///
-/// Returns `UnknownHandle` for an ID that is neither in the table nor the open
-/// crop PDF, the item's own error if it could not be read, and `InvalidParams`
+/// Returns `UnknownHandle` for an ID that is neither in the table, an organize PDF nor the
+/// open crop PDF, the item's own error if it could not be read, and `InvalidParams`
 /// when `page` is not a page of the PDF, `max_side` is 0 or above
 /// `PAGE_VIEW_MAX_SIDE`, or `max_side` is given for an image.
 pub fn make_thumbnail(
@@ -737,7 +739,10 @@ pub fn make_thumbnail(
     max_side: Option<u32>,
 ) -> Result<Vec<u8>, IpcError> {
     let Some(entry) = state.items.get(id) else {
-        return crop::crop_thumbnail(state, id, page, max_side);
+        return match organize::thumbnail(state, id, page, max_side) {
+            Some(thumbnail) => thumbnail,
+            None => crop::crop_thumbnail(state, id, page, max_side),
+        };
     };
     if let Some(error) = entry.error {
         return Err(error);

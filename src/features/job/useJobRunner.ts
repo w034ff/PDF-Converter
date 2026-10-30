@@ -6,10 +6,14 @@ import {
   type IpcError,
   type PageOrientationChoice,
   saveMergedPdf,
+  saveOrganizedPdf,
   startCropExport,
   startDetectAll,
   startImagesToPdfs,
+  startOrganizeSplit,
   startPdfsToImages,
+  type OrganizeOutput,
+  type OrganizePageInput,
   type PageSizeChoice,
   type RenderColorChoice,
   type RenderFormatChoice,
@@ -23,6 +27,24 @@ export interface JobRunner {
     pageSize: PageSizeChoice,
     orientation: PageOrientationChoice,
     pdfA: boolean,
+    password: string | null,
+  ): Promise<void>;
+  /**
+   * Starts "PDF を保存" of the organize tab: opens the save dialog, then makes
+   * one PDF of `pages` in their order (organize §4). Resolves to the ID of the
+   * organize PDF the file replaced, which Rust has dropped from its list, or
+   * `null` when no PDF was replaced.
+   */
+  saveOrganizedPdf(
+    pages: OrganizePageInput[],
+    password: string | null,
+  ): Promise<number | null>;
+  /**
+   * Starts "保存を開始" of the organize tab: one PDF for each of `parts`, in
+   * order, into the organize output folder (organize §4).
+   */
+  startOrganizeSplit(
+    parts: OrganizePageInput[][],
     password: string | null,
   ): Promise<void>;
   /** Starts "1 枚ずつ" for `targets` (design §6.2). */
@@ -77,8 +99,9 @@ export function useJobRunner(): JobRunner {
       kind: ActiveTab,
       targets: JobTarget[],
       command: (ids: number[]) => Promise<T>,
+      organizeOutput?: OrganizeOutput,
     ): Promise<{ result: T } | { error: IpcError }> {
-      dispatch({ type: "JOB_STARTED", kind, targets });
+      dispatch({ type: "JOB_STARTED", kind, targets, organizeOutput });
       try {
         return { result: await command(targets.map((target) => target.id)) };
       } catch (error: unknown) {
@@ -88,13 +111,22 @@ export function useJobRunner(): JobRunner {
           // the next start asks for a folder (`useEnsureOutputDir`). This
           // comes before JOB_FAILED because changing a setting drops a
           // result that is already there.
-          dispatch(
-            kind === "imagesToPdf"
-              ? { type: "SET_IMAGES_OUTPUT_DIR", outputDir: null }
-              : kind === "crop"
-                ? { type: "SET_CROP_OUTPUT_DIR", outputDir: null }
-                : { type: "SET_PDFS_OUTPUT_DIR", outputDir: null },
-          );
+          switch (kind) {
+            case "imagesToPdf":
+              dispatch({ type: "SET_IMAGES_OUTPUT_DIR", outputDir: null });
+              break;
+            case "pdfToImages":
+              dispatch({ type: "SET_PDFS_OUTPUT_DIR", outputDir: null });
+              break;
+            case "crop":
+              dispatch({ type: "SET_CROP_OUTPUT_DIR", outputDir: null });
+              break;
+            case "organize":
+              // The save in one PDF asks for no folder, so this comes for the
+              // save in parts only.
+              dispatch({ type: "SET_ORGANIZE_OUTPUT_DIR", outputDir: null });
+              break;
+          }
         }
         dispatch({ type: "JOB_FAILED", error: ipcError });
         return { error: ipcError };
@@ -118,6 +150,36 @@ export function useJobRunner(): JobRunner {
         // Otherwise the job ran but wrote no PDF (it was cancelled, or no
         // image could be added). `job-finished` has already set the result,
         // and the banner and rows keep showing it.
+      },
+      async saveOrganizedPdf(pages, password) {
+        // The PDFs written are not items of the list, so no row has a status.
+        const outcome = await run(
+          "organize",
+          [],
+          () => saveOrganizedPdf(pages, password),
+          "single",
+        );
+        if ("error" in outcome) {
+          return null;
+        }
+        if (outcome.result === null) {
+          // The save dialog was cancelled; nothing ran.
+          dispatch({ type: "JOB_RESET" });
+          return null;
+        }
+        if (outcome.result.savedName !== null) {
+          dispatch({ type: "JOB_SAVED", savedName: outcome.result.savedName });
+        }
+        return outcome.result.replacedId;
+      },
+      async startOrganizeSplit(parts, password) {
+        // The PDFs written are not items of the list, so no row has a status.
+        await run(
+          "organize",
+          [],
+          () => startOrganizeSplit(parts, password),
+          "split",
+        );
       },
       async startImagesToPdfs(targets, pageSize, orientation, pdfA, password) {
         await run("imagesToPdf", targets, (ids) =>

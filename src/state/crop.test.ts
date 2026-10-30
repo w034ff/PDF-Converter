@@ -175,6 +175,7 @@ describe("createInitialCropState", () => {
         photoOnly: true,
         outputDir: { dirLabel: "out" },
       },
+      organize: { output: "single", encrypt: false, outputDir: null },
     };
     expect(createInitialAppState("ja", settings).crop).toMatchObject({
       format: "jpeg",

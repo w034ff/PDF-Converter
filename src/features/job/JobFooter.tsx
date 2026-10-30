@@ -11,7 +11,12 @@ import {
 import type { Translations } from "../../i18n";
 import type { JobFinishedPayload } from "../../ipc";
 import { isOutputDirError } from "../output";
-import { formatJobSummary, jobOutcome, summaryShape } from "./jobSummary";
+import {
+  formatJobSummary,
+  jobOutcome,
+  organizeSummaryShape,
+  summaryShape,
+} from "./jobSummary";
 import { useJobRunner } from "./useJobRunner";
 
 export interface JobFooterProps {
@@ -39,6 +44,17 @@ function runningText(t: Translations, job: JobState): string {
   });
 }
 
+/**
+ * The file being made, for the organize tab: its output is not an item of a
+ * list, so `job-progress` names the file instead of one of the targets.
+ */
+function organizeRunningText(t: Translations, job: JobState): string {
+  const name = job.progress?.current;
+  return name === null || name === undefined
+    ? t.job.running
+    : formatMessage(t.job.runningItem, { name });
+}
+
 /** How the screen's last conversion ended, with its counts, in the outcome's color. */
 function finishedStatus(finished: JobFinishedPayload, summary: string) {
   const className = {
@@ -62,7 +78,8 @@ function finishedStatus(finished: JobFinishedPayload, summary: string) {
  * or failed one shows only on the tab that started it.
  */
 export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
-  const { language, job, crop, imagesToPdf, pdfToImages } = useAppState();
+  const { language, job, crop, imagesToPdf, pdfToImages, organize } =
+    useAppState();
   const runner = useJobRunner();
   const t = getTranslations(language.language);
 
@@ -87,7 +104,9 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
                 ? t.footer.cancelling
                 : detecting
                   ? t.crop.footer.detecting
-                  : runningText(t, job)
+                  : job.kind === "organize"
+                    ? organizeRunningText(t, job)
+                    : runningText(t, job)
             }
             showCount
           />
@@ -135,7 +154,9 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
       formatJobSummary(
         t,
         job.finished,
-        summaryShape(tab, job, imagesToPdf, pdfToImages, crop, partial),
+        tab === "organize"
+          ? organizeSummaryShape(job, organize.pdfs, language.language)
+          : summaryShape(tab, job, imagesToPdf, pdfToImages, crop, partial),
       ),
     );
   }

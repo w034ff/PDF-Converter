@@ -5,5 +5,6 @@ export * from "./contextBase";
 export * from "./imagesToPdf";
 export * from "./job";
 export * from "./language";
+export * from "./organize";
 export * from "./pdfToImages";
 export * from "./types";

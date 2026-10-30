@@ -18,6 +18,8 @@ pub mod error;
 pub mod items;
 pub mod jobs;
 pub mod layout_files;
+pub mod organize;
+pub mod organize_export;
 pub mod pdfium;
 pub mod settings;
 pub mod worker_pool;
@@ -25,6 +27,7 @@ pub mod worker_pool;
 use crop::{CropState, Dropped};
 use decode_budget::{DecodeBudget, budget_for};
 use items::ItemTable;
+use organize::OrganizeState;
 use settings::SettingsStore;
 use worker_pool::{WorkerPool, WorkerPoolConfig};
 
@@ -34,6 +37,9 @@ pub const ITEMS_DROPPED_EVENT: &str = "items-dropped";
 /// Name of the event that reports what a drop in the crop tab opened (design §7.2).
 pub const CROP_DROPPED_EVENT: &str = "crop-dropped";
 
+/// Name of the event that reports what a drop in the organize tab added (design §7.2).
+pub const ORGANIZE_DROPPED_EVENT: &str = "organize-dropped";
+
 /// State shared by the commands and the drop handler.
 #[derive(Clone)]
 pub struct AppState {
@@ -41,6 +47,8 @@ pub struct AppState {
     pub items: Arc<ItemTable>,
     /// The PDF of the crop tab, kept apart from the lists (design §6.10).
     pub crop: Arc<CropState>,
+    /// The PDFs of the organize tab, kept apart from the lists (design organize §4).
+    pub organize: Arc<OrganizeState>,
     /// The worker processes that open PDFs (design §5.2).
     pub pool: WorkerPool,
     /// Flag indicating whether a conversion job is currently executing (design §6.5, §7.1).
@@ -53,6 +61,8 @@ pub struct AppState {
     pub pdfs_output_dir: Arc<Mutex<Option<PathBuf>>>,
     /// Output folder for crop exports (design §6.5).
     pub crop_output_dir: Arc<Mutex<Option<PathBuf>>>,
+    /// Output folder for organizing in parts (design §6.5).
+    pub organize_output_dir: Arc<Mutex<Option<PathBuf>>>,
     /// The settings in memory and the file they are written to (design §6.7).
     pub settings: Arc<SettingsStore>,
     /// The memory that reading image pixels in this process may use at once (design §5.3).
@@ -65,12 +75,14 @@ impl AppState {
         Self {
             items: Arc::new(ItemTable::new()),
             crop: Arc::new(CropState::default()),
+            organize: Arc::new(OrganizeState::default()),
             pool,
             is_running: Arc::new(AtomicBool::new(false)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             images_output_dir: Arc::new(Mutex::new(None)),
             pdfs_output_dir: Arc::new(Mutex::new(None)),
             crop_output_dir: Arc::new(Mutex::new(None)),
+            organize_output_dir: Arc::new(Mutex::new(None)),
             settings: Arc::new(SettingsStore::default()),
             decode_budget: Arc::new(DecodeBudget::new(budget_for(
                 system_memory::installed_memory(),
@@ -134,6 +146,11 @@ pub fn run() {
             commands::detect_layout,
             commands::start_detect_all,
             commands::start_crop_export,
+            commands::add_organize_pdfs,
+            commands::remove_organize_pdfs,
+            commands::unlock_organize_pdf,
+            commands::save_organized_pdf,
+            commands::start_organize_split,
             commands::cancel_job,
         ])
         .on_window_event(|window, event| {
@@ -153,6 +170,9 @@ pub fn run() {
                         }
                         Dropped::Crop(dropped) => {
                             let _ = window.emit(CROP_DROPPED_EVENT, &dropped);
+                        }
+                        Dropped::Organize(dropped) => {
+                            let _ = window.emit(ORGANIZE_DROPPED_EVENT, &dropped);
                         }
                     }
                 });
