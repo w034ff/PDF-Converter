@@ -303,8 +303,12 @@ export function unexportedAreaCount(state: CropState): number {
     .length;
 }
 
-function hasArea(state: CropState, key: number): boolean {
-  return state.areas.some((area) => area.key === key);
+/**
+ * Whether the area is still a photo: an answer about what was drawn over it
+ * goes stale once the area is moved off the image's pixel grid.
+ */
+function hasPhoto(state: CropState, key: number): boolean {
+  return state.areas.some((area) => area.key === key && area.kind === "photo");
 }
 
 function withResult<T>(
@@ -528,14 +532,14 @@ function reduceCropState(state: CropState, action: CropAction): CropState {
           : { ...area, checked: action.checked },
       );
     case "CROP_ON_TOP_STARTED":
-      return isOpenPdf(state, action.id) && hasArea(state, action.key)
+      return isOpenPdf(state, action.id) && hasPhoto(state, action.key)
         ? {
             ...state,
             onTopRequests: { ...state.onTopRequests, [action.key]: "pending" },
           }
         : state;
     case "CROP_ON_TOP_DONE": {
-      if (!isOpenPdf(state, action.id) || !hasArea(state, action.key)) {
+      if (!isOpenPdf(state, action.id) || !hasPhoto(state, action.key)) {
         return state;
       }
       const onTopRequests = { ...state.onTopRequests };
@@ -549,7 +553,7 @@ function reduceCropState(state: CropState, action: CropAction): CropState {
       };
     }
     case "CROP_ON_TOP_FAILED":
-      return isOpenPdf(state, action.id) && hasArea(state, action.key)
+      return isOpenPdf(state, action.id) && hasPhoto(state, action.key)
         ? {
             ...state,
             onTopRequests: { ...state.onTopRequests, [action.key]: "failed" },
