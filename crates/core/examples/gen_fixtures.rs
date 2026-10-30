@@ -72,6 +72,8 @@ const CHECKER_CELLS: u32 = 8;
 mod crop_pattern;
 #[path = "../tests/support/fixture_passwords.rs"]
 mod fixture_passwords;
+#[path = "../tests/support/organize_fixtures.rs"]
+mod organize_fixtures;
 
 /// `/P` with every permission bit of revision 3 set.
 const PERMISSIONS_ALL: i32 = -4;
@@ -291,6 +293,8 @@ pub fn fixtures() -> Result<Vec<Fixture>> {
     );
 
     add("crop_align.pdf", crop_align_pdf());
+    add("organize_annots.pdf", organize_annots_pdf());
+    add("organize_meta.pdf", organize_meta_pdf());
 
     let aniso_picture = dpi_rgb(300, 150);
     add(
@@ -2005,6 +2009,12 @@ fn pdf_stream(entries: &str, data: &[u8]) -> Vec<u8> {
 
 /// A classic PDF file of `objects` (object 1 first), `/Root 1 0 R`.
 fn assemble_pdf(objects: &[Vec<u8>]) -> Vec<u8> {
+    assemble_pdf_with_trailer(objects, "")
+}
+
+/// [`assemble_pdf`] with `trailer_entries` (for example `" /Info 9 0 R"`, with the leading space)
+/// added to the trailer.
+fn assemble_pdf_with_trailer(objects: &[Vec<u8>], trailer_entries: &str) -> Vec<u8> {
     let mut pdf = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n".to_vec();
     let mut offsets = Vec::new();
     for (index, body) in objects.iter().enumerate() {
@@ -2022,7 +2032,7 @@ fn assemble_pdf(objects: &[Vec<u8>]) -> Vec<u8> {
     }
     pdf.extend_from_slice(
         format!(
-            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+            "trailer\n<< /Size {} /Root 1 0 R{trailer_entries} >>\nstartxref\n{xref_offset}\n%%EOF\n",
             objects.len() + 1
         )
         .as_bytes(),
@@ -2192,6 +2202,188 @@ fn crop_align_pdf() -> Vec<u8> {
         );
     }
     assemble_pdf(&objects)
+}
+
+/// Size of the pages of `organize_annots.pdf` in pt.
+const ORGANIZE_PAGE_PT: (u32, u32) = (300, 400);
+
+/// A form XObject of `bbox` whose content is `content`, using the font `/Helv` (object 8).
+fn appearance_stream(bbox: [u32; 4], content: &str) -> Vec<u8> {
+    pdf_stream(
+        &format!(
+            "/Type /XObject /Subtype /Form /BBox [{} {} {} {}] \
+             /Resources << /Font << /Helv 8 0 R >> >>",
+            bbox[0], bbox[1], bbox[2], bbox[3]
+        ),
+        content.as_bytes(),
+    )
+}
+
+/// Two pages with every kind of annotation that organizing handles (design organize §1, step 4;
+/// design §11.1). Page 1 has, in object order: a text field with an appearance and a value, a
+/// checked box, a FreeText, a text field without an appearance (the form has `NeedAppearances`),
+/// a sticky note without the print flag, a highlight and a URL link. Page 2 has only a link.
+/// Written by hand: krilla writes no annotations.
+fn organize_annots_pdf() -> Vec<u8> {
+    let (w, h) = ORGANIZE_PAGE_PT;
+    let page = |content: u32, annots: &str| {
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w} {h}] /Contents {content} 0 R \
+             /Resources << /Font << /Helv 8 0 R >> >> /Annots [{annots}] >>"
+        )
+        .into_bytes()
+    };
+    let background = |label: &str, rgb: &str| {
+        format!(
+            "{rgb} rg 10 10 280 380 re f 0 g BT /Helv 14 Tf 20 20 Td ({label}) Tj ET\n\
+             0.2 0.4 0.8 rg 20 60 100 20 re f\n"
+        )
+    };
+    let widget = |kind: &str, rect: &str, rest: &str| {
+        format!(
+            "<< /Type /Annot /Subtype /Widget /FT /{kind} /Rect [{rect}] /F 4 /P 4 0 R {rest} >>"
+        )
+        .into_bytes()
+    };
+    let objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>".to_vec(),
+        b"<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 >>".to_vec(),
+        b"<< /Fields [9 0 R 11 0 R 16 0 R] /NeedAppearances true \
+          /DA (/Helv 0 Tf 0 g) /DR << /Font << /Helv 8 0 R >> >> >>"
+            .to_vec(),
+        page(6, "9 0 R 11 0 R 14 0 R 16 0 R 17 0 R 18 0 R 19 0 R"),
+        page(7, "20 0 R"),
+        pdf_stream("", background("Page 1", "0.95 0.95 0.85").as_bytes()),
+        pdf_stream("", background("Page 2", "0.85 0.95 0.95").as_bytes()),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+            .to_vec(),
+        // 9: text field with an appearance
+        widget(
+            "Tx",
+            "20 340 180 370",
+            "/T (with_ap) /V (Hello AP) /DA (/Helv 12 Tf 0 g) /AP << /N 10 0 R >>",
+        ),
+        appearance_stream(
+            [0, 0, 160, 30],
+            "/Tx BMC q 1 1 158 28 re W n BT /Helv 12 Tf 0 g 4 10 Td (Hello AP) Tj ET Q EMC",
+        ),
+        // 11: check box, on
+        widget(
+            "Btn",
+            "20 300 40 320",
+            "/T (check) /V /Yes /AS /Yes /AP << /N << /Yes 12 0 R /Off 13 0 R >> >>",
+        ),
+        appearance_stream(
+            [0, 0, 20, 20],
+            "0.1 0.6 0.2 rg 2 2 16 16 re f 1 g BT /Helv 14 Tf 4 5 Td (X) Tj ET",
+        ),
+        appearance_stream([0, 0, 20, 20], "0.5 g 0 0 20 20 re S"),
+        // 14: FreeText with an appearance
+        b"<< /Type /Annot /Subtype /FreeText /Rect [20 240 180 280] /F 4 /P 4 0 R \
+          /Contents (Free text) /DA (/Helv 12 Tf 0 g) /AP << /N 15 0 R >> >>"
+            .to_vec(),
+        appearance_stream(
+            [0, 0, 160, 40],
+            "1 0.9 0.9 rg 0 0 160 40 re f 0 g BT /Helv 12 Tf 6 14 Td (Free text) Tj ET",
+        ),
+        // 16: text field without an appearance
+        widget(
+            "Tx",
+            "20 190 180 220",
+            "/T (no_ap) /V (Hello no AP) /DA (/Helv 12 Tf 0 g)",
+        ),
+        // 17: sticky note without the print flag
+        b"<< /Type /Annot /Subtype /Text /Rect [200 340 220 360] /F 0 /P 4 0 R \
+          /Contents (Note) /Name /Note /C [1 0.8 0] >>"
+            .to_vec(),
+        // 18: highlight
+        b"<< /Type /Annot /Subtype /Highlight /Rect [20 140 180 160] /F 4 /P 4 0 R \
+          /C [1 1 0] /QuadPoints [20 160 180 160 20 140 180 140] >>"
+            .to_vec(),
+        // 19, 20: links
+        b"<< /Type /Annot /Subtype /Link /Rect [20 100 180 130] /F 4 /P 4 0 R /Border [0 0 1] \
+          /A << /S /URI /URI (https://example.com/page1) >> >>"
+            .to_vec(),
+        b"<< /Type /Annot /Subtype /Link /Rect [20 100 180 130] /F 4 /P 5 0 R /Border [0 0 1] \
+          /A << /S /URI /URI (https://example.com/page2) >> >>"
+            .to_vec(),
+    ];
+    assemble_pdf(&objects)
+}
+
+/// Pages of `organize_meta.pdf`.
+const ORGANIZE_META_PAGES: u32 = 3;
+
+/// Three pages, each with its own shape and as many bars as its number, and the document
+/// information and XMP packet that an organized output must not keep (design §11.1). Written by
+/// hand so that the bytes are fixed.
+fn organize_meta_pdf() -> Vec<u8> {
+    use organize_fixtures::*;
+
+    let content = |number: u32| {
+        let mut ops = String::from("0.9 0.9 0.9 rg 0 0 240 320 re f\n");
+        match number {
+            1 => ops.push_str("0.8 0.1 0.1 rg 40 80 160 120 re f\n"),
+            2 => ops.push_str("0.1 0.6 0.2 rg 120 60 m 220 240 l 20 240 l f\n"),
+            _ => ops.push_str(
+                "0.1 0.2 0.8 rg 40 60 m 200 60 l 200 100 l 40 100 l f 40 140 160 20 re f\n",
+            ),
+        }
+        ops.push_str("0 g\n");
+        for bar in 0..number {
+            ops.push_str(&format!("{} 285 14 20 re f\n", 20 + bar * 24));
+        }
+        ops
+    };
+    let first_page = 4;
+    let first_content = first_page + ORGANIZE_META_PAGES;
+    let info = first_content + ORGANIZE_META_PAGES;
+    let xmp = info + 1;
+    let kids: Vec<String> = (0..ORGANIZE_META_PAGES)
+        .map(|i| format!("{} 0 R", first_page + i))
+        .collect();
+    let mut objects: Vec<Vec<u8>> = vec![
+        format!("<< /Type /Catalog /Pages 2 0 R /Metadata {xmp} 0 R >>").into_bytes(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {ORGANIZE_META_PAGES} >>",
+            kids.join(" ")
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    ];
+    for i in 0..ORGANIZE_META_PAGES {
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 320] /Contents {} 0 R \
+                 /Resources << >> >>",
+                first_content + i
+            )
+            .into_bytes(),
+        );
+    }
+    for i in 0..ORGANIZE_META_PAGES {
+        objects.push(pdf_stream("", content(i + 1).as_bytes()));
+    }
+    objects.push(
+        format!(
+            "<< /Author ({META_AUTHOR}) /Title ({META_TITLE}) /Creator ({META_CREATOR}) \
+             /Producer ({META_PRODUCER}) /CreationDate (D:{META_CREATION_DIGITS}+09'00') >>"
+        )
+        .into_bytes(),
+    );
+    objects.push(pdf_stream(
+        "/Type /Metadata /Subtype /XML",
+        format!(
+            "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n\
+             <x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF \
+             xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+             <rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
+             <dc:description>{META_XMP}</dc:description></rdf:Description></rdf:RDF></x:xmpmeta>\n\
+             <?xpacket end=\"w\"?>"
+        )
+        .as_bytes(),
+    ));
+    assemble_pdf_with_trailer(&objects, &format!(" /Info {info} 0 R"))
 }
 
 // ---------------------------------------------------------------------------

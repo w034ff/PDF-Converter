@@ -5,6 +5,7 @@ pub mod error;
 mod jpeg_strip;
 pub mod layout;
 pub mod naming;
+pub mod organize;
 pub mod page_range;
 pub mod pdf_encrypt;
 pub mod pdf_write;
@@ -24,6 +25,7 @@ pub use naming::{
     CropRegion, PdfToImageInput, page_number_width, resolve_crop_names, resolve_image_to_pdf_names,
     resolve_pdf_to_image_names,
 };
+pub use organize::finish_organized;
 pub use page_range::{PageSet, ParsePageRangeError, parse_page_range};
 pub use pdf_encrypt::{
     MAX_OUTPUT_PASSWORD_LEN, OUTPUT_PASSWORD_CHARS, OutputPassword, OutputPasswordError,

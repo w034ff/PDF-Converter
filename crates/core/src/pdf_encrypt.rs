@@ -116,7 +116,19 @@ fn write_failed(err: impl fmt::Display) -> PdfWriteError {
 pub fn encrypt_pdf(pdf: Vec<u8>, password: &OutputPassword) -> Result<Vec<u8>, PdfWriteError> {
     let mut doc = Document::load_mem(&pdf).map_err(write_failed)?;
     drop(pdf);
+    encrypt_document(&mut doc, password)?;
 
+    let mut out = Vec::new();
+    doc.save_to(&mut out).map_err(write_failed)?;
+    Ok(out)
+}
+
+/// Encrypts `doc` in place with AES-256, so that saving it writes the encrypted PDF (design
+/// §4.3.1). [`encrypt_pdf`] and [`crate::finish_organized`] share it.
+pub(crate) fn encrypt_document(
+    doc: &mut Document,
+    password: &OutputPassword,
+) -> Result<(), PdfWriteError> {
     let mut key = [0u8; FILE_KEY_LEN];
     getrandom::fill(&mut key).map_err(write_failed)?;
 
@@ -136,12 +148,8 @@ pub fn encrypt_pdf(pdf: Vec<u8>, password: &OutputPassword) -> Result<Vec<u8>, P
     .map_err(write_failed)?;
     doc.encrypt(&state).map_err(write_failed)?;
 
-    add_key_length(&mut doc)?;
-    add_extensions(&mut doc)?;
-
-    let mut out = Vec::new();
-    doc.save_to(&mut out).map_err(write_failed)?;
-    Ok(out)
+    add_key_length(doc)?;
+    add_extensions(doc)
 }
 
 /// Writes `/Length 256` into the encryption dictionary and `/Length 32` into its `StdCF`.
