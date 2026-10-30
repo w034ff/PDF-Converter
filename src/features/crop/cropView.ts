@@ -5,6 +5,7 @@ import {
   PAGE_VIEW_MAX_SIDE,
   type CropViewSize,
 } from "../../state";
+import { DRAG_THRESHOLD_PX } from "../shared/pointer";
 
 /** CSS pixels in a point: the actual size (100 %) is 96 dpi (design §10.1). */
 export const CSS_PX_PER_PT = 96 / 72;
@@ -12,7 +13,7 @@ export const CSS_PX_PER_PT = 96 / 72;
 const PERCENT = 100;
 
 /** A press that moves less than this (CSS px) before it is released is a click (design §10.1). */
-export const CROP_DRAG_THRESHOLD_PX = 4;
+export const CROP_DRAG_THRESHOLD_PX = DRAG_THRESHOLD_PX;
 
 /** The side of the square a handle is drawn as, in CSS px. */
 export const CROP_HANDLE_SIZE_PX = 8;

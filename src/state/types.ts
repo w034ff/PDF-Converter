@@ -16,8 +16,9 @@ import type {
   RenderFormatChoice,
 } from "../ipc";
 import type { JobAction, JobState } from "./job";
+import type { OrganizeAction, OrganizeState } from "./organize";
 
-export type ActiveTab = "imagesToPdf" | "pdfToImages" | "crop";
+export type ActiveTab = "imagesToPdf" | "pdfToImages" | "crop" | "organize";
 
 export interface LanguageState {
   /** The language the screen is shown in. */
@@ -325,6 +326,7 @@ export interface AppState {
   imagesToPdf: ImagesToPdfState;
   pdfToImages: PdfToImagesState;
   crop: CropState;
+  organize: OrganizeState;
   job: JobState;
 }
 
@@ -333,4 +335,5 @@ export type AppAction =
   | ImagesToPdfAction
   | PdfToImagesAction
   | CropAction
+  | OrganizeAction
   | JobAction;

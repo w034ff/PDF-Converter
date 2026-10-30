@@ -1,5 +1,5 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useThumbnail } from "./useThumbnail";
 
@@ -19,8 +19,20 @@ function mockThumbnails(answer: () => unknown = () => PNG_BYTES): Call[] {
   return calls;
 }
 
-function Probe({ id, page }: { id: number; page?: number }) {
-  const { ref, src, failed } = useThumbnail(id, page);
+function Probe({
+  id,
+  page,
+  delayMs,
+}: {
+  id: number;
+  page?: number;
+  delayMs?: number;
+}) {
+  const { ref, src, failed } = useThumbnail(
+    id,
+    page,
+    delayMs === undefined ? undefined : { delayMs },
+  );
   return (
     <div ref={ref}>
       <output data-testid="src">{src ?? ""}</output>
@@ -198,5 +210,102 @@ describe("useThumbnail", () => {
       expect(screen.getByTestId("src")).toHaveTextContent("blob:thumb-"),
     );
     expect(calls).toHaveLength(1);
+  });
+
+  describe("with a delay", () => {
+    const DELAY_MS = 150;
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("asks only after the delay", async () => {
+      const calls = mockThumbnails();
+      render(<Probe id={4} page={2} delayMs={DELAY_MS} />);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELAY_MS - 1);
+      });
+      expect(calls).toEqual([]);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      expect(calls).toEqual([
+        { cmd: "get_thumbnail", args: { id: 4, page: 2 } },
+      ]);
+      expect(screen.getByTestId("src")).toHaveTextContent("blob:thumb-1");
+    });
+
+    it("does not ask if the element is gone before the delay is over", async () => {
+      const calls = mockThumbnails();
+      const { unmount } = render(<Probe id={4} delayMs={DELAY_MS} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELAY_MS - 1);
+      });
+
+      unmount();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELAY_MS * 2);
+      });
+
+      expect(calls).toEqual([]);
+    });
+
+    it("starts the delay again for a new item, and does not ask for the old one", async () => {
+      const calls = mockThumbnails();
+      const { rerender } = render(<Probe id={4} delayMs={DELAY_MS} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELAY_MS - 1);
+      });
+
+      rerender(<Probe id={5} delayMs={DELAY_MS} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELAY_MS - 1);
+      });
+      expect(calls).toEqual([]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      expect(calls.map((call) => call.args)).toEqual([
+        { id: 5, page: undefined },
+      ]);
+    });
+
+    it("counts the delay from when the element comes into view", async () => {
+      vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+      const calls = mockThumbnails();
+      render(<Probe id={4} delayMs={DELAY_MS} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELAY_MS * 2);
+      });
+      expect(calls).toEqual([]);
+
+      act(() => show(observers[0]));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(DELAY_MS - 1);
+      });
+      expect(calls).toEqual([]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      expect(calls).toHaveLength(1);
+    });
+
+    it("asks at once when no delay is given, as it always did", async () => {
+      const calls = mockThumbnails();
+      render(<Probe id={4} />);
+
+      await act(async () => {});
+
+      expect(calls).toHaveLength(1);
+    });
   });
 });

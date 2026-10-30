@@ -17,7 +17,9 @@ function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
     a.crop.colorMode === b.crop.colorMode &&
     a.crop.dpi === b.crop.dpi &&
     a.crop.photoNative === b.crop.photoNative &&
-    a.crop.photoOnly === b.crop.photoOnly
+    a.crop.photoOnly === b.crop.photoOnly &&
+    a.organize.output === b.organize.output &&
+    a.organize.encrypt === b.organize.encrypt
   );
 }
 
@@ -34,7 +36,7 @@ function sameSettings(a: SettingsInput, b: SettingsInput): boolean {
  * get in the way of converting.
  */
 export function useSettingsAutoSave(): void {
-  const { language, imagesToPdf, pdfToImages, crop } = useAppState();
+  const { language, imagesToPdf, pdfToImages, crop, organize } = useAppState();
   const preference = language.preference;
   const { output, pageSize, orientation, pdfA, encrypt } = imagesToPdf;
   const { format, colorMode, dpi } = pdfToImages;
@@ -45,6 +47,7 @@ export function useSettingsAutoSave(): void {
     photoNative,
     photoOnly,
   } = crop;
+  const { output: organizeOutput, encrypt: organizeEncrypt } = organize;
 
   const sentRef = useRef<SettingsInput>({
     language: preference,
@@ -57,6 +60,7 @@ export function useSettingsAutoSave(): void {
       photoNative,
       photoOnly,
     },
+    organize: { output: organizeOutput, encrypt: organizeEncrypt },
   });
   const revisionRef = useRef(0);
 
@@ -72,6 +76,7 @@ export function useSettingsAutoSave(): void {
         photoNative,
         photoOnly,
       },
+      organize: { output: organizeOutput, encrypt: organizeEncrypt },
     };
     if (sameSettings(next, sentRef.current)) {
       return;
@@ -96,5 +101,7 @@ export function useSettingsAutoSave(): void {
     cropDpi,
     photoNative,
     photoOnly,
+    organizeOutput,
+    organizeEncrypt,
   ]);
 }

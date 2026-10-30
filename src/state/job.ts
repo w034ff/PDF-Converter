@@ -33,6 +33,11 @@ export interface JobState {
   finished: JobFinishedPayload | null;
   /** The file name `save_merged_pdf` saved, once its command resolves. */
   savedName: string | null;
+  /**
+   * The name of the organize PDF the last save replaced and dropped from the
+   * list (organize §4); kept here so the result drops when the screen changes.
+   */
+  replacedName: string | null;
   error: IpcError | null;
 }
 
@@ -43,6 +48,7 @@ export type JobAction =
   | { type: "JOB_ITEM"; item: JobItemPayload }
   | { type: "JOB_FINISHED"; finished: JobFinishedPayload }
   | { type: "JOB_SAVED"; savedName: string }
+  | { type: "JOB_REPLACED"; name: string }
   | { type: "JOB_FAILED"; error: IpcError }
   | { type: "JOB_NOT_STARTED"; kind: ActiveTab; error: IpcError }
   | { type: "JOB_RESET" };
@@ -60,6 +66,7 @@ export const initialJobState: JobState = {
   results: {},
   finished: null,
   savedName: null,
+  replacedName: null,
   error: null,
 };
 
@@ -133,6 +140,8 @@ export function jobReducer(state: JobState, action: JobAction): JobState {
       return { ...state, phase: "finished", finished: action.finished };
     case "JOB_SAVED":
       return { ...state, savedName: action.savedName };
+    case "JOB_REPLACED":
+      return { ...state, replacedName: action.name };
     case "JOB_FAILED":
       // A command that fails after `job-finished` keeps the summary it sent;
       // one that fails before it never ran an item, so no row shows a status.

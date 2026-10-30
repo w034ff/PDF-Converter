@@ -1,22 +1,6 @@
 import { useEffect } from "react";
 import { useAppDispatch, type CropTool } from "../../state";
-
-/** Which way a key moves through the history of the areas, if it does (design §10.1). */
-export function historyKeyOf(
-  event: Pick<
-    KeyboardEvent,
-    "key" | "ctrlKey" | "shiftKey" | "altKey" | "metaKey"
-  >,
-): "undo" | "redo" | null {
-  if (!event.ctrlKey || event.altKey || event.metaKey) {
-    return null;
-  }
-  const key = event.key.toLowerCase();
-  if (key === "z") {
-    return event.shiftKey ? "redo" : "undo";
-  }
-  return key === "y" && !event.shiftKey ? "redo" : null;
-}
+import { historyKeyOf, isModalOpen, takesText } from "../shortcuts/keyboard";
 
 function hasModifier(event: KeyboardEvent): boolean {
   return event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
@@ -25,19 +9,6 @@ function hasModifier(event: KeyboardEvent): boolean {
 /** Whether the key is R alone, which starts drawing an area (design §10.1). */
 function isDrawKey(event: KeyboardEvent): boolean {
   return !hasModifier(event) && event.key.toLowerCase() === "r";
-}
-
-/** Inputs whose own keys these would take: those that take text. */
-function takesText(target: EventTarget | null): boolean {
-  if (target instanceof HTMLTextAreaElement) {
-    return true;
-  }
-  if (target instanceof HTMLInputElement) {
-    return !["checkbox", "radio", "button", "submit", "reset"].includes(
-      target.type,
-    );
-  }
-  return target instanceof HTMLElement && target.isContentEditable;
 }
 
 export interface CropKeysOptions {
@@ -72,11 +43,7 @@ export function useCropKeys({
   const dispatch = useAppDispatch();
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (
-        event.defaultPrevented ||
-        takesText(event.target) ||
-        document.querySelector("[aria-modal='true']") !== null
-      ) {
+      if (event.defaultPrevented || takesText(event.target) || isModalOpen()) {
         return;
       }
       const direction = historyKeyOf(event);

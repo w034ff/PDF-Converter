@@ -18,7 +18,7 @@ import {
   type PointPt,
 } from "./cropEdit";
 import { CROP_DRAG_THRESHOLD_PX, CSS_PX_PER_PT } from "./cropView";
-import { historyKeyOf } from "./useCropKeys";
+import { historyKeyOf } from "../shortcuts/keyboard";
 
 /** `button` of a press with the middle button (the wheel). */
 const MIDDLE_BUTTON = 1;

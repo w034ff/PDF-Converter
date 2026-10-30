@@ -24,6 +24,37 @@ function contrastRatio(hex1: string, hex2: string): number {
 
 const WCAG_AA_TEXT_CONTRAST = 4.5;
 
+/** The least contrast a mark that is not text needs (WCAG 1.4.11). */
+const WCAG_NON_TEXT_CONTRAST = 3;
+
+/**
+ * The least CIELAB distance (ΔE76) between the color of a PDF of the organize
+ * tab and the accent or a color of a state, and between two such colors: the
+ * dot must not read as a selection, a failure, a success, a wait or a notice,
+ * nor as another PDF. About 2.3 is the least a person sees at all, and 15 or
+ * more is plainly another color; the palette keeps to the second.
+ */
+const MIN_STATE_DISTANCE = 15;
+const MIN_SOURCE_DISTANCE = 20;
+
+function toLab(hex: string): [number, number, number] {
+  const [r, g, b] = [1, 3, 5].map((start) =>
+    sRGBtoLin(parseInt(hex.slice(start, start + 2), 16)),
+  );
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t: number) =>
+    t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116;
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+function labDistance(hex1: string, hex2: string): number {
+  const [l1, a1, b1] = toLab(hex1);
+  const [l2, a2, b2] = toLab(hex2);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+}
+
 const TOKENS_PATH = path.resolve(__dirname, "tokens.css");
 
 /**
@@ -37,7 +68,8 @@ function readThemeTokens(theme: "light" | "dark"): Map<string, string> {
   const darkStart = content.indexOf("@media (prefers-color-scheme: dark)");
   expect(darkStart, "dark theme block in tokens.css").toBeGreaterThan(-1);
 
-  const declarationRegex = /(--color-[\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g;
+  const declarationRegex =
+    /(--(?:color|organize)-[\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g;
   const parse = (css: string) =>
     new Map(
       Array.from(css.matchAll(declarationRegex), (m): [string, string] => [
@@ -224,6 +256,86 @@ describe("design tokens and CSS rules", () => {
           `${fg} on --color-row-selected in the ${theme} theme`,
         ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
       }
+    },
+  );
+
+  const ORGANIZE_SOURCES = [1, 2, 3, 4, 5, 6].map(
+    (n) => `--organize-source-${n}`,
+  );
+
+  it.each(["light", "dark"] as const)(
+    "draws the colors of the PDFs of the organize tab visibly on every ground in the %s theme",
+    (theme) => {
+      const tokens = readThemeTokens(theme);
+      const grounds = [
+        "--color-bg-app",
+        "--color-bg-surface",
+        "--color-bg-subtle",
+        "--organize-cell-selected",
+      ];
+      for (const source of ORGANIZE_SOURCES) {
+        for (const ground of grounds) {
+          expect(
+            contrastRatio(
+              tokenValue(tokens, source),
+              tokenValue(tokens, ground),
+            ),
+            `${source} on ${ground} in the ${theme} theme`,
+          ).toBeGreaterThanOrEqual(WCAG_NON_TEXT_CONTRAST);
+        }
+      }
+    },
+  );
+
+  it.each(["light", "dark"] as const)(
+    "keeps the colors of the PDFs apart from each other, the accent and the states in the %s theme",
+    (theme) => {
+      const tokens = readThemeTokens(theme);
+      const others = [
+        "--color-accent",
+        "--color-error",
+        "--color-success",
+        "--color-warning",
+        "--color-info",
+      ];
+      for (const source of ORGANIZE_SOURCES) {
+        for (const other of others) {
+          expect(
+            labDistance(tokenValue(tokens, source), tokenValue(tokens, other)),
+            `${source} and ${other} in the ${theme} theme`,
+          ).toBeGreaterThanOrEqual(MIN_STATE_DISTANCE);
+        }
+      }
+      ORGANIZE_SOURCES.forEach((a, index) => {
+        for (const b of ORGANIZE_SOURCES.slice(index + 1)) {
+          expect(
+            labDistance(tokenValue(tokens, a), tokenValue(tokens, b)),
+            `${a} and ${b} in the ${theme} theme`,
+          ).toBeGreaterThanOrEqual(MIN_SOURCE_DISTANCE);
+        }
+      });
+    },
+  );
+
+  it.each(["light", "dark"] as const)(
+    "keeps the words on the yellow note and the selected page readable in the %s theme",
+    (theme) => {
+      const tokens = readThemeTokens(theme);
+      for (const ground of ["--organize-notice-bg"]) {
+        for (const fg of ["--color-text-primary", "--color-text-secondary"]) {
+          expect(
+            contrastRatio(tokenValue(tokens, fg), tokenValue(tokens, ground)),
+            `${fg} on ${ground} in the ${theme} theme`,
+          ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
+        }
+      }
+      // The angle of a turned page is drawn on the page box of a selected page.
+      expect(
+        contrastRatio(
+          tokenValue(tokens, "--color-text-primary"),
+          tokenValue(tokens, "--color-bg-surface"),
+        ),
+      ).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
     },
   );
 });
