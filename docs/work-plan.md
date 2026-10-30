@@ -155,7 +155,7 @@ Windows での確認、見た目の確認など、自動化できないもの。
 - `GEMINI.md` を SVG Tracer のものを元に作る（型、コメント、定数、多言語、コミットメッセージの規約）。あわせて、§2.1 の報告の書式、§2.2 の相談する条件、§2.3 のフックを迂回しない決まりを書く。
 - `.githooks/pre-commit`（§2.3）を作る。
 - ESLint と Prettier、`rustfmt`、`clippy`（`-D warnings`）の設定は SVG Tracer と同じにする（`any`、型アサーション、非 null アサーション、`class` 宣言を禁止）。
-- `.github/workflows/ci.yml`: Windows と Ubuntu で fmt、clippy、`cargo test`、lint、型検査、フロントエンドのテストを回す。ジョブの名前は `Test (ubuntu-latest)` と `Test (windows-latest)` にする（main のルールセットが、この名前のチェックの成功を必須にしているため）。
+- `.github/workflows/ci.yml`: Windows と Ubuntu で fmt、clippy、`cargo test` を、Ubuntu で lint、型検査、フロントエンドのテストを回す（NFR-06）。ジョブの名前は `Test (ubuntu-latest)` と `Test (windows-latest)` にする（main のルールセットが、この名前のチェックの成功を必須にしているため）。
 - `LICENSE`（MIT）。`.gitignore` は SVG Tracer と同じ内容に、`src-tauri/pdfium/` と `spike/` の生成物を加える。
 - 既存の `spike/` は残す（スパイクの記録）。ワークスペースには含めない。
 
