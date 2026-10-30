@@ -248,7 +248,7 @@ describe("the pages of one PDF", () => {
 
     expect(saveButton()).toBeDisabled();
     const reason = screen.getByText(
-      "1 つの PDF は 10,000 ページまでです（今は 10001 ページ）",
+      "1 つの PDF は 10,000 ページまでです（今は 10001 ページ）。区切りを入れて分けて保存してください",
     );
     expect(reason).toHaveClass("error-text");
   });
@@ -275,7 +275,9 @@ describe("the pages of one PDF", () => {
     });
 
     expect(
-      screen.getByText("One PDF has at most 10,000 pages (now 10005)"),
+      screen.getByText(
+        "One PDF has at most 10,000 pages (now 10005). Add breaks and save in parts",
+      ),
     ).toBeInTheDocument();
   });
 });

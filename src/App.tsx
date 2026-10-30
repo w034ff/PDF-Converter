@@ -181,7 +181,7 @@ function AppShell() {
             <CropScreen />
           ) : activeTab === "organize" ? (
             <>
-              <aside className="app-sidebar">
+              <aside className="app-sidebar organize-sidebar">
                 <OrganizeSettings />
               </aside>
 

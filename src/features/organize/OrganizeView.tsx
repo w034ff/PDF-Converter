@@ -20,6 +20,7 @@ import {
   useAppState,
   type OrganizePdfEntry,
 } from "../../state";
+import { OutputDirError } from "../output";
 import { formatSkippedSummary } from "../pdf-to-images/pdfUtils";
 import { PasswordDialog } from "../pdf-to-images/PasswordDialog";
 import { KeyHintsDialog } from "../shortcuts/KeyHintsDialog";
@@ -154,6 +155,7 @@ export function OrganizeView() {
   return (
     <div className="organize-view">
       {bands}
+      <OutputDirError tab="organize" />
       <div className="organize-toolbar">
         <OrganizePdfChips
           onRemove={(pdf) => void handleRemove(pdf)}

@@ -68,7 +68,7 @@ describe("the organize tab: opening it", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the drop zone with its two buttons, and the settings without the choice of how to save", async () => {
+  it("shows the drop zone with its two buttons, and the settings of one PDF without the breaks", async () => {
     await openOrganizeTab();
 
     expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
@@ -82,8 +82,12 @@ describe("the organize tab: opening it", () => {
       screen.getByRole("checkbox", { name: "パスワードを付ける" }),
     ).not.toBeChecked();
     expect(screen.getByText("保存した PDF について")).toBeInTheDocument();
-    expect(screen.queryByText("保存の方法")).not.toBeInTheDocument();
-    expect(screen.queryByText(/並んだ順に/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "保存の方法" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/並んだ順に/)).toBeInTheDocument();
+    expect(screen.queryByText("区切り")).not.toBeInTheDocument();
+    expect(screen.queryByText("保存先フォルダ")).not.toBeInTheDocument();
     expect(screen.getByText("PDF を追加してください")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PDF を保存" })).toBeDisabled();
   });

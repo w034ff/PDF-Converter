@@ -9,6 +9,9 @@ import {
   ORGANIZE_OVERSCAN_ROWS,
   ORGANIZE_PAGE_MAX_SIDE,
   ORGANIZE_ROW_GAP,
+  breakButtonBox,
+  breakGap,
+  breakMarkLeft,
   cellOffset,
   dragScrollStep,
   dropLineLeft,
@@ -358,15 +361,85 @@ describe("scrolling while dragging", () => {
   });
 });
 
+/** The width of the line, from its `left` less the lead: what `.organize-drop-line` is. */
+const LINE_SPAN = { before: 1, after: 2 };
+/** What the scrolling area shows beyond the grid on each side. */
+const PADDING = 4;
+
 describe("dropLineLeft", () => {
   it("draws the line in the middle of the gap between two cells", () => {
-    expect(dropLineLeft(2)).toBe(
+    expect(dropLineLeft(2, 600)).toBe(
       2 * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) - ORGANIZE_COLUMN_GAP / 2,
     );
   });
 
   it("keeps the line before the first cell inside the scrolling area's padding", () => {
-    expect(dropLineLeft(0)).toBeGreaterThanOrEqual(-3);
+    expect(dropLineLeft(0, 600)).toBe(-3);
+  });
+
+  it("keeps the line after the last cell of a row inside the padding when the row fills the width", () => {
+    // Four cells and their gaps are 544 px: the middle of the gap after them is 552, 8 px out.
+    const left = dropLineLeft(4, 544);
+
+    expect(left + LINE_SPAN.after).toBe(544 + PADDING);
+    expect(left).toBeLessThan(4 * PITCH_X - ORGANIZE_COLUMN_GAP / 2);
+  });
+
+  it("leaves the line after the last cell where it is when the row leaves room", () => {
+    expect(dropLineLeft(4, 600)).toBe(4 * PITCH_X - ORGANIZE_COLUMN_GAP / 2);
+    // The line is whole in view up to the last pixel it fits.
+    expect(dropLineLeft(4, 556) + LINE_SPAN.after).toBeLessThanOrEqual(
+      556 + PADDING,
+    );
+    expect(dropLineLeft(4, 556)).toBe(4 * PITCH_X - ORGANIZE_COLUMN_GAP / 2);
+  });
+});
+
+describe("breakGap", () => {
+  it("is the gap before the page in its own row", () => {
+    expect(breakGap(1, 5)).toEqual({ row: 0, slot: 1 });
+    expect(breakGap(4, 5)).toEqual({ row: 0, slot: 4 });
+    expect(breakGap(7, 5)).toEqual({ row: 1, slot: 2 });
+  });
+
+  it("is the end of the row before for a page that starts a row", () => {
+    expect(breakGap(5, 5)).toEqual({ row: 0, slot: 5 });
+    expect(breakGap(10, 5)).toEqual({ row: 1, slot: 5 });
+    expect(breakGap(3, 1)).toEqual({ row: 2, slot: 1 });
+  });
+});
+
+describe("breakButtonBox", () => {
+  it("is the gap itself", () => {
+    expect(breakButtonBox(2, 600)).toEqual({
+      left: 2 * PITCH_X - ORGANIZE_COLUMN_GAP,
+      width: ORGANIZE_COLUMN_GAP,
+    });
+  });
+
+  it("stops where the scrolling area stops showing the gap after the last cell of a full row", () => {
+    // The row of four ends at 544; the area shows 4 px more.
+    expect(breakButtonBox(4, 544)).toEqual({ left: 544, width: PADDING });
+    expect(breakButtonBox(4, 556)).toEqual({
+      left: 544,
+      width: ORGANIZE_COLUMN_GAP,
+    });
+    expect(breakButtonBox(4, 550)).toEqual({ left: 544, width: 10 });
+  });
+
+  it("is never negative", () => {
+    expect(breakButtonBox(4, 0).width).toBe(0);
+  });
+});
+
+describe("breakMarkLeft", () => {
+  it("centres the mark on the line", () => {
+    // The mark is 20 wide and the line 3, 9 px before the mark.
+    expect(breakMarkLeft(2, 600)).toBe(dropLineLeft(2, 600) - 1 - 9);
+  });
+
+  it("keeps the mark in view at the end of a full row", () => {
+    expect(breakMarkLeft(4, 544) + 20).toBe(544 + PADDING);
   });
 });
 

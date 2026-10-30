@@ -40,6 +40,7 @@ export const ja = {
     noReadablePdfs:
       "変換できる PDF がありません。読み込めない PDF を外してください",
     savePdf: "PDF を保存",
+    startSaving: "保存を開始",
     startConversion: "変換を開始",
     cancel: "キャンセル",
     cancelling: "キャンセル中…",
@@ -460,11 +461,24 @@ export const ja = {
       pageLabel: "p.{page}",
       cellAria: "{name} {page} ページ",
       cellAriaRotated: "{name} {page} ページ、{degrees}°",
+      cellAriaPart: "{label}、{number} 番目の PDF の先頭",
+      cellAriaPartFailed: "{label}、{number} 番目の PDF の先頭（保存に失敗）",
+      breakAria: "p.{before} と p.{after} の間の区切り",
       rotation: "{degrees}°",
       empty: "ページがありません",
       emptyHint: "Ctrl+Z で戻せます",
     },
     settings: {
+      outputTitle: "保存の方法",
+      outputSingle: "1 つの PDF",
+      outputSplit: "分けて保存",
+      outputSingleHint: "並んだ順に、1 つの PDF にまとめます。",
+      outputSplitHint: "区切りごとに、別の PDF として保存します。",
+      breaksTitle: "区切り",
+      breaksHint: "ページの間を押すと、区切りを入れたり外したりできます。",
+      breaksEachPage: "1 ページずつ",
+      breaksEachPdf: "元の PDF ごと",
+      breaksClear: "すべて外す",
       password: "パスワードを付ける",
       encryptedNotice:
         "パスワード付きの PDF があります。元の PDF のパスワードは引き継ぎません。",
@@ -475,7 +489,16 @@ export const ja = {
     footer: {
       noPdfs: "PDF を追加してください",
       noPages: "保存するページがありません",
-      tooManyPages: "1 つの PDF は {max} ページまでです（今は {count} ページ）",
+      tooManyPages:
+        "1 つの PDF は {max} ページまでです（今は {count} ページ）。区切りを入れて分けて保存してください",
+      willSplitSingle:
+        "{pages} ページを {parts} 個の PDF に分けて保存します（合計 約 {size} MB）",
+      willSplitOnePart:
+        "{pages} ページを {parts} 個の PDF に分けて保存します（合計 約 {size} MB）",
+      willSplitMultiple:
+        "{pages} ページを {parts} 個の PDF に分けて保存します（合計 約 {size} MB）",
+      splitTooManyPages:
+        "{part} 番目の PDF は {count} ページあります。1 つの PDF は {max} ページまでです",
       willSaveSingle:
         "{count} ページを 1 つの PDF に保存します（約 {size} MB）",
       willSaveMultiple:
@@ -489,6 +512,10 @@ export const ja = {
       replaced: "置き換えた {name} を一覧から外しました",
       failed: "PDF を保存しませんでした（{name}: {message}）",
       failedWithoutName: "PDF を保存しませんでした（{message}）",
+      savedPartsSingle: "{count} 個の PDF を保存しました",
+      savedPartsMultiple: "{count} 個の PDF を保存しました",
+      failedPart: "（{part} 番目の PDF: {name}: {message}）",
+      failedPartWithoutName: "（{part} 番目の PDF: {message}）",
     },
     keyHints: {
       title: "キー操作",
@@ -520,6 +547,11 @@ export const ja = {
             { keys: [["R"]], action: "右に回す" },
             { keys: [["L"]], action: "左に回す" },
             { keys: [["Delete"], ["Backspace"]], action: "削除" },
+            {
+              keys: [["B"]],
+              action:
+                "フォーカスのページの前に区切りを入れる・外す（分けて保存のとき）",
+            },
             { keys: [["Ctrl", "Z"]], action: "元に戻す" },
             {
               keys: [

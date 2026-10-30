@@ -75,6 +75,12 @@
   stroke: currentColor;
 }
 
+.organize-settings-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .organize-settings-about {
   margin-top: auto;
   display: flex;
@@ -85,8 +91,17 @@
 }
 
 /* The ground is too short for the note under the settings of a small window
-   (OrganizeSplit960); the settings keep the room. */
+   (OrganizeSplit960); the settings keep the room, and what still does not fit
+   scrolls in the panel alone. */
 @media (max-height: 719px) {
+  .app-sidebar.organize-sidebar {
+    padding-block: 16px;
+  }
+
+  .organize-settings {
+    gap: 16px;
+  }
+
   .organize-settings-about {
     display: none;
   }
@@ -241,10 +256,13 @@
 
 /* ---- The grid ---- */
 
+/* The lines between the cells of a row's end are kept inside the width
+   (organizeGrid `dropLineLeft`), so nothing is left to scroll sideways. */
 .organize-grid-scroll {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 12px 4px 16px;
 }
 
@@ -376,13 +394,87 @@
   white-space: nowrap;
 }
 
-/* Where dragged pages would go. The line of the split in parts is as long
-   but thinner, and has a mark. */
-.organize-drop-line {
+/* Where dragged pages would go, and a break in the save in parts, which has
+   a mark besides. Both are as wide as `ORGANIZE_LINE_WIDTH` and start
+   `ORGANIZE_LINE_LEAD` before their `left` (organizeGrid). */
+.organize-drop-line,
+.organize-break-line {
   position: absolute;
   width: 3px;
   margin-left: -1px;
   border-radius: 2px;
   background: var(--color-accent);
   pointer-events: none;
+}
+
+/* The scissors on a break's line; `ORGANIZE_BREAK_MARK_SIDE` wide. */
+.organize-break-mark {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  pointer-events: none;
+}
+
+/* The place that presses a break is the gap between two cells, as high as
+   their boxes. It shows a thin line under the pointer when no break is
+   there. A drag disables it so a pointer passing over it shows nothing. */
+.organize-break-button {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.organize-break-button:disabled {
+  cursor: inherit;
+}
+
+.organize-break-button[aria-pressed="false"]:not(:disabled):hover::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--color-border-subtle);
+}
+
+.organize-grid.is-dragging .organize-break-button {
+  pointer-events: none;
+}
+
+/* The number of the output a page begins (mockup OrganizeSplit); red with a
+   mark when that output was not saved, which the accent alone would not tell
+   from a number (design §10.3). */
+.organize-part-badge {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  min-width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: pre;
+}
+
+.organize-part-badge.is-failed {
+  background: var(--color-error);
+  color: var(--color-text-on-error);
 }

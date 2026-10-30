@@ -1,5 +1,5 @@
 import { clearMocks } from "@tauri-apps/api/mocks";
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,6 +77,24 @@ describe("the settings of the organize tab", () => {
     });
   });
 
+  it("are sent with save_settings when the way of saving changes, and start from the one saved", async () => {
+    const calls = await openOrganizeTab({ settings: SAVED });
+    const choice = screen.getByRole("group", { name: "保存の方法" });
+    expect(
+      within(choice).getByRole("button", { name: "分けて保存" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(within(choice).getByRole("button", { name: "1 つの PDF" }));
+    await flush();
+    fireEvent.click(within(choice).getByRole("button", { name: "分けて保存" }));
+    await flush();
+
+    expect(savedSettings(calls).map((call) => call.settings)).toMatchObject([
+      { organize: { output: "single", encrypt: true } },
+      { organize: { output: "split", encrypt: true } },
+    ]);
+  });
+
   it("send the output as get_settings gave it, unchanged", async () => {
     const calls = await openOrganizeTab({ settings: SAVED });
 
@@ -143,7 +161,7 @@ describe("the note on the saved PDF", () => {
       "utf-8",
     );
     const rule =
-      /@media \(max-height: (\d+)px\)\s*\{\s*\.organize-settings-about\s*\{\s*display: none;/.exec(
+      /@media \(max-height: (\d+)px\)\s*\{[^@]*?\.organize-settings-about\s*\{\s*display: none;/.exec(
         css,
       );
 

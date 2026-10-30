@@ -109,6 +109,7 @@ export function mockOrganizeIpc(
     add_organize_pdfs: () => null,
     remove_organize_pdfs: () => undefined,
     save_organized_pdf: () => null,
+    start_organize_split: () => undefined,
     cancel_job: () => undefined,
   };
   mockIPC(
@@ -270,6 +271,43 @@ export function selectedKeys(): string[] {
   return drawnCells()
     .filter((cell) => cell.getAttribute("aria-selected") === "true")
     .map((cell) => cell.dataset.pageKey ?? "");
+}
+
+/** The settings of an app that saves in parts into a folder already chosen. */
+export const SPLIT_SETTINGS: Settings = {
+  ...DEFAULT_SETTINGS,
+  organize: {
+    output: "split",
+    encrypt: false,
+    outputDir: { dirLabel: "parts" },
+  },
+};
+
+/** The place between the page `before` and the page `after`, which presses the break before `after`. */
+export function breakButton(
+  before: number,
+  after: number,
+  language: "ja" | "en" = "ja",
+): HTMLElement {
+  return screen.getByRole("button", {
+    name:
+      language === "ja"
+        ? `p.${before} と p.${after} の間の区切り`
+        : `Break between p.${before} and p.${after}`,
+  });
+}
+
+/** The buttons that press a break, and the lines and badges that are drawn. */
+export function breakButtons(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(".organize-break-button")];
+}
+
+export function breakLines(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(".organize-break-line")];
+}
+
+export function badges(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(".organize-part-badge")];
 }
 
 /** The calls of `save_organized_pdf`, as the pages they carried. */

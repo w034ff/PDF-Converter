@@ -26,6 +26,10 @@ export interface PageCellProps {
   selected: boolean;
   /** Whether Tab stops here (a roving tabindex: one cell does). */
   tabStop: boolean;
+  /** The number of the output this page begins in the save in parts, from 1; `null` for any other page. */
+  part: number | null;
+  /** Whether the output `part` was not saved, by the result of the last save. */
+  partFailed: boolean;
   left: number;
   top: number;
   t: Translations["organize"];
@@ -38,7 +42,8 @@ export interface PageCellProps {
 /**
  * One page of the grid (mockup OrganizeSingle): its thumbnail turned the way
  * the page is, the angle if it is, the PDF it comes from by a dot and its
- * name, and the page number in that PDF. The picture is asked for after
+ * name, and the page number in that PDF; and the number of the output it
+ * begins, in the save in parts (mockup OrganizeSplit). The picture is asked for after
  * `ORGANIZE_THUMBNAIL_DELAY_MS`, and not at all if the cell is gone by then.
  */
 export const PageCell = memo(function PageCell({
@@ -48,6 +53,8 @@ export const PageCell = memo(function PageCell({
   pdf,
   selected,
   tabStop,
+  part,
+  partFailed,
   left,
   top,
   t,
@@ -61,10 +68,17 @@ export const PageCell = memo(function PageCell({
     page.rotation,
   );
   const name = pdf?.name ?? "";
-  const label = formatMessage(
+  const pageLabel = formatMessage(
     page.rotation === 0 ? t.grid.cellAria : t.grid.cellAriaRotated,
     { name, page: page.page, degrees: page.rotation },
   );
+  const label =
+    part === null
+      ? pageLabel
+      : formatMessage(
+          partFailed ? t.grid.cellAriaPartFailed : t.grid.cellAriaPart,
+          { label: pageLabel, number: part },
+        );
 
   return (
     <div
@@ -106,6 +120,15 @@ export const PageCell = memo(function PageCell({
         {selected && (
           <span className="organize-cell-check" aria-hidden="true">
             ✓
+          </span>
+        )}
+        {part !== null && (
+          <span
+            className={`organize-part-badge${partFailed ? " is-failed" : ""}`}
+            aria-hidden="true"
+          >
+            {partFailed && "✕ "}
+            {part}
           </span>
         )}
       </div>

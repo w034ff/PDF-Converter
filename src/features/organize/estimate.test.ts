@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { OrganizePdf } from "../../ipc";
 import type { OrganizePage } from "../../state";
-import { bytesToMegabytes, estimateOutputBytes } from "./estimate";
+import {
+  bytesToMegabytes,
+  estimateOutputBytes,
+  estimatePartsBytes,
+} from "./estimate";
 
 /**
  * One row: `[fileBytes, usedPages, pageCount]` of each PDF in the output, and
@@ -123,5 +127,62 @@ describe("bytesToMegabytes", () => {
     expect(bytesToMegabytes(MB)).toBe(1);
     expect(bytesToMegabytes(MB + 1n)).toBe(2);
     expect(bytesToMegabytes(613n * MB)).toBe(613);
+  });
+});
+
+describe("estimatePartsBytes", () => {
+  const pdfs: OrganizePdf[] = [
+    {
+      id: 1,
+      name: "a.pdf",
+      pageCount: 3,
+      pages: [],
+      fileBytes: 1000,
+      encrypted: false,
+      error: null,
+    },
+    {
+      id: 2,
+      name: "b.pdf",
+      pageCount: 2,
+      pages: [],
+      fileBytes: 500,
+      encrypted: false,
+      error: null,
+    },
+  ];
+  const page = (id: number, number: number): OrganizePage => ({
+    id,
+    page: number,
+    rotation: 0,
+  });
+
+  it("is the estimates of the outputs added, each rounded up on its own", () => {
+    // 1000 B of 3 pages: one page is 334 B. Three outputs of one page are 1002 B;
+    // the same pages as one output are 1000 B.
+    const pages = [page(1, 1), page(1, 2), page(1, 3)];
+
+    expect(estimateOutputBytes(pages, pdfs)).toBe(1000n);
+    expect(
+      estimatePartsBytes(
+        pages.map((one) => [one]),
+        pdfs,
+      ),
+    ).toBe(1002n);
+  });
+
+  it("counts a PDF once in each output it has pages in", () => {
+    const parts = [
+      [page(1, 1), page(2, 1)],
+      [page(1, 2), page(1, 3), page(2, 2)],
+    ];
+
+    // 334 + 250 and 667 + 250.
+    expect(estimatePartsBytes(parts, pdfs)).toBe(334n + 250n + 667n + 250n);
+  });
+
+  it("is zero for no outputs, and counts no PDF it does not know", () => {
+    expect(estimatePartsBytes([], pdfs)).toBe(0n);
+    expect(estimatePartsBytes([[page(9, 1)]], pdfs)).toBe(0n);
   });
 });

@@ -21,8 +21,8 @@ export const ORGANIZE_CELL_HEIGHT =
   ORGANIZE_PAGE_BOX_SIDE + ORGANIZE_CAPTION_GAP + ORGANIZE_CAPTION_HEIGHT;
 
 /**
- * Between two cells of a row. The split lines of the next task are drawn in
- * this space, so it is wide enough to press.
+ * Between two cells of a row. The lines of the breaks are drawn in this space,
+ * so it is wide enough to press.
  */
 export const ORGANIZE_COLUMN_GAP = 16;
 
@@ -163,18 +163,90 @@ export function insertPointAt(
 }
 
 /**
- * Where the line of a drop in gap `slot` of a row is drawn. The gap before the
- * first cell is outside the grid, and the padding of the scrolling area (4 px)
- * would clip a line placed by the pitch alone, so it stops at this.
+ * What the scrolling area shows of its padding on each side of the grid, in
+ * CSS px (`.organize-grid-scroll`): what is drawn beyond it is cut off.
  */
-const ORGANIZE_DROP_LINE_MIN_LEFT = -3;
+const ORGANIZE_GRID_PADDING_X = 4;
 
-export function dropLineLeft(slot: number): number {
-  return Math.max(
-    slot * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) -
-      ORGANIZE_COLUMN_GAP / HALF,
-    ORGANIZE_DROP_LINE_MIN_LEFT,
+/** The width of a line between cells and how far it starts before its `left` (`.organize-drop-line`, `.organize-break-line`). */
+const ORGANIZE_LINE_WIDTH = 3;
+const ORGANIZE_LINE_LEAD = 1;
+
+/** The ✂ mark on the line of a break (`.organize-break-mark`), and how far it starts before the line. */
+const ORGANIZE_BREAK_MARK_SIDE = 20;
+const ORGANIZE_BREAK_MARK_LEAD = 9;
+
+/**
+ * `left` of a box `width` wide, moved the least that puts it whole inside what
+ * the scrolling area shows of a grid `gridWidth` wide.
+ */
+function fitInView(left: number, width: number, gridWidth: number): number {
+  return Math.min(
+    Math.max(left, -ORGANIZE_GRID_PADDING_X),
+    gridWidth + ORGANIZE_GRID_PADDING_X - width,
   );
+}
+
+/**
+ * Where the line in gap `slot` of a row (a drop, or a break) is drawn: in the
+ * middle of the gap. The gap before the first cell is outside the grid and the
+ * one after the last cell can be, when the row fits the width with nothing to
+ * spare, so the line is kept where the scrolling area shows all of it.
+ */
+export function dropLineLeft(slot: number, gridWidth: number): number {
+  return (
+    fitInView(
+      slot * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) -
+        ORGANIZE_COLUMN_GAP / HALF -
+        ORGANIZE_LINE_LEAD,
+      ORGANIZE_LINE_WIDTH,
+      gridWidth,
+    ) + ORGANIZE_LINE_LEAD
+  );
+}
+
+/** Where the ✂ mark of the break line in gap `slot` is: kept in view as the line is. */
+export function breakMarkLeft(slot: number, gridWidth: number): number {
+  return fitInView(
+    dropLineLeft(slot, gridWidth) -
+      ORGANIZE_LINE_LEAD -
+      ORGANIZE_BREAK_MARK_LEAD,
+    ORGANIZE_BREAK_MARK_SIDE,
+    gridWidth,
+  );
+}
+
+/**
+ * The gap before the page at `index` (1 or more), as the row and the gap of
+ * the row (as `InsertPoint.slot`) its break is drawn in. A page at the start of
+ * a row has no gap before it in its row, so its break is at the end of the row
+ * before (organize §4).
+ */
+export function breakGap(
+  index: number,
+  columns: number,
+): { row: number; slot: number } {
+  const slot = index % columns;
+  return slot === 0
+    ? { row: rowOfIndex(index, columns) - 1, slot: columns }
+    : { row: rowOfIndex(index, columns), slot };
+}
+
+/**
+ * The box that presses the break in gap `slot`: the gap itself, as far as the
+ * scrolling area shows it.
+ */
+export function breakButtonBox(
+  slot: number,
+  gridWidth: number,
+): { left: number; width: number } {
+  const left =
+    slot * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) - ORGANIZE_COLUMN_GAP;
+  const right = Math.min(
+    left + ORGANIZE_COLUMN_GAP,
+    gridWidth + ORGANIZE_GRID_PADDING_X,
+  );
+  return { left, width: Math.max(right - left, 0) };
 }
 
 /** The size a page is drawn at in its box, and the size of the picture inside it before it is turned. */

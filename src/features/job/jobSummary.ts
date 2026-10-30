@@ -27,6 +27,8 @@ export type JobSummaryShape =
        * their own (from `job-item`).
        */
       partial: number;
+      /** The organize tab's save in parts has no rows, so the first output that failed is told here. */
+      firstFailure?: PartFailure;
     }
   | { kind: "pages"; saved: number; failed: number; unprocessed: number }
   | { kind: "mergedPdf"; pages: number; failedImages: number }
@@ -38,8 +40,17 @@ export type JobSummaryShape =
   | { kind: "organizedPdf"; pages: number; replacedName: string | null }
   /** It wrote none: the PDF it failed on (`null` if it was not one of them) and why. */
   | { kind: "organizedPdfFailed"; name: string | null; message: string }
+  /** The organize tab's save in parts, when every output was written. */
+  | { kind: "organizedParts"; saved: number }
   /** The crop tab's "全ページの候補": the areas it added, and the pages by outcome. */
   | { kind: "detectAll"; added: number; failed: number; unprocessed: number };
+
+/** The output of the save in parts that failed first: its number from 1, the PDF it failed on if one, and why. */
+export interface PartFailure {
+  part: number;
+  name: string | null;
+  message: string;
+}
 
 const ITEMS_SHAPE: JobSummaryShape = { kind: "items", partial: 0 };
 
@@ -112,6 +123,14 @@ function summaryParts(
         ? [saved]
         : [saved, formatMessage(result.replaced, { name: shape.replacedName })];
     }
+    case "organizedParts":
+      return [
+        pluralize(
+          shape.saved,
+          t.organize.result.savedPartsSingle,
+          t.organize.result.savedPartsMultiple,
+        ),
+      ];
     case "organizedPdfFailed": {
       const { result } = t.organize;
       return [
@@ -175,7 +194,7 @@ export function formatJobSummary(
     // The save is one PDF, so there is no count of conversions to lead with.
     return summaryParts(t, finished, shape).join(t.job.summarySeparator);
   }
-  if (shape.kind === "organizedPdfFailed") {
+  if (shape.kind === "organizedPdfFailed" || shape.kind === "organizedParts") {
     return summaryParts(t, finished, shape).join("");
   }
   const finishedTemplate =
@@ -185,9 +204,26 @@ export function formatJobSummary(
   const template = finished.cancelled
     ? t.job.summaryCancelled
     : finishedTemplate;
-  return formatMessage(template, {
+  const text = formatMessage(template, {
     counts: summaryParts(t, finished, shape).join(t.job.summarySeparator),
   });
+  return shape.kind === "items" && shape.firstFailure !== undefined
+    ? text + formatPartFailure(t, shape.firstFailure)
+    : text;
+}
+
+function formatPartFailure(t: Translations, failure: PartFailure): string {
+  const { result } = t.organize;
+  return failure.name === null
+    ? formatMessage(result.failedPartWithoutName, {
+        part: failure.part,
+        message: failure.message,
+      })
+    : formatMessage(result.failedPart, {
+        part: failure.part,
+        name: failure.name,
+        message: failure.message,
+      });
 }
 
 /**
@@ -310,16 +346,19 @@ export function summaryShape(
 }
 
 /**
- * What the summary of the organize tab's last save tells. A save of one PDF
- * ends in one `job-item` (organize §4): the PDF is written, or it is not and
- * the item says why, with the PDF that failed when it was one of the list.
- * A cancelled save wrote none.
+ * What the summary of the organize tab's last save tells, by how it started
+ * (`JobState.organizeOutput`). A save of one PDF ends in one `job-item`
+ * (organize §4): the PDF is written, or it is not and the item says why, with
+ * the PDF that failed when it was one of the list. A cancelled save wrote none.
  */
 export function organizeSummaryShape(
   job: JobState,
   pdfs: AppState["organize"]["pdfs"],
   language: Language,
 ): JobSummaryShape {
+  if (job.organizeOutput === "split") {
+    return organizeSplitSummaryShape(job, pdfs, language);
+  }
   const item = job.results[1];
   if (job.finished?.cancelled === true) {
     return { kind: "mergedPdfNotSaved" };
@@ -334,13 +373,64 @@ export function organizeSummaryShape(
   const error = item?.error;
   return {
     kind: "organizedPdfFailed",
-    name:
-      item?.sourceId === undefined
-        ? null
-        : (pdfs.find((pdf) => pdf.id === item.sourceId)?.name ?? null),
+    name: sourceName(item, pdfs),
     message:
       error === undefined
         ? ""
         : formatErrorMessage(error.code, error.detail, language),
+  };
+}
+
+function sourceName(
+  item: JobItemPayload | undefined,
+  pdfs: AppState["organize"]["pdfs"],
+): string | null {
+  return item?.sourceId === undefined
+    ? null
+    : (pdfs.find((pdf) => pdf.id === item.sourceId)?.name ?? null);
+}
+
+/**
+ * The save in parts writes one PDF for each output and one `job-item` for
+ * each, numbered from 1. A cancelled one keeps the PDFs it wrote, so it counts
+ * them as the other conversions do; and the first output that failed is told,
+ * as the rows of a list would.
+ */
+function organizeSplitSummaryShape(
+  job: JobState,
+  pdfs: AppState["organize"]["pdfs"],
+  language: Language,
+): JobSummaryShape {
+  const { finished } = job;
+  if (
+    finished !== null &&
+    !finished.cancelled &&
+    finished.failed === 0 &&
+    finished.unprocessed === 0 &&
+    finished.succeeded > 0
+  ) {
+    return { kind: "organizedParts", saved: finished.succeeded };
+  }
+  const failed = Object.values(job.results)
+    .filter((item) => item.status === "failed")
+    .sort((a, b) => a.id - b.id)[0];
+  if (failed === undefined) {
+    return ITEMS_SHAPE;
+  }
+  return {
+    kind: "items",
+    partial: 0,
+    firstFailure: {
+      part: failed.id,
+      name: sourceName(failed, pdfs),
+      message:
+        failed.error === undefined
+          ? ""
+          : formatErrorMessage(
+              failed.error.code,
+              failed.error.detail,
+              language,
+            ),
+    },
   };
 }

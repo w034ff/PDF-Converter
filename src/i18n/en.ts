@@ -42,6 +42,7 @@ export const en: Translations = {
     noReadablePdfs:
       "No PDFs can be converted. Remove the ones that couldn't be loaded.",
     savePdf: "Save PDF",
+    startSaving: "Start saving",
     startConversion: "Start conversion",
     cancel: "Cancel",
     cancelling: "Cancelling…",
@@ -465,11 +466,24 @@ export const en: Translations = {
       pageLabel: "p.{page}",
       cellAria: "{name} page {page}",
       cellAriaRotated: "{name} page {page}, {degrees}°",
+      cellAriaPart: "{label}, first page of PDF {number}",
+      cellAriaPartFailed: "{label}, first page of PDF {number} (not saved)",
+      breakAria: "Break between p.{before} and p.{after}",
       rotation: "{degrees}°",
       empty: "No pages",
       emptyHint: "Press Ctrl+Z to bring them back",
     },
     settings: {
+      outputTitle: "How to save",
+      outputSingle: "One PDF",
+      outputSplit: "Save in parts",
+      outputSingleHint: "Combines the pages into one PDF, in the order shown.",
+      outputSplitHint: "Saves each part between breaks as a separate PDF.",
+      breaksTitle: "Breaks",
+      breaksHint: "Press between pages to add or remove a break.",
+      breaksEachPage: "One page each",
+      breaksEachPdf: "By source PDF",
+      breaksClear: "Remove all",
       password: "Add a password",
       encryptedNotice:
         "Some PDFs are password-protected. The passwords of the original PDFs are not carried over.",
@@ -480,7 +494,16 @@ export const en: Translations = {
     footer: {
       noPdfs: "Add PDFs",
       noPages: "No pages to save",
-      tooManyPages: "One PDF has at most {max} pages (now {count})",
+      tooManyPages:
+        "One PDF has at most {max} pages (now {count}). Add breaks and save in parts",
+      willSplitSingle:
+        "Save {pages} page as {parts} PDF (about {size} MB in total)",
+      willSplitOnePart:
+        "Save {pages} pages as {parts} PDF (about {size} MB in total)",
+      willSplitMultiple:
+        "Save {pages} pages as {parts} PDFs (about {size} MB in total)",
+      splitTooManyPages:
+        "PDF {part} has {count} pages. One PDF has at most {max} pages",
       willSaveSingle: "Save {count} page as one PDF (about {size} MB)",
       willSaveMultiple: "Save {count} pages as one PDF (about {size} MB)",
       leftOutSingle: " ({count} PDF is not included)",
@@ -492,6 +515,10 @@ export const en: Translations = {
       replaced: "Removed the replaced {name} from the list",
       failed: "The PDF was not saved ({name}: {message})",
       failedWithoutName: "The PDF was not saved ({message})",
+      savedPartsSingle: "Saved {count} PDF",
+      savedPartsMultiple: "Saved {count} PDFs",
+      failedPart: " (PDF {part}: {name}: {message})",
+      failedPartWithoutName: " (PDF {part}: {message})",
     },
     keyHints: {
       title: "Keyboard shortcuts",
@@ -526,6 +553,11 @@ export const en: Translations = {
             { keys: [["R"]], action: "Rotate right" },
             { keys: [["L"]], action: "Rotate left" },
             { keys: [["Delete"], ["Backspace"]], action: "Delete" },
+            {
+              keys: [["B"]],
+              action:
+                "Add or remove the break before the focused page (when saving in parts)",
+            },
             { keys: [["Ctrl", "Z"]], action: "Undo" },
             {
               keys: [
