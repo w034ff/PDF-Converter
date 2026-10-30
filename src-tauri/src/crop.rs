@@ -309,15 +309,6 @@ impl CropState {
         drop(discarded);
     }
 
-    fn close(&self) {
-        let (open, pending) = {
-            let mut slots = self.lock();
-            (slots.open.take(), slots.pending.take())
-        };
-        drop(open);
-        drop(pending);
-    }
-
     /// Reads the open PDF `id` under the lock, if it can be asked about.
     ///
     /// # Errors
@@ -651,17 +642,6 @@ pub fn activate_crop_pdf(state: &AppState, id: u64) -> Result<(), IpcError> {
 /// Drops the pending PDF if it is `id`; any other `id` is ignored.
 pub fn discard_crop_pdf(state: &AppState, id: u64) {
     state.crop.discard(id);
-}
-
-/// Drops the open PDF, with its analysis worker, and the pending PDF.
-///
-/// # Errors
-///
-/// `ConversionRunning` during a conversion.
-pub fn close_crop_pdf(state: &AppState) -> Result<(), IpcError> {
-    refuse_while_running(state)?;
-    state.crop.close();
-    Ok(())
 }
 
 /// Opens the open PDF `id` again with `password` (design §6.8, §6.10). No other

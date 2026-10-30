@@ -245,7 +245,6 @@ export interface CropState {
 export type CropAction =
   | { type: "CROP_PDF_ACTIVATED"; pdf: CropPdf }
   | { type: "CROP_PDF_UNLOCKED"; pdf: CropPdf }
-  | { type: "CROP_PDF_CLOSED" }
   | { type: "CROP_PASSWORD_DIALOG"; open: boolean }
   | { type: "CROP_OPEN_NOTICE"; notice: CropOpenNotice | null }
   | { type: "CROP_PAGE_SELECTED"; page: number }

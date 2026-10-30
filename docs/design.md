@@ -336,7 +336,7 @@
 - 応答の待ちには時間の上限を設ける（要求の種類ごとに決め、新しい要求を足したときに既定の値に落ちないようにする）: `Open` は `OPEN_TIMEOUT`、`Render`・`Thumbnail`・`PageImages`・`ImageOnTop`・`RenderRegion` は `RENDER_TIMEOUT`、`Detect` は `DETECT_TIMEOUT`（最初のモデルの読み込みを含む）。超えたらワーカーを強制終了し、その要求を `WorkerTimeout` で失敗させる。
 - ワーカーが応答の途中で終了した、または読めない応答を返した場合は、その要求を `WorkerCrashed` で失敗させ、ワーカーを捨てる。次の要求では新しいワーカーを起動する。
 - 1 つの PDF でワーカーが続けて落ちるのを避けるため、`WorkerCrashed` / `WorkerTimeout` になった PDF は、その一括変換の中で再試行しない。
-- 切り出しのレイアウトの解析（`Detect`）は、プールとは別の 1 つのワーカー（解析のワーカー）だけで行う。モデルを読み込んだワーカーが増えると、そのぶんメモリが増えるため（1 つで 0.5 GB 前後）。解析のワーカーは、切り出しの PDF を開いている間だけ持ち、PDF を閉じるか入れ替えたら終わらせる。最初の `detect_layout` で起動して、その PDF を（パスワードがあれば付けて）`Open` し、以後の解析の要求は 1 つずつ順に送る。`WorkerCrashed`・`WorkerTimeout` になったらそのワーカーを捨て、次の要求で起動し直す。`LayoutUnavailable` を一度受けたら、その PDF を開いている間は覚えておき、以後の解析の要求にはワーカーを起動し直さずに同じエラーを返す（ワーカーの中の読み込みの失敗と推論の失敗を区別しない。推論の失敗はまれで、PDF を開き直せば試し直せる）。閉じる・入れ替えるときに解析の要求が実行中なら、それを待たない（その要求が終わってからワーカーを捨てる。古い PDF の結果は、画面が `id` で見分けて捨てる）。ページの表示、写真の一覧、重なりの判定、書き出しは、ほかの機能と同じくプールのワーカーで行う。
+- 切り出しのレイアウトの解析（`Detect`）は、プールとは別の 1 つのワーカー（解析のワーカー）だけで行う。モデルを読み込んだワーカーが増えると、そのぶんメモリが増えるため（1 つで 0.5 GB 前後）。解析のワーカーは、切り出しの PDF を開いている間だけ持ち、PDF を入れ替えたら終わらせる。最初の `detect_layout` で起動して、その PDF を（パスワードがあれば付けて）`Open` し、以後の解析の要求は 1 つずつ順に送る。`WorkerCrashed`・`WorkerTimeout` になったらそのワーカーを捨て、次の要求で起動し直す。`LayoutUnavailable` を一度受けたら、その PDF を開いている間は覚えておき、以後の解析の要求にはワーカーを起動し直さずに同じエラーを返す（ワーカーの中の読み込みの失敗と推論の失敗を区別しない。推論の失敗はまれで、PDF を開き直せば試し直せる）。入れ替えるときに解析の要求が実行中なら、それを待たない（その要求が終わってからワーカーを捨てる。古い PDF の結果は、画面が `id` で見分けて捨てる）。ページの表示、写真の一覧、重なりの判定、書き出しは、ほかの機能と同じくプールのワーカーで行う。
 - アプリの終了時には、すべてのワーカーを終了させる。
 
 ### 5.3 メモリの上限
@@ -508,7 +508,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - **入れ替え**: PDF を開いているときに別の PDF を開くと、まだ書き出していない範囲（この PDF で一度も書き出していない範囲）があれば、「書き出していない範囲を破棄して開きますか？」の確認のダイアログを、開くファイルの名前を添えて出す（ファイルを選んだあと、`activate_crop_pdf` の前）。チェックを外した範囲も数える。「破棄して開く」で `activate_crop_pdf`、「キャンセル」（Esc を含む）で `discard_crop_pdf` を呼ぶ。開いたときのフォーカスは「キャンセル」に置く（Enter を押し続けて範囲を失わないため）。確認を出している間に次の保留が届いたら（D&D）、Rust はもう前の保留を捨てているので、ダイアログの名前と対象を新しい保留に替える。確認は、エラーのない保留と `PasswordProtected` の保留に出す（ほかのエラーの保留は、確認なしに捨てる。§10.1）。
 - **切り出しの項目は一覧と分ける**: 切り出しの PDF（保留と開いているもの）は、一覧の表（`items.rs`）とは別に持つ。ID は一覧と同じ数え方で振る（ID が重ならないように）。同じファイルが一覧にあっても開ける（一覧の重複の判定に入れない）。一覧のコマンドは切り出しの ID を知らない ID として扱う（`start_pdfs_to_images`・`save_merged_pdf`・`start_images_to_pdfs`・`unlock_pdf` は `UnknownHandle`、知らない ID を飛ばす `remove_items`・`check_page_range` は何もせず数えない）。切り出しのコマンドに一覧の ID を渡すと `UnknownHandle`。`get_thumbnail` だけはどちらの ID も受ける。
 - **パスワード**: パスワード付きの PDF は、`activate_crop_pdf` のあと、§6.8 と同じダイアログで `unlock_crop_pdf` を呼んで開く（戻り値が `CropPdf` で、一覧の `PdfItem` と形が違うため、`unlock_pdf` とは分ける）。受け入れの規則は §6.8 と同じ。一覧の PDF とパスワードを使い回さない（一覧の `unlock_pdf` は切り出しの PDF を試さず、`unlock_crop_pdf` は一覧の PDF を試さない）。開けない（エラーを持つ）切り出しの PDF には、`get_thumbnail`・`list_page_images`・`check_on_top`・`detect_layout`・`start_*` がそのエラーを返す。
-- **ページの表示**: 左のサムネイル（`THUMBNAIL_SIDE`）でページを選び、中央にそのページを大きく出す（`get_thumbnail` の `maxSide` を表示の大きさと画面の倍率から決め、`PAGE_VIEW_MAX_SIDE` まで）。ページを表示したら、そのページの埋め込み画像の一覧（`list_page_images`）とレイアウトの解析（`detect_layout`）を要求する。どちらもページごとに 1 回だけ要求し、結果は PDF を閉じるまで画面が持つ。解析の結果を待つ間もページは操作できる。解析の要求は画面から同時に 1 つだけ送り、待っている間にページが変わったら、答えが来たあとに、最後に表示したページだけを次に要求する（間に表示したページは、表示し直したときに要求する。ページを次々にめくると解析のワーカーに要求が溜まり、今のページの結果が遅れるため）。
+- **ページの表示**: 左のサムネイル（`THUMBNAIL_SIDE`）でページを選び、中央にそのページを大きく出す（`get_thumbnail` の `maxSide` を表示の大きさと画面の倍率から決め、`PAGE_VIEW_MAX_SIDE` まで）。ページを表示したら、そのページの埋め込み画像の一覧（`list_page_images`）とレイアウトの解析（`detect_layout`）を要求する。どちらもページごとに 1 回だけ要求し、結果は PDF を入れ替えるまで画面が持つ。解析の結果を待つ間もページは操作できる。解析の要求は画面から同時に 1 つだけ送り、待っている間にページが変わったら、答えが来たあとに、最後に表示したページだけを次に要求する（間に表示したページは、表示し直したときに要求する。ページを次々にめくると解析のワーカーに要求が溜まり、今のページの結果が遅れるため）。
 - **範囲**: 画面の状態で持ち、Rust は書き出すときにだけ受け取る。範囲は `{ key, page, kind, rectPt, imageIndex }`。`key` は画面が 1 から順に振る整数（`job-item` の `id` が数のため）。`kind` は `photo`（写真の範囲）・`figure`・`chart`・`table`（候補から）・`manual`（手で選んだもの）。写真の枠のクリックと、`photo` の候補は `photo` になる（`rectPt` は画像の枠。写真の候補の `rectPt` も画像の枠なので同じ）。`photo` の範囲を手で動かしたり大きさを変えたりしたら `manual` になる（元の画素の格子から外れるため。`imageIndex` と重なりの印を捨てる）。ほかの種類は、動かしても種類を変えない。動かす・大きさを変えた範囲は、書き出し済みでなくなる（書き出し済みの `key` から外し、入れ替えの確認で数える。書き出したものと範囲が食い違うため）。手で描いた範囲と、動かす・大きさを変えることには、下の重なりの判定を当てない（利用者が置いた位置のため）。範囲を追加したときに、`photo` なら `check_on_top` で重なりの印を求める。
   - **重なった範囲を 2 度加えない**: 範囲を加えるとき（枠・候補のクリック、「範囲を追加」の 3 つ、全ページの候補）、同じページに、加える範囲との IoU が `CROP_DUPLICATE_IOU` 以上の範囲がすでにあれば加えない。クリックのときは、加えずにその範囲を選ぶ。同じ画像の写真の枠と写真の候補は同じ枠なので、IoU は 1 になる。
   - **選ぶ**: 範囲は 1 つだけ選べる。ページの上の範囲か一覧の行を押すと選ぶ。クリックで加えた範囲と、手で描いた範囲（Enter でページ全体に描いたものを含む）は選ばれる（「このページの候補をすべて追加」と全ページの候補で加えた範囲は選ばない）。ページの空いた所を押すと選ぶのをやめる。選んでいる範囲を消すと、どれも選ばれていない状態になる。
@@ -541,7 +541,6 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 | `open_crop_pdf` | – | `CropPdf \| null`（ファイルダイアログ。取り消したら `null`）。返すのは保留の PDF（§6.10）。D&D で開くときは `crop-dropped` の `cropPdf` で返す |
 | `activate_crop_pdf` | `id` | –（保留の PDF を開いている PDF にし、前の PDF と解析のワーカーを捨てる。`id` が今の保留でなければ `UnknownHandle`） |
 | `discard_crop_pdf` | `id` | –（保留の PDF を捨てる。`id` が今の保留でなければ何もしない） |
-| `close_crop_pdf` | – | –（開いている切り出しの PDF と保留の PDF、解析のワーカーを捨てる。開いていなければ何もしない） |
 | `unlock_crop_pdf` | `id, password` | `CropPdf`（§6.10。規則とエラーは `unlock_pdf` と同じで、ほかの PDF は試さない） |
 | `set_drop_target` | `target: "lists" \| "crop"` | –（D&D の扱い。§6.10。起動時とページの読み込みの開始（`on_page_load` の `Started`）で `lists` に戻す） |
 | `list_page_images` | `id, page` | `PageImage[]`（§5.1 の `PageImages`。ページが範囲の外なら `InvalidParams`） |
@@ -555,7 +554,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - `CropPdf`: `{ id, name, pageCount, pages: [{ widthPt, heightPt }], error }`（`widthPt`・`heightPt` は表示する向きの大きさ。開けない PDF は `pageCount` が 0、`pages` が空で、`error` を持つ）。切り出しのコマンド（`activate_crop_pdf`・`discard_crop_pdf` 以外）の `id` は、開いている切り出しの PDF のものだけを受け、ほかは `UnknownHandle`（§6.10）。`PageImage`: `{ imageIndex, rectPt, pxWidth, pxHeight, native }`。`Candidate`: `{ kind, score, rectPt, imageIndex }`。`rectPt` は `[x0, y0, x1, y1]`（§4.6 の座標）。
 - `ImageItem`: `{ id, name, width, height, format, pageCount, bytes, error }`。`width` と `height` は EXIF（TIFF）の向きを反映した表示上の画素の数（サムネイルと同じ向き）で、TIFF では最初のページのもの。`format` は `png`・`jpeg`・`webp`・`bmp`・`tiff`。`pageCount` は TIFF のページ数で、ほかの形式は 1。`PdfItem`: `{ id, name, pageCount, firstPageSizePt, bytes, error }`。`error` は失敗した項目だけに入る `{ code, detail }`。失敗した項目では、`width`・`height`・`pageCount`（`ImageItem` と `PdfItem` の両方）は 0、`format`・`firstPageSizePt` は `null`。
 - どのコマンドもパスを引数に取らない。`dirLabel` は表示用で、送り返されない。
-- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items`、`unlock_pdf`、`open_crop_pdf`、`activate_crop_pdf`、`close_crop_pdf`、`unlock_crop_pdf` は `ConversionRunning` で拒む（`start_detect_all` と `start_crop_export` も変換に数える）。
+- 変換は同時に 1 つだけ。実行中の `save_merged_pdf`、`start_*`、`add_*`、`remove_items`、`unlock_pdf`、`open_crop_pdf`、`activate_crop_pdf`、`unlock_crop_pdf` は `ConversionRunning` で拒む（`start_detect_all` と `start_crop_export` も変換に数える）。
 
 ### 7.2 イベント（Rust → フロントエンド）
 

@@ -229,10 +229,7 @@ describe("replacing the PDF", () => {
     return state;
   }
 
-  for (const action of [
-    { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) },
-    { type: "CROP_PDF_CLOSED" },
-  ] as const) {
+  for (const action of [{ type: "CROP_PDF_ACTIVATED", pdf: pdf(2) }] as const) {
     it(`drops the areas on ${action.type}`, () => {
       const state = reduce(withEverything(), action);
       expect(state.areas).toEqual([]);
@@ -861,7 +858,6 @@ describe("dropping the last crop result", () => {
     { type: "SET_CROP_PHOTO_ONLY", photoOnly: true },
     { type: "SET_CROP_OUTPUT_DIR", outputDir: { dirLabel: "x" } },
     { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) },
-    { type: "CROP_PDF_CLOSED" },
   ];
 
   for (const action of dropping) {

@@ -138,7 +138,6 @@ describe("createInitialCropState", () => {
     for (const action of [
       { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) },
       { type: "CROP_PDF_UNLOCKED", pdf: pdf(2) },
-      { type: "CROP_PDF_CLOSED" },
     ] satisfies CropAction[]) {
       expect(reduce(opened, action).settingsOpen).toBe(true);
     }
@@ -223,18 +222,6 @@ describe("opening and replacing a PDF", () => {
     expect(state.pageImages).toEqual({});
     expect(state.layouts).toEqual({});
     expect(state.layoutUnavailable).toBe(false);
-  });
-
-  it("drops the results and the page when the PDF is closed", () => {
-    const state = reduce(
-      open(1),
-      { type: "CROP_PAGE_SELECTED", page: 2 },
-      { type: "CROP_PAGE_IMAGES_DONE", id: 1, page: 2, images: [] },
-      { type: "CROP_PDF_CLOSED" },
-    );
-    expect(state.pdf).toBeNull();
-    expect(state.page).toBe(1);
-    expect(state.pageImages).toEqual({});
   });
 
   it("clears the notice about a file that did not open once a PDF opens", () => {

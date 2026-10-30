@@ -106,7 +106,7 @@ export function createInitialCropState(
 }
 
 /** What a PDF's results, areas, page and tool are reset to when another PDF is open. */
-function withPdf(state: CropState, pdf: CropPdf | null): CropState {
+function withPdf(state: CropState, pdf: CropPdf): CropState {
   return {
     ...state,
     pdf,
@@ -333,8 +333,6 @@ function reduceCropState(state: CropState, action: CropAction): CropState {
         return state;
       }
       return { ...withPdf(state, action.pdf), passwordDialogOpen: false };
-    case "CROP_PDF_CLOSED":
-      return { ...withPdf(state, null), passwordDialogOpen: false };
     case "CROP_PASSWORD_DIALOG":
       return state.passwordDialogOpen === action.open
         ? state
