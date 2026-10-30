@@ -6,7 +6,6 @@ import {
   createInitialOrganizeState,
   keyOfPage,
   moveSelected,
-  organizeReducer,
   pageKey,
   turnRotation,
   type OrganizeAction,
@@ -14,6 +13,7 @@ import {
   type OrganizeState,
   type PageKey,
 } from "./organize";
+import { reduceChecked } from "./organizeTestSupport";
 
 const A4 = { widthPt: 595, heightPt: 842 };
 const PASSWORD: IpcError = { code: "PasswordProtected", detail: null };
@@ -44,7 +44,7 @@ function reduce(
   state: OrganizeState,
   ...actions: OrganizeAction[]
 ): OrganizeState {
-  return actions.reduce(organizeReducer, state);
+  return reduceChecked(state, ...actions);
 }
 
 /** A state with the PDFs added in order. */
@@ -229,7 +229,11 @@ describe("removing a PDF", () => {
     expect(grid(state)).toEqual(["2:1", "2:2"]);
     state = reduce(state, UNDO);
     expect(grid(state)).toEqual(["2:1", "2:2"]);
-    expect(state.history.past.flat().some((page) => page.id === 1)).toBe(false);
+    expect(
+      state.history.past
+        .flatMap((step) => step.pages)
+        .some((page) => page.id === 1),
+    ).toBe(false);
   });
 
   it("leaves no step that changes nothing to undo or redo", () => {

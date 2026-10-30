@@ -3,6 +3,7 @@ import type {
   OrganizeOutput,
   OrganizePdf,
   OrganizeSettings,
+  OutputDirLabel,
   Skipped,
 } from "../ipc";
 
@@ -55,12 +56,18 @@ export interface OrganizeNotice {
   error: IpcError | null;
 }
 
+/** The pages and the breaks between them, which undo and redo put back together (organize §4). */
+export interface OrganizeStep {
+  pages: OrganizePage[];
+  breaks: ReadonlySet<PageKey>;
+}
+
 /** What undo and redo go back to: the grids before and after the page operations. */
 export interface OrganizeHistory {
   /** The grid before each operation, the latest last. */
-  past: OrganizePage[][];
+  past: OrganizeStep[];
   /** The grid before each undo, the latest undone last. */
-  future: OrganizePage[][];
+  future: OrganizeStep[];
   /** Whether the oldest operations were dropped for `ORGANIZE_HISTORY_LIMIT`. */
   trimmed: boolean;
 }
@@ -72,6 +79,12 @@ export interface OrganizeState {
   addedCount: number;
   /** The grid, in order. */
   pages: OrganizePage[];
+  /**
+   * The pages that start a new output when the pages are saved in parts: a
+   * break belongs to the page after it (organize §4). Every key is a page of
+   * `pages` but not the first.
+   */
+  breaks: ReadonlySet<PageKey>;
   /** None of the next four is in the history. */
   selected: ReadonlySet<PageKey>;
   /** Where Shift extends the selection from. */
@@ -84,8 +97,9 @@ export interface OrganizeState {
   /** What the last addition left out or failed on. */
   notice: OrganizeNotice | null;
   encrypt: boolean;
-  /** Kept as `get_settings` gave it and sent back as it is: U31 changes it. */
   output: OrganizeOutput;
+  /** The folder the save in parts writes to; `null` until one is chosen. */
+  outputDir: OutputDirLabel | null;
 }
 
 export type OrganizeAction =
@@ -124,9 +138,18 @@ export type OrganizeAction =
       direction: "left" | "right";
     }
   | { type: "ORGANIZE_PAGES_DELETED"; keys: readonly PageKey[] }
+  /** Puts the break before the page in or out; the first page has none. */
+  | { type: "ORGANIZE_BREAK_TOGGLED"; key: PageKey }
+  /** Replaces the breaks by one before every page but the first. */
+  | { type: "ORGANIZE_BREAKS_EACH_PAGE" }
+  /** Replaces the breaks by one where a page comes from another PDF than the one before it. */
+  | { type: "ORGANIZE_BREAKS_EACH_PDF" }
+  | { type: "ORGANIZE_BREAKS_CLEARED" }
   | { type: "ORGANIZE_UNDO" }
   | { type: "ORGANIZE_REDO" }
-  | { type: "SET_ORGANIZE_ENCRYPT"; encrypt: boolean };
+  | { type: "SET_ORGANIZE_ENCRYPT"; encrypt: boolean }
+  | { type: "SET_ORGANIZE_OUTPUT"; output: OrganizeOutput }
+  | { type: "SET_ORGANIZE_OUTPUT_DIR"; outputDir: OutputDirLabel | null };
 
 const EMPTY_HISTORY: OrganizeHistory = {
   past: [],
@@ -144,6 +167,7 @@ export function createInitialOrganizeState(
     pdfs: [],
     addedCount: 0,
     pages: [],
+    breaks: NO_KEYS,
     selected: NO_KEYS,
     anchor: null,
     focused: null,
@@ -152,6 +176,7 @@ export function createInitialOrganizeState(
     notice: null,
     encrypt: settings?.encrypt ?? false,
     output: settings?.output ?? "single",
+    outputDir: settings?.outputDir ?? null,
   };
 }
 
@@ -174,6 +199,108 @@ export function turnRotation(rotation: number, degrees: number): number {
 
 function samePages(a: readonly OrganizePage[], b: readonly OrganizePage[]) {
   return a.length === b.length && a.every((page, index) => page === b[index]);
+}
+
+function sameBreaks(a: ReadonlySet<PageKey>, b: ReadonlySet<PageKey>) {
+  return a.size === b.size && [...a].every((key) => b.has(key));
+}
+
+function sameStep(a: OrganizeStep, b: OrganizeStep) {
+  return samePages(a.pages, b.pages) && sameBreaks(a.breaks, b.breaks);
+}
+
+function stepOf(state: OrganizeState): OrganizeStep {
+  return { pages: state.pages, breaks: state.breaks };
+}
+
+/**
+ * Whether the page at `index` of `pages` starts an output when they are saved
+ * in parts: the first page does, and so does a page that holds a break.
+ */
+function startsPart(
+  index: number,
+  page: OrganizePage,
+  breaks: ReadonlySet<PageKey>,
+): boolean {
+  return index === 0 || breaks.has(keyOfPage(page));
+}
+
+/**
+ * The outputs the pages make when they are saved in parts: each begins at the
+ * first page and at each page that holds a break, and goes on to the page
+ * before the next. No pages make no output.
+ */
+export function splitIntoParts(
+  pages: readonly OrganizePage[],
+  breaks: ReadonlySet<PageKey>,
+): OrganizePage[][] {
+  const parts: OrganizePage[][] = [];
+  pages.forEach((page, index) => {
+    if (startsPart(index, page, breaks)) {
+      parts.push([page]);
+    } else {
+      parts[parts.length - 1].push(page);
+    }
+  });
+  return parts;
+}
+
+/**
+ * The number of the output (from 1, as in `splitIntoParts`) each page that
+ * starts one begins; the other pages are not in it.
+ */
+export function partNumbers(
+  pages: readonly OrganizePage[],
+  breaks: ReadonlySet<PageKey>,
+): ReadonlyMap<PageKey, number> {
+  const numbers = new Map<PageKey, number>();
+  pages.forEach((page, index) => {
+    if (startsPart(index, page, breaks)) {
+      numbers.set(keyOfPage(page), numbers.size + 1);
+    }
+  });
+  return numbers;
+}
+
+/**
+ * The breaks that are left once the pages of `leaving` are gone from `pages`,
+ * or are put somewhere else: the break of a leaving page goes to the first
+ * page after it that stays, and is dropped when none does, so that taking a
+ * page out never puts a boundary between two pages that were not touched
+ * (organize §4). A leaving page holds no break afterwards.
+ */
+function breaksHandedOver(
+  pages: readonly OrganizePage[],
+  breaks: ReadonlySet<PageKey>,
+  leaving: ReadonlySet<PageKey>,
+): Set<PageKey> {
+  const handed = new Set<PageKey>();
+  let pending = false;
+  for (const page of pages) {
+    const key = keyOfPage(page);
+    if (leaving.has(key)) {
+      pending = pending || breaks.has(key);
+    } else {
+      if (pending || breaks.has(key)) {
+        handed.add(key);
+      }
+      pending = false;
+    }
+  }
+  return handed;
+}
+
+/** `breaks` without the first of `pages`, which starts an output with or without one. */
+function breaksBelowFirst(
+  pages: readonly OrganizePage[],
+  breaks: ReadonlySet<PageKey>,
+): ReadonlySet<PageKey> {
+  if (pages.length === 0 || !breaks.has(keyOfPage(pages[0]))) {
+    return breaks;
+  }
+  const rest = new Set(breaks);
+  rest.delete(keyOfPage(pages[0]));
+  return rest;
 }
 
 function indexOfKeys(pages: readonly OrganizePage[]): Map<PageKey, number> {
@@ -226,14 +353,15 @@ function keysInGrid(
 /** Pushes the grid `before` an operation onto the history; the future is gone. */
 function withStep(
   state: OrganizeState,
-  before: OrganizePage[],
-  pages: OrganizePage[],
+  before: OrganizeStep,
+  next: OrganizeStep,
 ): OrganizeState {
   const past = [...state.history.past, before];
   const overflow = past.length - ORGANIZE_HISTORY_LIMIT;
   return {
     ...state,
-    pages,
+    pages: next.pages,
+    breaks: next.breaks,
     edited: true,
     history: {
       past: overflow > 0 ? past.slice(overflow) : past,
@@ -268,11 +396,22 @@ function tidied(state: OrganizeState): OrganizeState {
   };
 }
 
-function withPdfPagesRemoved(
-  pages: OrganizePage[],
-  id: number,
-): OrganizePage[] {
-  return pages.filter((page) => page.id !== id);
+/** The step without the pages of the PDF `id`, whose breaks go to the pages that follow them. */
+function withPdfPagesRemoved(step: OrganizeStep, id: number): OrganizeStep {
+  const leaving = new Set(
+    step.pages.filter((page) => page.id === id).map(keyOfPage),
+  );
+  if (leaving.size === 0) {
+    return step;
+  }
+  const pages = step.pages.filter((page) => page.id !== id);
+  return {
+    pages,
+    breaks: breaksBelowFirst(
+      pages,
+      breaksHandedOver(step.pages, step.breaks, leaving),
+    ),
+  };
 }
 
 function removePdf(state: OrganizeState, id: number): OrganizeState {
@@ -288,13 +427,16 @@ function removePdf(state: OrganizeState, id: number): OrganizeState {
       notice: state.notice,
       encrypt: state.encrypt,
       output: state.output,
+      outputDir: state.outputDir,
     };
   }
   const selected = [...state.selected].filter((key) => !keyIsOfPdf(key));
+  const rest = withPdfPagesRemoved(stepOf(state), id);
   return {
     ...state,
     pdfs,
-    pages: withPdfPagesRemoved(state.pages, id),
+    pages: rest.pages,
+    breaks: rest.breaks,
     selected:
       selected.length === state.selected.size
         ? state.selected
@@ -307,15 +449,20 @@ function removePdf(state: OrganizeState, id: number): OrganizeState {
         : state.focused,
     history: {
       ...state.history,
-      past: state.history.past.map((pages) => withPdfPagesRemoved(pages, id)),
-      future: state.history.future.map((pages) =>
-        withPdfPagesRemoved(pages, id),
-      ),
+      past: state.history.past.map((step) => withPdfPagesRemoved(step, id)),
+      future: state.history.future.map((step) => withPdfPagesRemoved(step, id)),
     },
   };
 }
 
-/** Adds the pages to the grid and to every step of the history, at their end (organize §4). */
+function withPagesAdded(
+  step: OrganizeStep,
+  added: OrganizePage[],
+): OrganizeStep {
+  return { pages: [...step.pages, ...added], breaks: step.breaks };
+}
+
+/** Adds the pages to the grid and to every step of the history, at their end (organize §4); they hold no break. */
 function withPagesAppended(
   state: OrganizeState,
   added: OrganizePage[],
@@ -328,8 +475,8 @@ function withPagesAppended(
     pages: [...state.pages, ...added],
     history: {
       ...state.history,
-      past: state.history.past.map((pages) => [...pages, ...added]),
-      future: state.history.future.map((pages) => [...pages, ...added]),
+      past: state.history.past.map((step) => withPagesAdded(step, added)),
+      future: state.history.future.map((step) => withPagesAdded(step, added)),
     },
   };
 }
@@ -453,14 +600,18 @@ function movePages(
   keys: readonly PageKey[],
   insertIndex: number,
 ): OrganizeState {
-  const moved = moveSelected(
-    state.pages,
-    keysInGrid(state.pages, keys),
-    insertIndex,
-  );
-  return moveChanges(state.pages, moved)
-    ? withStep(state, state.pages, moved)
-    : state;
+  const moving = keysInGrid(state.pages, keys);
+  const moved = moveSelected(state.pages, moving, insertIndex);
+  if (!moveChanges(state.pages, moved)) {
+    return state;
+  }
+  return withStep(state, stepOf(state), {
+    pages: moved,
+    breaks: breaksBelowFirst(
+      moved,
+      breaksHandedOver(state.pages, state.breaks, moving),
+    ),
+  });
 }
 
 function rotatePages(
@@ -479,7 +630,7 @@ function rotatePages(
       ? { ...page, rotation: turnRotation(page.rotation, degrees) }
       : page,
   );
-  return withStep(state, state.pages, pages);
+  return withStep(state, stepOf(state), { pages, breaks: state.breaks });
 }
 
 function deletePages(
@@ -506,7 +657,13 @@ function deletePages(
     .find((page) => !doomed.has(keyOfPage(page)));
   const landing = next ?? previous;
   return {
-    ...withStep(state, state.pages, pages),
+    ...withStep(state, stepOf(state), {
+      pages,
+      breaks: breaksBelowFirst(
+        pages,
+        breaksHandedOver(state.pages, state.breaks, doomed),
+      ),
+    }),
     selected: NO_KEYS,
     anchor: null,
     focused: landing === undefined ? null : keyOfPage(landing),
@@ -514,49 +671,90 @@ function deletePages(
 }
 
 /**
- * The place of the latest step that differs from `pages`, or -1. Removing a
- * PDF can leave steps the same as their neighbours, and a key press that shows
- * no change would read as a key that does not work.
+ * The place of the latest step that differs from `step` in its pages or its
+ * breaks, or -1. Removing a PDF can leave steps the same as their neighbours,
+ * and a key press that shows no change would read as a key that does not work.
  */
 function latestDifferent(
-  steps: readonly OrganizePage[][],
-  pages: readonly OrganizePage[],
+  steps: readonly OrganizeStep[],
+  step: OrganizeStep,
 ): number {
   for (let index = steps.length - 1; index >= 0; index -= 1) {
-    if (!samePages(steps[index], pages)) {
+    if (!sameStep(steps[index], step)) {
       return index;
     }
   }
   return -1;
 }
 
+/**
+ * Makes `breaks` the breaks of the grid as one step of the history, or
+ * changes nothing when they are the ones there are already.
+ */
+function withBreaks(
+  state: OrganizeState,
+  breaks: ReadonlySet<PageKey>,
+): OrganizeState {
+  return sameBreaks(breaks, state.breaks)
+    ? state
+    : withStep(state, stepOf(state), { pages: state.pages, breaks });
+}
+
+function toggleBreak(state: OrganizeState, key: PageKey): OrganizeState {
+  const index = state.pages.findIndex((page) => keyOfPage(page) === key);
+  if (index <= 0) {
+    return state;
+  }
+  const breaks = new Set(state.breaks);
+  if (!breaks.delete(key)) {
+    breaks.add(key);
+  }
+  return withBreaks(state, breaks);
+}
+
+/** A break before each page that `startsNew` says begins an output, the first page aside. */
+function breaksWhere(
+  state: OrganizeState,
+  startsNew: (page: OrganizePage, previous: OrganizePage) => boolean,
+): OrganizeState {
+  const breaks = new Set<PageKey>();
+  state.pages.forEach((page, index) => {
+    if (index > 0 && startsNew(page, state.pages[index - 1])) {
+      breaks.add(keyOfPage(page));
+    }
+  });
+  return withBreaks(state, breaks);
+}
+
 function undo(state: OrganizeState): OrganizeState {
   const { past, future, trimmed } = state.history;
-  const at = latestDifferent(past, state.pages);
+  const at = latestDifferent(past, stepOf(state));
   if (at < 0) {
     return state;
   }
   const rest = past.slice(0, at);
   return tidied({
     ...state,
-    pages: past[at],
+    pages: past[at].pages,
+    breaks: past[at].breaks,
     edited: rest.length > 0 || trimmed,
-    history: { past: rest, future: [...future, state.pages], trimmed },
+    history: { past: rest, future: [...future, stepOf(state)], trimmed },
   });
 }
 
 function redo(state: OrganizeState): OrganizeState {
   const { past, future, trimmed } = state.history;
-  const at = latestDifferent(future, state.pages);
+  const at = latestDifferent(future, stepOf(state));
   if (at < 0) {
     return state;
   }
   return tidied({
     ...state,
-    pages: future[at],
+    pages: future[at].pages,
+    breaks: future[at].breaks,
     edited: true,
     history: {
-      past: [...past, state.pages],
+      past: [...past, stepOf(state)],
       future: future.slice(0, at),
       trimmed,
     },
@@ -583,6 +781,7 @@ export function organizeReducer(
         ...createInitialOrganizeState(),
         encrypt: state.encrypt,
         output: state.output,
+        outputDir: state.outputDir,
       };
     case "ORGANIZE_NOTICE":
       return { ...state, notice: action.notice };
@@ -613,6 +812,14 @@ export function organizeReducer(
       return rotatePages(state, action.keys, action.direction);
     case "ORGANIZE_PAGES_DELETED":
       return deletePages(state, action.keys);
+    case "ORGANIZE_BREAK_TOGGLED":
+      return toggleBreak(state, action.key);
+    case "ORGANIZE_BREAKS_EACH_PAGE":
+      return breaksWhere(state, () => true);
+    case "ORGANIZE_BREAKS_EACH_PDF":
+      return breaksWhere(state, (page, previous) => page.id !== previous.id);
+    case "ORGANIZE_BREAKS_CLEARED":
+      return withBreaks(state, NO_KEYS);
     case "ORGANIZE_UNDO":
       return undo(state);
     case "ORGANIZE_REDO":
@@ -621,5 +828,11 @@ export function organizeReducer(
       return state.encrypt === action.encrypt
         ? state
         : { ...state, encrypt: action.encrypt };
+    case "SET_ORGANIZE_OUTPUT":
+      return state.output === action.output
+        ? state
+        : { ...state, output: action.output };
+    case "SET_ORGANIZE_OUTPUT_DIR":
+      return { ...state, outputDir: action.outputDir };
   }
 }

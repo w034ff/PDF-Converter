@@ -245,11 +245,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ? withExportedItem(next, action.item.id)
         : next;
     }
-    // The pages are frozen while a conversion runs, so the result it ends with
-    // describes the pages that were there.
+    // The pages and the breaks are frozen while a conversion runs, so the
+    // result it ends with describes the pages that were there.
     case "ORGANIZE_PAGES_MOVED":
     case "ORGANIZE_PAGES_ROTATED":
     case "ORGANIZE_PAGES_DELETED":
+    case "ORGANIZE_BREAK_TOGGLED":
+    case "ORGANIZE_BREAKS_EACH_PAGE":
+    case "ORGANIZE_BREAKS_EACH_PDF":
+    case "ORGANIZE_BREAKS_CLEARED":
     case "ORGANIZE_UNDO":
     case "ORGANIZE_REDO":
       return isJobActive(state.job)
@@ -260,6 +264,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "ORGANIZE_PDFS_UNLOCKED":
     case "ORGANIZE_CLEARED":
     case "SET_ORGANIZE_ENCRYPT":
+    case "SET_ORGANIZE_OUTPUT":
+    case "SET_ORGANIZE_OUTPUT_DIR":
       return reduceOrganize(state, action, true);
     // A save that wrote over a PDF of the list drops it, and the result of
     // that very save stays (design organize §4).

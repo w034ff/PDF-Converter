@@ -135,6 +135,16 @@ describe("the result of the last save", () => {
       "the password setting changed",
       { type: "SET_ORGANIZE_ENCRYPT", encrypt: true },
     ],
+    ["a break put in", { type: "ORGANIZE_BREAK_TOGGLED", key: pageKey(1, 2) }],
+    ["a break shortcut used", { type: "ORGANIZE_BREAKS_EACH_PAGE" }],
+    [
+      "the way of saving changed",
+      { type: "SET_ORGANIZE_OUTPUT", output: "split" },
+    ],
+    [
+      "the output folder changed",
+      { type: "SET_ORGANIZE_OUTPUT_DIR", outputDir: { dirLabel: "out" } },
+    ],
   ])("is dropped when %s", (_name, action) => {
     const state = reduce(afterASave(), action);
 
@@ -221,14 +231,57 @@ describe("the result of the last save", () => {
   });
 });
 
+describe("the way the last conversion saved", () => {
+  it("is what it started with, and the setting changing later does not change it", () => {
+    const started = reduce(
+      createInitialAppState("ja"),
+      { type: "ORGANIZE_PDFS_ADDED", items: [pdf(1, 3)] },
+      {
+        type: "JOB_STARTED",
+        kind: "organize",
+        targets: [],
+        organizeOutput: "split",
+      },
+    );
+    expect(started.job.organizeOutput).toBe("split");
+
+    // A running job keeps its result: the folder is forgotten when Rust says so.
+    const forgotten = reduce(started, {
+      type: "SET_ORGANIZE_OUTPUT_DIR",
+      outputDir: null,
+    });
+    expect(forgotten.job).toBe(started.job);
+
+    const changed = reduce(started, {
+      type: "SET_ORGANIZE_OUTPUT",
+      output: "single",
+    });
+    expect(changed.job.organizeOutput).toBe("split");
+  });
+
+  it("is none for another tab's conversion", () => {
+    const state = reduce(createInitialAppState("ja"), {
+      type: "JOB_STARTED",
+      kind: "crop",
+      targets: [],
+    });
+
+    expect(state.job.organizeOutput).toBeNull();
+  });
+});
+
 describe("while a conversion runs", () => {
-  it("the pages cannot be moved, turned, deleted, undone or redone", () => {
+  it("the pages and the breaks cannot be moved, turned, deleted, put in, undone or redone", () => {
     const before = reduce(running(), {
       type: "ORGANIZE_SELECTED_ONLY",
       key: pageKey(1, 1),
     });
 
     for (const action of [
+      { type: "ORGANIZE_BREAK_TOGGLED", key: pageKey(1, 2) },
+      { type: "ORGANIZE_BREAKS_EACH_PAGE" },
+      { type: "ORGANIZE_BREAKS_EACH_PDF" },
+      { type: "ORGANIZE_BREAKS_CLEARED" },
       { type: "ORGANIZE_PAGES_MOVED", keys: [pageKey(1, 1)], insertIndex: 3 },
       {
         type: "ORGANIZE_PAGES_ROTATED",

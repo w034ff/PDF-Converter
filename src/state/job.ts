@@ -4,6 +4,7 @@ import type {
   JobItemPayload,
   JobItemStatus,
   JobProgressPayload,
+  OrganizeOutput,
 } from "../ipc";
 import type { ActiveTab } from "./types";
 
@@ -24,6 +25,11 @@ export interface JobState {
   phase: JobPhase;
   /** The screen that started the last conversion; `null` before any. */
   kind: ActiveTab | null;
+  /**
+   * How the last organize conversion saved, as it started: the settings can
+   * change afterwards, and what the result tells depends on how it was made.
+   */
+  organizeOutput: OrganizeOutput | null;
   targets: JobTarget[];
   progress: JobProgressPayload | null;
   /** Items whose processing has begun, oldest first. */
@@ -42,7 +48,13 @@ export interface JobState {
 }
 
 export type JobAction =
-  | { type: "JOB_STARTED"; kind: ActiveTab; targets: JobTarget[] }
+  | {
+      type: "JOB_STARTED";
+      kind: ActiveTab;
+      targets: JobTarget[];
+      /** For `kind: "organize"`: what the conversion makes. */
+      organizeOutput?: OrganizeOutput;
+    }
   | { type: "JOB_CANCEL_REQUESTED" }
   | { type: "JOB_PROGRESS"; progress: JobProgressPayload }
   | { type: "JOB_ITEM"; item: JobItemPayload }
@@ -60,6 +72,7 @@ export type JobRowStatus =
 export const initialJobState: JobState = {
   phase: "idle",
   kind: null,
+  organizeOutput: null,
   targets: [],
   progress: null,
   startedIds: [],
@@ -106,6 +119,7 @@ export function jobReducer(state: JobState, action: JobAction): JobState {
         ...initialJobState,
         phase: "running",
         kind: action.kind,
+        organizeOutput: action.organizeOutput ?? null,
         targets: action.targets,
       };
     case "JOB_CANCEL_REQUESTED":
