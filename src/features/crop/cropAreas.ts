@@ -2,7 +2,6 @@ import { formatMessage, type Translations } from "../../i18n";
 import type { PageImage, PageSizePt } from "../../ipc";
 import {
   CROP_PAGE_SIDE_STEPS,
-  MAX_RENDER_PIXELS,
   PAGE_VIEW_MAX_SIDE,
   type CropArea,
   type CropPageResult,
@@ -117,33 +116,6 @@ export function previewPlacement(
   };
 }
 
-/**
- * The size to write a `width` × `height` image in: its own, or when that
- * exceeds `maxPixels`, scaled by one factor to fit. The same arithmetic as
- * `photo_output_size` in `crates/worker/src/crop.rs`.
- */
-export function photoOutputSize(
-  width: number,
-  height: number,
-  maxPixels: number = MAX_RENDER_PIXELS,
-): { width: number; height: number; scaledDown: boolean } {
-  const limit = Math.max(maxPixels, 1);
-  const total = width * height;
-  if (total <= limit) {
-    return { width, height, scaledDown: false };
-  }
-  let factor = Math.sqrt(limit / total);
-  for (;;) {
-    const outWidth = Math.max(Math.round(width * factor), 1);
-    const outHeight = Math.max(Math.round(height * factor), 1);
-    // Rounding both sides up can overshoot by a row or a column.
-    if (outWidth * outHeight <= limit) {
-      return { width: outWidth, height: outHeight, scaledDown: true };
-    }
-    factor *= 0.999;
-  }
-}
-
 /** What a row says about the file an area is written to. */
 export type ExportSize =
   | { kind: "dpi"; dpi: number; width: number; height: number }
@@ -161,11 +133,11 @@ export interface ExportSizeSettings {
  * arrived, were not found or lack its image.
  *
  * A rectangle is `round(pt × dpi ÷ 72)` on each side, as `RenderRegion` has
- * it. A photo that can be written in its own pixels (`native`, and
- * `photoNative` on) takes the image's pixels, turned if the area's
- * orientation is the other way round (a quarter turn), and scaled down when
- * they exceed `MAX_RENDER_PIXELS`. A photo that is cut or masked can come out
- * smaller than this, as only what shows is written.
+ * it. A photo that can be written in its own pixels (`nativeSize` is set, and
+ * `photoNative` is on) takes the size Rust gives, in the orientation it is
+ * written in and scaled down when its pixels exceed the render limit. A photo
+ * that is cut or masked can come out smaller than this, as only what shows is
+ * written.
  */
 export function exportSize(
   area: CropArea,
@@ -201,21 +173,11 @@ export function exportSize(
   if (image === undefined) {
     return null;
   }
-  if (!image.native) {
+  if (image.nativeSize === null) {
     return dpiSize();
   }
-  const scaled = photoOutputSize(image.pxWidth, image.pxHeight);
-  const areaWidth = area.rectPt[2] - area.rectPt[0];
-  const areaHeight = area.rectPt[3] - area.rectPt[1];
-  const turned =
-    (areaWidth > areaHeight && image.pxWidth < image.pxHeight) ||
-    (areaWidth < areaHeight && image.pxWidth > image.pxHeight);
-  return {
-    kind: "native",
-    width: turned ? scaled.height : scaled.width,
-    height: turned ? scaled.width : scaled.height,
-    scaledDown: scaled.scaledDown,
-  };
+  const { width, height, scaledDown } = image.nativeSize;
+  return { kind: "native", width, height, scaledDown };
 }
 
 /** A size as a row writes it: "150 dpi · 1650 × 1200", "元の画素 1241 × 964". */

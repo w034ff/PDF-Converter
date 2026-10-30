@@ -351,7 +351,8 @@ fn page_images_lists_the_images_with_their_frames_on_every_page() {
                 (PICTURE_WIDTH, PICTURE_HEIGHT)
             );
             assert_eq!(
-                image.native, expected.native,
+                image.native_size.is_some(),
+                expected.native,
                 "native of {}",
                 image.image_index
             );
@@ -380,6 +381,49 @@ fn page_images_numbers_the_images_it_leaves_out_too() {
             .any(|w| w[1].image_index - w[0].image_index == 2)
     );
     assert_eq!(images.last().map(|i| i.image_index), Some(8));
+}
+
+#[test]
+fn the_listed_native_size_is_what_a_photo_is_written_at_on_every_page() {
+    let mut worker = crop_align();
+    let listed = crop_pattern::listed_images();
+    for page_index in 0..PAGE_COUNT {
+        let page = page_index as u32 + 1;
+        let images = page_images(&mut worker, page);
+        // The page turns the picture by a quarter when its /Rotate does, and
+        // so does a placement that swaps the axes.
+        let page_turned = !crop_pattern::PAGE_ROTATIONS[page_index].is_multiple_of(180);
+        for (image, expected) in images.iter().zip(&listed) {
+            let Some(size) = image.native_size else {
+                assert!(!expected.native, "native size of {}", image.image_index);
+                continue;
+            };
+            let placement_turned = expected.matrix[0] == 0.0;
+            let (width, height) = if placement_turned == page_turned {
+                (PICTURE_WIDTH, PICTURE_HEIGHT)
+            } else {
+                (PICTURE_HEIGHT, PICTURE_WIDTH)
+            };
+            assert_eq!(
+                (size.width, size.height, size.scaled_down),
+                (width, height, false),
+                "page {page} image {}",
+                image.image_index
+            );
+            // A clip or a mask makes the written image smaller than the
+            // listed size; the others are written at exactly it.
+            if expected.has_soft_mask || image.image_index == 7 {
+                continue;
+            }
+            let written = render(&mut worker, &Region::photo(page, image));
+            assert_eq!(
+                (size.width, size.height, size.scaled_down),
+                (written.width, written.height, written.scaled_down),
+                "page {page} image {}",
+                image.image_index
+            );
+        }
+    }
 }
 
 #[test]
@@ -508,7 +552,7 @@ fn a_sheared_image_is_not_native_and_is_drawn_as_its_frame_at_the_dpi() {
     for page in 1..=PAGE_COUNT as u32 {
         let images = page_images(&mut worker, page);
         let sheared = images.iter().find(|i| i.image_index == 4).unwrap();
-        assert!(!sheared.native);
+        assert!(sheared.native_size.is_none());
 
         let rect = sheared.rect_pt;
         let dpi = 150;
@@ -990,7 +1034,7 @@ fn the_dpi_range_does_not_apply_to_a_photo_in_its_own_pixels() {
         ..native.clone()
     };
     expect_region_error(&mut worker, &by_choice, "InvalidParams");
-    let sheared = images.iter().find(|i| !i.native).unwrap();
+    let sheared = images.iter().find(|i| i.native_size.is_none()).unwrap();
     expect_region_error(
         &mut worker,
         &Region {

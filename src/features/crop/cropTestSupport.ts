@@ -54,7 +54,13 @@ export function pageImage(
   rectPt: [number, number, number, number],
   imageIndex = 0,
 ): PageImage {
-  return { imageIndex, rectPt, pxWidth: 100, pxHeight: 80, native: true };
+  return {
+    imageIndex,
+    rectPt,
+    pxWidth: 100,
+    pxHeight: 80,
+    nativeSize: { width: 100, height: 80, scaledDown: false },
+  };
 }
 
 export function candidate(

@@ -5,7 +5,8 @@ use std::path::Path;
 
 use pdf_converter_lib::commands::{AboutInfo, AddSource};
 use pdf_converter_lib::crop::{
-    Candidate, CandidateKind, CropDropped, CropPdf, DropTarget, LayoutPagePayload, PageImage,
+    Candidate, CandidateKind, CropDropped, CropPdf, DropTarget, LayoutPagePayload, NativeSize,
+    PageImage,
 };
 use pdf_converter_lib::crop_export::CropRegionInput;
 use pdf_converter_lib::error::{ErrorCode, IpcError};
@@ -45,6 +46,7 @@ fn export_typescript_bindings() {
     CropDropped::export_all(&cfg).expect("exporting CropDropped");
     DropTarget::export_all(&cfg).expect("exporting DropTarget");
     PageImage::export_all(&cfg).expect("exporting PageImage");
+    NativeSize::export_all(&cfg).expect("exporting NativeSize");
     CandidateKind::export_all(&cfg).expect("exporting CandidateKind");
     Candidate::export_all(&cfg).expect("exporting Candidate");
     LayoutPagePayload::export_all(&cfg).expect("exporting LayoutPagePayload");

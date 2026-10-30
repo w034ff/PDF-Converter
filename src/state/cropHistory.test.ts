@@ -260,6 +260,34 @@ describe("the areas the all-pages search adds", () => {
     expect(state.page).toBe(2);
   });
 
+  it("are not added after an undo", () => {
+    const state = reduce(
+      add(open(), figure(1)),
+      { type: "CROP_LAYOUT_STARTED", id: 1, page: 3 },
+      { type: "CROP_DETECT_ALL_STARTED" },
+      UNDO,
+      { type: "CROP_LAYOUT_DONE", id: 1, page: 3, candidates: [chart] },
+    );
+    expect(keys(state)).toEqual([]);
+  });
+
+  it("are not added after a later edit, which an undo would take away unseen", () => {
+    let state = reduce(
+      open(),
+      { type: "CROP_LAYOUT_STARTED", id: 1, page: 3 },
+      { type: "CROP_DETECT_ALL_STARTED" },
+    );
+    state = add(state, figure(1));
+    state = reduce(state, {
+      type: "CROP_LAYOUT_DONE",
+      id: 1,
+      page: 3,
+      candidates: [chart],
+    });
+    expect(keys(state)).toEqual([1]);
+    expect(keys(reduce(state, UNDO))).toEqual([]);
+  });
+
   it("are passed over by an undo when they found nothing", () => {
     const state = reduce(add(open(), figure(1)), {
       type: "CROP_DETECT_ALL_STARTED",
@@ -438,7 +466,6 @@ describe("the tool", () => {
   for (const action of [
     { type: "CROP_PDF_ACTIVATED", pdf: pdf(2) },
     { type: "CROP_PDF_UNLOCKED", pdf: pdf(1) },
-    { type: "CROP_PDF_CLOSED" },
   ] as const) {
     it(`goes back to select on ${action.type}`, () => {
       const state = reduce(

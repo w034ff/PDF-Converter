@@ -30,17 +30,10 @@ export const CROP_ZOOM_STEPS: readonly number[] = [
 
 /**
  * The longest side of a page image `get_thumbnail` is asked for, at most, in
- * pixels. Matches `PAGE_VIEW_MAX_SIDE` in `crates/worker/src/lib.rs`, above
- * which Rust refuses `maxSide`.
+ * pixels. Matches `PAGE_VIEW_MAX_SIDE` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`), above which Rust refuses `maxSide`.
  */
 export const PAGE_VIEW_MAX_SIDE = 2400;
-
-/**
- * The most pixels one rendered range may have. Matches
- * `pdfconv_worker::MAX_RENDER_PIXELS` in `crates/worker/src/lib.rs`, above
- * which a rectangle is refused and a photo is scaled down.
- */
-export const MAX_RENDER_PIXELS = 100_000_000;
 
 /**
  * The sizes a page image is asked for. A size between two is rounded up, so
@@ -106,7 +99,7 @@ export function createInitialCropState(
 }
 
 /** What a PDF's results, areas, page and tool are reset to when another PDF is open. */
-function withPdf(state: CropState, pdf: CropPdf | null): CropState {
+function withPdf(state: CropState, pdf: CropPdf): CropState {
   return {
     ...state,
     pdf,
@@ -333,8 +326,6 @@ function reduceCropState(state: CropState, action: CropAction): CropState {
         return state;
       }
       return { ...withPdf(state, action.pdf), passwordDialogOpen: false };
-    case "CROP_PDF_CLOSED":
-      return { ...withPdf(state, null), passwordDialogOpen: false };
     case "CROP_PASSWORD_DIALOG":
       return state.passwordDialogOpen === action.open
         ? state
@@ -806,7 +797,29 @@ function recordStep(
   }
 }
 
+/**
+ * `next` without the pages "全ページの候補" still waits for, once a step other
+ * than the search itself has gone into the history or out of it. The areas
+ * such a page brought later would belong to no step, so an undo would take
+ * them away unseen; the page's candidates stay on the page to add by hand.
+ */
+function endDetectWait(
+  state: CropState,
+  next: CropState,
+  action: CropAction,
+): CropState {
+  return next.history === state.history ||
+    action.type === "CROP_DETECT_ALL_STARTED" ||
+    next.detectAwaiting.length === 0
+    ? next
+    : { ...next, detectAwaiting: [] };
+}
+
 export function cropReducer(state: CropState, action: CropAction): CropState {
+  return endDetectWait(state, reduceCropHistory(state, action), action);
+}
+
+function reduceCropHistory(state: CropState, action: CropAction): CropState {
   switch (action.type) {
     case "CROP_UNDO": {
       const { past, future } = state.history;

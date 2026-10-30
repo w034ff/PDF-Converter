@@ -142,7 +142,7 @@ describe("pressing a frame", () => {
 
   it("makes a photo area of a frame that cannot be written as it is, and sizes it by the resolution", async () => {
     await openPdfInCropTab({
-      list_page_images: () => [{ ...photos[0], native: false }],
+      list_page_images: () => [{ ...photos[0], nativeSize: null }],
     });
     fireEvent.click(screen.getByTestId("crop-photo-frame"));
     await flush();

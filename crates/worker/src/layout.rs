@@ -14,13 +14,13 @@ use ort::value::Tensor;
 use pdfconv_core::{PHOTO_MATCH_IOU, PageRect, iou};
 use pdfium_render::prelude::PdfDocument;
 
-use crate::crop;
 use crate::protocol::{
     CandidateKind, EmbeddedImage, LayoutCandidate, RectPt, RenderColor, Response,
 };
 use crate::server::{
     CODE_PDF_OPEN_FAILED, error_response, load_page, render_page_pixels, size_for_long_side,
 };
+use crate::{MAX_RENDER_PIXELS, crop};
 
 /// The longer side of the page as rendered for the model, in pixels; the
 /// rendering the spike matched against PaddleX with (design §4.7, 前処理).
@@ -148,7 +148,13 @@ impl Detector {
         let input = model_input(pixels, width, height)?;
         let boxes = run_model(session, input, width, height)?;
 
-        let images = crop::page_images(doc, page)?;
+        // Only an image box looks for an embedded image, so a page without
+        // one keeps its charts and tables even where listing images fails.
+        let images = if has_image_box(&boxes) {
+            crop::page_images(doc, page, MAX_RENDER_PIXELS)?
+        } else {
+            Vec::new()
+        };
         Ok(candidates(&boxes, (width, height), page_pt, &images))
     }
 
@@ -330,6 +336,14 @@ pub(crate) fn candidates(
     classify(pictures, images)
 }
 
+/// Whether any box that [`candidates`] keeps by its score is of the image
+/// class, the one class matched with the embedded images.
+fn has_image_box(boxes: &[ModelBox]) -> bool {
+    boxes.iter().any(|b| {
+        b.score >= LAYOUT_SCORE_MIN && matches!(picture_kind(b.class), Some(PictureKind::Image))
+    })
+}
+
 /// A box of a class that becomes a candidate, in points on the page.
 struct Picture {
     kind: PictureKind,
@@ -477,7 +491,7 @@ mod tests {
             rect_pt: rect_pt(&rect),
             px_width: 10,
             px_height: 10,
-            native: true,
+            native_size: None,
         }
     }
 
@@ -710,6 +724,24 @@ mod tests {
                 (CandidateKind::Chart, 0.5),
             ]
         );
+    }
+
+    #[test]
+    fn only_a_confident_image_box_asks_for_the_embedded_images() {
+        let area = rect(0.0, 0.0, 100.0, 100.0);
+        assert!(!has_image_box(&[
+            model_box(CHART, 0.9, area),
+            model_box(TABLE, 0.9, area),
+        ]));
+        assert!(!has_image_box(&[model_box(
+            IMAGE,
+            LAYOUT_SCORE_MIN - 0.01,
+            area
+        )]));
+        assert!(has_image_box(&[
+            model_box(CHART, 0.9, area),
+            model_box(IMAGE, LAYOUT_SCORE_MIN, area),
+        ]));
     }
 
     #[test]

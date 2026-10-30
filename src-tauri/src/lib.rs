@@ -127,7 +127,6 @@ pub fn run() {
             commands::open_crop_pdf,
             commands::activate_crop_pdf,
             commands::discard_crop_pdf,
-            commands::close_crop_pdf,
             commands::unlock_crop_pdf,
             commands::set_drop_target,
             commands::list_page_images,
