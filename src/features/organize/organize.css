@@ -111,9 +111,15 @@
   min-width: 0;
   display: flex;
   gap: 8px;
+  /* The scroll bar hangs below the row, over the gap to the band, so that the
+     grid does not move when one PDF too many brings it. */
+  height: calc(36px + var(--organize-chips-bar));
+  margin-bottom: calc(-1 * var(--organize-chips-bar));
   overflow-x: auto;
-  padding: 4px 2px;
+  overflow-y: hidden;
+  padding: 4px 2px 0;
   scrollbar-width: thin;
+  --organize-chips-bar: 10px;
 }
 
 .organize-chip {
