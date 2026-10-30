@@ -1154,6 +1154,25 @@ fn blank_image_pdf_over(
 /// `width` × `height` pixels.
 fn blank_image_pdf_with_form(content: &str, form: &str, width: u32, height: u32) -> Vec<u8> {
     let image = zero_zlib_stream(u64::from(width) * u64::from(height) * 3);
+    image_pdf(
+        "/MediaBox [0 0 612 792]",
+        content,
+        form,
+        (width, height),
+        &image,
+    )
+}
+
+/// A one-page PDF whose page dictionary has `page_entries` (the boxes and
+/// `/Rotate`), runs `content`, and draws `/Im`, an RGB image of `size` pixels
+/// whose zlib stream is `image`. The form `/Fm` runs `form` in page space.
+fn image_pdf(
+    page_entries: &str,
+    content: &str,
+    form: &str,
+    (width, height): (u32, u32),
+    image: &[u8],
+) -> Vec<u8> {
     let stream = |entries: &str, data: &[u8]| {
         [
             format!("<< {entries} /Length {} >>\nstream\n", data.len()).into_bytes(),
@@ -1165,16 +1184,18 @@ fn blank_image_pdf_with_form(content: &str, form: &str, width: u32, height: u32)
     let objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R \
-          /Resources << /XObject << /Im 5 0 R /Fm 6 0 R >> >> >>"
-            .to_vec(),
+        format!(
+            "<< /Type /Page /Parent 2 0 R {page_entries} /Contents 4 0 R \
+             /Resources << /XObject << /Im 5 0 R /Fm 6 0 R >> >> >>"
+        )
+        .into_bytes(),
         stream("", content.as_bytes()),
         stream(
             &format!(
                 "/Type /XObject /Subtype /Image /Width {width} /Height {height} \
                  /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"
             ),
-            &image,
+            image,
         ),
         stream(
             "/Type /XObject /Subtype /Form /BBox [0 0 612 792] \
@@ -1468,4 +1489,194 @@ fn page_images_time_grows_in_proportion_to_the_objects() {
         "doubling the objects took {:.1} times as long",
         more_seconds / fewer_seconds
     );
+}
+
+/// A zlib stream holding `data` in stored (uncompressed) blocks.
+fn stored_zlib_stream(data: &[u8]) -> Vec<u8> {
+    const MAX_BLOCK: usize = 0xFFFF;
+    const ADLER_MODULUS: u32 = 65_521;
+    let blocks: Vec<&[u8]> = data.chunks(MAX_BLOCK).collect();
+    let mut stream = vec![0x78, 0x01];
+    for (index, block) in blocks.iter().enumerate() {
+        let length = block.len() as u16;
+        stream.push(u8::from(index + 1 == blocks.len()));
+        stream.extend(length.to_le_bytes());
+        stream.extend((!length).to_le_bytes());
+        stream.extend(*block);
+    }
+    let (mut low, mut high) = (1_u32, 0_u32);
+    for &byte in data {
+        low = (low + u32::from(byte)) % ADLER_MODULUS;
+        high = (high + low) % ADLER_MODULUS;
+    }
+    stream.extend(((high << 16) | low).to_be_bytes());
+    stream
+}
+
+/// The pixels of the wide image below.
+const WIDE_PX: (u32, u32) = (4000, 40);
+/// Where the wide image is drawn: 500 × 20 pt from x = 50 pt, y = 300 pt, so
+/// eight of its pixels to the point along its length.
+const WIDE_PLACEMENT: &str = "q 500 0 0 20 50 300 cm /Im Do Q\n";
+const WIDE_PX_PER_PT: f64 = 8.0;
+
+/// The colour of column `column` of the wide image: the column number, so that
+/// a pixel of a written photo says which column it came from.
+fn column_color(column: u32) -> [u8; 3] {
+    [(column % 256) as u8, (column / 256) as u8, 0]
+}
+
+/// A one-page PDF whose page dictionary has `page_entries`, with the wide
+/// image drawn first and `over` after it.
+fn wide_image_pdf(page_entries: &str, over: &str) -> Vec<u8> {
+    let data: Vec<u8> = (0..WIDE_PX.1)
+        .flat_map(|_| (0..WIDE_PX.0).flat_map(column_color))
+        .collect();
+    image_pdf(
+        page_entries,
+        &format!("{WIDE_PLACEMENT}{over}"),
+        "",
+        WIDE_PX,
+        &stored_zlib_stream(&data),
+    )
+}
+
+/// The column of the wide image that a pixel of a written photo came from.
+fn column_of(pixel: image::Rgba<u8>) -> u32 {
+    u32::from(pixel[0]) + 256 * u32::from(pixel[1])
+}
+
+#[test]
+fn a_photo_is_cut_to_the_part_the_page_box_shows() {
+    struct Case {
+        name: &'static str,
+        page_entries: &'static str,
+        /// The shown page's width and height in points.
+        shown: (f64, f64),
+        /// The columns of the wide image that the page box shows.
+        columns: std::ops::Range<u32>,
+        /// Whether the columns run against the reading direction of the
+        /// shown page (the image is turned half a turn or three quarters).
+        reversed: bool,
+        /// Whether the image's length runs down the shown page.
+        upright: bool,
+    }
+    // The image spans x = 50..550 pt, eight pixels to the point.
+    let cases = [
+        Case {
+            name: "a CropBox cutting both ends",
+            page_entries: "/MediaBox [0 0 612 792] /CropBox [100 0 400 792]",
+            shown: (300.0, 792.0),
+            columns: 400..2800,
+            reversed: false,
+            upright: false,
+        },
+        Case {
+            name: "a CropBox away from the origin of a MediaBox that is",
+            page_entries: "/MediaBox [-100 -50 512 742] /CropBox [100 200 400 600]",
+            shown: (300.0, 400.0),
+            columns: 400..2800,
+            reversed: false,
+            upright: false,
+        },
+        Case {
+            name: "a CropBox reaching past the MediaBox",
+            page_entries: "/MediaBox [0 0 612 792] /CropBox [-100 -100 400 900]",
+            shown: (400.0, 792.0),
+            columns: 0..2800,
+            reversed: false,
+            upright: false,
+        },
+        Case {
+            name: "a CropBox on a page turned a quarter",
+            page_entries: "/MediaBox [0 0 612 792] /CropBox [100 200 400 600] /Rotate 90",
+            shown: (400.0, 300.0),
+            columns: 400..2800,
+            reversed: false,
+            upright: true,
+        },
+        Case {
+            name: "a CropBox on a page turned half a turn",
+            page_entries: "/MediaBox [0 0 612 792] /CropBox [100 200 400 600] /Rotate 180",
+            shown: (300.0, 400.0),
+            columns: 400..2800,
+            reversed: true,
+            upright: false,
+        },
+        Case {
+            name: "a CropBox on a page turned three quarters",
+            page_entries: "/MediaBox [0 0 612 792] /CropBox [100 200 400 600] /Rotate 270",
+            shown: (400.0, 300.0),
+            columns: 400..2800,
+            reversed: true,
+            upright: true,
+        },
+    ];
+    for case in cases {
+        let mut pdf = TemporaryPdf::open("page-box", &wide_image_pdf(case.page_entries, ""));
+        let images = page_images(&mut pdf.worker, 1);
+        assert_eq!(images.len(), 1, "{}", case.name);
+
+        let length = case.columns.len() as u32;
+        let pt_length = f64::from(length) / WIDE_PX_PER_PT;
+        let r = images[0].rect_pt;
+        let (extent_x, extent_y) = (r.x1 - r.x0, r.y1 - r.y0);
+        let (listed_length, listed_width) = if case.upright {
+            (extent_y, extent_x)
+        } else {
+            (extent_x, extent_y)
+        };
+        assert!(
+            (listed_length - pt_length).abs() < 1e-3 && (listed_width - 20.0).abs() < 1e-3,
+            "{}: listed {r:?}",
+            case.name
+        );
+        assert!(
+            r.x0 >= -1e-3
+                && r.y0 >= -1e-3
+                && r.x1 <= case.shown.0 + 1e-3
+                && r.y1 <= case.shown.1 + 1e-3,
+            "{}: listed {r:?} outside the page",
+            case.name
+        );
+
+        let written = render(&mut pdf.worker, &Region::photo(1, &images[0]));
+        let expected = if case.upright {
+            (WIDE_PX.1, length)
+        } else {
+            (length, WIDE_PX.1)
+        };
+        assert_eq!((written.width, written.height), expected, "{}", case.name);
+        let pixels = written.decode().to_rgba8();
+        let column_at = |along: u32| {
+            let (x, y) = if case.upright { (0, along) } else { (along, 0) };
+            column_of(*pixels.get_pixel(x, y))
+        };
+        let (first, last) = if case.reversed {
+            (case.columns.end - 1, case.columns.start)
+        } else {
+            (case.columns.start, case.columns.end - 1)
+        };
+        assert_eq!(column_at(0), first, "{}: first pixel", case.name);
+        assert_eq!(column_at(length - 1), last, "{}: last pixel", case.name);
+    }
+}
+
+#[test]
+fn only_what_lies_over_the_part_the_page_box_shows_is_on_top() {
+    // The CropBox hides everything left of x = 100 pt.
+    let on_top_with = |rectangle: &str| {
+        let mut pdf = TemporaryPdf::open(
+            "page-box-on-top",
+            &wide_image_pdf(
+                "/MediaBox [0 0 612 792] /CropBox [100 0 400 792]",
+                &format!("0 0 1 rg {rectangle} re f\n"),
+            ),
+        );
+        let images = page_images(&mut pdf.worker, 1);
+        assert_eq!(images.len(), 1);
+        image_on_top(&mut pdf.worker, 1, images[0].image_index)
+    };
+    assert!(on_top_with("200 300 30 20"), "over the shown part");
+    assert!(!on_top_with("60 300 30 20"), "over the hidden part");
 }

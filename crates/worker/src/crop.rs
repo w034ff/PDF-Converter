@@ -61,6 +61,12 @@ pub const VISIBLE_CHECK_PIXELS: u64 = 250_000;
 /// How far outside the page a range may reach, in points (design §4.6).
 pub const RANGE_OUTSIDE_TOLERANCE_PT: f64 = 0.5;
 
+/// How much of a grid pixel, as a fraction, the page edge may leave on the
+/// page side before that pixel counts as on the page. The edge is mapped
+/// through floating-point matrices, so an edge that lies on a pixel boundary
+/// would otherwise take in the pixel next to it (design §4.6).
+pub const PAGE_EDGE_TOLERANCE_PX: f64 = 0.01;
+
 /// The relative size below which a matrix entry counts as zero when deciding
 /// whether an image is placed by flips and quarter turns only. Placement
 /// matrices are written with a few decimals, so float noise stays far below.
@@ -408,8 +414,52 @@ fn touched_box(white: &[u8], black: &[u8], width: u32) -> Option<PixelBox> {
     found
 }
 
-/// The box of pixels of `grid` in which the isolated image shows (design
-/// §4.6, 埋め込み画像の一覧).
+/// The box of pixels of `grid` that the shown page covers, a pixel that the
+/// page only partly covers included; `None` when it covers none. pdfium does
+/// not clip a render with a matrix to the page box, so what a grid draws
+/// outside it must be left out by hand.
+fn page_pixels(grid: &Grid, page_width: f64, page_height: f64) -> Option<PixelBox> {
+    let corners = [
+        (0.0, 0.0),
+        (page_width, 0.0),
+        (0.0, page_height),
+        (page_width, page_height),
+    ]
+    .map(|(x, y)| apply(grid.matrix, x, y));
+    let low = |axis: fn(&(f64, f64)) -> f64, size: u32| {
+        let edge = corners.iter().map(axis).fold(f64::INFINITY, f64::min);
+        (edge + PAGE_EDGE_TOLERANCE_PX)
+            .floor()
+            .clamp(0.0, f64::from(size)) as u32
+    };
+    let high = |axis: fn(&(f64, f64)) -> f64, size: u32| {
+        let edge = corners.iter().map(axis).fold(f64::NEG_INFINITY, f64::max);
+        (edge - PAGE_EDGE_TOLERANCE_PX)
+            .ceil()
+            .clamp(0.0, f64::from(size)) as u32
+    };
+    let page = PixelBox {
+        left: low(|c| c.0, grid.width),
+        top: low(|c| c.1, grid.height),
+        right: high(|c| c.0, grid.width),
+        bottom: high(|c| c.1, grid.height),
+    };
+    (page.right > page.left && page.bottom > page.top).then_some(page)
+}
+
+/// The box that `a` and `b` both cover; `None` when they share no pixel.
+fn intersect(a: PixelBox, b: PixelBox) -> Option<PixelBox> {
+    let both = PixelBox {
+        left: a.left.max(b.left),
+        top: a.top.max(b.top),
+        right: a.right.min(b.right),
+        bottom: a.bottom.min(b.bottom),
+    };
+    (both.right > both.left && both.bottom > both.top).then_some(both)
+}
+
+/// The box of pixels of `grid` in which the isolated image shows on the shown
+/// page (design §4.6, 埋め込み画像の一覧).
 fn visible_box(isolated: &PdfPage<'_>, grid: &Grid) -> Result<Option<PixelBox>, Response> {
     let draw = |background| {
         render_rgba(&Draw {
@@ -424,7 +474,11 @@ fn visible_box(isolated: &PdfPage<'_>, grid: &Grid) -> Result<Option<PixelBox>, 
     };
     let white = draw(PdfColor::WHITE)?;
     let black = draw(PdfColor::BLACK)?;
-    Ok(touched_box(&white, &black, grid.width))
+    let page_width = f64::from(isolated.width().value);
+    let page_height = f64::from(isolated.height().value);
+    Ok(touched_box(&white, &black, grid.width)
+        .zip(page_pixels(grid, page_width, page_height))
+        .and_then(|(touched, page)| intersect(touched, page)))
 }
 
 /// The part of the image's frame that shows, on the shown page: `visible`, the
@@ -897,12 +951,13 @@ pub(crate) fn image_on_top(
 ) -> Result<bool, Response> {
     let page = load_page(doc, page_number)?;
     let image = listed_image(doc, &page, page_number, image_index)?;
+    let grid = image_grid(&image, check_pixels)?;
     let Grid {
         width,
         height,
         matrix,
         ..
-    } = image_grid(&image, check_pixels)?;
+    } = grid;
 
     let isolated = isolated_page(doc, page_number, &[&image.placed.path])?;
     let draw = |page: &PdfPage<'_>, background, annotations| {
@@ -919,7 +974,20 @@ pub(crate) fn image_on_top(
     let whole = draw(&page, PdfColor::WHITE, true)?;
     let photo_on_white = draw(&isolated, PdfColor::WHITE, false)?;
     let photo_on_black = draw(&isolated, PdfColor::BLACK, false)?;
-    Ok(count_covered_pixels(&whole, &photo_on_white, &photo_on_black) >= ON_TOP_MIN_PIXELS)
+    // Only what the shown page covers counts: something drawn over a part of
+    // the image that the page box hides is not on top of anything shown.
+    let page_width = f64::from(page.width().value);
+    let page_height = f64::from(page.height().value);
+    let Some(on_page) = page_pixels(&grid, page_width, page_height) else {
+        return Ok(false);
+    };
+    let on_page_only =
+        |rgba: Vec<u8>| crop(rgba, width as usize, height as usize, 4, Some(on_page)).0;
+    Ok(count_covered_pixels(
+        &on_page_only(whole),
+        &on_page_only(photo_on_white),
+        &on_page_only(photo_on_black),
+    ) >= ON_TOP_MIN_PIXELS)
 }
 
 /// The parameters of `RenderRegion` (design §5.1).
@@ -1353,6 +1421,90 @@ mod tests {
                 bottom: 2
             })
         );
+    }
+
+    fn grid_of(width: u32, height: u32, matrix: Matrix) -> Grid {
+        Grid {
+            width,
+            height,
+            matrix,
+            scaled_down: false,
+        }
+    }
+
+    #[test]
+    fn the_page_covers_the_pixels_it_touches_even_in_part() {
+        // A 100 × 50 pt page at eight pixels to the point, its corner at
+        // pixel (10.5, 3) of a grid that reaches well past it.
+        let grid = grid_of(2000, 1000, [8.0, 0.0, 0.0, 8.0, 10.5, 3.0]);
+        assert_eq!(
+            page_pixels(&grid, 100.0, 50.0),
+            Some(PixelBox {
+                left: 10,
+                top: 3,
+                right: 811,
+                bottom: 403
+            })
+        );
+        // The grid ends inside the page: the box is cut to the grid.
+        let short = grid_of(500, 1000, [8.0, 0.0, 0.0, 8.0, -4.0, 3.0]);
+        assert_eq!(page_pixels(&short, 100.0, 50.0).unwrap().right, 500);
+    }
+
+    #[test]
+    fn a_page_edge_on_a_pixel_boundary_does_not_take_in_the_next_pixel() {
+        // The edges lie a hair inside the boundaries, as a mapped edge does.
+        let grid = grid_of(2000, 1000, [8.0, 0.0, 0.0, 8.0, 10.0006, 3.0006]);
+        assert_eq!(
+            page_pixels(&grid, 100.0, 50.0),
+            Some(PixelBox {
+                left: 10,
+                top: 3,
+                right: 810,
+                bottom: 403
+            })
+        );
+    }
+
+    #[test]
+    fn the_page_is_found_in_a_grid_turned_a_quarter_or_flipped() {
+        // Page x runs down the grid and page y runs across it, reversed.
+        let turned = grid_of(400, 800, [0.0, 8.0, -8.0, 0.0, 400.0, 0.0]);
+        assert_eq!(
+            page_pixels(&turned, 100.0, 50.0),
+            Some(PixelBox {
+                left: 0,
+                top: 0,
+                right: 400,
+                bottom: 800
+            })
+        );
+        let flipped = grid_of(1000, 1000, [-8.0, 0.0, 0.0, 8.0, 900.0, 0.0]);
+        let found = page_pixels(&flipped, 100.0, 50.0).unwrap();
+        assert_eq!((found.left, found.right), (100, 900));
+    }
+
+    #[test]
+    fn a_page_the_grid_does_not_reach_covers_no_pixel() {
+        let beside = grid_of(100, 100, [8.0, 0.0, 0.0, 8.0, -800.0, 0.0]);
+        assert_eq!(page_pixels(&beside, 100.0, 50.0), None);
+        let past = grid_of(100, 100, [8.0, 0.0, 0.0, 8.0, 100.0, 0.0]);
+        assert_eq!(page_pixels(&past, 100.0, 50.0), None);
+    }
+
+    #[test]
+    fn boxes_meet_in_the_pixels_they_share() {
+        let pixels = |left, top, right, bottom| PixelBox {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        assert_eq!(
+            intersect(pixels(0, 0, 10, 10), pixels(4, 2, 20, 8)),
+            Some(pixels(4, 2, 10, 8))
+        );
+        assert_eq!(intersect(pixels(0, 0, 10, 10), pixels(10, 0, 20, 10)), None);
     }
 
     #[test]
