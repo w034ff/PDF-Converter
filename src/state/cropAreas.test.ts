@@ -314,6 +314,20 @@ describe("the overlay mark", () => {
       reduce(state, { type: "CROP_ON_TOP_DONE", id: 1, key: 1, onTop: true }),
     ).toBe(state);
   });
+
+  it("drops the answer for a photo that has been moved", () => {
+    const state = reduce(
+      withPhoto(),
+      { type: "CROP_ON_TOP_STARTED", id: 1, key: 1 },
+      { type: "CROP_AREA_CHANGED", key: 1, rectPt: [1, 1, 50, 50] },
+    );
+    expect(
+      reduce(state, { type: "CROP_ON_TOP_DONE", id: 1, key: 1, onTop: true }),
+    ).toBe(state);
+    expect(reduce(state, { type: "CROP_ON_TOP_FAILED", id: 1, key: 1 })).toBe(
+      state,
+    );
+  });
 });
 
 describe("all pages' candidates", () => {
