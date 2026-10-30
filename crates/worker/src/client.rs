@@ -7,7 +7,7 @@ use std::io::{self, BufReader, BufWriter};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::protocol::{Request, Response, read_message, write_message};
 
@@ -25,6 +25,16 @@ pub enum WorkerError {
         code: String,
         detail: Option<String>,
     },
+    /// A source PDF of an `Organize` request could not be used (design
+    /// organize §3). The worker is still usable.
+    SourceFailed {
+        code: String,
+        detail: Option<String>,
+        /// Index of the source in the request.
+        source: u32,
+    },
+    /// The caller cancelled a streamed request and the worker was killed.
+    Cancelled,
 }
 
 /// How long to wait for a worker to open a PDF or load pdfium (design §5.2).
@@ -36,6 +46,27 @@ pub const RENDER_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long to wait for a worker to detect a page's layout, including loading
 /// onnxruntime and the model on the first `Detect` (design §5.2).
 pub const DETECT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How long to wait between two answers of an `Organize` request (design
+/// §5.2). It bounds the gap between answers, not the whole request, whose
+/// length grows with the output. The gap that matters is the longest stretch
+/// without an answer: saving the copied pages and rewriting them with lopdf,
+/// which must fit within it for an output of the largest size the main process
+/// accepts.
+pub const ORGANIZE_STEP_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// How often [`WorkerProcess::request_stream`] checks whether to cancel while
+/// it waits for an answer; this bounds how late a cancellation takes effect.
+pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// An intermediate answer of a streamed request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamPart {
+    /// Pages processed so far (`OrganizeProgress`).
+    Progress { done: u32 },
+    /// A part of the output (`OrganizeChunk`).
+    Chunk(Vec<u8>),
+}
 
 type Message = io::Result<Option<(Response, Vec<u8>)>>;
 
@@ -144,6 +175,81 @@ impl WorkerProcess {
                 Err(self.fail(WorkerError::Crashed))
             }
             Err(RecvTimeoutError::Timeout) => Err(self.fail(WorkerError::Timeout)),
+        }
+    }
+
+    /// Sends `request` and passes every intermediate answer to `on_part`
+    /// until the last answer arrives, which is returned.
+    ///
+    /// `step_timeout` limits the wait for each answer, not the whole request.
+    /// `should_cancel` is checked every [`CANCEL_POLL_INTERVAL`] while waiting.
+    ///
+    /// # Errors
+    ///
+    /// [`WorkerError::Cancelled`] if `should_cancel` returned true,
+    /// [`WorkerError::Timeout`] if an answer took longer than `step_timeout`,
+    /// and [`WorkerError::Crashed`] if the worker ended or sent something
+    /// unreadable; the worker is killed and never used again in these three
+    /// cases. [`WorkerError::SourceFailed`] and [`WorkerError::Remote`] end the
+    /// request but leave the worker usable.
+    pub fn request_stream(
+        &mut self,
+        request: &Request,
+        step_timeout: Duration,
+        should_cancel: &dyn Fn() -> bool,
+        on_part: &mut dyn FnMut(StreamPart),
+    ) -> Result<Response, WorkerError> {
+        if self.dead {
+            return Err(WorkerError::Crashed);
+        }
+        if write_message(&mut self.stdin, request, &[]).is_err() {
+            return Err(self.fail(WorkerError::Crashed));
+        }
+        loop {
+            let deadline = Instant::now() + step_timeout;
+            let message = loop {
+                if should_cancel() {
+                    return Err(self.fail(WorkerError::Cancelled));
+                }
+                let wait = deadline
+                    .saturating_duration_since(Instant::now())
+                    .min(CANCEL_POLL_INTERVAL);
+                match self.responses.recv_timeout(wait) {
+                    Ok(message) => break message,
+                    Err(RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
+                        return Err(self.fail(WorkerError::Timeout));
+                    }
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => {
+                        return Err(self.fail(WorkerError::Crashed));
+                    }
+                }
+            };
+            match message {
+                Ok(Some((Response::OrganizeProgress { done }, _))) => {
+                    on_part(StreamPart::Progress { done });
+                }
+                Ok(Some((Response::OrganizeChunk, body))) => on_part(StreamPart::Chunk(body)),
+                Ok(Some((
+                    Response::OrganizeFailed {
+                        code,
+                        detail,
+                        source,
+                    },
+                    _,
+                ))) => {
+                    return Err(WorkerError::SourceFailed {
+                        code,
+                        detail,
+                        source,
+                    });
+                }
+                Ok(Some((Response::Error { code, detail }, _))) => {
+                    return Err(WorkerError::Remote { code, detail });
+                }
+                Ok(Some((last, _))) => return Ok(last),
+                Ok(None) | Err(_) => return Err(self.fail(WorkerError::Crashed)),
+            }
         }
     }
 

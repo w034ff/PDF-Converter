@@ -19,6 +19,13 @@ pub const MAX_HEADER_BYTES: u32 = 1024 * 1024;
 /// page at `MAX_RENDER_PIXELS`).
 pub const MAX_BODY_BYTES: u64 = 1024 * 1024 * 1024;
 
+/// How much of an organized PDF one `OrganizeChunk` carries at most (design
+/// organize §3). The output is not sent as one body: that would hold it whole
+/// in both processes and run into [`MAX_BODY_BYTES`]. One mebibyte keeps the
+/// number of messages for an output of several hundred mebibytes in the
+/// hundreds, not the hundreds of thousands.
+pub const OUTPUT_CHUNK_BYTES: usize = 1024 * 1024;
+
 /// Errors when constructing a [`Password`] (design §6.8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PasswordError {
@@ -179,6 +186,27 @@ pub struct LayoutCandidate {
     pub image_index: Option<u32>,
 }
 
+/// One source PDF of an `Organize` request (design organize §3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeSource {
+    pub path: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<Password>,
+}
+
+/// One page of an organized output, in output order (design organize §3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizePage {
+    /// Index into the `sources` of the request.
+    pub source: u32,
+    /// Page of that source, counted from 0.
+    pub page: u32,
+    /// Clockwise degrees added to the page's own rotation: 0, 90, 180 or 270.
+    pub rotation: u16,
+}
+
 /// A request from the main process.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -225,6 +253,16 @@ pub enum Request {
         color: RenderColor,
         photo_native: bool,
         photo_only: bool,
+    },
+    /// Builds one organized PDF from pages of `sources` (design organize §3).
+    /// `creator` is the producer written into the document information.
+    /// The answer is several messages, not one: see [`Response::Organized`].
+    Organize {
+        sources: Vec<OrganizeSource>,
+        pages: Vec<OrganizePage>,
+        creator: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_password: Option<Password>,
     },
     /// Closes any currently opened PDF document (design §5.1).
     Close,
@@ -275,6 +313,22 @@ pub enum Response {
     },
     /// The currently open PDF was closed (design §5.1).
     Close,
+    /// Pages processed so far for an `Organize` request, counted over the
+    /// whole output (design organize §3).
+    OrganizeProgress { done: u32 },
+    /// A part of the organized PDF, at most [`OUTPUT_CHUNK_BYTES`], in the
+    /// message body (design organize §3).
+    OrganizeChunk,
+    /// The last answer to an `Organize` request: `bytes` is the total length
+    /// of the chunks sent.
+    Organized { bytes: u64 },
+    /// A source PDF of an `Organize` request could not be used; `source` is
+    /// its index in the request and `code` one of the codes of design §6.6.
+    OrganizeFailed {
+        code: String,
+        detail: Option<String>,
+        source: u32,
+    },
     /// The request failed; `code` is one of the error codes of design §6.6.
     Error {
         code: String,
@@ -631,6 +685,52 @@ mod tests {
             })
             .unwrap(),
             r#"{"type":"renderRegion","width":10,"height":20,"scaledDown":false}"#
+        );
+    }
+
+    #[test]
+    fn organize_messages_use_the_names_of_the_design() {
+        let request = Request::Organize {
+            sources: vec![OrganizeSource {
+                path: PathBuf::from("a.pdf"),
+                password: Some(Password::new("pw").unwrap()),
+            }],
+            pages: vec![OrganizePage {
+                source: 0,
+                page: 2,
+                rotation: 90,
+            }],
+            creator: "PDF Converter 1".into(),
+            output_password: None,
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"organize","sources":[{"path":"a.pdf","password":"pw"}],"pages":[{"source":0,"page":2,"rotation":90}],"creator":"PDF Converter 1"}"#
+        );
+        assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), request);
+        assert!(!format!("{request:?}").contains("\"pw\""));
+
+        assert_eq!(
+            serde_json::to_string(&Response::OrganizeProgress { done: 3 }).unwrap(),
+            r#"{"type":"organizeProgress","done":3}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::OrganizeChunk).unwrap(),
+            r#"{"type":"organizeChunk"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::Organized { bytes: 9 }).unwrap(),
+            r#"{"type":"organized","bytes":9}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::OrganizeFailed {
+                code: "PdfOpenFailed".into(),
+                detail: None,
+                source: 1
+            })
+            .unwrap(),
+            r#"{"type":"organizeFailed","code":"PdfOpenFailed","detail":null,"source":1}"#
         );
     }
 

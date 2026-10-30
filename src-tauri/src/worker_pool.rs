@@ -74,6 +74,9 @@ impl From<WorkerError> for WorkerPoolError {
             WorkerError::Spawn(_) | WorkerError::Crashed => Self::WorkerCrashed,
             WorkerError::Timeout => Self::WorkerTimeout,
             WorkerError::Remote { code, detail } => Self::Remote { code, detail },
+            // Only `request_stream` returns these, and the pool sends single-answer requests.
+            WorkerError::SourceFailed { code, detail, .. } => Self::Remote { code, detail },
+            WorkerError::Cancelled => Self::WorkerCrashed,
         }
     }
 }
@@ -153,6 +156,9 @@ impl WorkerPoolConfig {
             | Request::ImageOnTop { .. }
             | Request::RenderRegion { .. } => self.render_timeout,
             Request::Detect { .. } => self.detect_timeout,
+            // `Organize` answers with several messages and is not sent through the pool's
+            // single-answer `request`; its limit is `ORGANIZE_STEP_TIMEOUT`.
+            Request::Organize { .. } => self.render_timeout,
             #[cfg(feature = "test-hooks")]
             Request::AllocateForTest { .. } | Request::CrashForTest | Request::HangForTest => {
                 self.open_timeout

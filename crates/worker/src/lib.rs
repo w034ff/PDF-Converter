@@ -6,6 +6,7 @@
 pub mod client;
 mod crop;
 mod layout;
+mod organize;
 pub mod protocol;
 pub mod server;
 pub mod system_memory;
