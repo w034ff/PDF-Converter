@@ -433,7 +433,7 @@ pub async fn unlock_organize_pdf(
         .map_err(task_failed)?
 }
 
-/// Opens a save dialog to save the pages as one PDF (design organize §4, §7.1).
+/// Opens a save dialog to save the pages as one PDF (design organize §4, design §7.1).
 ///
 /// Returns `None` only when the dialog was cancelled, so nothing ran. Once the PDF has been made
 /// the result says whether it was saved.
@@ -478,7 +478,7 @@ pub async fn save_organized_pdf(
 }
 
 /// Starts making one PDF for each part of the pages, in the output folder of organize, in the
-/// background (design organize §4, §7.1).
+/// background (design organize §4, design §7.1).
 #[tauri::command]
 pub async fn start_organize_split(
     window: tauri::Window,

@@ -363,7 +363,7 @@ pub fn add_pdfs_from_folder(state: &AppState, dir: &Path) -> Result<OrganizeAdde
     Ok(result)
 }
 
-/// What a drop in the organize tab adds (design organize §4, §7.2): the PDFs in it, and the
+/// What a drop in the organize tab adds (design organize §4, design §7.2): the PDFs in it, and the
 /// PDFs in the folders in it. Nothing is added during a conversion.
 pub fn add_dropped(state: &AppState, paths: &[PathBuf]) -> OrganizeDropped {
     if let Err(error) = refuse_while_running(state) {

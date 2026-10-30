@@ -290,7 +290,7 @@ pub fn begin_single(
 
 /// Makes the single PDF and saves it as `dest_path`, which the user picked in the save dialog
 /// and may be one of the sources: the output is written in the folder first and put in place
-/// when it is done (design organize §4, §7). The result is reported like any job: one
+/// when it is done (design organize §4). The result is reported like any job: one
 /// `job-item`, then `job-finished`.
 ///
 /// # Errors
