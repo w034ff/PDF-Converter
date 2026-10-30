@@ -458,7 +458,9 @@
 .organize-part-badge {
   position: absolute;
   top: -8px;
-  left: -8px;
+  /* No further left: the padding of the scrolling area would clip the badge of
+     a page at the start of a row. */
+  left: -4px;
   min-width: 20px;
   height: 20px;
   box-sizing: border-box;
