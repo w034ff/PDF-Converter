@@ -24,7 +24,8 @@ use pdf_converter_lib::organize::{
     self, MAX_ORGANIZE_OUTPUT_BYTES, OrganizePageInput, OrganizePdf,
 };
 use pdf_converter_lib::organize_export::{
-    OutputStop, begin_single, run_save_organized_pdf, start_organize_split_internal,
+    OutputStop, SaveOrganizedResult, begin_single, run_save_organized_pdf,
+    start_organize_split_internal,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_worker::WORKER_FLAG;
@@ -315,6 +316,21 @@ impl Recorder {
 
 const WAIT: Duration = Duration::from_secs(60);
 
+/// Saves `pages` as one PDF at `dest` and reports what the command returned and the job said.
+fn save_single_result(
+    state: &AppState,
+    pages: &[OrganizePageInput],
+    password: Option<&str>,
+    dest: &Path,
+) -> (SaveOrganizedResult, Recorder) {
+    let (_guard, output) = begin_single(state, pages, password.map(str::to_owned))
+        .expect("the pages should be accepted");
+    let recorder = Recorder::default();
+    let result = run_save_organized_pdf(state, &output, dest, recorder.quiet_callbacks(state))
+        .expect("saving");
+    (result, recorder)
+}
+
 /// Saves `pages` as one PDF at `dest` and reports what the job said.
 fn save_single(
     state: &AppState,
@@ -322,11 +338,7 @@ fn save_single(
     password: Option<&str>,
     dest: &Path,
 ) -> (Option<String>, Recorder) {
-    let (_guard, output) = begin_single(state, pages, password.map(str::to_owned))
-        .expect("the pages should be accepted");
-    let recorder = Recorder::default();
-    let result = run_save_organized_pdf(state, &output, dest, recorder.quiet_callbacks(state))
-        .expect("saving");
+    let (result, recorder) = save_single_result(state, pages, password, dest);
     (result.saved_name, recorder)
 }
 
@@ -1321,6 +1333,94 @@ fn saving_over_a_source_replaces_it() {
     assert_eq!(recorder.finished().succeeded, 1);
     assert_no_temp_files(dir.path());
     assert_eq!(names_in(dir.path()), ["shapes.pdf"]);
+}
+
+#[test]
+fn saving_over_a_source_drops_it_from_the_list_and_says_which() {
+    let dir = TempDir::new().unwrap();
+    let source = put(dir.path(), "shapes.pdf", "shapes.pdf");
+    let other = put(dir.path(), "mixed_sizes.pdf", "mixed_sizes.pdf");
+    let state = state();
+    let [pdf, kept] = add(&state, &[&source, &other]).try_into().unwrap();
+
+    let (result, _) = save_single_result(
+        &state,
+        &[page(&pdf, 2, 0), page(&kept, 1, 0)],
+        None,
+        &source,
+    );
+
+    assert_eq!(result.saved_name.as_deref(), Some("shapes.pdf"));
+    assert_eq!(result.replaced_id, Some(pdf.id));
+    assert_eq!(
+        code_of(make_thumbnail(&state, pdf.id, None, None)),
+        ErrorCode::UnknownHandle
+    );
+    assert!(make_thumbnail(&state, kept.id, None, None).is_ok());
+    // The file can be added again, as the new PDF it now is.
+    let again = add_one(&state, &source);
+    assert_eq!(again.page_count, 2);
+}
+
+#[test]
+fn saving_to_another_file_leaves_the_list_as_it_was() {
+    let dir = TempDir::new().unwrap();
+    let source = put(dir.path(), "shapes.pdf", "shapes.pdf");
+    let state = state();
+    let pdf = add_one(&state, &source);
+    let out = TempDir::new().unwrap();
+    let dest = out.path().join("shapes.pdf");
+
+    let (result, _) = save_single_result(&state, &[page(&pdf, 1, 0)], None, &dest);
+
+    assert_eq!(result.saved_name.as_deref(), Some("shapes.pdf"));
+    assert_eq!(result.replaced_id, None);
+    assert!(make_thumbnail(&state, pdf.id, None, None).is_ok());
+}
+
+#[cfg(feature = "test-hooks")]
+#[test]
+fn a_save_over_a_source_that_fails_leaves_the_list_as_it_was() {
+    let state = state();
+    let dir = TempDir::new().unwrap();
+    let crash_path = put(dir.path(), "shapes.pdf", CRASH_ON_ORGANIZE_FILE_NAME);
+    let crash = add_one(&state, &crash_path);
+    let before = fs::read(&crash_path).unwrap();
+
+    let (result, recorder) = save_single_result(&state, &[page(&crash, 1, 0)], None, &crash_path);
+
+    assert_eq!(result.saved_name, None);
+    assert_eq!(result.replaced_id, None);
+    assert_eq!(recorder.items()[0].status, JobItemStatus::Failed);
+    assert_eq!(fs::read(&crash_path).unwrap(), before);
+    assert!(make_thumbnail(&state, crash.id, None, None).is_ok());
+}
+
+#[cfg(feature = "test-hooks")]
+#[test]
+fn cancelling_a_save_over_a_source_leaves_the_list_as_it_was() {
+    let state = state();
+    let dir = TempDir::new().unwrap();
+    let hang_path = put(dir.path(), "shapes.pdf", HANG_ON_ORGANIZE_FILE_NAME);
+    let hang = add_one(&state, &hang_path);
+    let (_guard, output) = begin_single(&state, &[page(&hang, 1, 0)], None).unwrap();
+    let cancel = Arc::clone(&state.cancel_flag);
+    let recorder = Recorder::default();
+    let callbacks = recorder.callbacks(&state, move |progress| {
+        if progress.done == 0 {
+            let cancel = Arc::clone(&cancel);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(500));
+                cancel.store(true, Ordering::SeqCst);
+            });
+        }
+    });
+
+    let result = run_save_organized_pdf(&state, &output, &hang_path, callbacks).expect("saving");
+
+    assert_eq!(result.saved_name, None);
+    assert_eq!(result.replaced_id, None);
+    assert!(make_thumbnail(&state, hang.id, None, None).is_ok());
 }
 
 #[test]

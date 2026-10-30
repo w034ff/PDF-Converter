@@ -13,20 +13,43 @@ use std::sync::atomic::Ordering;
 use pdfconv_core::naming::{resolve_organize_names, split_stem_and_ext};
 use pdfconv_worker::client::{StreamPart, WorkerError};
 use pdfconv_worker::protocol::{OrganizePage, OrganizeSource, Password, Request, Response};
+use serde::Serialize;
 use tempfile::NamedTempFile;
+use ts_rs::TS;
 
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{file_name, unexpected_response};
 use crate::jobs::{
     self, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
-    SaveMergedPdfResult,
 };
 use crate::organize::{
     OrganizePageInput, Source, check_output_password, check_parts, check_sizes, ids_of,
 };
 use crate::settings::OutputKind;
 use crate::worker_pool::WorkerPoolError;
+
+/// Result returned once a single PDF has been made (design organize §4, design §7.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveOrganizedResult {
+    /// The saved file's name, or `None` when no PDF was written (the job was cancelled, or it
+    /// failed).
+    pub saved_name: Option<String>,
+    /// The organize PDF that was the file the output replaced, which is no longer in the
+    /// organize list; `None` when the output went to another file or was not saved.
+    #[ts(type = "number | null")]
+    pub replaced_id: Option<u64>,
+}
+
+impl SaveOrganizedResult {
+    fn not_saved() -> Self {
+        Self {
+            saved_name: None,
+            replaced_id: None,
+        }
+    }
+}
 
 /// One output, ready to be made.
 #[derive(Debug, Clone)]
@@ -302,7 +325,7 @@ pub fn run_save_organized_pdf<FProg, FItem, FFin>(
     output: &SingleOutput,
     dest_path: &Path,
     callbacks: JobCallbacks<FProg, FItem, FFin>,
-) -> Result<SaveMergedPdfResult, IpcError>
+) -> Result<SaveOrganizedResult, IpcError>
 where
     FProg: Fn(JobProgressPayload),
     FItem: Fn(JobItemPayload),
@@ -345,6 +368,12 @@ where
     };
     match made {
         Ok(()) => {
+            // Looked up after the file is in place, so that a save that failed or was cancelled
+            // leaves the list as it was. A path that cannot be resolved cannot be told from the
+            // PDFs either, and then none is dropped.
+            let replaced_id = std::fs::canonicalize(dest_path)
+                .ok()
+                .and_then(|canonical| state.organize.remove_file(&canonical));
             on_item(JobItemPayload {
                 id: 1,
                 status: JobItemStatus::Ok,
@@ -354,20 +383,21 @@ where
                 source_id: None,
             });
             on_finished(finished(1, 0, 0, false));
-            Ok(SaveMergedPdfResult {
+            Ok(SaveOrganizedResult {
                 saved_name: Some(saved_name),
+                replaced_id,
             })
         }
         Err(OutputStop::Cancelled) => {
             on_finished(finished(0, 0, 1, true));
-            Ok(SaveMergedPdfResult { saved_name: None })
+            Ok(SaveOrganizedResult::not_saved())
         }
         Err(OutputStop::Failed {
             error, source_id, ..
         }) => {
             on_item(failed_item(1, error, source_id));
             on_finished(finished(0, 1, 0, false));
-            Ok(SaveMergedPdfResult { saved_name: None })
+            Ok(SaveOrganizedResult::not_saved())
         }
     }
 }

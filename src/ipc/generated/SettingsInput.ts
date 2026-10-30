@@ -2,10 +2,11 @@
 import type { CropOptions } from "./CropOptions";
 import type { ImagesToPdfOptions } from "./ImagesToPdfOptions";
 import type { Language } from "./Language";
+import type { OrganizeOptions } from "./OrganizeOptions";
 import type { PdfToImagesOptions } from "./PdfToImagesOptions";
 
 /**
  * Argument of `save_settings`: [`Settings`] without the folders, which only
  * `pick_output_dir` changes (design §6.7).
  */
-export type SettingsInput = { language: Language | null, imagesToPdf: ImagesToPdfOptions, pdfToImages: PdfToImagesOptions, crop: CropOptions, };
+export type SettingsInput = { language: Language | null, imagesToPdf: ImagesToPdfOptions, pdfToImages: PdfToImagesOptions, crop: CropOptions, organize: OrganizeOptions, };

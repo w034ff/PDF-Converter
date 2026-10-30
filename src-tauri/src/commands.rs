@@ -24,7 +24,7 @@ use crate::jobs::{
     RenderFormatChoice, SaveMergedPdfResult, pdf_conformance,
 };
 use crate::organize::{self, OrganizeAdded, OrganizePageInput, OrganizeUnlocked};
-use crate::organize_export;
+use crate::organize_export::{self, SaveOrganizedResult};
 use crate::settings::{self, CropOptions, OutputDirLabel, OutputKind, Settings, SettingsInput};
 use crate::worker_pool::WorkerPool;
 
@@ -443,7 +443,7 @@ pub async fn save_organized_pdf(
     state: tauri::State<'_, AppState>,
     pages: Vec<OrganizePageInput>,
     password: Option<String>,
-) -> Result<Option<SaveMergedPdfResult>, IpcError> {
+) -> Result<Option<SaveOrganizedResult>, IpcError> {
     let state_inner = state.inner().clone();
     // Refused before the save dialog opens, so that nothing is asked for a refused call.
     let (running_guard, output) = organize_export::begin_single(&state_inner, &pages, password)?;

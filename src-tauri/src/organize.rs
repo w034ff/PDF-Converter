@@ -179,6 +179,16 @@ impl OrganizeState {
         self.lock().retain(|entry| !ids.contains(&entry.id));
     }
 
+    /// Removes the PDF whose file is `canonical` and returns its ID; `None` if no PDF is that
+    /// file.
+    pub(crate) fn remove_file(&self, canonical: &Path) -> Option<u64> {
+        let mut entries = self.lock();
+        let index = entries
+            .iter()
+            .position(|entry| entry.canonical == canonical)?;
+        Some(entries.remove(index).id)
+    }
+
     fn get(&self, id: u64) -> Option<OrganizeEntry> {
         self.lock().iter().find(|entry| entry.id == id).cloned()
     }
@@ -670,6 +680,29 @@ mod tests {
         assert_eq!(estimate_output_bytes([(1234, 0, 7)]), 0);
         assert_eq!(estimate_output_bytes([(1234, 1, 0)]), 0);
         assert_eq!(estimate_output_bytes([]), 0);
+    }
+
+    /// The same rows are in the screen's test of `estimateOutputBytes`
+    /// (`src/features/organize/estimate.test.ts`): `(file_bytes, used_pages, page_count)` of each
+    /// PDF, then the estimate. A row changed here is changed there.
+    #[test]
+    fn the_estimates_of_the_table_the_screen_tests_too() {
+        type Row = (&'static [(u64, u32, u32)], u64);
+        let table: [Row; 6] = [
+            (&[(1000, 1, 3)], 334),
+            (&[(1000, 3, 3)], 1000),
+            (&[(1000, 0, 3)], 0),
+            (&[(10, 1, 4), (7, 2, 3)], 8),
+            (&[(500, 2, 0)], 0),
+            (&[(9_007_199_254_740_991, 3, 4)], 6_755_399_441_055_744),
+        ];
+        for (sources, expected) in table {
+            assert_eq!(
+                estimate_output_bytes(sources.iter().copied()),
+                expected,
+                "{sources:?}"
+            );
+        }
     }
 
     #[test]

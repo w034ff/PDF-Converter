@@ -107,6 +107,7 @@ fn input() -> SettingsInput {
             dpi: 72,
         },
         crop: crop_options(),
+        organize: organize_options(),
     }
 }
 
@@ -1857,7 +1858,7 @@ fn an_organize_folder_that_is_gone_is_cleared_without_touching_the_others() {
 }
 
 #[test]
-fn save_settings_keeps_the_organize_options_and_folder_as_they_were_read() {
+fn save_settings_takes_the_organize_options_and_keeps_the_folder() {
     let temp = TempDir::new().expect("temp dir");
     let out = new_dir(temp.path(), "organize-out");
     let config_dir = new_dir(temp.path(), "config");
@@ -1866,21 +1867,37 @@ fn save_settings_keeps_the_organize_options_and_folder_as_they_were_read() {
     write_settings(&config_dir, &json);
     let state = state();
     restore_settings(&state, &config_dir);
+    let sent = OrganizeOptions {
+        output: OrganizeOutput::Single,
+        encrypt: false,
+    };
+    assert_ne!(sent, organize_options(), "the file has other options");
 
-    save(&state, &input()).expect("saving");
+    save(
+        &state,
+        &SettingsInput {
+            organize: sent,
+            ..input()
+        },
+    )
+    .expect("saving");
 
     let loaded = load_settings(&config_dir);
-    assert_eq!(loaded.organize.options, organize_options());
+    assert_eq!(loaded.organize.options, sent);
     assert_eq!(loaded.organize.output_dir, Some(out.clone()));
     assert_eq!(state.settings.file().organize, loaded.organize);
     assert_eq!(*state.organize_output_dir.lock().unwrap(), Some(out));
+    assert_eq!(
+        get_settings_internal(&state).organize.output,
+        OrganizeOutput::Single
+    );
     // What `save_settings` took is there too.
     assert_eq!(loaded.language, Some(Language::En));
     assert_eq!(loaded.crop.options, crop_options());
 }
 
 #[test]
-fn save_settings_keeps_the_organize_defaults_of_a_file_that_had_none() {
+fn save_settings_takes_the_organize_options_over_the_defaults_of_a_file_that_had_none() {
     let temp = TempDir::new().expect("temp dir");
     let config_dir = temp.path().join("config");
     let state = state();
@@ -1888,5 +1905,36 @@ fn save_settings_keeps_the_organize_defaults_of_a_file_that_had_none() {
 
     save(&state, &input()).expect("saving");
 
-    assert_eq!(load_settings(&config_dir).organize, defaults().organize);
+    let loaded = load_settings(&config_dir);
+    assert_eq!(loaded.organize.options, organize_options());
+    assert_ne!(loaded.organize, defaults().organize);
+}
+
+#[test]
+fn settings_input_requires_the_organize_options() {
+    let mut json = serde_json::to_value(serde_json::json!({
+        "language": "en",
+        "imagesToPdf": {
+            "output": "each",
+            "pageSize": "a4",
+            "orientation": "portrait",
+            "pdfA": true,
+            "encrypt": false
+        },
+        "pdfToImages": { "format": "jpeg", "colorMode": "gray", "dpi": 72 },
+        "crop": {
+            "format": "webp",
+            "colorMode": "gray",
+            "dpi": 72,
+            "photoNative": false,
+            "photoOnly": true
+        },
+        "organize": { "output": "split", "encrypt": true }
+    }))
+    .expect("a value");
+    assert!(serde_json::from_value::<SettingsInput>(json.clone()).is_ok());
+
+    json.as_object_mut().expect("an object").remove("organize");
+
+    assert!(serde_json::from_value::<SettingsInput>(json).is_err());
 }

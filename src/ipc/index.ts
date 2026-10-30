@@ -32,6 +32,7 @@ import type { PdfItem } from "./generated/PdfItem";
 import type { RenderColorChoice } from "./generated/RenderColorChoice";
 import type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
+import type { SaveOrganizedResult } from "./generated/SaveOrganizedResult";
 import type { Settings } from "./generated/Settings";
 import type { SettingsInput } from "./generated/SettingsInput";
 import type { UnlockResult } from "./generated/UnlockResult";
@@ -81,6 +82,7 @@ export type { PdfToImagesSettings } from "./generated/PdfToImagesSettings";
 export type { RenderColorChoice } from "./generated/RenderColorChoice";
 export type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 export type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
+export type { SaveOrganizedResult } from "./generated/SaveOrganizedResult";
 export type { Settings } from "./generated/Settings";
 export type { SettingsInput } from "./generated/SettingsInput";
 export type { Skipped } from "./generated/Skipped";
@@ -512,15 +514,17 @@ export async function unlockOrganizePdf(
 /**
  * Opens a save dialog and saves the pages as one PDF (design organize §4).
  * Resolves to `null` when the dialog was cancelled, so nothing ran. Once the
- * PDF has been made, `savedName` is `null` if it was not saved. Nothing starts,
- * and it rejects, when the pages are refused: `InvalidParams`, `UnknownHandle`,
- * the error of a PDF, or `OutputTooLarge`.
+ * PDF has been made, `savedName` is `null` if it was not saved, and
+ * `replacedId` is the PDF of the list that the file replaced, which Rust has
+ * dropped from the list. Nothing starts, and it rejects, when the pages are
+ * refused: `InvalidParams`, `UnknownHandle`, the error of a PDF, or
+ * `OutputTooLarge`.
  */
 export async function saveOrganizedPdf(
   pages: OrganizePageInput[],
   password: string | null,
-): Promise<SaveMergedPdfResult | null> {
-  return invokeWrapped<SaveMergedPdfResult | null>("save_organized_pdf", {
+): Promise<SaveOrganizedResult | null> {
+  return invokeWrapped<SaveOrganizedResult | null>("save_organized_pdf", {
     pages,
     password,
   });

@@ -111,8 +111,7 @@ pub struct CropOptions {
     pub photo_only: bool,
 }
 
-/// The organize options the user can change (design §6.7). `save_settings` does not take them
-/// yet: the screen sends them together with the rest of its state.
+/// The organize options the user can change (design §6.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct OrganizeOptions {
@@ -130,6 +129,7 @@ pub struct SettingsInput {
     pub images_to_pdf: ImagesToPdfOptions,
     pub pdf_to_images: PdfToImagesOptions,
     pub crop: CropOptions,
+    pub organize: OrganizeOptions,
 }
 
 impl SettingsInput {
@@ -500,6 +500,7 @@ impl SettingsStore {
         stored.file.images_to_pdf.options = input.images_to_pdf;
         stored.file.pdf_to_images.options = input.pdf_to_images;
         stored.file.crop.options = input.crop;
+        stored.file.organize.options = input.organize;
         stored.changes += 1;
         Ok(())
     }

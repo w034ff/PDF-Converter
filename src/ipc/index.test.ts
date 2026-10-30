@@ -458,6 +458,7 @@ describe("ipc", () => {
           photoNative: false,
           photoOnly: true,
         },
+        organize: { output: "split", encrypt: true },
       };
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
@@ -492,6 +493,7 @@ describe("ipc", () => {
             photoNative: true,
             photoOnly: false,
           },
+          organize: { output: "single", encrypt: false },
         }),
       ).rejects.toEqual({ code: "InvalidParams", detail: null });
     });
@@ -519,6 +521,7 @@ describe("ipc", () => {
             photoNative: true,
             photoOnly: false,
           },
+          organize: { output: "single", encrypt: false },
         }),
       ).rejects.toEqual({
         code: "InvalidParams",
@@ -788,11 +791,12 @@ describe("ipc", () => {
       const calls: unknown[] = [];
       mockIPC((cmd, args) => {
         calls.push([cmd, args]);
-        return { savedName: "a.pdf" };
+        return { savedName: "a.pdf", replacedId: 4 };
       });
 
       expect(await saveOrganizedPdf(pages, "secret")).toEqual({
         savedName: "a.pdf",
+        replacedId: 4,
       });
       expect(calls).toEqual([
         ["save_organized_pdf", { pages, password: "secret" }],
@@ -804,8 +808,11 @@ describe("ipc", () => {
       expect(await saveOrganizedPdf([], null)).toBeNull();
 
       clearMocks();
-      mockIPC(() => ({ savedName: null }));
-      expect(await saveOrganizedPdf([], null)).toEqual({ savedName: null });
+      mockIPC(() => ({ savedName: null, replacedId: null }));
+      expect(await saveOrganizedPdf([], null)).toEqual({
+        savedName: null,
+        replacedId: null,
+      });
     });
 
     it("rejects save_organized_pdf with the OutputTooLarge Rust returned", async () => {

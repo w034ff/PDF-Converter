@@ -21,6 +21,7 @@ use pdf_converter_lib::jobs::{
 use pdf_converter_lib::organize::{
     OrganizeAdded, OrganizeDropped, OrganizePageInput, OrganizePdf, OrganizeUnlocked,
 };
+use pdf_converter_lib::organize_export::SaveOrganizedResult;
 use pdf_converter_lib::settings::{
     CropOptions, CropSettings, ImagesToPdfOptions, ImagesToPdfSettings, Language, OrganizeOutput,
     OrganizeSettings, OutputDirLabel, OutputKind, OutputMode, PdfToImagesOptions,
@@ -82,6 +83,7 @@ fn export_typescript_bindings() {
     OrganizeAdded::export_all(&cfg).expect("exporting OrganizeAdded");
     OrganizeDropped::export_all(&cfg).expect("exporting OrganizeDropped");
     OrganizeUnlocked::export_all(&cfg).expect("exporting OrganizeUnlocked");
+    SaveOrganizedResult::export_all(&cfg).expect("exporting SaveOrganizedResult");
     Settings::export_all(&cfg).expect("exporting Settings");
     SettingsInput::export_all(&cfg).expect("exporting SettingsInput");
 }
