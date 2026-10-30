@@ -7,6 +7,7 @@ export const ja = {
       imagesToPdf: "画像 → PDF",
       pdfToImages: "PDF → 画像",
       crop: "切り出し",
+      organize: "整理",
     },
     navAria: "変換の種類",
   },
@@ -412,6 +413,131 @@ export const ja = {
       willExportMultiple: "{count} 個の範囲を {format} で書き出します",
       detecting: "全ページの候補を探しています…",
       export: "書き出す",
+    },
+  },
+  organize: {
+    dropZone: {
+      title: "PDF をドロップするか、「PDF を追加」を押してください",
+      description:
+        "ページを並べ替え・削除・回転して、1 つの PDF にまとめたり、分けて保存したりします。",
+      addPdfs: "PDF を追加",
+      addFolder: "フォルダを追加",
+    },
+    pdfListAria: "PDF",
+    addMenu: {
+      label: "PDF を追加",
+      files: "ファイルを選ぶ",
+      folder: "フォルダを選ぶ",
+    },
+    clearAll: "すべて外す",
+    chip: {
+      pagesSingle: "{count} ページ",
+      pagesMultiple: "{count} ページ",
+      removeAria: "{name} を外す",
+      enterPassword: "パスワードを入力",
+      unreadable: "読み込めません",
+      passwordProtected: "パスワード付き",
+    },
+    clearDialog: {
+      title: "すべての PDF を外しますか？",
+      body: "並べ替え・回転・削除をした並びは失われ、取り消せません。",
+      cancel: "キャンセル",
+      confirm: "すべて外す",
+    },
+    band: {
+      countNoneSingle: "{count} ページ",
+      countNoneMultiple: "{count} ページ",
+      countSelectedSingle: "{count} ページを選択中",
+      countSelectedMultiple: "{count} ページを選択中",
+      rotateLeft: "左に回す",
+      rotateRight: "右に回す",
+      delete: "削除",
+      keyHints: "キー操作の一覧",
+      keyHintsTitle: "キー操作（?）",
+    },
+    grid: {
+      aria: "ページ",
+      pageLabel: "p.{page}",
+      cellAria: "{name} {page} ページ",
+      cellAriaRotated: "{name} {page} ページ、{degrees}°",
+      rotation: "{degrees}°",
+      empty: "ページがありません",
+      emptyHint: "Ctrl+Z で戻せます",
+    },
+    settings: {
+      password: "パスワードを付ける",
+      encryptedNotice:
+        "パスワード付きの PDF があります。元の PDF のパスワードは引き継ぎません。",
+      aboutTitle: "保存した PDF について",
+      about:
+        "注釈とフォームは、見た目どおりページに固めます。しおりとリンクは付け直します。作成者などの文書情報は入れません。",
+    },
+    footer: {
+      noPdfs: "PDF を追加してください",
+      noPages: "保存するページがありません",
+      tooManyPages: "1 つの PDF は {max} ページまでです（今は {count} ページ）",
+      willSaveSingle:
+        "{count} ページを 1 つの PDF に保存します（約 {size} MB）",
+      willSaveMultiple:
+        "{count} ページを 1 つの PDF に保存します（約 {size} MB）",
+      leftOutSingle: "（{count} 個の PDF は保存に入りません）",
+      leftOutMultiple: "（{count} 個の PDF は保存に入りません）",
+    },
+    result: {
+      savedSingle: "{count} ページを 1 つの PDF に保存しました",
+      savedMultiple: "{count} ページを 1 つの PDF に保存しました",
+      replaced: "置き換えた {name} を一覧から外しました",
+      failed: "PDF を保存しませんでした（{name}: {message}）",
+      failedWithoutName: "PDF を保存しませんでした（{message}）",
+    },
+    keyHints: {
+      title: "キー操作",
+      close: "閉じる",
+      groups: [
+        {
+          title: "選ぶ",
+          rows: [
+            {
+              keys: [["矢印"], ["Home"], ["End"]],
+              action: "フォーカスを動かす（選択は変わらない）",
+            },
+            {
+              keys: [["Shift", "矢印"]],
+              action: "基点からフォーカスのページまでを選ぶ",
+            },
+            { keys: [["Space"]], action: "フォーカスのページを選ぶ・外す" },
+            { keys: [["Ctrl", "A"]], action: "すべて選ぶ" },
+            { keys: [["Esc"]], action: "選択を解除・ドラッグを取りやめる" },
+          ],
+        },
+        {
+          title: "ページの操作",
+          rows: [
+            {
+              keys: [["Alt", "矢印"]],
+              action: "選んだページを動かす（なければフォーカスのページ）",
+            },
+            { keys: [["R"]], action: "右に回す" },
+            { keys: [["L"]], action: "左に回す" },
+            { keys: [["Delete"], ["Backspace"]], action: "削除" },
+            { keys: [["Ctrl", "Z"]], action: "元に戻す" },
+            {
+              keys: [
+                ["Ctrl", "Y"],
+                ["Ctrl", "Shift", "Z"],
+              ],
+              action: "やり直す",
+            },
+          ],
+        },
+        {
+          title: "画面操作・ヘルプ",
+          rows: [
+            { keys: [["Tab"]], action: "格子に入る・出る" },
+            { keys: [["?"]], action: "この一覧を開く" },
+          ],
+        },
+      ],
     },
   },
   about: {

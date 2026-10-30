@@ -49,6 +49,10 @@ export function useEnsureOutputDir(tab: ActiveTab): EnsureOutputDirResult {
           case "crop":
             dispatch({ type: "SET_CROP_OUTPUT_DIR", outputDir: picked });
             break;
+          case "organize":
+            // Only the save in parts keeps a folder, and it comes with the
+            // action that sets the organize folder; nothing asks for one yet.
+            break;
         }
         await onConfirmed();
       }

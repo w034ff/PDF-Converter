@@ -6,10 +6,12 @@ import {
   type IpcError,
   type PageOrientationChoice,
   saveMergedPdf,
+  saveOrganizedPdf,
   startCropExport,
   startDetectAll,
   startImagesToPdfs,
   startPdfsToImages,
+  type OrganizePageInput,
   type PageSizeChoice,
   type RenderColorChoice,
   type RenderFormatChoice,
@@ -25,6 +27,16 @@ export interface JobRunner {
     pdfA: boolean,
     password: string | null,
   ): Promise<void>;
+  /**
+   * Starts "PDF を保存" of the organize tab: opens the save dialog, then makes
+   * one PDF of `pages` in their order (organize §4). Resolves to the ID of the
+   * organize PDF the file replaced, which Rust has dropped from its list, or
+   * `null` when no PDF was replaced.
+   */
+  saveOrganizedPdf(
+    pages: OrganizePageInput[],
+    password: string | null,
+  ): Promise<number | null>;
   /** Starts "1 枚ずつ" for `targets` (design §6.2). */
   startImagesToPdfs(
     targets: JobTarget[],
@@ -88,13 +100,21 @@ export function useJobRunner(): JobRunner {
           // the next start asks for a folder (`useEnsureOutputDir`). This
           // comes before JOB_FAILED because changing a setting drops a
           // result that is already there.
-          dispatch(
-            kind === "imagesToPdf"
-              ? { type: "SET_IMAGES_OUTPUT_DIR", outputDir: null }
-              : kind === "crop"
-                ? { type: "SET_CROP_OUTPUT_DIR", outputDir: null }
-                : { type: "SET_PDFS_OUTPUT_DIR", outputDir: null },
-          );
+          switch (kind) {
+            case "imagesToPdf":
+              dispatch({ type: "SET_IMAGES_OUTPUT_DIR", outputDir: null });
+              break;
+            case "pdfToImages":
+              dispatch({ type: "SET_PDFS_OUTPUT_DIR", outputDir: null });
+              break;
+            case "crop":
+              dispatch({ type: "SET_CROP_OUTPUT_DIR", outputDir: null });
+              break;
+            case "organize":
+              // The save in one PDF asks for no folder, so this never comes
+              // for it; the save in parts will forget its folder here.
+              break;
+          }
         }
         dispatch({ type: "JOB_FAILED", error: ipcError });
         return { error: ipcError };
@@ -118,6 +138,24 @@ export function useJobRunner(): JobRunner {
         // Otherwise the job ran but wrote no PDF (it was cancelled, or no
         // image could be added). `job-finished` has already set the result,
         // and the banner and rows keep showing it.
+      },
+      async saveOrganizedPdf(pages, password) {
+        // The PDFs written are not items of the list, so no row has a status.
+        const outcome = await run("organize", [], () =>
+          saveOrganizedPdf(pages, password),
+        );
+        if ("error" in outcome) {
+          return null;
+        }
+        if (outcome.result === null) {
+          // The save dialog was cancelled; nothing ran.
+          dispatch({ type: "JOB_RESET" });
+          return null;
+        }
+        if (outcome.result.savedName !== null) {
+          dispatch({ type: "JOB_SAVED", savedName: outcome.result.savedName });
+        }
+        return outcome.result.replacedId;
       },
       async startImagesToPdfs(targets, pageSize, orientation, pdfA, password) {
         await run("imagesToPdf", targets, (ids) =>

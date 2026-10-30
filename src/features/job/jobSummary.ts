@@ -1,4 +1,9 @@
-import { formatMessage, type Translations } from "../../i18n";
+import {
+  formatErrorMessage,
+  formatMessage,
+  type Language,
+  type Translations,
+} from "../../i18n";
 import type { JobFinishedPayload, JobItemPayload } from "../../ipc";
 import type { ActiveTab, AppState, JobState } from "../../state";
 import {
@@ -26,6 +31,13 @@ export type JobSummaryShape =
   | { kind: "pages"; saved: number; failed: number; unprocessed: number }
   | { kind: "mergedPdf"; pages: number; failedImages: number }
   | { kind: "mergedPdfNotSaved" }
+  /**
+   * The organize tab's "PDF を保存": the pages of the PDF it wrote, and the
+   * PDF of the list it replaced, if it did.
+   */
+  | { kind: "organizedPdf"; pages: number; replacedName: string | null }
+  /** It wrote none: the PDF it failed on (`null` if it was not one of them) and why. */
+  | { kind: "organizedPdfFailed"; name: string | null; message: string }
   /** The crop tab's "全ページの候補": the areas it added, and the pages by outcome. */
   | { kind: "detectAll"; added: number; failed: number; unprocessed: number };
 
@@ -89,6 +101,30 @@ function summaryParts(
     }
     case "mergedPdfNotSaved":
       return [t.job.mergedPdf.notSaved];
+    case "organizedPdf": {
+      const { result } = t.organize;
+      const saved = pluralize(
+        shape.pages,
+        result.savedSingle,
+        result.savedMultiple,
+      );
+      return shape.replacedName === null
+        ? [saved]
+        : [saved, formatMessage(result.replaced, { name: shape.replacedName })];
+    }
+    case "organizedPdfFailed": {
+      const { result } = t.organize;
+      return [
+        shape.name === null
+          ? formatMessage(result.failedWithoutName, {
+              message: shape.message,
+            })
+          : formatMessage(result.failed, {
+              name: shape.name,
+              message: shape.message,
+            }),
+      ];
+    }
     case "detectAll": {
       const { detectAll } = t.crop;
       const { pageCounts } = t.job;
@@ -135,6 +171,13 @@ export function formatJobSummary(
   finished: JobFinishedPayload,
   shape: JobSummaryShape = ITEMS_SHAPE,
 ): string {
+  if (shape.kind === "organizedPdf") {
+    // The save is one PDF, so there is no count of conversions to lead with.
+    return summaryParts(t, finished, shape).join(t.job.summarySeparator);
+  }
+  if (shape.kind === "organizedPdfFailed") {
+    return summaryParts(t, finished, shape).join("");
+  }
   const finishedTemplate =
     shape.kind === "detectAll"
       ? t.crop.detectAll.summaryFinished
@@ -264,4 +307,40 @@ export function summaryShape(
     };
   }
   return { kind: "items", partial: partialCount };
+}
+
+/**
+ * What the summary of the organize tab's last save tells. A save of one PDF
+ * ends in one `job-item` (organize §4): the PDF is written, or it is not and
+ * the item says why, with the PDF that failed when it was one of the list.
+ * A cancelled save wrote none.
+ */
+export function organizeSummaryShape(
+  job: JobState,
+  pdfs: AppState["organize"]["pdfs"],
+  language: Language,
+): JobSummaryShape {
+  const item = job.results[1];
+  if (job.finished?.cancelled === true) {
+    return { kind: "mergedPdfNotSaved" };
+  }
+  if (job.finished !== null && job.finished.succeeded > 0) {
+    return {
+      kind: "organizedPdf",
+      pages: job.progress?.total ?? 0,
+      replacedName: job.replacedName,
+    };
+  }
+  const error = item?.error;
+  return {
+    kind: "organizedPdfFailed",
+    name:
+      item?.sourceId === undefined
+        ? null
+        : (pdfs.find((pdf) => pdf.id === item.sourceId)?.name ?? null),
+    message:
+      error === undefined
+        ? ""
+        : formatErrorMessage(error.code, error.detail, language),
+  };
 }

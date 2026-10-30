@@ -26,6 +26,11 @@ import { PdfToImagesAction } from "./features/pdf-to-images/PdfToImagesAction";
 import { PdfToImagesSettings } from "./features/pdf-to-images/PdfToImagesSettings";
 import { PdfToImagesStatus } from "./features/pdf-to-images/PdfToImagesStatus";
 import { PdfToImagesView } from "./features/pdf-to-images/PdfToImagesView";
+import { OrganizeAction } from "./features/organize/OrganizeAction";
+import { OrganizeSettings } from "./features/organize/OrganizeSettings";
+import { OrganizeStatus } from "./features/organize/OrganizeStatus";
+import { OrganizeView } from "./features/organize/OrganizeView";
+import { useOrganizeDropped } from "./features/organize/useOrganizeDropped";
 import { useSettingsAutoSave } from "./features/settings/useSettingsAutoSave";
 import { useBlockBrowserShortcuts } from "./features/shortcuts/useBlockBrowserShortcuts";
 import { formatErrorMessage, getTranslations, type Language } from "./i18n";
@@ -40,7 +45,12 @@ import {
 import "./styles/app.css";
 
 /** The tabs in the order the header shows them. */
-const TABS: readonly ActiveTab[] = ["imagesToPdf", "pdfToImages", "crop"];
+const TABS: readonly ActiveTab[] = [
+  "imagesToPdf",
+  "pdfToImages",
+  "crop",
+  "organize",
+];
 
 function AppShell() {
   const { language } = useAppState();
@@ -51,6 +61,7 @@ function AppShell() {
   useBlockBrowserShortcuts();
   const dropError = useItemsDropped();
   useCropDropped();
+  useOrganizeDropped();
   useDropTarget(language.activeTab);
   useCropPageData(language.activeTab === "crop");
   useCropAreaQueries();
@@ -88,6 +99,7 @@ function AppShell() {
       action: <PdfToImagesAction />,
     },
     crop: { idleStatus: <CropStatus />, action: <CropAction /> },
+    organize: { idleStatus: <OrganizeStatus />, action: <OrganizeAction /> },
   } satisfies Record<ActiveTab, { idleStatus: ReactNode; action: ReactNode }>;
 
   return (
@@ -167,6 +179,16 @@ function AppShell() {
         <div className="app-body">
           {activeTab === "crop" ? (
             <CropScreen />
+          ) : activeTab === "organize" ? (
+            <>
+              <aside className="app-sidebar">
+                <OrganizeSettings />
+              </aside>
+
+              <main className="app-main organize-main">
+                <OrganizeView />
+              </main>
+            </>
           ) : (
             <>
               <aside className="app-sidebar">

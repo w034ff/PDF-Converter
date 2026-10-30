@@ -65,12 +65,12 @@ describe("the crop tab: opening a PDF", () => {
   });
 
   describe("the tab", () => {
-    it("is the third tab and shows the crop screen", async () => {
+    it("is the third of the four tabs and shows the crop screen", async () => {
       mockCropIpc();
       renderApp();
 
       const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
-      expect(tabs).toEqual(["画像 → PDF", "PDF → 画像", "切り出し"]);
+      expect(tabs).toEqual(["画像 → PDF", "PDF → 画像", "切り出し", "整理"]);
 
       openCropTab();
       await flush();

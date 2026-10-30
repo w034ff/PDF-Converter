@@ -1,0 +1,382 @@
+/* The organize tab (design §10.1, mockups OrganizeEmpty, OrganizeSingle,
+   OrganizeSplit960). The settings panel is the usual sidebar; the main area
+   holds the chips of the PDFs, the band and the grid, which scrolls by itself. */
+
+.app-main.organize-main {
+  gap: 8px;
+  padding: 16px 24px 0;
+  overflow: hidden;
+}
+
+.organize-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.organize-view > .drop-zone {
+  margin-bottom: 24px;
+}
+
+/* ---- Settings ---- */
+
+.organize-settings {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.organize-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.organize-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.organize-check input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.organize-settings-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--organize-notice-bg);
+  border: 1px solid var(--organize-notice-border);
+  border-radius: var(--radius-md);
+}
+
+.organize-settings-notice-icon {
+  flex: none;
+  margin-top: 2px;
+  display: inline-flex;
+  color: var(--color-text-secondary);
+}
+
+.organize-settings-notice-icon svg {
+  stroke: currentColor;
+}
+
+.organize-settings-about {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+/* The ground is too short for the note under the settings of a small window
+   (OrganizeSplit960); the settings keep the room. */
+@media (max-height: 719px) {
+  .organize-settings-about {
+    display: none;
+  }
+}
+
+/* ---- The PDFs ---- */
+
+.organize-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.organize-toolbar-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.organize-chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px;
+  scrollbar-width: thin;
+}
+
+.organize-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-bg-surface);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.organize-chip.is-waiting {
+  border-color: var(--color-warning);
+}
+
+.organize-chip.is-broken {
+  border-color: var(--color-error);
+}
+
+.organize-chip-name {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.organize-chip-lock {
+  display: inline-flex;
+  color: var(--color-text-secondary);
+}
+
+.organize-chip-lock svg {
+  stroke: currentColor;
+}
+
+.organize-chip.is-waiting .organize-chip-lock {
+  color: var(--color-warning);
+}
+
+.organize-chip-error {
+  color: var(--color-error);
+  font-weight: 500;
+}
+
+.organize-chip-password {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--color-warning);
+  border-radius: 11px;
+  background: transparent;
+  color: var(--color-warning);
+  cursor: pointer;
+}
+
+.organize-chip-password:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.organize-chip-remove {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.organize-chip-remove:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.organize-chip-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.organize-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+/* ---- The band ---- */
+
+.organize-band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.organize-band-count {
+  min-width: 120px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.organize-band-button {
+  min-height: 32px;
+  gap: 6px;
+}
+
+.organize-band-hints {
+  margin-left: auto;
+}
+
+/* ---- The grid ---- */
+
+.organize-grid-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 4px 16px;
+}
+
+.organize-grid {
+  position: relative;
+  user-select: none;
+}
+
+.organize-grid.is-dragging {
+  cursor: grabbing;
+}
+
+.organize-grid-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.organize-cell {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* The ring is the text color: the accent is what a selected page is drawn in
+   (design §10.1). */
+.organize-cell:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.organize-cell-box {
+  position: relative;
+  width: 124px;
+  height: 124px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+}
+
+.organize-cell.is-selected .organize-cell-box {
+  background: var(--organize-cell-selected);
+}
+
+/* The page is drawn on white whichever theme the app is in. Its frame is drawn
+   over the picture, which fills the box: a border of its own would be
+   covered by the picture, which is as large as the box. */
+.organize-thumb {
+  position: relative;
+  flex: none;
+  background: var(--color-page-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.organize-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.organize-cell.is-selected .organize-thumb::after {
+  border: 2px solid var(--color-accent);
+}
+
+.organize-thumb-image {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  pointer-events: none;
+}
+
+.organize-cell-angle {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  font-size: 11px;
+}
+
+.organize-cell-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  font-size: 12px;
+}
+
+.organize-cell-caption {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 124px;
+  height: 18px;
+  line-height: 18px;
+}
+
+.organize-cell-page {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.organize-cell-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where dragged pages would go. The line of the split in parts is as long
+   but thinner, and has a mark. */
+.organize-drop-line {
+  position: absolute;
+  width: 3px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--color-accent);
+  pointer-events: none;
+}
