@@ -718,7 +718,7 @@ pub(crate) fn crop_thumbnail(
     let snapshot = state.crop.snapshot(id)?;
     let page = checked_page(page, snapshot.page_count)?;
     let max_side = checked_max_side(max_side)?;
-    pdf_thumbnail(state, &snapshot.open, page, max_side)
+    pdf_thumbnail(state, id, &snapshot.open, page, max_side)
 }
 
 /// The embedded images of a page of the open PDF `id` (design §5.1, §7.1).
@@ -730,7 +730,7 @@ pub(crate) fn crop_thumbnail(
 pub fn list_page_images(state: &AppState, id: u64, page: u32) -> Result<Vec<PageImage>, IpcError> {
     let snapshot = state.crop.snapshot(id)?;
     let page = checked_page(Some(page), snapshot.page_count)?;
-    match request_on_pdf(state, &snapshot.open, &Request::PageImages { page })? {
+    match request_on_pdf(state, id, &snapshot.open, &Request::PageImages { page })? {
         (Response::PageImages { images }, _) => Ok(images.iter().map(PageImage::from).collect()),
         _ => Err(unexpected_response()),
     }
@@ -752,7 +752,7 @@ pub fn check_on_top(
     let snapshot = state.crop.snapshot(id)?;
     let page = checked_page(Some(page), snapshot.page_count)?;
     let request = Request::ImageOnTop { page, image_index };
-    match request_on_pdf(state, &snapshot.open, &request)? {
+    match request_on_pdf(state, id, &snapshot.open, &request)? {
         (Response::ImageOnTop { on_top }, _) => Ok(on_top),
         _ => Err(unexpected_response()),
     }

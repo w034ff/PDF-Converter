@@ -770,7 +770,7 @@ pub fn make_thumbnail(
         ItemKind::Pdf => {
             let page = checked_page(page, entry.page_count)?;
             let max_side = checked_max_side(max_side)?;
-            pdf_thumbnail(state, &entry.open_request(), page, max_side)
+            pdf_thumbnail(state, id, &entry.open_request(), page, max_side)
         }
     }
 }
@@ -795,28 +795,34 @@ pub(crate) fn checked_max_side(max_side: Option<u32>) -> Result<u32, IpcError> {
     Ok(max_side)
 }
 
-/// Opens the PDF that `open` names in a pooled worker, sends `request` and
-/// closes the PDF again.
+/// Sends `request` for the PDF `pdf_id`, which `open` opens, in a pooled
+/// worker that has it open already if there is one, and leaves it open for the
+/// next request: opening a PDF of many pages takes far longer than drawing a
+/// thumbnail of it (design §5.2). `pdf_id` must never name another file.
 pub(crate) fn request_on_pdf(
     state: &AppState,
+    pdf_id: u64,
     open: &Request,
     request: &Request,
 ) -> Result<(Response, Vec<u8>), IpcError> {
-    let mut worker = state.pool.acquire()?;
-    send_open(&mut worker, open)?;
-    let answer = worker.send(request);
-    close_pdf(&mut worker);
-    Ok(answer?)
+    let mut worker = state.pool.acquire_for_pdf(pdf_id)?;
+    if !worker.use_held_pdf(pdf_id) {
+        worker.set_held_pdf(None);
+        send_open(&mut worker, open)?;
+        worker.set_held_pdf(Some(pdf_id));
+    }
+    Ok(worker.send(request)?)
 }
 
-/// Renders `page` of the PDF that `open` names as a PNG, in a pooled worker.
+/// Renders `page` of the PDF `pdf_id`, which `open` opens, as a PNG, in a pooled worker.
 pub(crate) fn pdf_thumbnail(
     state: &AppState,
+    pdf_id: u64,
     open: &Request,
     page: u32,
     max_side: u32,
 ) -> Result<Vec<u8>, IpcError> {
-    match request_on_pdf(state, open, &Request::Thumbnail { page, max_side })? {
+    match request_on_pdf(state, pdf_id, open, &Request::Thumbnail { page, max_side })? {
         (Response::Thumbnail, png) => Ok(png),
         _ => Err(unexpected_response()),
     }

@@ -6,8 +6,8 @@
 
 use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex, Weak};
+use std::time::{Duration, Instant};
 
 use pdfconv_worker::client::{
     DETECT_TIMEOUT, OPEN_TIMEOUT, ORGANIZE_STEP_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess,
@@ -16,6 +16,14 @@ use pdfconv_worker::protocol::{Request, Response};
 
 /// Maximum number of concurrent worker processes (design §5.2).
 pub const MAX_WORKERS: usize = 4;
+
+/// How long a worker keeps a PDF open with no request for it (design §5.2).
+pub const HELD_PDF_IDLE_TIME: Duration = Duration::from_secs(2);
+
+/// How many requests a held PDF serves before it is opened afresh. pdfium keeps
+/// what it read of each page until the PDF closes, so a long scroll would
+/// otherwise grow towards the worker's memory limit (design §5.2).
+pub const HELD_PDF_MAX_REQUESTS: u32 = 200;
 
 /// Errors returned by worker pool operations, corresponding to design §6.6.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,6 +112,8 @@ pub struct WorkerPoolConfig {
     /// The longest wait between two answers of an `Organize` request, not for the whole
     /// request, whose length grows with the output (design organize §3).
     pub organize_step_timeout: Duration,
+    /// How long an idle worker keeps a PDF open (design §5.2).
+    pub held_pdf_idle_time: Duration,
 }
 
 impl WorkerPoolConfig {
@@ -120,6 +130,7 @@ impl WorkerPoolConfig {
             render_timeout: RENDER_TIMEOUT,
             detect_timeout: DETECT_TIMEOUT,
             organize_step_timeout: ORGANIZE_STEP_TIMEOUT,
+            held_pdf_idle_time: HELD_PDF_IDLE_TIME,
         }
     }
 
@@ -154,6 +165,12 @@ impl WorkerPoolConfig {
         self
     }
 
+    /// Sets how long an idle worker keeps a PDF open.
+    pub fn with_held_pdf_idle_time(mut self, time: Duration) -> Self {
+        self.held_pdf_idle_time = time;
+        self
+    }
+
     /// How long to wait for the answer to `request` (design §5.2). Every
     /// request is listed, so that a new one cannot fall to a default value
     /// without the compiler noticing.
@@ -176,10 +193,21 @@ impl WorkerPoolConfig {
     }
 }
 
+/// A worker waiting for a request.
+struct IdleWorker {
+    worker: WorkerProcess,
+    /// The PDF it still has open, as given to [`PooledWorker::set_held_pdf`].
+    held_pdf: Option<u64>,
+    held_requests: u32,
+    since: Instant,
+}
+
 struct PoolState {
-    idle: Vec<WorkerProcess>,
+    idle: Vec<IdleWorker>,
     total_workers: usize,
     shutting_down: bool,
+    /// Whether [`close_idle_pdfs`] is running; it ends when no idle worker holds a PDF.
+    closer_running: bool,
 }
 
 struct PoolInner {
@@ -204,6 +232,7 @@ impl WorkerPool {
                     idle: Vec::new(),
                     total_workers: 0,
                     shutting_down: false,
+                    closer_running: false,
                 }),
                 available: Condvar::new(),
             }),
@@ -255,7 +284,8 @@ impl WorkerPool {
             .map_err(WorkerPoolError::from)
     }
 
-    /// Borrows a worker from the pool, blocking if all workers are in use.
+    /// Borrows a worker from the pool with no PDF open, blocking if all
+    /// workers are in use.
     ///
     /// Spawns a new worker lazily if below the configured worker limit.
     ///
@@ -264,14 +294,57 @@ impl WorkerPool {
     /// Returns [`WorkerPoolError::WorkerCrashed`] if the pool was shut down or
     /// if spawning the worker process fails.
     pub fn acquire(&self) -> Result<PooledWorker, WorkerPoolError> {
+        loop {
+            let mut worker = self.acquire_preferring(|_| false)?;
+            if worker.held_pdf.take().is_none() {
+                return Ok(worker);
+            }
+            if worker.send(&Request::Close).is_ok() {
+                return Ok(worker);
+            }
+        }
+    }
+
+    /// Borrows a worker to use on the PDF `pdf_id`, one that still has it open
+    /// if there is one; see [`PooledWorker::held_pdf`]. The worker may hold
+    /// another PDF, which the next `Open` replaces.
+    ///
+    /// # Errors
+    ///
+    /// As [`WorkerPool::acquire`].
+    pub fn acquire_for_pdf(&self, pdf_id: u64) -> Result<PooledWorker, WorkerPoolError> {
+        self.acquire_preferring(|held| held == Some(pdf_id))
+    }
+
+    /// Borrows the last idle worker `preferred` accepts by the PDF it holds,
+    /// else the last that holds none, else the last idle one, so that a PDF
+    /// another request may want goes last; else a new one.
+    fn acquire_preferring(
+        &self,
+        preferred: impl Fn(Option<u64>) -> bool,
+    ) -> Result<PooledWorker, WorkerPoolError> {
         let mut state = self.inner.state.lock().expect("worker pool mutex poisoned");
         loop {
             if state.shutting_down {
                 return Err(WorkerPoolError::WorkerCrashed);
             }
-            if let Some(worker) = state.idle.pop() {
+            let idle = &state.idle;
+            let index = idle
+                .iter()
+                .rposition(|worker| preferred(worker.held_pdf))
+                .or_else(|| idle.iter().rposition(|worker| worker.held_pdf.is_none()))
+                .or(idle.len().checked_sub(1));
+            if let Some(index) = index {
+                let IdleWorker {
+                    worker,
+                    held_pdf,
+                    held_requests,
+                    ..
+                } = state.idle.remove(index);
                 return Ok(PooledWorker {
                     worker: Some(worker),
+                    held_pdf,
+                    held_requests,
                     pool: Arc::clone(&self.inner),
                 });
             }
@@ -282,6 +355,8 @@ impl WorkerPool {
                     Ok(worker) => {
                         return Ok(PooledWorker {
                             worker: Some(worker),
+                            held_pdf: None,
+                            held_requests: 0,
                             pool: Arc::clone(&self.inner),
                         });
                     }
@@ -317,10 +392,38 @@ impl WorkerPool {
 /// Otherwise, it is returned to the pool for subsequent requests.
 pub struct PooledWorker {
     worker: Option<WorkerProcess>,
+    held_pdf: Option<u64>,
+    held_requests: u32,
     pool: Arc<PoolInner>,
 }
 
 impl PooledWorker {
+    /// The ID of the PDF this worker has open, as far as [`set_held_pdf`] was told.
+    ///
+    /// [`set_held_pdf`]: PooledWorker::set_held_pdf
+    pub fn held_pdf(&self) -> Option<u64> {
+        self.held_pdf
+    }
+
+    /// Says which PDF stays open in this worker when it goes back to the pool,
+    /// until [`HELD_PDF_IDLE_TIME`] passes with no request. `pdf_id` must never
+    /// name another file: a PDF stays readable as it was opened after its file
+    /// is replaced.
+    pub fn set_held_pdf(&mut self, pdf_id: Option<u64>) {
+        self.held_pdf = pdf_id;
+        self.held_requests = 0;
+    }
+
+    /// Whether one more request may use the PDF `pdf_id` this worker holds,
+    /// which counts as that request. If not, the caller opens it.
+    pub fn use_held_pdf(&mut self, pdf_id: u64) -> bool {
+        let usable = self.held_pdf == Some(pdf_id) && self.held_requests < HELD_PDF_MAX_REQUESTS;
+        if usable {
+            self.held_requests += 1;
+        }
+        usable
+    }
+
     /// Sends `request` to the worker with the specified timeout.
     ///
     /// # Errors
@@ -370,9 +473,55 @@ impl Drop for PooledWorker {
                 drop(worker);
                 state.total_workers -= 1;
             } else {
-                state.idle.push(worker);
+                let held_pdf = self.held_pdf;
+                state.idle.push(IdleWorker {
+                    worker,
+                    held_pdf,
+                    held_requests: self.held_requests,
+                    since: Instant::now(),
+                });
+                if held_pdf.is_some() && !state.closer_running {
+                    state.closer_running = true;
+                    let pool = Arc::downgrade(&self.pool);
+                    std::thread::spawn(move || close_idle_pdfs(&pool));
+                }
             }
             self.pool.available.notify_one();
+        }
+    }
+}
+
+/// Closes the PDFs that idle workers have held for `held_pdf_idle_time`, and
+/// ends once no idle worker holds one. A worker being closed counts as
+/// borrowed, so a request that wants it waits for the close.
+fn close_idle_pdfs(pool: &Weak<PoolInner>) {
+    loop {
+        let Some(time) = pool.upgrade().map(|inner| inner.config.held_pdf_idle_time) else {
+            return;
+        };
+        std::thread::sleep(time / 2);
+        let Some(inner) = pool.upgrade() else {
+            return;
+        };
+        let mut state = inner.state.lock().expect("worker pool mutex poisoned");
+        let (expired, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut state.idle)
+            .into_iter()
+            .partition(|idle| idle.held_pdf.is_some() && idle.since.elapsed() >= time);
+        state.idle = kept;
+        if expired.is_empty() && state.idle.iter().all(|idle| idle.held_pdf.is_none()) {
+            state.closer_running = false;
+            return;
+        }
+        drop(state);
+        for idle in expired {
+            let mut worker = PooledWorker {
+                worker: Some(idle.worker),
+                held_pdf: None,
+                held_requests: 0,
+                pool: Arc::clone(&inner),
+            };
+            // A worker that fails here is dropped by `PooledWorker`'s `Drop`.
+            let _ = worker.send(&Request::Close);
         }
     }
 }
