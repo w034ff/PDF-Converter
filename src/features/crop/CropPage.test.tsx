@@ -184,6 +184,51 @@ describe("the page", () => {
     expect(parseFloat(page.style.width)).toBeCloseTo((595 * 800) / 842, 0);
   });
 
+  it("shows a page it has seen again at once, without asking", async () => {
+    const calls = await openPdf();
+    pickPage(2);
+    await flush();
+    expect(pageImageCalls(calls).map((c) => c.args.page)).toEqual([1, 2]);
+
+    pickPage(1);
+
+    expectPageShown(1, 4);
+    expect(screen.getByRole("img", { name: /report.pdf/ })).toHaveAttribute(
+      "src",
+    );
+    await flush();
+    expect(pageImageCalls(calls)).toHaveLength(2);
+  });
+
+  it("keeps the last five pictures, and asks again for an older one", async () => {
+    const calls = await openPdf({}, cropPdf({ pageCount: 6 }));
+    for (const page of [2, 3, 4, 5, 6]) {
+      pickPage(page);
+      await flush();
+    }
+    expect(pageImageCalls(calls)).toHaveLength(6);
+
+    pickPage(2);
+    await flush();
+    expect(pageImageCalls(calls)).toHaveLength(6);
+
+    pickPage(1);
+    await flush();
+    expect(pageImageCalls(calls)).toHaveLength(7);
+  });
+
+  it("does not ask again for the pictures after another tab", async () => {
+    const calls = await openPdf();
+    const before = callsOf(calls, "get_thumbnail").length;
+
+    openCropTab("整理");
+    await flush();
+    openCropTab();
+    await flush();
+
+    expect(callsOf(calls, "get_thumbnail")).toHaveLength(before);
+  });
+
   it("shows the old picture, scaled, until the new one arrives", async () => {
     const second = deferred<number[]>();
     let requests = 0;

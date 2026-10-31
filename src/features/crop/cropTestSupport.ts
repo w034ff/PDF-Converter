@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { createElement } from "react";
 import { expect, vi } from "vitest";
 import { App } from "../../App";
+import { cropPageImages, cropThumbnails } from "./cropImageCaches";
 import {
   JOB_FINISHED_EVENT,
   JOB_ITEM_EVENT,
@@ -106,6 +107,8 @@ export type Handler = (args: Record<string, unknown>) => unknown;
  * answer back, or throw an `IpcError` to reject.
  */
 export function mockCropIpc(handlers: Record<string, Handler> = {}): Call[] {
+  cropPageImages.clear();
+  cropThumbnails.clear();
   const calls: Call[] = [];
   const quiet: Record<string, Handler> = {
     open_crop_pdf: () => cropPdf(),
