@@ -464,6 +464,8 @@ export const ja = {
       cellAriaPart: "{label}、{number} 番目の PDF の先頭",
       cellAriaPartFailed: "{label}、{number} 番目の PDF の先頭（保存に失敗）",
       breakAria: "p.{before} と p.{after} の間の区切り",
+      breakAriaAcrossPdfs:
+        "{beforeName} の p.{before} と {afterName} の p.{after} の間の区切り",
       rotation: "{degrees}°",
       empty: "ページがありません",
       emptyHint: "Ctrl+Z で戻せます",

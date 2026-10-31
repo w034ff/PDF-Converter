@@ -94,7 +94,11 @@ describe("starting the save in parts", () => {
     click(cellOf(2, 1));
     fireEvent.click(screen.getByRole("button", { name: "右に回す" }));
     fireEvent.click(breakButton(3, 4));
-    fireEvent.click(breakButton(4, 1));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "report の p.4 と contract の p.1 の間の区切り",
+      }),
+    );
 
     fireEvent.click(startButton());
     await flush();

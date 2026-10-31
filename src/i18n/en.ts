@@ -469,6 +469,8 @@ export const en: Translations = {
       cellAriaPart: "{label}, first page of PDF {number}",
       cellAriaPartFailed: "{label}, first page of PDF {number} (not saved)",
       breakAria: "Break between p.{before} and p.{after}",
+      breakAriaAcrossPdfs:
+        "Break between p.{before} of {beforeName} and p.{after} of {afterName}",
       rotation: "{degrees}°",
       empty: "No pages",
       emptyHint: "Press Ctrl+Z to bring them back",
