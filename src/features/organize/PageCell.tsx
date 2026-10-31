@@ -116,7 +116,7 @@ export const PageCell = memo(function PageCell({
             )}
           </div>
           {page.rotation !== 0 && (
-            <span className="mono organize-cell-angle">
+            <span className="organize-cell-angle">
               {formatMessage(t.grid.rotation, { degrees: page.rotation })}
             </span>
           )}
