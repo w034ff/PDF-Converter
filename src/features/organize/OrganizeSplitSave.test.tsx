@@ -196,7 +196,7 @@ describe("starting the save in parts", () => {
     fireEvent.change(within(dialog).getByLabelText("もう一度入力"), {
       target: { value: "s3cret" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "変換を開始" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存を開始" }));
     await flush();
 
     expect(sentParts(calls)[0].password).toBe("s3cret");

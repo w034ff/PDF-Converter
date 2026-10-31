@@ -212,7 +212,6 @@ export const ja = {
         "パスワードを忘れると、これらの PDF はだれも開けなくなります。",
       cancel: "キャンセル",
       confirmMerge: "保存先を選ぶ…",
-      confirmEach: "変換を開始",
     },
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",

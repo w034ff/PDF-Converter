@@ -29,6 +29,7 @@ function renderDialog(
       <OutputPasswordDialog
         isOpen={true}
         mode={options.mode ?? "merge"}
+        startEachLabel="始める"
         count={options.count ?? 1}
         {...callbacks}
       />
@@ -116,7 +117,7 @@ describe("OutputPasswordDialog", () => {
         "パスワードを忘れると、これらの PDF はだれも開けなくなります。",
       ),
     ).toBeInTheDocument();
-    expect(primaryButton("変換を開始")).toBeDisabled();
+    expect(primaryButton("始める")).toBeDisabled();
   });
 
   it("marks the characters met for ASCII and failed for anything else", () => {
@@ -280,6 +281,7 @@ describe("OutputPasswordDialog", () => {
           <OutputPasswordDialog
             isOpen={open}
             mode="merge"
+            startEachLabel="始める"
             count={1}
             onCancel={() => setOpen(false)}
             onConfirm={() => setOpen(false)}
@@ -323,7 +325,7 @@ describe("OutputPasswordDialog", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByText("Passwords match")).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("button", { name: "Start conversion" }),
+      within(dialog).getByRole("button", { name: "始める" }),
     ).toBeDisabled();
     expect(
       within(dialog).getByRole("button", { name: "Show" }),

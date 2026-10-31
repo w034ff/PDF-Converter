@@ -83,6 +83,7 @@ export function ImagesToPdfAction() {
         isOpen={isPasswordDialogOpen}
         mode={isMerge ? "merge" : "each"}
         count={validTargets.length}
+        startEachLabel={t.footer.startConversion}
         onCancel={() => setIsPasswordDialogOpen(false)}
         onConfirm={handleConfirm}
         returnFocusRef={buttonRef}

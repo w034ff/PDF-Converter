@@ -86,6 +86,7 @@ export function OrganizeAction() {
         isOpen={passwordOpen}
         mode={isSplit ? "each" : "merge"}
         count={isSplit ? parts.length : 1}
+        startEachLabel={t.footer.startSaving}
         onCancel={() => setPasswordOpen(false)}
         onConfirm={handleConfirm}
         returnFocusRef={buttonRef}
