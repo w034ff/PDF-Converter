@@ -315,12 +315,17 @@
   background: var(--organize-cell-selected);
 }
 
+/* Holds what sits on the page and must not be clipped with it. */
+.organize-thumb-frame {
+  position: relative;
+  flex: none;
+}
+
 /* The page is drawn on white whichever theme the app is in. Its frame is drawn
    over the picture, which fills the box: a border of its own would be
    covered by the picture, which is as large as the box. */
 .organize-thumb {
   position: relative;
-  flex: none;
   background: var(--color-page-bg);
   border-radius: 3px;
   overflow: hidden;
@@ -349,8 +354,8 @@
 
 .organize-cell-angle {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
+  right: 4px;
+  bottom: 4px;
   padding: 0 4px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);

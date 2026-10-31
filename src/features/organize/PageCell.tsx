@@ -94,29 +94,31 @@ export const PageCell = memo(function PageCell({
       onPointerDown={(event) => onPointerDown(event, page)}
     >
       <div className="organize-cell-box" ref={ref}>
-        <div
-          className="organize-thumb"
-          style={{ width: box.width, height: box.height }}
-        >
-          {src !== null && (
-            <img
-              className="organize-thumb-image"
-              src={src}
-              alt=""
-              draggable={false}
-              style={{
-                width: box.pictureWidth,
-                height: box.pictureHeight,
-                transform: `translate(-50%, -50%) rotate(${page.rotation}deg)`,
-              }}
-            />
+        <div className="organize-thumb-frame">
+          <div
+            className="organize-thumb"
+            style={{ width: box.width, height: box.height }}
+          >
+            {src !== null && (
+              <img
+                className="organize-thumb-image"
+                src={src}
+                alt=""
+                draggable={false}
+                style={{
+                  width: box.pictureWidth,
+                  height: box.pictureHeight,
+                  transform: `translate(-50%, -50%) rotate(${page.rotation}deg)`,
+                }}
+              />
+            )}
+          </div>
+          {page.rotation !== 0 && (
+            <span className="mono organize-cell-angle">
+              {formatMessage(t.grid.rotation, { degrees: page.rotation })}
+            </span>
           )}
         </div>
-        {page.rotation !== 0 && (
-          <span className="mono organize-cell-angle">
-            {formatMessage(t.grid.rotation, { degrees: page.rotation })}
-          </span>
-        )}
         {selected && (
           <span className="organize-cell-check" aria-hidden="true">
             ✓
