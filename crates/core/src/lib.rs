@@ -35,7 +35,7 @@ pub use pdf_encrypt::{
     MAX_OUTPUT_PASSWORD_LEN, OUTPUT_PASSWORD_CHARS, OutputPassword, OutputPasswordError,
     encrypt_pdf,
 };
-pub use pdf_write::{AddImageResult, PdfConformance, PdfWriter};
+pub use pdf_write::{AddImageResult, PdfConformance, PdfWriter, verify_image};
 pub use probe::{
     DEFAULT_DPI, IMAGE_EXTENSIONS, ImageFormat, ImageInfo, MAX_DPI, MAX_IMAGE_PIXELS, MIN_DPI,
     probe, probe_reader,

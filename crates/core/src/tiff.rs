@@ -384,6 +384,37 @@ where
     Ok(Ok(pages))
 }
 
+/// Decodes every page of a TIFF file and drops the pixels of each page before the next one, so
+/// that only one page is held at a time.
+///
+/// `on_page` is called after each page with the number of pages decoded so far. It does the
+/// same checks as [`decode_tiff_pages`] and fails with the same errors.
+pub fn verify_tiff_pages<R: BufRead + Seek>(
+    reader: &mut R,
+    mut on_page: impl FnMut(u32),
+) -> Result<(), ProbeError> {
+    reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
+    let total_pages = probe_tiff(reader)?.page_count;
+
+    reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
+    let mut decoder = Decoder::new(reader).map_err(|_| ProbeError::DecodeFailed)?;
+    let mut limits = Limits::default();
+    limits.decoding_buffer_size = (MAX_IMAGE_PIXELS * 8) as usize;
+    decoder = decoder.with_limits(limits);
+
+    for page_idx in 0..total_pages {
+        // The krilla image is dropped at the end of this statement; interpolation is irrelevant
+        // to whether the pixels can be read.
+        decode_single_page(&mut decoder, total_pages, false)?;
+        on_page(page_idx + 1);
+
+        if page_idx + 1 < total_pages {
+            decoder.next_image().map_err(|_| ProbeError::DecodeFailed)?;
+        }
+    }
+    Ok(())
+}
+
 /// Decodes the current page IFD into a krilla `Image` and an `ImageInfo`.
 fn decode_single_page<R: Read + Seek>(
     decoder: &mut Decoder<R>,
