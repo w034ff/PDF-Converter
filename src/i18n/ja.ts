@@ -47,6 +47,7 @@ export const ja = {
     progressLabel: "進捗",
   },
   job: {
+    choosingDestination: "保存先を選んでいます…",
     running: "変換中…",
     runningItem: "変換中：{name}",
     runningItemAndOthers: "変換中：{name} ほか {count} 件",

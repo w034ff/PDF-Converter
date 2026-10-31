@@ -99,9 +99,12 @@ export function useJobRunner(): JobRunner {
       kind: ActiveTab,
       targets: JobTarget[],
       command: (ids: number[]) => Promise<T>,
-      organizeOutput?: OrganizeOutput,
+      options: {
+        organizeOutput?: OrganizeOutput;
+        choosesDestination?: boolean;
+      } = {},
     ): Promise<{ result: T } | { error: IpcError }> {
-      dispatch({ type: "JOB_STARTED", kind, targets, organizeOutput });
+      dispatch({ type: "JOB_STARTED", kind, targets, ...options });
       try {
         return { result: await command(targets.map((target) => target.id)) };
       } catch (error: unknown) {
@@ -135,8 +138,11 @@ export function useJobRunner(): JobRunner {
 
     return {
       async saveMergedPdf(targets, pageSize, orientation, pdfA, password) {
-        const outcome = await run("imagesToPdf", targets, (ids) =>
-          saveMergedPdf(ids, pageSize, orientation, pdfA, password),
+        const outcome = await run(
+          "imagesToPdf",
+          targets,
+          (ids) => saveMergedPdf(ids, pageSize, orientation, pdfA, password),
+          { choosesDestination: true },
         );
         if ("error" in outcome) {
           return;
@@ -157,7 +163,7 @@ export function useJobRunner(): JobRunner {
           "organize",
           [],
           () => saveOrganizedPdf(pages, password),
-          "single",
+          { organizeOutput: "single", choosesDestination: true },
         );
         if ("error" in outcome) {
           return null;
@@ -174,12 +180,9 @@ export function useJobRunner(): JobRunner {
       },
       async startOrganizeSplit(parts, password) {
         // The PDFs written are not items of the list, so no row has a status.
-        await run(
-          "organize",
-          [],
-          () => startOrganizeSplit(parts, password),
-          "split",
-        );
+        await run("organize", [], () => startOrganizeSplit(parts, password), {
+          organizeOutput: "split",
+        });
       },
       async startImagesToPdfs(targets, pageSize, orientation, pdfA, password) {
         await run("imagesToPdf", targets, (ids) =>

@@ -83,6 +83,16 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
   const runner = useJobRunner();
   const t = getTranslations(language.language);
 
+  // The dialog is modal and nothing runs yet, so there is nothing to cancel.
+  if (isJobActive(job) && job.choosingDestination) {
+    return (
+      <>
+        <span className="hint">{t.job.choosingDestination}</span>
+        {action}
+      </>
+    );
+  }
+
   if (isJobActive(job)) {
     const cancelling = job.phase === "cancelling";
     // The pages are not items with names, so the bar says what is going on.

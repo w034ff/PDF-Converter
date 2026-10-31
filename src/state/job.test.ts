@@ -43,6 +43,34 @@ const started: JobAction = {
   targets,
 };
 
+describe("the save dialog of a conversion", () => {
+  const started = jobReducer(initialJobState, {
+    type: "JOB_STARTED",
+    kind: "imagesToPdf",
+    targets,
+    choosesDestination: true,
+  });
+
+  it("is open from the start until the first progress", () => {
+    expect(started.choosingDestination).toBe(true);
+    expect(
+      jobReducer(started, {
+        type: "JOB_PROGRESS",
+        progress: { done: 0, total: 3, current: null },
+      }).choosingDestination,
+    ).toBe(false);
+  });
+
+  it("is over when the command is refused before it opens", () => {
+    expect(
+      jobReducer(started, {
+        type: "JOB_FAILED",
+        error: { code: "ConversionRunning", detail: null },
+      }).choosingDestination,
+    ).toBe(false);
+  });
+});
+
 describe("jobReducer", () => {
   it("starts a job afresh, dropping the previous one", () => {
     const previous = reduce([

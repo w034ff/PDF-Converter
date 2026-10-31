@@ -49,6 +49,7 @@ export const en: Translations = {
     progressLabel: "Progress",
   },
   job: {
+    choosingDestination: "Choosing where to save…",
     running: "Converting…",
     runningItem: "Converting: {name}",
     runningItemAndOthers: "Converting: {name} and {count} more",

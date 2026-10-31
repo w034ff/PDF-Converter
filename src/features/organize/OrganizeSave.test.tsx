@@ -103,6 +103,27 @@ describe("saving the pages as one PDF", () => {
     });
   });
 
+  it("says it is waiting for the save dialog, with nothing to cancel, until the dialog closes", async () => {
+    const { answer } = await openWithSave();
+
+    fireEvent.click(saveButton());
+    await flush();
+
+    expect(screen.getByText("保存先を選んでいます…")).toBeInTheDocument();
+    expect(screen.queryByText("変換中…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "キャンセル" })).toBeNull();
+    expect(saveButton()).toBeDisabled();
+
+    await emitJobProgress({ done: 0, total: 5, current: "out.pdf" });
+
+    expect(screen.queryByText("保存先を選んでいます…")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "キャンセル" }),
+    ).toBeInTheDocument();
+    answer.resolve(null);
+    await flush();
+  });
+
   it("is the pages of the PDFs that opened, and none of those waiting or broken", async () => {
     const calls = await openOrganizeTab({
       pdfs: [
@@ -179,9 +200,7 @@ describe("saving the pages as one PDF", () => {
     const { answer } = await openWithSave();
     fireEvent.click(saveButton());
     await flush();
-    expect(
-      screen.getByRole("button", { name: "キャンセル" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("保存先を選んでいます…")).toBeInTheDocument();
 
     answer.resolve(null);
     await flush();
@@ -196,7 +215,6 @@ describe("saving the pages as one PDF", () => {
     const { answer } = await openWithSave();
     fireEvent.click(saveButton());
     await flush();
-    expect(screen.getByText("変換中…")).toBeInTheDocument();
 
     await emitJobProgress({ done: 2, total: 5, current: "annual-report.pdf" });
 
@@ -220,6 +238,7 @@ describe("saving the pages as one PDF", () => {
     const { calls, answer } = await openWithSave();
     fireEvent.click(saveButton());
     await flush();
+    await emitJobProgress({ done: 0, total: 5, current: "out.pdf" });
 
     fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
     await flush();
