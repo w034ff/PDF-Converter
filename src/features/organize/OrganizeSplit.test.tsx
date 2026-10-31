@@ -249,6 +249,17 @@ describe("pressing between the pages", () => {
     expect(breakLines()).toEqual([]);
   });
 
+  it("names the PDFs of a place only when it lies between two of them", async () => {
+    await openSplit([BOOK, organizePdf(2, "scan.final.pdf", 2)]);
+
+    expect(breakButton(7, 8)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "book の p.8 と scan.final の p.1 の間の区切り",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("has a place between the pages of a row's end and the next row's start", async () => {
     await openSplit();
 

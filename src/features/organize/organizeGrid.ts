@@ -32,7 +32,7 @@ export const ORGANIZE_ROW_GAP = 18;
 export const ORGANIZE_OVERSCAN_ROWS = 2;
 
 /** How long a cell is drawn before it asks for its thumbnail (organize §4). */
-export const ORGANIZE_THUMBNAIL_DELAY_MS = 150;
+export const ORGANIZE_THUMBNAIL_DELAY_MS = 100;
 
 /** Within this many px of the top or bottom edge a drag scrolls the grid. */
 export const ORGANIZE_DRAG_SCROLL_EDGE_PX = 40;

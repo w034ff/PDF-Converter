@@ -30,6 +30,11 @@ export interface JobState {
    * change afterwards, and what the result tells depends on how it was made.
    */
   organizeOutput: OrganizeOutput | null;
+  /**
+   * Whether the save dialog of this conversion is still open. The commands
+   * that open one report progress as soon as it closes.
+   */
+  choosingDestination: boolean;
   targets: JobTarget[];
   progress: JobProgressPayload | null;
   /** Items whose processing has begun, oldest first. */
@@ -54,6 +59,8 @@ export type JobAction =
       targets: JobTarget[];
       /** For `kind: "organize"`: what the conversion makes. */
       organizeOutput?: OrganizeOutput;
+      /** Whether the command asks where to save before anything runs. */
+      choosesDestination?: boolean;
     }
   | { type: "JOB_CANCEL_REQUESTED" }
   | { type: "JOB_PROGRESS"; progress: JobProgressPayload }
@@ -73,6 +80,7 @@ export const initialJobState: JobState = {
   phase: "idle",
   kind: null,
   organizeOutput: null,
+  choosingDestination: false,
   targets: [],
   progress: null,
   startedIds: [],
@@ -120,6 +128,7 @@ export function jobReducer(state: JobState, action: JobAction): JobState {
         phase: "running",
         kind: action.kind,
         organizeOutput: action.organizeOutput ?? null,
+        choosingDestination: action.choosesDestination ?? false,
         targets: action.targets,
       };
     case "JOB_CANCEL_REQUESTED":
@@ -134,6 +143,7 @@ export function jobReducer(state: JobState, action: JobAction): JobState {
       const { current } = action.progress;
       return {
         ...state,
+        choosingDestination: false,
         progress: action.progress,
         startedIds:
           current === null ? state.startedIds : startNamedItem(state, current),

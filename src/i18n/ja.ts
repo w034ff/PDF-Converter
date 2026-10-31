@@ -47,6 +47,7 @@ export const ja = {
     progressLabel: "進捗",
   },
   job: {
+    choosingDestination: "保存先を選んでいます…",
     running: "変換中…",
     runningItem: "変換中：{name}",
     runningItemAndOthers: "変換中：{name} ほか {count} 件",
@@ -212,7 +213,6 @@ export const ja = {
         "パスワードを忘れると、これらの PDF はだれも開けなくなります。",
       cancel: "キャンセル",
       confirmMerge: "保存先を選ぶ…",
-      confirmEach: "変換を開始",
     },
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
@@ -464,6 +464,8 @@ export const ja = {
       cellAriaPart: "{label}、{number} 番目の PDF の先頭",
       cellAriaPartFailed: "{label}、{number} 番目の PDF の先頭（保存に失敗）",
       breakAria: "p.{before} と p.{after} の間の区切り",
+      breakAriaAcrossPdfs:
+        "{beforeName} の p.{before} と {afterName} の p.{after} の間の区切り",
       rotation: "{degrees}°",
       empty: "ページがありません",
       emptyHint: "Ctrl+Z で戻せます",

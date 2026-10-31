@@ -19,6 +19,7 @@ import {
   type OrganizePage,
   type PageKey,
 } from "../../state";
+import { fileStem } from "./pdfNames";
 import { PageCell } from "./PageCell";
 import {
   ORGANIZE_PAGE_BOX_SIDE,
@@ -379,6 +380,21 @@ export function PageGrid() {
     }
   }
 
+  /** Page numbers alone cannot tell the pages of two PDFs apart, so those also get their PDFs' names. */
+  function breakLabel(index: number): string {
+    const before = pages[index - 1];
+    const after = pages[index];
+    const numbers = { before: before.page, after: after.page };
+    if (before.id === after.id) {
+      return formatMessage(t.grid.breakAria, numbers);
+    }
+    return formatMessage(t.grid.breakAriaAcrossPdfs, {
+      ...numbers,
+      beforeName: fileStem(pdfById.get(before.id)?.name ?? ""),
+      afterName: fileStem(pdfById.get(after.id)?.name ?? ""),
+    });
+  }
+
   /** The place that presses the break before the page at `index` (1 or more), and its line and mark when it is there. */
   function renderBreak(index: number): React.ReactNode[] {
     const key = keyOfPage(pages[index]);
@@ -392,10 +408,7 @@ export function PageGrid() {
         type="button"
         className="organize-break-button"
         aria-pressed={isBreak}
-        aria-label={formatMessage(t.grid.breakAria, {
-          before: pages[index - 1].page,
-          after: pages[index].page,
-        })}
+        aria-label={breakLabel(index)}
         tabIndex={-1}
         disabled={locked || drag.dragging}
         style={{

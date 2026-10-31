@@ -476,11 +476,12 @@ pub(crate) fn thumbnail(
     max_side: Option<u32>,
 ) -> Option<Result<Vec<u8>, IpcError>> {
     let entry = state.organize.get(id)?;
-    Some(thumbnail_of(state, &entry, page, max_side))
+    Some(thumbnail_of(state, id, &entry, page, max_side))
 }
 
 fn thumbnail_of(
     state: &AppState,
+    id: u64,
     entry: &OrganizeEntry,
     page: Option<u32>,
     max_side: Option<u32>,
@@ -490,7 +491,7 @@ fn thumbnail_of(
     }
     let page = checked_page(page, entry.page_count)?;
     let max_side = checked_max_side(max_side)?;
-    pdf_thumbnail(state, &entry.open_request(), page, max_side)
+    pdf_thumbnail(state, id, &entry.open_request(), page, max_side)
 }
 
 /// The estimated size of one output: for each PDF in it, `ceil(file_bytes × used_pages ÷

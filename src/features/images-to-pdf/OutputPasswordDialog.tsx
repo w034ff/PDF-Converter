@@ -50,6 +50,8 @@ export interface OutputPasswordDialogProps {
   mode: "merge" | "each";
   /** The number of PDFs "each" will save, as the footer says it. */
   count: number;
+  /** The words of the footer's button, which "each" repeats on its own. */
+  startEachLabel: string;
   onCancel: () => void;
   /** Called with the password, which the dialog no longer holds once it closes. */
   onConfirm: (password: string) => void;
@@ -83,6 +85,7 @@ function Condition({ id, state, label, metText, notMetText }: ConditionProps) {
 function OutputPasswordDialogInner({
   mode,
   count,
+  startEachLabel,
   onCancel,
   onConfirm,
   returnFocusRef,
@@ -216,7 +219,7 @@ function OutputPasswordDialogInner({
             className="btn btn-primary"
             disabled={!canConfirm}
           >
-            {mode === "each" ? t.confirmEach : t.confirmMerge}
+            {mode === "each" ? startEachLabel : t.confirmMerge}
           </button>
         </div>
       </form>

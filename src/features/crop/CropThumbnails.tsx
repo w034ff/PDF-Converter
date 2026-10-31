@@ -2,6 +2,7 @@ import { formatMessage, getTranslations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import { useAppDispatch, useAppState } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
+import { cropThumbnails } from "./cropImageCaches";
 import "./crop.css";
 
 interface CropThumbnailProps {
@@ -21,7 +22,9 @@ function CropThumbnail({
   label,
 }: CropThumbnailProps) {
   const dispatch = useAppDispatch();
-  const { ref, src } = useThumbnail(pdf.id, page);
+  const { ref, src } = useThumbnail(pdf.id, page, {
+    cache: cropThumbnails,
+  });
   const size = pdf.pages[page - 1];
 
   return (

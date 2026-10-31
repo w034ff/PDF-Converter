@@ -239,9 +239,7 @@ describe("ImagesToPdf (T11)", () => {
       renderHarness();
       await addImages();
       fireEvent.click(screen.getByRole("button", { name: "PDF を保存" }));
-      await waitFor(() =>
-        expect(screen.getByRole("button", { name: "キャンセル" })),
-      );
+      await screen.findByText("保存先を選んでいます…");
 
       await act(async () => {
         await emit(JOB_ITEM_EVENT, { id: 1, status: "ok", outputs: [] });

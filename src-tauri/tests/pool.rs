@@ -9,7 +9,7 @@ use std::time::Duration;
 
 #[cfg(feature = "test-hooks")]
 use pdf_converter_lib::worker_pool::WorkerPoolError;
-use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
+use pdf_converter_lib::worker_pool::{HELD_PDF_MAX_REQUESTS, WorkerPool, WorkerPoolConfig};
 use pdfconv_worker::WORKER_FLAG;
 use pdfconv_worker::protocol::{Request, Response};
 
@@ -181,4 +181,138 @@ fn recovers_after_worker_times_out() {
 fn the_about_check_starts_a_worker_that_loads_pdfium() {
     let pool = WorkerPool::new(test_pool_config(1));
     assert_eq!(pdf_converter_lib::commands::check_worker(&pool), Ok(()));
+}
+
+mod held_pdfs {
+    use super::*;
+
+    const THUMBNAIL: Request = Request::Thumbnail {
+        page: 1,
+        max_side: 32,
+    };
+
+    fn shapes_pdf() -> Request {
+        Request::Open {
+            path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../crates/core/tests/fixtures/shapes.pdf"),
+            password: None,
+        }
+    }
+
+    fn pool_of_one(idle_time: Duration) -> WorkerPool {
+        WorkerPool::new(test_pool_config(1).with_held_pdf_idle_time(idle_time))
+    }
+
+    /// Leaves a worker of `pool` holding the PDF `id`.
+    fn hold(pool: &WorkerPool, id: u64) {
+        let mut worker = pool.acquire_for_pdf(id).expect("acquire should succeed");
+        worker.send(&shapes_pdf()).expect("the fixture should open");
+        worker.set_held_pdf(Some(id));
+    }
+
+    /// Whether `worker` can draw without being asked to open a PDF first.
+    fn has_a_pdf_open(worker: &mut pdf_converter_lib::worker_pool::PooledWorker) -> bool {
+        worker.send(&THUMBNAIL).is_ok()
+    }
+
+    #[test]
+    fn a_worker_is_lent_again_with_the_pdf_it_holds() {
+        let pool = pool_of_one(Duration::from_secs(60));
+        hold(&pool, 7);
+
+        let mut worker = pool.acquire_for_pdf(7).expect("acquire should succeed");
+
+        assert_eq!(worker.held_pdf(), Some(7));
+        assert!(has_a_pdf_open(&mut worker));
+    }
+
+    #[test]
+    fn a_worker_that_holds_the_pdf_is_preferred_to_the_others() {
+        let pool =
+            WorkerPool::new(test_pool_config(3).with_held_pdf_idle_time(Duration::from_secs(60)));
+        let mut first = pool.acquire_for_pdf(7).expect("acquire should succeed");
+        let mut second = pool.acquire_for_pdf(8).expect("acquire should succeed");
+        let third = pool.acquire().expect("acquire should succeed");
+        first.send(&shapes_pdf()).expect("the fixture should open");
+        first.set_held_pdf(Some(7));
+        second.send(&shapes_pdf()).expect("the fixture should open");
+        second.set_held_pdf(Some(8));
+        drop(first);
+        drop(second);
+        drop(third);
+
+        assert_eq!(pool.acquire_for_pdf(7).unwrap().held_pdf(), Some(7));
+        assert_eq!(pool.acquire_for_pdf(8).unwrap().held_pdf(), Some(8));
+    }
+
+    #[test]
+    fn another_pdf_is_told_what_the_worker_holds() {
+        let pool = pool_of_one(Duration::from_secs(60));
+        hold(&pool, 7);
+
+        assert_eq!(pool.acquire_for_pdf(8).unwrap().held_pdf(), Some(7));
+    }
+
+    #[test]
+    fn a_plain_borrow_gets_a_worker_with_nothing_open() {
+        let pool = pool_of_one(Duration::from_secs(60));
+        hold(&pool, 7);
+
+        let mut worker = pool.acquire().expect("acquire should succeed");
+
+        assert_eq!(worker.held_pdf(), None);
+        assert!(!has_a_pdf_open(&mut worker));
+    }
+
+    #[test]
+    fn a_held_pdf_is_opened_afresh_after_its_share_of_requests() {
+        let pool = pool_of_one(Duration::from_secs(60));
+        hold(&pool, 7);
+
+        for _ in 0..HELD_PDF_MAX_REQUESTS {
+            let mut worker = pool.acquire_for_pdf(7).expect("acquire should succeed");
+            assert!(worker.use_held_pdf(7));
+        }
+
+        let mut worker = pool.acquire_for_pdf(7).expect("acquire should succeed");
+        assert!(!worker.use_held_pdf(7));
+        worker.set_held_pdf(Some(7));
+        assert!(worker.use_held_pdf(7));
+    }
+
+    #[test]
+    fn a_held_pdf_is_closed_after_the_idle_time() {
+        let pool = pool_of_one(Duration::from_millis(50));
+        hold(&pool, 7);
+
+        thread::sleep(Duration::from_millis(500));
+
+        let mut worker = pool.acquire_for_pdf(7).expect("acquire should succeed");
+        assert_eq!(worker.held_pdf(), None);
+        assert!(!has_a_pdf_open(&mut worker));
+    }
+
+    #[test]
+    fn a_held_pdf_is_closed_again_after_the_closer_has_ended() {
+        let pool = pool_of_one(Duration::from_millis(50));
+        hold(&pool, 7);
+        thread::sleep(Duration::from_millis(500));
+        hold(&pool, 8);
+        thread::sleep(Duration::from_millis(500));
+
+        assert_eq!(pool.acquire_for_pdf(8).unwrap().held_pdf(), None);
+    }
+
+    #[cfg(feature = "test-hooks")]
+    #[test]
+    fn a_worker_that_crashed_is_not_lent_as_holding_its_pdf() {
+        let pool = pool_of_one(Duration::from_secs(60));
+        hold(&pool, 7);
+
+        let mut worker = pool.acquire_for_pdf(7).expect("acquire should succeed");
+        let _ = worker.request(&Request::CrashForTest, Duration::from_secs(10));
+        drop(worker);
+
+        assert_eq!(pool.acquire_for_pdf(7).unwrap().held_pdf(), None);
+    }
 }

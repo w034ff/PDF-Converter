@@ -49,6 +49,7 @@ export const en: Translations = {
     progressLabel: "Progress",
   },
   job: {
+    choosingDestination: "Choosing where to save…",
     running: "Converting…",
     runningItem: "Converting: {name}",
     runningItemAndOthers: "Converting: {name} and {count} more",
@@ -213,7 +214,6 @@ export const en: Translations = {
         "If you forget the password, no one can open these PDFs.",
       cancel: "Cancel",
       confirmMerge: "Choose where to save…",
-      confirmEach: "Start conversion",
     },
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
@@ -469,6 +469,8 @@ export const en: Translations = {
       cellAriaPart: "{label}, first page of PDF {number}",
       cellAriaPartFailed: "{label}, first page of PDF {number} (not saved)",
       breakAria: "Break between p.{before} and p.{after}",
+      breakAriaAcrossPdfs:
+        "Break between p.{before} of {beforeName} and p.{after} of {afterName}",
       rotation: "{degrees}°",
       empty: "No pages",
       emptyHint: "Press Ctrl+Z to bring them back",

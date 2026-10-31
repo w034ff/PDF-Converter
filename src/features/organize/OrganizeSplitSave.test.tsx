@@ -94,7 +94,11 @@ describe("starting the save in parts", () => {
     click(cellOf(2, 1));
     fireEvent.click(screen.getByRole("button", { name: "右に回す" }));
     fireEvent.click(breakButton(3, 4));
-    fireEvent.click(breakButton(4, 1));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "report の p.4 と contract の p.1 の間の区切り",
+      }),
+    );
 
     fireEvent.click(startButton());
     await flush();
@@ -196,7 +200,7 @@ describe("starting the save in parts", () => {
     fireEvent.change(within(dialog).getByLabelText("もう一度入力"), {
       target: { value: "s3cret" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "変換を開始" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存を開始" }));
     await flush();
 
     expect(sentParts(calls)[0].password).toBe("s3cret");

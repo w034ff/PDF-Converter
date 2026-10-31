@@ -7,6 +7,7 @@ import {
   type OrganizePdfEntry,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
+import { organizeThumbnails } from "./organizeThumbnails";
 import { fileStem } from "./pdfNames";
 import {
   ORGANIZE_CELL_WIDTH,
@@ -62,6 +63,7 @@ export const PageCell = memo(function PageCell({
 }: PageCellProps) {
   const { ref, src } = useThumbnail(page.id, page.page, {
     delayMs: ORGANIZE_THUMBNAIL_DELAY_MS,
+    cache: organizeThumbnails,
   });
   const box = thumbnailBox(
     pdf?.pages[page.page - 1] ?? UNKNOWN_PAGE_SIZE,
@@ -94,29 +96,31 @@ export const PageCell = memo(function PageCell({
       onPointerDown={(event) => onPointerDown(event, page)}
     >
       <div className="organize-cell-box" ref={ref}>
-        <div
-          className="organize-thumb"
-          style={{ width: box.width, height: box.height }}
-        >
-          {src !== null && (
-            <img
-              className="organize-thumb-image"
-              src={src}
-              alt=""
-              draggable={false}
-              style={{
-                width: box.pictureWidth,
-                height: box.pictureHeight,
-                transform: `translate(-50%, -50%) rotate(${page.rotation}deg)`,
-              }}
-            />
+        <div className="organize-thumb-frame">
+          <div
+            className="organize-thumb"
+            style={{ width: box.width, height: box.height }}
+          >
+            {src !== null && (
+              <img
+                className="organize-thumb-image"
+                src={src}
+                alt=""
+                draggable={false}
+                style={{
+                  width: box.pictureWidth,
+                  height: box.pictureHeight,
+                  transform: `translate(-50%, -50%) rotate(${page.rotation}deg)`,
+                }}
+              />
+            )}
+          </div>
+          {page.rotation !== 0 && (
+            <span className="organize-cell-angle">
+              {formatMessage(t.grid.rotation, { degrees: page.rotation })}
+            </span>
           )}
         </div>
-        {page.rotation !== 0 && (
-          <span className="mono organize-cell-angle">
-            {formatMessage(t.grid.rotation, { degrees: page.rotation })}
-          </span>
-        )}
         {selected && (
           <span className="organize-cell-check" aria-hidden="true">
             ✓
