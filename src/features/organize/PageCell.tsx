@@ -7,6 +7,7 @@ import {
   type OrganizePdfEntry,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
+import { organizeThumbnails } from "./organizeThumbnails";
 import { fileStem } from "./pdfNames";
 import {
   ORGANIZE_CELL_WIDTH,
@@ -62,6 +63,7 @@ export const PageCell = memo(function PageCell({
 }: PageCellProps) {
   const { ref, src } = useThumbnail(page.id, page.page, {
     delayMs: ORGANIZE_THUMBNAIL_DELAY_MS,
+    cache: organizeThumbnails,
   });
   const box = thumbnailBox(
     pdf?.pages[page.page - 1] ?? UNKNOWN_PAGE_SIZE,

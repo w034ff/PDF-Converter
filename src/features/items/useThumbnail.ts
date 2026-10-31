@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getThumbnail } from "../../ipc";
+import type { ThumbnailCache } from "./thumbnailCache";
 
 /** MIME type of what `get_thumbnail` returns (design §7.1). */
 const THUMBNAIL_TYPE = "image/png";
@@ -16,6 +17,11 @@ export interface Thumbnail {
 export interface ThumbnailOptions {
   /** How long to wait, once in view, before asking; asks at once without it. */
   delayMs?: number;
+  /**
+   * Keeps the pictures after the component unmounts. `id` must never name
+   * another file, as the key is `id` and `page` alone. Must not change.
+   */
+  cache?: ThumbnailCache;
 }
 
 interface Loaded {
@@ -35,14 +41,15 @@ interface Loaded {
  * far in one move would otherwise queue a render for every page it passed.
  *
  * The picture is shown as a `blob:` URL (design §9), released when the item
- * changes or the component unmounts.
+ * changes or the component unmounts; with `cache` it is the cache's to
+ * release, and a picture in it is shown at once and not asked for again.
  */
 export function useThumbnail(
   id: number,
   page?: number,
   options: ThumbnailOptions = {},
 ): Thumbnail {
-  const { delayMs } = options;
+  const { delayMs, cache } = options;
   // What was seen and loaded is tagged with the item it belongs to, so a
   // change of item drops both without resetting state in an effect.
   const key = `${id}:${page ?? ""}`;
@@ -72,17 +79,28 @@ export function useThumbnail(
     if (!visible) {
       return;
     }
+    if (cache?.peek(key) != null) {
+      cache.touch(key);
+      return;
+    }
     let url: string | null = null;
     let disposed = false;
     function request() {
       getThumbnail(id, page).then(
         (bytes) => {
+          const blob = new Blob([bytes], { type: THUMBNAIL_TYPE });
+          if (cache !== undefined) {
+            // Kept even if the element is gone: the render is already paid for.
+            const cachedUrl = cache.put(key, blob);
+            if (!disposed) {
+              setLoaded({ key, src: cachedUrl, failed: false });
+            }
+            return;
+          }
           if (disposed) {
             return;
           }
-          url = URL.createObjectURL(
-            new Blob([bytes], { type: THUMBNAIL_TYPE }),
-          );
+          url = URL.createObjectURL(blob);
           setLoaded({ key, src: url, failed: false });
         },
         () => {
@@ -105,8 +123,12 @@ export function useThumbnail(
         URL.revokeObjectURL(url);
       }
     };
-  }, [visible, id, page, key, delayMs]);
+  }, [visible, id, page, key, delayMs, cache]);
 
   const current = loaded?.key === key ? loaded : null;
-  return { ref, src: current?.src ?? null, failed: current?.failed ?? false };
+  return {
+    ref,
+    src: current?.src ?? cache?.peek(key) ?? null,
+    failed: current?.failed ?? false,
+  };
 }

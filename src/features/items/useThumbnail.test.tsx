@@ -1,6 +1,7 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createThumbnailCache, type ThumbnailCache } from "./thumbnailCache";
 import { useThumbnail } from "./useThumbnail";
 
 const PNG_BYTES = [137, 80, 78, 71];
@@ -23,16 +24,14 @@ function Probe({
   id,
   page,
   delayMs,
+  cache,
 }: {
   id: number;
   page?: number;
   delayMs?: number;
+  cache?: ThumbnailCache;
 }) {
-  const { ref, src, failed } = useThumbnail(
-    id,
-    page,
-    delayMs === undefined ? undefined : { delayMs },
-  );
+  const { ref, src, failed } = useThumbnail(id, page, { delayMs, cache });
   return (
     <div ref={ref}>
       <output data-testid="src">{src ?? ""}</output>
@@ -210,6 +209,34 @@ describe("useThumbnail", () => {
       expect(screen.getByTestId("src")).toHaveTextContent("blob:thumb-"),
     );
     expect(calls).toHaveLength(1);
+  });
+
+  describe("with a cache", () => {
+    it("shows a picture again at once, without asking and without releasing it", async () => {
+      const calls = mockThumbnails();
+      const cache = createThumbnailCache(4);
+      const { unmount } = render(<Probe id={4} page={2} cache={cache} />);
+      await waitFor(() =>
+        expect(screen.getByTestId("src")).toHaveTextContent("blob:thumb-1"),
+      );
+      unmount();
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+
+      render(<Probe id={4} page={2} cache={cache} />);
+
+      expect(screen.getByTestId("src")).toHaveTextContent("blob:thumb-1");
+      expect(calls).toHaveLength(1);
+    });
+
+    it("keeps a picture that arrives after its element is gone", async () => {
+      const calls = mockThumbnails();
+      const cache = createThumbnailCache(4);
+      const { unmount } = render(<Probe id={4} page={2} cache={cache} />);
+      unmount();
+
+      await waitFor(() => expect(cache.peek("4:2")).toBe("blob:thumb-1"));
+      expect(calls).toHaveLength(1);
+    });
   });
 
   describe("with a delay", () => {

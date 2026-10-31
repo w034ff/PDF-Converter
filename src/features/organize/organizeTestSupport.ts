@@ -36,6 +36,7 @@ export {
   type Call,
   type Handler,
 } from "../crop/cropTestSupport";
+import { organizeThumbnails } from "./organizeThumbnails";
 
 export const A4 = { widthPt: 595, heightPt: 842 };
 export const LANDSCAPE = { widthPt: 842, heightPt: 595 };
@@ -148,6 +149,7 @@ export async function openOrganizeTab(
     settings = DEFAULT_SETTINGS,
     language = "ja",
   } = options;
+  organizeThumbnails.clear();
   const calls = mockOrganizeIpc({
     ...(pdfs === undefined ? {} : { add_organize_pdfs: () => added(pdfs) }),
     ...handlers,
