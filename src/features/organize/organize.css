@@ -352,7 +352,8 @@
   pointer-events: none;
 }
 
-.organize-cell-angle {
+/* Doubled with .mono, whose size comes later in the cascade. */
+.mono.organize-cell-angle {
   position: absolute;
   right: 4px;
   bottom: 4px;
