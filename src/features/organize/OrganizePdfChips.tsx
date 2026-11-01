@@ -19,6 +19,8 @@ export interface OrganizePdfChipsProps {
  * needed a password, and the number of pages the PDF has (not the number left
  * in the grid). A PDF that waits for its password is yellow with the button
  * to enter it, and one that cannot be read is red with the reason as its title.
+ * Those two come first, in the order they were added: they are not saved until
+ * dealt with, and at the end of the row they would be out of view.
  */
 export function OrganizePdfChips({
   onRemove,
@@ -27,10 +29,14 @@ export function OrganizePdfChips({
   const { organize, job, language } = useAppState();
   const t = getTranslations(language.language).organize;
   const locked = isJobActive(job);
+  const chips = [
+    ...organize.pdfs.filter((pdf) => pdf.error !== null),
+    ...organize.pdfs.filter((pdf) => pdf.error === null),
+  ];
 
   return (
     <div role="list" aria-label={t.pdfListAria} className="organize-chips">
-      {organize.pdfs.map((pdf) => {
+      {chips.map((pdf) => {
         const waiting = pdf.error?.code === "PasswordProtected";
         const broken = pdf.error !== null && !waiting;
         return (

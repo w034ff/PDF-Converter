@@ -123,6 +123,28 @@ describe("adding PDFs", () => {
     expect(screen.queryByTestId("drop-zone")).not.toBeInTheDocument();
   });
 
+  it("puts the PDFs that are not saved first, each kind in the order they were added", async () => {
+    await openOrganizeTab({
+      pdfs: [
+        REPORT,
+        waitingPdf(2, "locked.pdf"),
+        brokenPdf(3, "broken.pdf"),
+        waitingPdf(4, "other.pdf"),
+      ],
+    });
+
+    const list = screen.getByRole("list", { name: /PDF/ });
+    const names = within(list)
+      .getAllByRole("listitem")
+      .map((chip) => chip.querySelector(".organize-chip-name")?.textContent);
+    expect(names).toEqual([
+      "locked.pdf",
+      "broken.pdf",
+      "other.pdf",
+      REPORT.name,
+    ]);
+  });
+
   it("marks a PDF that needed a password with a key, and counts the pages the PDF has", async () => {
     await openOrganizeTab({ pdfs: [REPORT, CONTRACT] });
 
@@ -287,7 +309,7 @@ describe("a PDF that waits for a password", () => {
   it("is a yellow chip with the button instead of a page count, and has no pages", async () => {
     await openOrganizeTab({ pdfs: [REPORT, WAITING] });
 
-    const chip = screen.getAllByRole("listitem")[1];
+    const chip = screen.getAllByRole("listitem")[0];
     expect(chip).toHaveClass("is-waiting");
     expect(
       within(chip).getByRole("button", { name: "パスワードを入力" }),
@@ -366,12 +388,12 @@ describe("a PDF that waits for a password", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(drawnKeys()).toEqual(["1:1", "1:2", "1:3", "2:1", "2:2", "3:1"]);
     const chips = screen.getAllByRole("listitem");
-    expect(chips[1]).not.toHaveClass("is-waiting");
-    expect(chips[1]).toHaveTextContent("2 ページ");
-    expect(chips[3]).toHaveClass("is-waiting");
+    expect(chips[0]).toHaveClass("is-waiting");
+    expect(chips[2]).not.toHaveClass("is-waiting");
+    expect(chips[2]).toHaveTextContent("2 ページ");
     // The key stays on the PDFs that needed the password, and the note about them stays.
     expect(
-      within(chips[1]).getByRole("img", { name: "パスワード付き" }),
+      within(chips[2]).getByRole("img", { name: "パスワード付き" }),
     ).toBeInTheDocument();
   });
 
@@ -394,7 +416,7 @@ describe("a PDF that cannot be read", () => {
   it("is a red chip with the reason as its title, and no pages", async () => {
     await openOrganizeTab({ pdfs: [REPORT, brokenPdf(2, "broken.pdf")] });
 
-    const chip = screen.getAllByRole("listitem")[1];
+    const chip = screen.getAllByRole("listitem")[0];
     expect(chip).toHaveClass("is-broken");
     expect(chip).toHaveTextContent("✕ 読み込めません");
     expect(chip.getAttribute("title")).toMatch(/PDF/);
