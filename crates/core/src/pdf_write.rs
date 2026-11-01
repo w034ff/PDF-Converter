@@ -1,6 +1,10 @@
 //! PDF document creation and page writing using krilla (design §4.3).
 
+use std::io::{BufRead, Cursor, Seek};
+use std::sync::Arc;
+
 use image::metadata::Orientation;
+use krilla::Data;
 use krilla::Document;
 use krilla::SerializeSettings;
 use krilla::configure::{Archival, ConfigurationBuilder};
@@ -19,15 +23,42 @@ use crate::utc_time::{UtcTime, now_utc};
 /// Total pixel count was already verified against [`crate::MAX_IMAGE_PIXELS`] by `probe_reader`.
 /// We disable the image crate's default 512 MiB allocation limit so that valid large
 /// 16-bit RGBA PNGs (up to 80M pixels * 8 bytes = 640 MiB) are not rejected.
-pub(crate) fn decode_image_pixels(image_bytes: &[u8]) -> Result<image::DynamicImage, ProbeError> {
-    decode_without_limits(image_bytes).map_err(|_| ProbeError::DecodeFailed)
+pub(crate) fn decode_image_pixels<R: BufRead + Seek>(
+    image: R,
+) -> Result<image::DynamicImage, ProbeError> {
+    decode_without_limits(image).map_err(|_| ProbeError::DecodeFailed)
 }
 
-fn decode_without_limits(image_bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
-    let mut reader =
-        image::ImageReader::new(std::io::Cursor::new(image_bytes)).with_guessed_format()?;
+fn decode_without_limits<R: BufRead + Seek>(image: R) -> image::ImageResult<image::DynamicImage> {
+    let mut reader = image::ImageReader::new(image).with_guessed_format()?;
     reader.no_limits();
     reader.decode()
+}
+
+/// Reads every pixel of `image` and drops it, to find out whether the pixels can be read (design
+/// §6.2). It takes a reader because a multi-page TIFF can be larger than a worker may hold.
+///
+/// A TIFF is read one page at a time and `on_page` is called after each page with the number of
+/// pages read so far; no other format calls it. This is the same decoding [`PdfWriter`] relies on
+/// when it embeds the image, so an image that passes is read the same way there.
+///
+/// # Errors
+///
+/// Returns [`ProbeError::UnsupportedFormat`] if the format is not supported,
+/// [`ProbeError::TooLarge`] if the image has more than [`crate::MAX_IMAGE_PIXELS`] pixels,
+/// [`ProbeError::TooManyPages`] if a TIFF has more than [`crate::MAX_TIFF_PAGES`] pages, and
+/// [`ProbeError::DecodeFailed`] if the header or the pixels are damaged.
+pub fn verify_image<R: BufRead + Seek>(
+    mut image: R,
+    on_page: impl FnMut(u32),
+) -> Result<(), ProbeError> {
+    let info = probe_reader(&mut image)?;
+    image.rewind().map_err(|_| ProbeError::ReadFailed)?;
+    if info.format == ImageFormat::Tiff {
+        crate::tiff::verify_tiff_pages(&mut image, on_page)
+    } else {
+        decode_image_pixels(image).map(drop)
+    }
 }
 
 /// The standard a [`PdfWriter`] document is written to (design §4.3).
@@ -123,6 +154,9 @@ impl PdfWriter {
     ///
     /// For multi-page TIFF images, all pages are decoded into krilla images first before
     /// committing to the document. If any page fails decoding, no pages are added to the document.
+    /// For the other formats the pixels are read first, so that a corrupt image fails as
+    /// [`ProbeError::DecodeFailed`] and is not added; see [`PdfWriter::add_checked_image`] for
+    /// an image whose pixels were already verified.
     ///
     /// Invokes `on_page(page_idx, total_pages)` as each page is decoded.
     /// Periodically queries `should_cancel()` and cancels immediately without adding pages if true.
@@ -130,7 +164,7 @@ impl PdfWriter {
         &mut self,
         image_bytes: &[u8],
         page_size: PageSize,
-        mut on_page: FProg,
+        on_page: FProg,
         should_cancel: FCancel,
     ) -> Result<AddImageResult, ProbeError>
     where
@@ -147,6 +181,79 @@ impl PdfWriter {
             return Ok(AddImageResult::Cancelled);
         }
 
+        // The pixels are dropped right away, before krilla decodes the image again, so that two
+        // decoded copies are not held at once. BMP and TIFF are read for embedding below.
+        if !matches!(info.format, ImageFormat::Bmp | ImageFormat::Tiff) {
+            decode_image_pixels(Cursor::new(image_bytes))?;
+        }
+
+        self.add_probed_image(
+            image_bytes,
+            &info,
+            || image_bytes.to_vec().into(),
+            page_size,
+            on_page,
+            should_cancel,
+        )
+    }
+
+    /// Adds an image whose pixels the caller has already verified, for example with
+    /// [`verify_image`] (design §4.3).
+    ///
+    /// It is [`PdfWriter::add_image`] without reading the pixels of the formats that krilla reads
+    /// itself, and it hands PNG and WebP bytes to krilla without copying them. BMP and TIFF are
+    /// read here because their pixels are embedded, so they still fail as
+    /// [`ProbeError::DecodeFailed`]. A damaged PNG, WebP or JPEG that was not verified may be
+    /// accepted here and only fail when the document is finished.
+    pub fn add_checked_image<FProg, FCancel>(
+        &mut self,
+        image_bytes: Vec<u8>,
+        page_size: PageSize,
+        on_page: FProg,
+        should_cancel: FCancel,
+    ) -> Result<AddImageResult, ProbeError>
+    where
+        FProg: FnMut(u32, u32),
+        FCancel: Fn() -> bool,
+    {
+        if should_cancel() {
+            return Ok(AddImageResult::Cancelled);
+        }
+
+        let image_bytes = Arc::new(image_bytes);
+        let info = probe_reader(std::io::Cursor::new(image_bytes.as_slice()))?;
+
+        if should_cancel() {
+            return Ok(AddImageResult::Cancelled);
+        }
+
+        self.add_probed_image(
+            image_bytes.as_slice(),
+            &info,
+            || Arc::clone(&image_bytes).into(),
+            page_size,
+            on_page,
+            should_cancel,
+        )
+    }
+
+    /// Embeds the image of `image_bytes`, which `probe_reader` returned `info` for. `shared`
+    /// gives krilla the same bytes as owned data, for the formats it reads itself. The callers
+    /// have already checked `should_cancel` after probing, and the pixel read of
+    /// [`PdfWriter::add_image`] is not followed by another check.
+    fn add_probed_image<FProg, FCancel>(
+        &mut self,
+        image_bytes: &[u8],
+        info: &ImageInfo,
+        shared: impl FnOnce() -> Data,
+        page_size: PageSize,
+        mut on_page: FProg,
+        should_cancel: FCancel,
+    ) -> Result<AddImageResult, ProbeError>
+    where
+        FProg: FnMut(u32, u32),
+        FCancel: Fn() -> bool,
+    {
         // PDF/A forbids /Interpolate, and krilla fails `finish` if it is set.
         let interpolate = self.conformance == PdfConformance::Standard;
 
@@ -176,13 +283,6 @@ impl PdfWriter {
             return Ok(AddImageResult::Ok { pages_added: count });
         }
 
-        // Every image is decoded here, so that a corrupt one fails as `DecodeFailed` and is not
-        // added (design §4.3). Only BMP is embedded from these pixels; for the other formats they
-        // are dropped now, before krilla decodes the image again, so that the two decoded copies
-        // are not held at once.
-        let pixels = decode_image_pixels(image_bytes)?;
-        let bmp_pixels = (info.format == ImageFormat::Bmp).then_some(pixels);
-
         // JPEG has metadata stripped before embedding (design §4.3).
         // PNG and WebP are decoded to pixels by krilla and losslessly recompressed.
         // BMP uses the RGBA pixels read by `image`.
@@ -200,18 +300,20 @@ impl PdfWriter {
                 Image::from_jpeg(stripped.into(), interpolate)
                     .map_err(|_| ProbeError::DecodeFailed)?
             }
-            ImageFormat::Png => Image::from_png(image_bytes.to_vec().into(), interpolate)
-                .map_err(|_| ProbeError::DecodeFailed)?,
-            ImageFormat::WebP => Image::from_webp(image_bytes.to_vec().into(), interpolate)
-                .map_err(|_| ProbeError::DecodeFailed)?,
+            ImageFormat::Png => {
+                Image::from_png(shared(), interpolate).map_err(|_| ProbeError::DecodeFailed)?
+            }
+            ImageFormat::WebP => {
+                Image::from_webp(shared(), interpolate).map_err(|_| ProbeError::DecodeFailed)?
+            }
             ImageFormat::Bmp => {
-                let rgba = bmp_pixels.ok_or(ProbeError::DecodeFailed)?.to_rgba8();
+                let rgba = decode_image_pixels(Cursor::new(image_bytes))?.to_rgba8();
                 Image::from_rgba8(rgba.into_raw(), info.width, info.height)
             }
             ImageFormat::Tiff => unreachable!(),
         };
 
-        self.commit_page(img, &info, page_size)?;
+        self.commit_page(img, info, page_size)?;
         on_page(0, 1);
         Ok(AddImageResult::Ok { pages_added: 1 })
     }
@@ -314,13 +416,13 @@ mod tests {
 
         // The scanlines are missing, so decoding still fails, but not on the
         // allocation limit.
-        let no_limits_err =
-            decode_without_limits(&png_bytes).expect_err("incomplete scanlines should fail");
+        let no_limits_err = decode_without_limits(Cursor::new(&png_bytes))
+            .expect_err("incomplete scanlines should fail");
         assert!(
             !matches!(no_limits_err, image::ImageError::Limits(_)),
             "decoding for a page must not apply the allocation limit, got: {no_limits_err:?}"
         );
-        let decode_res = decode_image_pixels(&png_bytes);
+        let decode_res = decode_image_pixels(Cursor::new(&png_bytes));
         assert_eq!(decode_res.unwrap_err(), ProbeError::DecodeFailed);
     }
 

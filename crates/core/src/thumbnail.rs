@@ -1,6 +1,6 @@
 //! Thumbnails of input images (design §6.1).
 
-use std::io::Cursor;
+use std::io::{BufRead, Cursor, Seek};
 
 use image::imageops::FilterType;
 
@@ -11,7 +11,7 @@ use crate::probe::probe_reader;
 /// Length of the longer side of a thumbnail in pixels (design §6.1).
 pub const THUMBNAIL_SIDE: u32 = 160;
 
-/// Makes a PNG thumbnail of the image in `image_bytes`: the EXIF orientation
+/// Makes a PNG thumbnail of `image`: the EXIF orientation
 /// is applied and the longer side is [`THUMBNAIL_SIDE`] pixels, so smaller
 /// images are enlarged to match the thumbnails of PDF pages.
 ///
@@ -21,12 +21,13 @@ pub const THUMBNAIL_SIDE: u32 = 160;
 /// [`ProbeError::TooLarge`] if the image has more than
 /// [`crate::MAX_IMAGE_PIXELS`] pixels, and [`ProbeError::DecodeFailed`] if the
 /// header or the pixels are damaged or the PNG cannot be written.
-pub fn thumbnail_png(image_bytes: &[u8]) -> Result<Vec<u8>, ProbeError> {
-    let info = probe_reader(Cursor::new(image_bytes))?;
+pub fn thumbnail_png<R: BufRead + Seek>(mut image: R) -> Result<Vec<u8>, ProbeError> {
+    let info = probe_reader(&mut image)?;
+    image.rewind().map_err(|_| ProbeError::ReadFailed)?;
     let mut pixels = if info.format == crate::probe::ImageFormat::Tiff {
-        crate::tiff::decode_tiff_first_page_as_image(image_bytes)?
+        crate::tiff::decode_tiff_first_page_as_image(image)?
     } else {
-        decode_image_pixels(image_bytes)?
+        decode_image_pixels(image)?
     };
     pixels.apply_orientation(info.orientation);
 
@@ -83,7 +84,7 @@ mod tests {
 
     fn thumbnail_size(name: &str) -> (u32, u32) {
         let bytes = std::fs::read(fixture(name)).expect("reading the fixture");
-        let png = thumbnail_png(&bytes).expect("making the thumbnail");
+        let png = thumbnail_png(Cursor::new(&bytes)).expect("making the thumbnail");
         assert_eq!(
             image::guess_format(&png).ok(),
             Some(image::ImageFormat::Png)
@@ -148,11 +149,14 @@ mod tests {
     #[test]
     fn rejects_what_is_not_an_image() {
         assert_eq!(
-            thumbnail_png(b"not an image").unwrap_err(),
+            thumbnail_png(Cursor::new(b"not an image")).unwrap_err(),
             ProbeError::UnsupportedFormat
         );
         let bytes = std::fs::read(fixture("corrupt.png")).expect("reading the fixture");
-        assert_eq!(thumbnail_png(&bytes).unwrap_err(), ProbeError::DecodeFailed);
+        assert_eq!(
+            thumbnail_png(Cursor::new(&bytes)).unwrap_err(),
+            ProbeError::DecodeFailed
+        );
     }
 
     #[test]

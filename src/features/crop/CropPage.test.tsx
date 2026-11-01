@@ -813,7 +813,7 @@ describe("when the analysis fails", () => {
       },
     });
 
-    const message = "PDF の処理に時間がかかりすぎたため中止しました";
+    const message = "処理に時間がかかりすぎたため中止しました";
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByText("候補を探しています…")).toBeNull();
@@ -843,7 +843,7 @@ describe("when the analysis fails", () => {
 
     expect(
       screen.getByText(
-        "PDF の処理中に問題が起きました。ファイルが壊れている可能性があります",
+        "処理中に問題が起きました。ファイルが壊れている可能性があります",
       ),
     ).toBeInTheDocument();
     expect(screen.queryAllByTestId("crop-photo-frame")).toHaveLength(0);

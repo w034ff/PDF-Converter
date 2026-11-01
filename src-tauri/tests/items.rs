@@ -4,8 +4,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use pdf_converter_lib::AppState;
@@ -17,8 +17,10 @@ use pdf_converter_lib::items::{
     unlock_pdf,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
-use pdfconv_core::{THUMBNAIL_SIDE, probe};
+use pdfconv_core::{THUMBNAIL_SIDE, probe, thumbnail_png};
 use pdfconv_worker::WORKER_FLAG;
+#[cfg(feature = "test-hooks")]
+use pdfconv_worker::server::CRASH_ON_IMAGE_FILE_NAME;
 
 #[path = "../../crates/core/tests/support/fixture_passwords.rs"]
 mod fixture_passwords;
@@ -472,37 +474,91 @@ fn an_image_thumbnail_is_a_png_with_the_longer_side_fixed() {
 }
 
 #[test]
-fn an_image_thumbnail_waits_for_the_decode_budget() {
-    const SMALL_BUDGET: u64 = 1000;
+fn an_image_thumbnail_is_as_large_as_the_core_makes_it() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let state = state();
+    for name in [
+        "photo.jpg",
+        "deep16.png",
+        "logo_alpha.webp",
+        "opaque.bmp",
+        "scan_g4.tif",
+    ] {
+        let path = put(dir.path(), name, name);
+        let id = add_images(&state, std::slice::from_ref(&path)).added[0].id;
+        let expected = thumbnail_png(std::io::Cursor::new(
+            fs::read(&path).expect("reading the image"),
+        ))
+        .expect("making the thumbnail in the core");
+
+        let png = make_thumbnail(&state, id, None, None).expect("making the thumbnail");
+        assert_eq!(png_size(&png), png_size(&expected), "{name}");
+    }
+}
+
+#[test]
+fn an_image_that_became_damaged_after_it_was_added_fails_as_before() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let path = put(dir.path(), "dpi300.png", "dpi300.png");
+    let state = state();
+    let id = add_images(&state, std::slice::from_ref(&path)).added[0].id;
+    let full = fs::read(&path).expect("reading a fixture");
+
+    fs::write(&path, &full[..full.len() * 2 / 3]).expect("truncating the file");
+    assert_eq!(
+        make_thumbnail(&state, id, None, None)
+            .expect_err("an image cut short")
+            .code,
+        ErrorCode::DecodeFailed
+    );
+
+    fs::remove_file(&path).expect("removing the file");
+    assert_eq!(
+        make_thumbnail(&state, id, None, None)
+            .expect_err("an image that is gone")
+            .code,
+        ErrorCode::ReadFailed
+    );
+
+    // The worker that answered with the errors is still usable.
+    let other = put(dir.path(), "photo.jpg", "photo.jpg");
+    let other_id = add_images(&state, &[other]).added[0].id;
+    make_thumbnail(&state, other_id, None, None).expect("the next thumbnail");
+}
+
+#[test]
+fn an_image_thumbnail_does_not_take_the_decode_budget() {
     let dir = tempfile::tempdir().expect("creating a temporary folder");
     let path = put(dir.path(), "photo.jpg", "photo.jpg");
     let mut state = state();
-    state.decode_budget = Arc::new(DecodeBudget::new(SMALL_BUDGET));
+    state.decode_budget = Arc::new(DecodeBudget::new(1));
     let id = add_images(&state, &[path]).added[0].id;
-    let held = state
+    let _held = state
         .decode_budget
-        .acquire(SMALL_BUDGET, &|| false)
+        .acquire(1, &|| false)
         .expect("an unused budget is lent at once");
 
-    let (sender, receiver) = mpsc::channel();
-    let thumbnail = {
-        let state = state.clone();
-        std::thread::spawn(move || {
-            let _ = sender.send(make_thumbnail(&state, id, None, None));
-        })
-    };
+    let png = make_thumbnail(&state, id, None, None).expect("making the thumbnail");
+    assert_eq!(png_size(&png), (THUMBNAIL_SIDE, 107));
+}
 
-    // A thumbnail of this size takes a few milliseconds when it does not wait.
-    assert!(
-        receiver.recv_timeout(Duration::from_millis(500)).is_err(),
-        "the thumbnail was made while the budget was held"
+#[cfg(feature = "test-hooks")]
+#[test]
+fn a_worker_that_crashes_on_an_image_fails_that_thumbnail_only() {
+    let dir = tempfile::tempdir().expect("creating a temporary folder");
+    let crash = put(dir.path(), "dpi300.png", CRASH_ON_IMAGE_FILE_NAME);
+    let next = put(dir.path(), "photo.jpg", "photo.jpg");
+    let state = state();
+    let crash_id = add_images(&state, &[crash]).added[0].id;
+    let next_id = add_images(&state, &[next]).added[0].id;
+
+    assert_eq!(
+        make_thumbnail(&state, crash_id, None, None)
+            .expect_err("an image that crashes the worker")
+            .code,
+        ErrorCode::WorkerCrashed
     );
-    drop(held);
-    let png = receiver
-        .recv_timeout(Duration::from_secs(60))
-        .expect("the thumbnail goes on when the budget is back")
-        .expect("making the thumbnail");
-    thumbnail.join().unwrap();
+    let png = make_thumbnail(&state, next_id, None, None).expect("the next thumbnail");
     assert_eq!(png_size(&png), (THUMBNAIL_SIDE, 107));
 }
 

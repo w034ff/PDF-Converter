@@ -179,10 +179,14 @@ impl WorkerPoolConfig {
             Request::Hello | Request::Open { .. } | Request::Close => self.open_timeout,
             Request::Render { .. }
             | Request::Thumbnail { .. }
+            | Request::ImageThumbnail { .. }
             | Request::PageImages { .. }
             | Request::ImageOnTop { .. }
             | Request::RenderRegion { .. } => self.render_timeout,
             Request::Detect { .. } => self.detect_timeout,
+            // The wait between two answers of the stream, not for the whole request: the time
+            // of a TIFF grows with its pages.
+            Request::CheckImage { .. } => self.render_timeout,
             // The wait between two answers of the stream, not for the whole request.
             Request::Organize { .. } => self.organize_step_timeout,
             #[cfg(feature = "test-hooks")]
@@ -528,6 +532,8 @@ fn close_idle_pdfs(pool: &Weak<PoolInner>) {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use pdfconv_worker::protocol::{RectPt, RenderColor, RenderFormat};
 
     use super::*;
@@ -594,6 +600,18 @@ mod tests {
                 RENDER,
             ),
             (region, RENDER),
+            (
+                Request::ImageThumbnail {
+                    path: PathBuf::new(),
+                },
+                RENDER,
+            ),
+            (
+                Request::CheckImage {
+                    path: PathBuf::new(),
+                },
+                RENDER,
+            ),
             (Request::Detect { page: 1 }, DETECT),
             (
                 Request::Organize {

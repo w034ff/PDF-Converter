@@ -131,6 +131,7 @@ const ERROR_CODES = {
   CmykNotAllowedInPdfA: true,
   LayoutUnavailable: true,
   OutputTooLarge: true,
+  MergeTooLarge: true,
 } satisfies Record<ErrorCode, true>;
 
 /** Whether a value is one of the error codes of design §6.6. */

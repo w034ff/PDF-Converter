@@ -13,8 +13,8 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
   RenderTooLarge:
     "この解像度では大きすぎて画像にできません。解像度を下げてください",
   WorkerCrashed:
-    "PDF の処理中に問題が起きました。ファイルが壊れている可能性があります",
-  WorkerTimeout: "PDF の処理に時間がかかりすぎたため中止しました",
+    "処理中に問題が起きました。ファイルが壊れている可能性があります",
+  WorkerTimeout: "処理に時間がかかりすぎたため中止しました",
   ReadFailed: "ファイルの読み込みに失敗しました",
   WriteFailed: "ファイルの書き込みに失敗しました",
   InvalidPageRange: "ページの範囲の書き方が正しくありません（{detail}）",
@@ -29,6 +29,8 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
     "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
   OutputTooLarge:
     "出力する PDF が大きすぎます（見積もり / 上限: {detail}）。区切りを入れて、分けて保存してください。",
+  MergeTooLarge:
+    "結合する PDF が大きすぎます（見積もり / この PC の上限: {detail}）。「1 枚ずつ」で保存するか、画像を減らしてください。",
 };
 
 export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
@@ -40,8 +42,8 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
   TooManyPages: "Too many pages (limit: {detail})",
   RenderTooLarge: "Too large at this resolution. Choose a lower resolution.",
   WorkerCrashed:
-    "Something went wrong while processing the PDF. The file may be damaged.",
-  WorkerTimeout: "Processing the PDF took too long and was stopped",
+    "Something went wrong during processing. The file may be damaged.",
+  WorkerTimeout: "Processing took too long and was stopped",
   ReadFailed: "Failed to read file",
   WriteFailed: "Failed to write file",
   InvalidPageRange: "Invalid page range ({detail})",
@@ -55,6 +57,8 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
     "Can't show suggestions (layout analysis is unavailable). You can still select areas by hand.",
   OutputTooLarge:
     "The output PDF is too large (estimate / limit: {detail}). Add breaks and save it in parts.",
+  MergeTooLarge:
+    'The merged PDF is too large (estimate / limit on this PC: {detail}). Save with "Each image" or use fewer images.',
 };
 
 /**

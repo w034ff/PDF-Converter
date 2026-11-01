@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use pdfconv_core::naming::resolve_image_to_pdf_names;
 use pdfconv_core::{AddImageResult, PdfConformance, PdfWriter};
 
+use super::image_check::{ImageCheckStop, check_image};
 use super::options::{
     PageOrientationChoice, PageSizeChoice, PdfOutput, output_password, protect_pdf,
 };
@@ -157,6 +158,7 @@ where
         let cancel_flag = Arc::clone(&state.cancel_flag);
         let decode_budget = Arc::clone(&state.decode_budget);
         let write_failed = Arc::clone(&write_failed);
+        let pool = state.pool.clone();
         let used_names = Arc::clone(&used_names_lower);
         let output_dir = output_dir_buf.clone();
         let creator = creator.clone();
@@ -165,6 +167,8 @@ where
         let on_item = Arc::clone(&on_item);
 
         handles.push(std::thread::spawn(move || {
+            let should_stop =
+                || cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst);
             loop {
                 if cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst) {
                     let mut q = match queue.lock() {
@@ -209,12 +213,48 @@ where
                     current: Some(task.filename.clone()),
                 });
 
+                // The pixels are read in a worker first, so that a decoder that stops or
+                // crashes is contained there (design §6.2). A failure is this image's, as an
+                // unreadable file is; a cancel leaves the image unstarted, like the ones still
+                // in the queue.
+                match check_image(&pool, &task.path, &should_stop) {
+                    Ok(()) => {}
+                    Err(ImageCheckStop::Failed(error)) => {
+                        let cur_done =
+                            done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
+                        failed.fetch_add(1, Ordering::SeqCst);
+                        on_item(JobItemPayload {
+                            id: task.id,
+                            status: JobItemStatus::Failed,
+                            outputs: Vec::new(),
+                            error: Some(error),
+                            failed_pages: None,
+                            source_id: None,
+                        });
+                        on_progress(JobProgressPayload {
+                            done: cur_done,
+                            total,
+                            current: None,
+                        });
+                        continue;
+                    }
+                    Err(ImageCheckStop::Cancelled) => {
+                        let mut q = match queue.lock() {
+                            Ok(g) => g,
+                            Err(p) => p.into_inner(),
+                        };
+                        unprocessed.fetch_add(1 + q.len() as u32, Ordering::SeqCst);
+                        q.clear();
+                        break;
+                    }
+                }
+
                 // Borrowed before the file is read and held until this image's PDF is written
                 // and its bytes are let go (design §5.3). A wait that is cancelled leaves the
                 // image unstarted, like the ones still in the queue.
                 let Some(_permit) = decode_budget.acquire(
                     task.decoded_bytes.saturating_mul(DECODE_MEMORY_FACTOR_PDF),
-                    &|| cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst),
+                    &should_stop,
                 ) else {
                     let mut q = match queue.lock() {
                         Ok(g) => g,
@@ -250,8 +290,8 @@ where
 
                 let mut writer = PdfWriter::new(&creator, output.conformance);
                 let mut item_pages_done = 0u32;
-                let add_res = writer.add_image(
-                    &bytes,
+                let add_res = writer.add_checked_image(
+                    bytes,
                     page_size.to_core(orientation),
                     |_page_idx, _total_in_item| {
                         item_pages_done += 1;
@@ -262,20 +302,26 @@ where
                             current: Some(task.filename.clone()),
                         });
                     },
-                    || cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst),
+                    should_stop,
                 );
 
                 match add_res {
                     Ok(AddImageResult::Cancelled) => {
                         unprocessed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload {
-                            id: task.id,
-                            status: JobItemStatus::Cancelled,
-                            outputs: Vec::new(),
-                            error: None,
-                            failed_pages: None,
-                            source_id: None,
-                        });
+                        // Only the user's cancel is the image's own. One stopped by another
+                        // thread's write failure is unprocessed, as the images still in the
+                        // queue are; which of the images in flight it catches depends on how
+                        // far each thread has got, so it must not show as an item.
+                        if cancel_flag.load(Ordering::SeqCst) {
+                            on_item(JobItemPayload {
+                                id: task.id,
+                                status: JobItemStatus::Cancelled,
+                                outputs: Vec::new(),
+                                error: None,
+                                failed_pages: None,
+                                source_id: None,
+                            });
+                        }
                         let mut q = match queue.lock() {
                             Ok(g) => g,
                             Err(p) => p.into_inner(),

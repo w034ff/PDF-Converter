@@ -67,11 +67,15 @@ pub struct AppState {
     pub settings: Arc<SettingsStore>,
     /// The memory that reading image pixels in this process may use at once (design §5.3).
     pub decode_budget: Arc<DecodeBudget>,
+    /// The installed memory, read once when the app starts; `None` when it cannot be read. The
+    /// decode budget and the size limit of a merged PDF come from it (design §5.3, §6.2).
+    pub installed_memory: Option<u64>,
 }
 
 impl AppState {
     /// An empty state whose PDFs are opened by `pool`.
     pub fn new(pool: WorkerPool) -> Self {
+        let installed_memory = system_memory::installed_memory();
         Self {
             items: Arc::new(ItemTable::new()),
             crop: Arc::new(CropState::default()),
@@ -84,9 +88,8 @@ impl AppState {
             crop_output_dir: Arc::new(Mutex::new(None)),
             organize_output_dir: Arc::new(Mutex::new(None)),
             settings: Arc::new(SettingsStore::default()),
-            decode_budget: Arc::new(DecodeBudget::new(budget_for(
-                system_memory::installed_memory(),
-            ))),
+            decode_budget: Arc::new(DecodeBudget::new(budget_for(installed_memory))),
+            installed_memory,
         }
     }
 }

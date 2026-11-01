@@ -41,6 +41,16 @@ pub const CRASH_ON_ORGANIZE_FILE_NAME: &str = "crash-on-organize-for-test.pdf";
 #[cfg(feature = "test-hooks")]
 pub const HANG_ON_ORGANIZE_FILE_NAME: &str = "hang-on-organize-for-test.pdf";
 
+/// Name of an image file that makes the worker abort on `ImageThumbnail` and `CheckImage` for
+/// testing (design §11.3).
+#[cfg(feature = "test-hooks")]
+pub const CRASH_ON_IMAGE_FILE_NAME: &str = "crash-on-image-for-test.png";
+
+/// Name of an image file that makes the worker stop answering `ImageThumbnail` and `CheckImage`
+/// for testing, as `HangForTest` does (design §11.3).
+#[cfg(feature = "test-hooks")]
+pub const HANG_ON_IMAGE_FILE_NAME: &str = "hang-on-image-for-test.png";
+
 /// Error code for a pdfium library that cannot be loaded or used.
 pub(crate) const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
 
@@ -82,11 +92,17 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
         detector: Detector::new(onnxruntime, model),
     };
     while let Some((request, _body)) = read_message::<_, Request>(&mut input)? {
+        // Only `Organize` and `CheckImage` answer with several messages, so they bypass `handle`.
+        if let Request::CheckImage { path } = &request {
+            #[cfg(feature = "test-hooks")]
+            fail_image_for_test(path);
+            crate::image::check(path, &mut output)?;
+            continue;
+        }
         match OrganizeArgs::from_request(request) {
             Ok(args) => {
                 #[cfg(feature = "test-hooks")]
                 fail_organize_for_test(&args);
-                // Only `Organize` answers with several messages, so it bypasses `handle`.
                 state.document = None;
                 match state.pdfium() {
                     Ok(pdfium) => organize::run(pdfium, args, &mut output)?,
@@ -100,6 +116,18 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
         }
     }
     Ok(())
+}
+
+/// Aborts or hangs when `path` has one of the image names the tests use.
+#[cfg(feature = "test-hooks")]
+fn fail_image_for_test(path: &Path) {
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some(CRASH_ON_IMAGE_FILE_NAME) => std::process::abort(),
+        Some(HANG_ON_IMAGE_FILE_NAME) => loop {
+            std::thread::park();
+        },
+        _ => {}
+    }
 }
 
 /// Aborts or hangs when a source of `args` has one of the names the tests use.
@@ -361,8 +389,16 @@ impl State {
                     Err(response) => (response, Vec::new()),
                 }
             }
-            // `run` sends `Organize` to `organize::run`, which answers with several messages.
-            Request::Organize { .. } => (error_response(CODE_INVALID_PARAMS, None), Vec::new()),
+            Request::ImageThumbnail { path } => {
+                #[cfg(feature = "test-hooks")]
+                fail_image_for_test(&path);
+                crate::image::thumbnail(&path)
+            }
+            // `run` sends `Organize` to `organize::run` and `CheckImage` to `image::check`,
+            // which answer with several messages.
+            Request::Organize { .. } | Request::CheckImage { .. } => {
+                (error_response(CODE_INVALID_PARAMS, None), Vec::new())
+            }
             Request::Close => {
                 self.document = None;
                 (Response::Close, Vec::new())
@@ -608,6 +644,13 @@ mod tests {
     #[test]
     fn crash_on_open_file_name_constant() {
         assert_eq!(CRASH_ON_OPEN_FILE_NAME, "crash-on-open-for-test.pdf");
+    }
+
+    #[cfg(feature = "test-hooks")]
+    #[test]
+    fn image_test_file_name_constants() {
+        assert_eq!(CRASH_ON_IMAGE_FILE_NAME, "crash-on-image-for-test.png");
+        assert_eq!(HANG_ON_IMAGE_FILE_NAME, "hang-on-image-for-test.png");
     }
 
     #[cfg(feature = "test-hooks")]

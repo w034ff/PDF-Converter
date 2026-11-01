@@ -29,11 +29,12 @@ pub enum ErrorCode {
     CmykNotAllowedInPdfA,
     LayoutUnavailable,
     OutputTooLarge,
+    MergeTooLarge,
 }
 
 impl ErrorCode {
     /// Every code, so that [`ErrorCode::from_name`] cannot miss one.
-    const ALL: [Self; 20] = [
+    const ALL: [Self; 21] = [
         Self::UnsupportedFormat,
         Self::DecodeFailed,
         Self::PdfOpenFailed,
@@ -54,6 +55,7 @@ impl ErrorCode {
         Self::CmykNotAllowedInPdfA,
         Self::LayoutUnavailable,
         Self::OutputTooLarge,
+        Self::MergeTooLarge,
     ];
 
     /// The name of the code as it appears in design §6.6.
@@ -79,6 +81,7 @@ impl ErrorCode {
             Self::CmykNotAllowedInPdfA => "CmykNotAllowedInPdfA",
             Self::LayoutUnavailable => "LayoutUnavailable",
             Self::OutputTooLarge => "OutputTooLarge",
+            Self::MergeTooLarge => "MergeTooLarge",
         }
     }
 

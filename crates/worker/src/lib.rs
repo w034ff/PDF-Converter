@@ -5,6 +5,7 @@
 
 pub mod client;
 mod crop;
+mod image;
 mod layout;
 mod organize;
 pub mod protocol;

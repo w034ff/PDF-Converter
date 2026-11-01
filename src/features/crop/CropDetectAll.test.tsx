@@ -171,7 +171,7 @@ describe("the answers of the pages", () => {
     pickPage(2);
     await flush();
     expect(
-      screen.getByText("PDF の処理に時間がかかりすぎたため中止しました"),
+      screen.getByText("処理に時間がかかりすぎたため中止しました"),
     ).toBeInTheDocument();
     expect(areaRows()).toHaveLength(1);
   });

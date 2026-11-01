@@ -1,7 +1,7 @@
 //! The memory budget for reading image pixels in the main process (design §5.3).
 //!
 //! The main process has no memory limit like the workers', and a failed allocation ends the
-//! app. Every read of image pixels (the PDF writer and the list thumbnails) therefore borrows
+//! app. Every read of image pixels for the PDF writer therefore borrows
 //! its estimated memory from one [`DecodeBudget`] before it reads the file and returns it when
 //! it lets go of the pixels.
 
@@ -14,10 +14,6 @@ use pdfconv_worker::server::WORKER_MEMORY_LIMIT;
 /// What one image-to-PDF write holds at its peak, as a multiple of the decoded pixel bytes:
 /// the measured peak is 3.9 times, and 4 is the round value above it (design §5.3).
 pub const DECODE_MEMORY_FACTOR_PDF: u64 = 4;
-
-/// What one list thumbnail holds at its peak, as a multiple of the decoded pixel bytes: the
-/// measured peak is 1.9 times, and 2 is the round value above it (design §5.3).
-pub const DECODE_MEMORY_FACTOR_THUMBNAIL: u64 = 2;
 
 /// The smallest budget: what one worker may use, for machines with little memory and for when
 /// the installed memory cannot be read (design §5.3).

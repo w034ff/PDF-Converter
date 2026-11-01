@@ -8,6 +8,7 @@ use pdfconv_core::{AddImageResult, PdfWriter};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::image_check::{ImageCheckStop, check_image};
 use super::options::{PageOrientationChoice, PageSizeChoice, PdfOutput, protect_pdf};
 use super::output::create_output_temp;
 use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload};
@@ -15,6 +16,58 @@ use crate::AppState;
 use crate::decode_budget::DECODE_MEMORY_FACTOR_PDF;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::ItemKind;
+
+/// How many times the output a merge holds at its peak: the whole output in memory, and the same
+/// again while `finish` serializes it (design §6.2).
+const MERGE_PEAK_FACTOR: u64 = 2;
+
+/// The part of the installed memory a merge may use, as a fraction `NUMERATOR / DENOMINATOR`. The
+/// rest is left to the OS and the other apps (design §6.2).
+const MERGE_MEMORY_NUMERATOR: u64 = 3;
+const MERGE_MEMORY_DENOMINATOR: u64 = 5;
+
+/// The bytes of a megabyte in the detail of `MergeTooLarge`, as in `OutputTooLarge`.
+const BYTES_PER_MB: u64 = 1024 * 1024;
+
+/// The largest estimate a merge is let through with on a machine with `installed` bytes of
+/// memory: 3/5 of it, halved because the peak is twice the output. See design §6.2 for the
+/// numbers.
+pub fn merge_output_limit(installed: u64) -> u64 {
+    installed.saturating_mul(MERGE_MEMORY_NUMERATOR) / MERGE_MEMORY_DENOMINATOR / MERGE_PEAK_FACTOR
+}
+
+/// Refuses a merge whose estimate is over [`merge_output_limit`] of the installed memory, before
+/// anything starts (design §6.2). The estimate is the sum of the sizes of the files of the images
+/// that have no error; a file that cannot be read counts as 0. Exactly the limit is let through,
+/// and so is everything when the installed memory is not known.
+///
+/// # Errors
+///
+/// `MergeTooLarge`, with the estimate and the limit in MB (1,048,576 bytes) as `detail`: the
+/// estimate rounded up, so that one just over the limit does not read as the limit.
+pub fn check_merge_size(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
+    let Some(installed) = state.installed_memory else {
+        return Ok(());
+    };
+    let estimate = ids
+        .iter()
+        .filter_map(|&id| state.items.get(id))
+        .filter(|entry| entry.kind == ItemKind::Image && entry.error.is_none())
+        .map(|entry| std::fs::metadata(&entry.path).map_or(0, |metadata| metadata.len()))
+        .fold(0, u64::saturating_add);
+    let limit = merge_output_limit(installed);
+    if estimate <= limit {
+        return Ok(());
+    }
+    Err(IpcError::new(
+        ErrorCode::MergeTooLarge,
+        format!(
+            "{} MB / {} MB",
+            estimate.div_ceil(BYTES_PER_MB),
+            limit / BYTES_PER_MB
+        ),
+    ))
+}
 
 /// Result returned once a merge has run (design §7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -118,8 +171,40 @@ where
             continue;
         }
 
-        // Borrowed before the file is read and held until `add_image` is done and the bytes
-        // are let go (design §5.3). A wait that is cancelled is a cancelled `add_image`.
+        // The pixels are read in a worker first, so that a decoder that stops or crashes is
+        // contained there (design §6.2). A failure is this image's, as an unreadable file is.
+        match check_image(&state.pool, &entry.path, &|| {
+            state.cancel_flag.load(Ordering::SeqCst)
+        }) {
+            Ok(()) => {}
+            Err(ImageCheckStop::Failed(error)) => {
+                failed += 1;
+                done += entry.page_count;
+                on_item(JobItemPayload {
+                    id: *id,
+                    status: JobItemStatus::Failed,
+                    outputs: Vec::new(),
+                    error: Some(error),
+                    failed_pages: None,
+                    source_id: None,
+                });
+                on_progress(JobProgressPayload {
+                    done,
+                    total,
+                    current: None,
+                });
+                continue;
+            }
+            Err(ImageCheckStop::Cancelled) => {
+                was_cancelled = true;
+                unprocessed = (valid_tasks.len() - idx) as u32;
+                break;
+            }
+        }
+
+        // Borrowed before the file is read and held until `add_checked_image` is done and the
+        // bytes are let go (design §5.3). A wait that is cancelled is a cancelled
+        // `add_checked_image`.
         let Some(_permit) = state.decode_budget.acquire(
             entry.decoded_bytes.saturating_mul(DECODE_MEMORY_FACTOR_PDF),
             &|| state.cancel_flag.load(Ordering::SeqCst),
@@ -152,8 +237,8 @@ where
         };
 
         let mut item_pages_done = 0u32;
-        let add_result = writer.add_image(
-            &bytes,
+        let add_result = writer.add_checked_image(
+            bytes,
             page_size.to_core(orientation),
             |_page_idx, _total_in_item| {
                 item_pages_done += 1;
@@ -261,4 +346,25 @@ where
     Ok(SaveMergedPdfResult {
         saved_name: Some(saved_name),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_limit_is_three_fifths_of_the_installed_memory_halved() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        assert_eq!(merge_output_limit(0), 0);
+        assert_eq!(merge_output_limit(10 * GIB), 3 * GIB);
+        assert_eq!(merge_output_limit(16 * GIB), 16 * GIB * 3 / 10);
+        // The two divisions round down in turn, as `MERGE_PEAK_FACTOR` and the fraction say.
+        assert_eq!(merge_output_limit(9), 2);
+    }
+
+    #[test]
+    fn the_limit_saturates_instead_of_overflowing() {
+        // No machine has this much; the product saturates and the limit stays finite.
+        assert_eq!(merge_output_limit(u64::MAX), u64::MAX / 5 / 2);
+    }
 }
