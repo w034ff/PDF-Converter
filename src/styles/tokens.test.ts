@@ -264,6 +264,19 @@ describe("design tokens and CSS rules", () => {
   );
 
   it.each(["light", "dark"] as const)(
+    "draws the frame of a selected page, its only ground, visibly in the %s theme",
+    (theme) => {
+      const tokens = readThemeTokens(theme);
+      expect(
+        contrastRatio(
+          tokenValue(tokens, "--color-accent"),
+          tokenValue(tokens, "--color-bg-app"),
+        ),
+      ).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  it.each(["light", "dark"] as const)(
     "draws the colors of the PDFs of the organize tab visibly on every ground in the %s theme",
     (theme) => {
       const tokens = readThemeTokens(theme);
@@ -271,7 +284,6 @@ describe("design tokens and CSS rules", () => {
         "--color-bg-app",
         "--color-bg-surface",
         "--color-bg-subtle",
-        "--organize-cell-selected",
       ];
       for (const source of ORGANIZE_SOURCES) {
         for (const ground of grounds) {

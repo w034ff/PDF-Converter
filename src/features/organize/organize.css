@@ -311,10 +311,6 @@
   border-radius: var(--radius-md);
 }
 
-.organize-cell.is-selected .organize-cell-box {
-  background: var(--organize-cell-selected);
-}
-
 /* Holds what sits on the page and must not be clipped with it. */
 .organize-thumb-frame {
   position: relative;
