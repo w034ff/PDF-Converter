@@ -18,7 +18,7 @@ use super::{
     begin_conversion, spawn_conversion,
 };
 use crate::AppState;
-use crate::decode_budget::DECODE_MEMORY_FACTOR_PDF;
+use crate::decode_budget::pdf_write_estimate;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::ItemKind;
 use crate::settings::OutputKind;
@@ -253,7 +253,7 @@ where
                 // and its bytes are let go (design §5.3). A wait that is cancelled leaves the
                 // image unstarted, like the ones still in the queue.
                 let Some(_permit) = decode_budget.acquire(
-                    task.decoded_bytes.saturating_mul(DECODE_MEMORY_FACTOR_PDF),
+                    pdf_write_estimate(&task.path, task.decoded_bytes),
                     &should_stop,
                 ) else {
                     let mut q = match queue.lock() {
