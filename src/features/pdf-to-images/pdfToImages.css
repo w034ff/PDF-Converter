@@ -87,12 +87,16 @@
 /* The padding, taken back by the margin, keeps the focus ring of the edge
    pages inside the scroll area, which would otherwise clip it. */
 .pdf-single-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
   padding: 6px;
   margin: -6px;
   overflow-y: auto;
+}
+
+/* `PdfPageGrid` works out the height of a row from these sizes. */
+.pdf-single-rows {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .pdf-page-figure {
@@ -102,6 +106,12 @@
   align-items: center;
   gap: 6px;
   transition: opacity 0.15s ease;
+}
+
+.pdf-page-figure figcaption {
+  height: 16px;
+  line-height: 16px;
+  white-space: nowrap;
 }
 
 .pdf-page-figure.is-dimmed {

@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { formatMessage, getTranslations } from "../../i18n";
+import { useRoom } from "../shared/useRoom";
 import {
   isJobActive,
   keyOfPage,
@@ -49,36 +50,6 @@ const NO_PARTS: ReadonlyMap<PageKey, number> = new Map();
 
 /** How far below the top of a break's line its ✂ mark is (mockup OrganizeSplit). */
 const BREAK_MARK_TOP = 50;
-
-/** The size of the scrolling area's content box; zero until it is measured. */
-interface Room {
-  width: number;
-  height: number;
-}
-
-function useRoom(scrollRef: React.RefObject<HTMLDivElement | null>): Room {
-  const [room, setRoom] = useState<Room>({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (element === null) {
-      return;
-    }
-    setRoom({ width: element.clientWidth, height: element.clientHeight });
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries.at(-1);
-      if (entry !== undefined) {
-        const { width, height } = entry.contentRect;
-        setRoom({ width, height });
-      }
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [scrollRef]);
-  return room;
-}
 
 /** The keys a page operation by key or button works on: the selection, else the focused page. */
 function operatedKeys(

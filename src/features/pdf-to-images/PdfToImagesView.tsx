@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   DropZone,
   ErrorDisplay,
@@ -36,6 +36,12 @@ import {
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
 import { OutputDirError } from "../output";
+import { useRoom } from "../shared/useRoom";
+import {
+  LIST_THUMBNAIL_DELAY_MS,
+  rowOffsets,
+  useVirtualRows,
+} from "../shared/virtualRows";
 import {
   countPagesInIntervals,
   formatFileSize,
@@ -49,8 +55,24 @@ import {
   togglePageRangeInIntervals,
   type PageOutcome,
 } from "./pdfUtils";
+import { pdfThumbnails } from "./pdfThumbnails";
 import { useDisplayedRange } from "./useDisplayedRange";
 import "./pdfToImages.css";
+
+/** Columns of the page grid; `.pdf-single-rows` lays them out. */
+const PDF_GRID_COLUMNS = 4;
+
+/** Between the cells of the grid, both ways; `.pdf-single-rows` has it too. */
+const PDF_GRID_GAP = 16;
+
+/** Between a page and its caption; `.pdf-page-figure` has it too. */
+const PDF_CAPTION_GAP = 6;
+
+/** The caption's one line, which `.pdf-page-figure figcaption` fixes. */
+const PDF_CAPTION_HEIGHT = 16;
+
+/** The shape of a page whose size is not known. */
+const DEFAULT_PAGE_SIZE_PT: PageSizePt = { widthPt: 210, heightPt: 297 };
 
 /** The colour class of a page's caption: only a result colours it. */
 function captionClass(outcome: PageOutcome | null): string {
@@ -118,17 +140,20 @@ function PdfPageThumbnail({
   onClick,
   translations: t,
 }: PdfPageThumbnailProps) {
-  const { ref, src, failed } = useThumbnail(id, page);
+  const { ref, src, failed } = useThumbnail(id, page, {
+    delayMs: LIST_THUMBNAIL_DELAY_MS,
+    cache: pdfThumbnails,
+  });
   const isFailed = outcome === "failed";
 
-  const aspectRatio = firstPageSizePt
-    ? `${firstPageSizePt.widthPt} / ${firstPageSizePt.heightPt}`
-    : "210 / 297";
+  const { widthPt, heightPt } = firstPageSizePt ?? DEFAULT_PAGE_SIZE_PT;
+  const aspectRatio = `${widthPt} / ${heightPt}`;
 
   return (
     <figure
       className={`pdf-page-figure ${!isHighlighted ? "is-dimmed" : ""}`}
       data-testid={`page-thumbnail-${page}`}
+      data-virtual-row={Math.floor((page - 1) / PDF_GRID_COLUMNS)}
     >
       <button
         type="button"
@@ -169,6 +194,88 @@ function PdfPageThumbnail({
         {captionText(t, page, isHighlighted, outcome)}
       </figcaption>
     </figure>
+  );
+}
+
+interface PdfPageGridProps {
+  containerRef: RefObject<HTMLDivElement | null>;
+  item: PdfItem;
+  isPageSelected: (page: number) => boolean;
+  outcomes: ReadonlyMap<number, PageOutcome> | null;
+  disabled: boolean;
+  onPageClick: (page: number, shiftKey: boolean) => void;
+  translations: Translations;
+}
+
+/**
+ * The pages of a single PDF. Every page is drawn in the shape of the first,
+ * so the rows are all one height and only those near the view are drawn: ten
+ * thousand pages cost as much as a hundred.
+ */
+function PdfPageGrid({
+  containerRef,
+  item,
+  isPageSelected,
+  outcomes,
+  disabled,
+  onPageClick,
+  translations,
+}: PdfPageGridProps) {
+  const room = useRoom(containerRef);
+  const { pageCount, firstPageSizePt } = item;
+  const offsets = useMemo(() => {
+    const { widthPt, heightPt } = firstPageSizePt ?? DEFAULT_PAGE_SIZE_PT;
+    const cellWidth =
+      (room.width - (PDF_GRID_COLUMNS - 1) * PDF_GRID_GAP) / PDF_GRID_COLUMNS;
+    const height =
+      Math.max(cellWidth, 0) * (heightPt / widthPt) +
+      PDF_CAPTION_GAP +
+      PDF_CAPTION_HEIGHT;
+    return rowOffsets(
+      Math.ceil(pageCount / PDF_GRID_COLUMNS),
+      () => height,
+      PDF_GRID_GAP,
+    );
+  }, [pageCount, firstPageSizePt, room.width]);
+  const { first, last, before, after, onScroll } = useVirtualRows(
+    containerRef,
+    room,
+    offsets,
+  );
+
+  const pages: number[] = [];
+  const end = Math.min((last + 1) * PDF_GRID_COLUMNS, pageCount);
+  for (let page = first * PDF_GRID_COLUMNS + 1; page <= end; page += 1) {
+    pages.push(page);
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="pdf-single-grid"
+      tabIndex={-1}
+      onScroll={onScroll}
+    >
+      <div
+        className="pdf-single-rows"
+        style={{ paddingTop: before, paddingBottom: after }}
+      >
+        {pages.map((page) => (
+          <PdfPageThumbnail
+            key={page}
+            id={item.id}
+            page={page}
+            name={item.name}
+            firstPageSizePt={firstPageSizePt}
+            isHighlighted={isPageSelected(page)}
+            outcome={outcomes?.get(page) ?? null}
+            disabled={disabled}
+            onClick={onPageClick}
+            translations={translations}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -559,22 +666,21 @@ export function PdfToImagesView() {
   const isPageSelected = (page: number) =>
     displayed.pageSelection === "all" ||
     isPageInIntervals(singleIntervals, page);
-  const singleSelectedPages =
-    singleItem !== null
-      ? Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).filter(
-          isPageSelected,
-        )
-      : [];
-  const singleOutcomes =
-    singleResult !== undefined
-      ? pageOutcomes(
-          singleSelectedPages,
-          singleResult.outputs.length,
-          failedAsAWhole(singleResult)
-            ? singleSelectedPages
-            : (singleResult.failedPages ?? []),
-        )
-      : null;
+  // Only a result needs every page gone through.
+  let singleOutcomes: ReadonlyMap<number, PageOutcome> | null = null;
+  if (singleItem !== null && singleResult !== undefined) {
+    const selectedPages = Array.from(
+      { length: singleItem.pageCount },
+      (_, i) => i + 1,
+    ).filter(isPageSelected);
+    singleOutcomes = pageOutcomes(
+      selectedPages,
+      singleResult.outputs.length,
+      failedAsAWhole(singleResult)
+        ? selectedPages
+        : (singleResult.failedPages ?? []),
+    );
+  }
 
   return (
     <div className="pdf-view">
@@ -719,27 +825,16 @@ export function PdfToImagesView() {
             )}
           />
         ) : (
-          <div ref={listContainerRef} className="pdf-single-grid" tabIndex={-1}>
-            {Array.from({ length: singleItem.pageCount }, (_, i) => i + 1).map(
-              (page) => {
-                const isHighlighted = isPageSelected(page);
-                return (
-                  <PdfPageThumbnail
-                    key={page}
-                    id={singleItem.id}
-                    page={page}
-                    name={singleItem.name}
-                    firstPageSizePt={singleItem.firstPageSizePt}
-                    isHighlighted={isHighlighted}
-                    outcome={singleOutcomes?.get(page) ?? null}
-                    disabled={isThumbnailDisabled}
-                    onClick={handleThumbnailClick}
-                    translations={t}
-                  />
-                );
-              },
-            )}
-          </div>
+          <PdfPageGrid
+            key={singleItem.id}
+            containerRef={listContainerRef}
+            item={singleItem}
+            isPageSelected={isPageSelected}
+            outcomes={singleOutcomes}
+            disabled={isThumbnailDisabled}
+            onPageClick={handleThumbnailClick}
+            translations={t}
+          />
         )
       ) : (
         <div
