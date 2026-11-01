@@ -19,11 +19,11 @@ a {
   text-decoration: none;
 }
 
-/* One focus ring for every control, in the accent color, so it follows the
-   theme: WebView2's default ring is hard to see on the dark theme
-   (design §10.3). */
+/* One focus ring for every control, so it follows the theme: WebView2's
+   default ring is hard to see on the dark theme (design §10.3). It is the
+   text color because the accent says what is selected or on. */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-text-primary);
   outline-offset: 2px;
 }
 

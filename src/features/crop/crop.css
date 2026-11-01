@@ -252,13 +252,10 @@
   outline: none;
 }
 
-/* The areas' line, the selected area's ground and the selected row's are
-   accent, so an accent ring on the page, the list of areas or a row's
-   controls reads as a selection. */
-.crop-viewport :focus-visible,
-.crop-area-list:focus-visible,
-.crop-area-list :focus-visible {
-  outline-color: var(--color-text-primary);
+/* The app's ring follows the theme, and the dark theme's would vanish on the
+   white page. */
+.crop-page :focus-visible {
+  outline-color: var(--color-page-focus);
 }
 
 /* The page's auto margins center it when it is narrower than the view, and

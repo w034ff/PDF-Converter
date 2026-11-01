@@ -25,6 +25,8 @@ export interface MenuItem {
    * one of several states, so it is a `menuitemcheckbox`.
    */
   toggles?: boolean;
+  /** The key that does the same outside the menu, shown at the item's end. */
+  shortcut?: string;
   /** Draws a rule above the item, to set it apart from the ones before. */
   separatorBefore?: boolean;
   onSelect: () => void;
@@ -169,6 +171,7 @@ export function MenuList({
             type="button"
             role={roleOf(item)}
             aria-checked={item.checked}
+            aria-keyshortcuts={item.shortcut}
             tabIndex={-1}
             className="menu-button-item"
             disabled={item.disabled}
@@ -183,6 +186,11 @@ export function MenuList({
               </span>
             )}
             {item.label}
+            {item.shortcut !== undefined && (
+              <span className="menu-button-shortcut" aria-hidden="true">
+                {item.shortcut}
+              </span>
+            )}
           </button>
         </Fragment>
       ))}

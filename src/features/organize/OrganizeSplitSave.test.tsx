@@ -227,7 +227,7 @@ describe("starting the save in parts", () => {
     expect(startButton()).toBeEnabled();
   });
 
-  it("forgets the folder Rust has forgotten, and says why nothing started above the PDFs", async () => {
+  it("forgets the folder Rust has forgotten, and says why nothing started under the band", async () => {
     await openSplit([REPORT], {
       handlers: {
         start_organize_split: () => {
@@ -245,9 +245,9 @@ describe("starting the save in parts", () => {
     expect(alert).toHaveTextContent(
       formatErrorMessage("OutputDirMissing", null, "ja"),
     );
-    // It is a band above the row of PDFs, not in the bottom bar.
+    // It is a band under the controls, not in the bottom bar.
     expect(
-      document.querySelector(".organize-toolbar")?.previousElementSibling,
+      document.querySelector(".organize-band")?.nextElementSibling,
     ).toContainElement(alert);
     expect(startButton()).toBeEnabled();
   });

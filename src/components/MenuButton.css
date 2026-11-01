@@ -69,6 +69,14 @@
   color: var(--color-accent);
 }
 
+.menu-button-shortcut {
+  margin-left: auto;
+  padding-left: 28px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
 .menu-button-separator {
   height: 1px;
   margin: 4px 0;

@@ -52,6 +52,8 @@
   --color-page-bg: #ffffff;
   --color-page-shadow: rgba(0, 0, 0, 0.18);
   --color-page-candidate: #0e6b66;
+  /* The focus ring over the page: the light theme's text color. */
+  --color-page-focus: #1f1f1f;
   /* The areas picked on the page: the light theme's accent, text on it, and
      the tint over a selected area. */
   --color-page-area: #b4492b;

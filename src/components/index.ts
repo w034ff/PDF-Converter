@@ -1,6 +1,7 @@
 export * from "./ChevronDownIcon";
 export * from "./CloseIcon";
 export * from "./ContextMenu";
+export * from "./contextMenuPoint";
 export * from "./DropZone";
 export * from "./ErrorDisplay";
 export * from "./FolderIcon";

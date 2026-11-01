@@ -135,7 +135,9 @@ export const en: Translations = {
       pdfCount: "{count} PDFs",
       skippedSummary: "({details} skipped)",
       skippedUnsupported: "{count} unsupported",
+      skippedFolderSingle: "{count} folder",
       skippedFolders: "{count} folders",
+      skippedDuplicateSingle: "{count} duplicate",
       skippedDuplicates: "{count} duplicates",
       skippedSeparator: ", ",
       table: {
@@ -219,11 +221,6 @@ export const en: Translations = {
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
     imageCount: "{count} image(s)",
     pageCount: "{count} pages",
-    skipped: "({count} skipped: {reasons})",
-    skippedFolders: "subfolders",
-    skippedUnsupported: "unsupported formats",
-    skippedDuplicates: "duplicates",
-    skippedSeparator: ", ",
     addImages: "Add images",
     addFolder: "Add folder",
     clearAll: "Remove all",
@@ -475,6 +472,12 @@ export const en: Translations = {
       empty: "No pages",
       emptyHint: "Press Ctrl+Z to bring them back",
     },
+    skippedNotice: "Not added: {details}",
+    pageMenu: {
+      label: "Page actions",
+      addBreak: "Add a break before this page",
+      removeBreak: "Remove the break before this page",
+    },
     settings: {
       outputTitle: "How to save",
       outputSingle: "One PDF",
@@ -559,6 +562,10 @@ export const en: Translations = {
               keys: [["B"]],
               action:
                 "Add or remove the break before the focused page (when saving in parts)",
+            },
+            {
+              keys: [["Right-click"], ["Shift", "F10"]],
+              action: "Open the menu to rotate, break or delete",
             },
             { keys: [["Ctrl", "Z"]], action: "Undo" },
             {

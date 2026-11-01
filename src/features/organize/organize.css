@@ -322,11 +322,7 @@
   cursor: pointer;
 }
 
-/* The ring is the text color: the accent is what a selected page is drawn in
-   (design §10.1). */
 .organize-cell:focus-visible {
-  outline: 2px solid var(--color-text-primary);
-  outline-offset: 2px;
   border-radius: var(--radius-md);
 }
 

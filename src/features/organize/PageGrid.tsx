@@ -9,8 +9,10 @@ import {
   useState,
   type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { contextMenuPoint } from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import { isModalOpen, takesText } from "../shortcuts/keyboard";
 import { useRoom } from "../shared/useRoom";
@@ -24,6 +26,7 @@ import {
   type PageKey,
 } from "../../state";
 import { fileStem } from "./pdfNames";
+import { OrganizePageMenu } from "./OrganizePageMenu";
 import { PageCell } from "./PageCell";
 import {
   ORGANIZE_PAGE_BOX_SIDE,
@@ -63,6 +66,13 @@ function operatedKeys(
     return [...selected];
   }
   return focused === null ? [] : [focused];
+}
+
+/** The menu of a page, open at a point. */
+interface PageMenu {
+  x: number;
+  y: number;
+  key: PageKey;
 }
 
 /** What the band needs of the grid. */
@@ -197,6 +207,12 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     }
   }, [focused, indexByKey, columns, room.width, room.height]);
 
+  const [menu, setMenu] = useState<PageMenu | null>(null);
+  // A save takes the pages; the menu does not wait for it.
+  if (menu !== null && locked) {
+    setMenu(null);
+  }
+
   // The latest selection and lock, for a handler that must not change with them:
   // a new handler would redraw every cell on each press.
   const latest = useRef({ selected, locked });
@@ -264,6 +280,27 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
       return;
     }
     dispatch({ type: "ORGANIZE_SELECTION_CLEARED" });
+  }
+
+  /**
+   * The browser's own menu has nothing to do on the grid, so it never shows
+   * there. On a page the menu works like the band: on the selection, of which
+   * a page outside it becomes the only one.
+   */
+  function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const cell =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-page-key]")
+        : null;
+    const key = cell?.dataset.pageKey;
+    if (locked || drag.dragging || !cell || key === undefined) {
+      return;
+    }
+    if (!selected.has(key)) {
+      dispatch({ type: "ORGANIZE_SELECTED_ONLY", key });
+    }
+    setMenu({ ...contextMenuPoint(event, cell), key });
   }
 
   // The focus the pointer or the Tab key gives a cell is the grid's focus too.
@@ -559,6 +596,7 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
       className="organize-grid-scroll"
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       onPointerDown={handleBackgroundPointerDown}
+      onContextMenu={handleContextMenu}
     >
       <div
         ref={contentRef}
@@ -584,6 +622,20 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
           />
         )}
       </div>
+      {menu !== null && (
+        <OrganizePageMenu
+          x={menu.x}
+          y={menu.y}
+          pageKey={menu.key}
+          onDelete={() => reveal(FOCUS_LANDING)}
+          onClose={(returnFocus) => {
+            setMenu(null);
+            if (returnFocus) {
+              reveal(menu.key);
+            }
+          }}
+        />
+      )}
     </div>
   );
 });

@@ -130,9 +130,11 @@ export const ja = {
     },
     batch: {
       pdfCount: "PDF {count} 件",
-      skippedSummary: "（スキップ: {details}）",
+      skippedSummary: "（対象外: {details}）",
       skippedUnsupported: "非対応 {count} 件",
+      skippedFolderSingle: "フォルダ {count} 件",
       skippedFolders: "フォルダ {count} 件",
+      skippedDuplicateSingle: "重複 {count} 件",
       skippedDuplicates: "重複 {count} 件",
       skippedSeparator: "、",
       table: {
@@ -218,11 +220,6 @@ export const ja = {
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
     imageCount: "画像 {count} 枚",
     pageCount: "{count} ページ",
-    skipped: "（対象外 {count} 件：{reasons}）",
-    skippedFolders: "サブフォルダ",
-    skippedUnsupported: "非対応の形式",
-    skippedDuplicates: "重複",
-    skippedSeparator: "、",
     addImages: "画像を追加",
     addFolder: "フォルダを追加",
     clearAll: "すべて外す",
@@ -470,6 +467,12 @@ export const ja = {
       empty: "ページがありません",
       emptyHint: "Ctrl+Z で戻せます",
     },
+    skippedNotice: "加えなかったファイル: {details}",
+    pageMenu: {
+      label: "ページの操作",
+      addBreak: "このページの前で区切る",
+      removeBreak: "このページの前の区切りを外す",
+    },
     settings: {
       outputTitle: "保存の方法",
       outputSingle: "1 つの PDF",
@@ -553,6 +556,10 @@ export const ja = {
               keys: [["B"]],
               action:
                 "フォーカスのページの前に区切りを入れる・外す（分けて保存のとき）",
+            },
+            {
+              keys: [["右クリック"], ["Shift", "F10"]],
+              action: "回す・区切る・削除のメニューを開く",
             },
             { keys: [["Ctrl", "Z"]], action: "元に戻す" },
             {

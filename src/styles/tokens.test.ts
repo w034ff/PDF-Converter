@@ -166,7 +166,11 @@ describe("design tokens and CSS rules", () => {
     // The page is white in both themes, and the frames and the kind tags
     // drawn on it do not change with the theme (see tokens.css).
     const tokens = readThemeTokens("dark");
-    for (const fg of ["--color-page-candidate", "--color-page-area"]) {
+    for (const fg of [
+      "--color-page-candidate",
+      "--color-page-area",
+      "--color-page-focus",
+    ]) {
       expect(
         contrastRatio(
           tokenValue(tokens, fg),
@@ -195,7 +199,6 @@ describe("design tokens and CSS rules", () => {
       // Pairs as app.css draws them: .btn-primary and .seg put
       // text-on-accent over accent (accent-hover on hover), and links use
       // accent (accent-hover on hover) as text over the app and surface.
-      // The focus ring draws accent on every ground the app uses.
       // A failed page's mark puts text-on-error over error. Error and
       // success are also text, on every ground the app uses, and so is
       // warning (the status word of a PDF waiting for its password). Info
