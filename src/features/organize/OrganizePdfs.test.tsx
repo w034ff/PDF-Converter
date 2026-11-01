@@ -115,8 +115,8 @@ describe("adding PDFs", () => {
       screen.getByRole("list", { name: "PDF" }),
     ).getAllByRole("listitem");
     expect(chips.map((chip) => chip.textContent)).toEqual([
-      "annual-report.pdf3 ページ✕",
-      "contract.pdf2 ページ✕",
+      "annual-report.pdf3 ページ",
+      "contract.pdf2 ページ",
     ]);
     expect(drawnKeys()).toEqual(["1:1", "1:2", "1:3", "2:1", "2:2"]);
     expect(screen.getByText("5 ページ")).toBeInTheDocument();

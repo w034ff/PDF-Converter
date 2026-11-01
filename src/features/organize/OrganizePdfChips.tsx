@@ -1,4 +1,4 @@
-import { LockIcon } from "../../components";
+import { CloseIcon, LockIcon } from "../../components";
 import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
 import { isJobActive, useAppState, type OrganizePdfEntry } from "../../state";
 import { pluralize } from "../job/jobSummary";
@@ -108,7 +108,7 @@ export function OrganizePdfChips({
               disabled={locked}
               onClick={() => onRemove(pdf)}
             >
-              ✕
+              <CloseIcon size={12} />
             </button>
           </div>
         );
