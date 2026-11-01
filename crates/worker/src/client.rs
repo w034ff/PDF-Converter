@@ -40,7 +40,9 @@ pub enum WorkerError {
 /// How long to wait for a worker to open a PDF or load pdfium (design §5.2).
 pub const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long to wait for a worker to render a page or thumbnail (design §5.2).
+/// How long to wait for a worker to render a page, make a thumbnail, or make one for an image
+/// (design §5.2). It is also the wait between two answers of a `CheckImage` request, since the
+/// time grows with the pages of a TIFF.
 pub const RENDER_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// How long to wait for a worker to detect a page's layout, including loading
@@ -62,7 +64,8 @@ pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// An intermediate answer of a streamed request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamPart {
-    /// Pages processed so far (`OrganizeProgress`).
+    /// Pages processed so far (`OrganizeProgress`), or pages of an image read so far
+    /// (`ImageCheckProgress`).
     Progress { done: u32 },
     /// A part of the output (`OrganizeChunk`).
     Chunk(Vec<u8>),
@@ -226,7 +229,10 @@ impl WorkerProcess {
                 }
             };
             match message {
-                Ok(Some((Response::OrganizeProgress { done }, _))) => {
+                Ok(Some((
+                    Response::OrganizeProgress { done } | Response::ImageCheckProgress { done },
+                    _,
+                ))) => {
                     on_part(StreamPart::Progress { done });
                 }
                 Ok(Some((Response::OrganizeChunk, body))) => on_part(StreamPart::Chunk(body)),

@@ -279,6 +279,13 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_password: Option<Password>,
     },
+    /// Makes a thumbnail of the image file at `path` (design §6.1, §5.1). It does not touch the
+    /// open PDF document.
+    ImageThumbnail { path: PathBuf },
+    /// Reads every pixel of the image file at `path` and drops them (design §6.2, §5.1). It
+    /// does not touch the open PDF document. The answer is several messages, not one: see
+    /// [`Response::ImageChecked`].
+    CheckImage { path: PathBuf },
     /// Closes any currently opened PDF document (design §5.1).
     Close,
     /// Allocates and touches this much memory, to test the memory limit.
@@ -326,6 +333,12 @@ pub enum Response {
         height: u32,
         scaled_down: bool,
     },
+    /// The thumbnail of an image was made; the PNG bytes are in the message body (design §5.1).
+    ImageThumbnail,
+    /// Pages of a TIFF read so far for a `CheckImage` request.
+    ImageCheckProgress { done: u32 },
+    /// The last answer to a `CheckImage` request: every pixel could be read.
+    ImageChecked,
     /// The currently open PDF was closed (design §5.1).
     Close,
     /// Pages processed so far for an `Organize` request, counted over the
@@ -704,6 +717,36 @@ mod tests {
             })
             .unwrap(),
             r#"{"type":"renderRegion","width":10,"height":20,"scaledDown":false}"#
+        );
+    }
+
+    #[test]
+    fn image_messages_use_the_names_of_the_design() {
+        assert_eq!(
+            serde_json::to_string(&Request::ImageThumbnail {
+                path: "a.png".into()
+            })
+            .unwrap(),
+            r#"{"type":"imageThumbnail","path":"a.png"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Request::CheckImage {
+                path: "a.tif".into()
+            })
+            .unwrap(),
+            r#"{"type":"checkImage","path":"a.tif"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::ImageThumbnail).unwrap(),
+            r#"{"type":"imageThumbnail"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::ImageCheckProgress { done: 2 }).unwrap(),
+            r#"{"type":"imageCheckProgress","done":2}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::ImageChecked).unwrap(),
+            r#"{"type":"imageChecked"}"#
         );
     }
 
