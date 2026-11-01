@@ -1,6 +1,7 @@
 //! Batch conversion execution and state management per design §6.2, §6.3, §6.4, §6.5.
 //! The conversions and the output writing are in the submodules.
 
+mod image_check;
 mod images_to_pdfs;
 mod merged;
 mod options;

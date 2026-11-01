@@ -8,6 +8,7 @@ use pdfconv_core::{AddImageResult, PdfWriter};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::image_check::{ImageCheckStop, check_image};
 use super::options::{PageOrientationChoice, PageSizeChoice, PdfOutput, protect_pdf};
 use super::output::create_output_temp;
 use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload};
@@ -118,8 +119,40 @@ where
             continue;
         }
 
-        // Borrowed before the file is read and held until `add_image` is done and the bytes
-        // are let go (design §5.3). A wait that is cancelled is a cancelled `add_image`.
+        // The pixels are read in a worker first, so that a decoder that stops or crashes is
+        // contained there (design §6.2). A failure is this image's, as an unreadable file is.
+        match check_image(&state.pool, &entry.path, &|| {
+            state.cancel_flag.load(Ordering::SeqCst)
+        }) {
+            Ok(()) => {}
+            Err(ImageCheckStop::Failed(error)) => {
+                failed += 1;
+                done += entry.page_count;
+                on_item(JobItemPayload {
+                    id: *id,
+                    status: JobItemStatus::Failed,
+                    outputs: Vec::new(),
+                    error: Some(error),
+                    failed_pages: None,
+                    source_id: None,
+                });
+                on_progress(JobProgressPayload {
+                    done,
+                    total,
+                    current: None,
+                });
+                continue;
+            }
+            Err(ImageCheckStop::Cancelled) => {
+                was_cancelled = true;
+                unprocessed = (valid_tasks.len() - idx) as u32;
+                break;
+            }
+        }
+
+        // Borrowed before the file is read and held until `add_checked_image` is done and the
+        // bytes are let go (design §5.3). A wait that is cancelled is a cancelled
+        // `add_checked_image`.
         let Some(_permit) = state.decode_budget.acquire(
             entry.decoded_bytes.saturating_mul(DECODE_MEMORY_FACTOR_PDF),
             &|| state.cancel_flag.load(Ordering::SeqCst),
@@ -152,8 +185,8 @@ where
         };
 
         let mut item_pages_done = 0u32;
-        let add_result = writer.add_image(
-            &bytes,
+        let add_result = writer.add_checked_image(
+            bytes,
             page_size.to_core(orientation),
             |_page_idx, _total_in_item| {
                 item_pages_done += 1;
