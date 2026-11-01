@@ -1,6 +1,8 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -10,6 +12,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { formatMessage, getTranslations } from "../../i18n";
+import { isModalOpen, takesText } from "../shortcuts/keyboard";
 import { useRoom } from "../shared/useRoom";
 import {
   isJobActive,
@@ -62,6 +65,12 @@ function operatedKeys(
   return focused === null ? [] : [focused];
 }
 
+/** What the band needs of the grid. */
+export interface PageGridHandle {
+  /** To call with the deletion, which leaves the focus to land in the grid. */
+  focusAfterDeleting: () => void;
+}
+
 /**
  * The grid of the pages (mockup OrganizeSingle, organize §4): fixed cells
  * placed by their position, of which only the rows in view, a few more, and
@@ -69,7 +78,7 @@ function operatedKeys(
  * a hundred. It is a listbox that holds several selected pages, with one tab
  * stop that moves with the focus.
  */
-export function PageGrid() {
+export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
   const { organize, job, language } = useAppState();
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language).organize;
@@ -134,6 +143,9 @@ export function PageGrid() {
     revealRef.current = target;
     setRevealTurn((turn) => turn + 1);
   }
+  useImperativeHandle(ref, () => ({
+    focusAfterDeleting: () => reveal(FOCUS_LANDING),
+  }));
   useLayoutEffect(() => {
     const wanted = revealRef.current;
     const scroller = scrollRef.current;
@@ -351,6 +363,74 @@ export function PageGrid() {
     }
   }
 
+  /**
+   * The keys that work on the selection also work with the focus on the band,
+   * where the mouse leaves it, or nowhere, where deleting leaves it (design
+   * §10.1). `Ctrl+A` works anywhere text is not typed: it would select the
+   * words of the screen otherwise. Keys in the grid have been dealt with, and
+   * the other controls keep their own.
+   */
+  function handleKeyOutsideGrid(event: KeyboardEvent) {
+    if (event.defaultPrevented || takesText(event.target) || isModalOpen()) {
+      return;
+    }
+    if (
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      event.key.toLowerCase() === "a"
+    ) {
+      event.preventDefault();
+      dispatch({ type: "ORGANIZE_SELECTED_ALL" });
+      return;
+    }
+    const { target } = event;
+    const onBand =
+      target === document.body ||
+      (target instanceof Element && target.closest(".organize-band") !== null);
+    if (
+      !onBand ||
+      selected.size === 0 ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+    const keys = [...selected];
+    const key = event.key.toLowerCase();
+    if (key === "escape") {
+      event.preventDefault();
+      // The band's buttons are about to go out of use, and the focus with them.
+      if (tabStopKey !== null) {
+        reveal(tabStopKey);
+      }
+      dispatch({ type: "ORGANIZE_SELECTION_CLEARED" });
+    } else if (!locked && (key === "r" || key === "l")) {
+      event.preventDefault();
+      dispatch({
+        type: "ORGANIZE_PAGES_ROTATED",
+        keys,
+        direction: key === "r" ? "right" : "left",
+      });
+    } else if (!locked && (key === "delete" || key === "backspace")) {
+      event.preventDefault();
+      reveal(FOCUS_LANDING);
+      dispatch({ type: "ORGANIZE_PAGES_DELETED", keys });
+    }
+  }
+  const keyOutsideGrid = useRef(handleKeyOutsideGrid);
+  useEffect(() => {
+    keyOutsideGrid.current = handleKeyOutsideGrid;
+  });
+  useEffect(() => {
+    function handle(event: KeyboardEvent) {
+      keyOutsideGrid.current(event);
+    }
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, []);
+
   /** Page numbers alone cannot tell the pages of two PDFs apart, so those also get their PDFs' names. */
   function breakLabel(index: number): string {
     const before = pages[index - 1];
@@ -504,7 +584,7 @@ export function PageGrid() {
       </div>
     </div>
   );
-}
+});
 
 /** The ✂ of the mark on a break's line (mockup OrganizeSplit). */
 function ScissorsIcon() {

@@ -6,6 +6,8 @@ import "./organize.css";
 
 export interface OrganizeBandProps {
   onShowKeyHints: () => void;
+  /** The delete button goes out of use with the focus on it. */
+  onDelete: () => void;
 }
 
 function RotateLeftIcon() {
@@ -73,7 +75,7 @@ function TrashIcon() {
  * are pressed in then, so the grid under the band does not move.
  */
 export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
-  function OrganizeBand({ onShowKeyHints }, hintsRef) {
+  function OrganizeBand({ onShowKeyHints, onDelete }, hintsRef) {
     const { organize, job, language } = useAppState();
     const dispatch = useAppDispatch();
     const t = getTranslations(language.language).organize.band;
@@ -130,7 +132,10 @@ export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
           type="button"
           className="btn btn-ghost organize-band-button"
           disabled={idle}
-          onClick={() => dispatch({ type: "ORGANIZE_PAGES_DELETED", keys })}
+          onClick={() => {
+            onDelete();
+            dispatch({ type: "ORGANIZE_PAGES_DELETED", keys });
+          }}
         >
           <TrashIcon />
           {t.delete}

@@ -95,8 +95,8 @@ describe("saving the pages as one PDF", () => {
     expect(callsOf(calls, "save_organized_pdf")[0].args).toEqual({
       pages: [
         { id: 1, page: 1, rotation: 90 },
-        { id: 1, page: 3, rotation: 0 },
         { id: 2, page: 1, rotation: 0 },
+        { id: 1, page: 3, rotation: 0 },
         { id: 2, page: 2, rotation: 270 },
       ],
       password: null,
