@@ -470,6 +470,11 @@ export const ja = {
       empty: "ページがありません",
       emptyHint: "Ctrl+Z で戻せます",
     },
+    pageMenu: {
+      label: "ページの操作",
+      addBreak: "このページの前で区切る",
+      removeBreak: "このページの前の区切りを外す",
+    },
     settings: {
       outputTitle: "保存の方法",
       outputSingle: "1 つの PDF",
@@ -553,6 +558,10 @@ export const ja = {
               keys: [["B"]],
               action:
                 "フォーカスのページの前に区切りを入れる・外す（分けて保存のとき）",
+            },
+            {
+              keys: [["右クリック"], ["Shift", "F10"]],
+              action: "回す・区切る・削除のメニューを開く",
             },
             { keys: [["Ctrl", "Z"]], action: "元に戻す" },
             {

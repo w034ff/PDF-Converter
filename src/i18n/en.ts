@@ -475,6 +475,11 @@ export const en: Translations = {
       empty: "No pages",
       emptyHint: "Press Ctrl+Z to bring them back",
     },
+    pageMenu: {
+      label: "Page actions",
+      addBreak: "Add a break before this page",
+      removeBreak: "Remove the break before this page",
+    },
     settings: {
       outputTitle: "How to save",
       outputSingle: "One PDF",
@@ -559,6 +564,10 @@ export const en: Translations = {
               keys: [["B"]],
               action:
                 "Add or remove the break before the focused page (when saving in parts)",
+            },
+            {
+              keys: [["Right-click"], ["Shift", "F10"]],
+              action: "Open the menu to rotate, break or delete",
             },
             { keys: [["Ctrl", "Z"]], action: "Undo" },
             {

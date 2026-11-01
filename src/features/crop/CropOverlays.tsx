@@ -5,7 +5,11 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { ContextMenu, type MenuButtonItem } from "../../components";
+import {
+  ContextMenu,
+  contextMenuPoint,
+  type MenuButtonItem,
+} from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import type { Candidate, PageImage, PageSizePt } from "../../ipc";
 import {
@@ -220,16 +224,8 @@ export function CropOverlays({
           ? null
           : Number(candidate.dataset.index);
       const origin = candidate ?? viewport;
-      // Shift+F10 and the menu key say where the focus is, not the pointer.
-      const box = origin.getBoundingClientRect();
-      const inside =
-        event.clientX >= box.left &&
-        event.clientX <= box.right &&
-        event.clientY >= box.top &&
-        event.clientY <= box.bottom;
       setMenu({
-        x: inside ? event.clientX : box.left,
-        y: inside ? event.clientY : box.top,
+        ...contextMenuPoint(event, origin),
         index: index !== null && Number.isInteger(index) ? index : null,
         origin,
       });
