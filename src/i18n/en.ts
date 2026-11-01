@@ -135,7 +135,9 @@ export const en: Translations = {
       pdfCount: "{count} PDFs",
       skippedSummary: "({details} skipped)",
       skippedUnsupported: "{count} unsupported",
+      skippedFolderSingle: "{count} folder",
       skippedFolders: "{count} folders",
+      skippedDuplicateSingle: "{count} duplicate",
       skippedDuplicates: "{count} duplicates",
       skippedSeparator: ", ",
       table: {
@@ -475,6 +477,7 @@ export const en: Translations = {
       empty: "No pages",
       emptyHint: "Press Ctrl+Z to bring them back",
     },
+    skippedNotice: "Not added: {details}",
     pageMenu: {
       label: "Page actions",
       addBreak: "Add a break before this page",

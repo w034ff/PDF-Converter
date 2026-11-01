@@ -1,4 +1,5 @@
 import { formatMessage, type Translations } from "../../i18n";
+import { pluralize } from "../job/jobSummary";
 import type {
   CheckPageRangeResult,
   JobItemPayload,
@@ -144,9 +145,10 @@ export function isPageInIntervals(
 }
 
 /**
- * Formats the summary text for skipped items if any counts are non-zero (design §6.1, FR-01).
+ * What was skipped, by reason, or `null` if nothing was; for a sentence to
+ * hold (design §6.1, FR-01).
  */
-export function formatSkippedSummary(
+export function formatSkippedDetails(
   t: Translations,
   skipped: Skipped | null,
 ): string | null {
@@ -163,24 +165,36 @@ export function formatSkippedSummary(
   }
   if (skipped.folders > 0) {
     parts.push(
-      formatMessage(t.pdfToImages.batch.skippedFolders, {
-        count: skipped.folders,
-      }),
+      pluralize(
+        skipped.folders,
+        t.pdfToImages.batch.skippedFolderSingle,
+        t.pdfToImages.batch.skippedFolders,
+      ),
     );
   }
   if (skipped.duplicates > 0) {
     parts.push(
-      formatMessage(t.pdfToImages.batch.skippedDuplicates, {
-        count: skipped.duplicates,
-      }),
+      pluralize(
+        skipped.duplicates,
+        t.pdfToImages.batch.skippedDuplicateSingle,
+        t.pdfToImages.batch.skippedDuplicates,
+      ),
     );
   }
-  if (parts.length === 0) {
-    return null;
-  }
-  return formatMessage(t.pdfToImages.batch.skippedSummary, {
-    details: parts.join(t.pdfToImages.batch.skippedSeparator),
-  });
+  return parts.length === 0
+    ? null
+    : parts.join(t.pdfToImages.batch.skippedSeparator);
+}
+
+/** The skipped items as an aside to the line of the batch (design §6.1, FR-01). */
+export function formatSkippedSummary(
+  t: Translations,
+  skipped: Skipped | null,
+): string | null {
+  const details = formatSkippedDetails(t, skipped);
+  return details === null
+    ? null
+    : formatMessage(t.pdfToImages.batch.skippedSummary, { details });
 }
 
 /**

@@ -132,7 +132,9 @@ export const ja = {
       pdfCount: "PDF {count} 件",
       skippedSummary: "（スキップ: {details}）",
       skippedUnsupported: "非対応 {count} 件",
+      skippedFolderSingle: "フォルダ {count} 件",
       skippedFolders: "フォルダ {count} 件",
+      skippedDuplicateSingle: "重複 {count} 件",
       skippedDuplicates: "重複 {count} 件",
       skippedSeparator: "、",
       table: {
@@ -470,6 +472,7 @@ export const ja = {
       empty: "ページがありません",
       emptyHint: "Ctrl+Z で戻せます",
     },
+    skippedNotice: "加えなかったファイル: {details}",
     pageMenu: {
       label: "ページの操作",
       addBreak: "このページの前で区切る",

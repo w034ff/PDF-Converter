@@ -6,7 +6,7 @@ import {
   MenuButton,
   NoticeDisplay,
 } from "../../components";
-import { formatErrorMessage, getTranslations } from "../../i18n";
+import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
 import {
   addOrganizePdfs,
   normalizeIpcError,
@@ -21,7 +21,7 @@ import {
   type OrganizePdfEntry,
 } from "../../state";
 import { OutputDirError } from "../output";
-import { formatSkippedSummary } from "../pdf-to-images/pdfUtils";
+import { formatSkippedDetails } from "../pdf-to-images/pdfUtils";
 import { PasswordDialog } from "../pdf-to-images/PasswordDialog";
 import { KeyHintsDialog } from "../shortcuts/KeyHintsDialog";
 import { OrganizeBand } from "./OrganizeBand";
@@ -107,8 +107,11 @@ export function OrganizeView() {
   }
 
   const notice = organize.notice;
+  const skippedDetails = formatSkippedDetails(t, notice?.skipped ?? null);
   const skippedText =
-    notice?.skipped == null ? null : formatSkippedSummary(t, notice.skipped);
+    skippedDetails === null
+      ? null
+      : formatMessage(t.organize.skippedNotice, { details: skippedDetails });
   const bands = (
     <>
       {notice?.error != null && (
@@ -155,8 +158,6 @@ export function OrganizeView() {
 
   return (
     <div className="organize-view">
-      {bands}
-      <OutputDirError tab="organize" />
       <div className="organize-toolbar">
         <OrganizePdfChips
           onRemove={(pdf) => void handleRemove(pdf)}
@@ -205,6 +206,9 @@ export function OrganizeView() {
           </>
         }
       />
+      {/* Under the controls, so that a notice does not move them just as they are used. */}
+      {bands}
+      <OutputDirError tab="organize" />
       {organize.pages.length === 0 ? (
         <div className="organize-grid-empty">
           <span className="label">{t.organize.grid.empty}</span>
