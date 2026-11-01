@@ -864,6 +864,7 @@ describe("ipc", () => {
       expect(isErrorCode("ConversionRunning")).toBe(true);
       expect(isErrorCode("LayoutUnavailable")).toBe(true);
       expect(isErrorCode("OutputTooLarge")).toBe(true);
+      expect(isErrorCode("MergeTooLarge")).toBe(true);
       expect(isErrorCode("PdfiumUnavailable")).toBe(false);
       expect(isErrorCode("toString")).toBe(false);
       expect(isErrorCode(1)).toBe(false);

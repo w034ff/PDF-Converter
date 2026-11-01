@@ -9,7 +9,7 @@ mod output;
 mod pdfs_to_images;
 
 pub use images_to_pdfs::{run_images_to_pdfs, start_images_to_pdfs_internal};
-pub use merged::{SaveMergedPdfResult, run_save_merged_pdf};
+pub use merged::{SaveMergedPdfResult, check_merge_size, merge_output_limit, run_save_merged_pdf};
 pub use options::{
     PageOrientationChoice, PageSizeChoice, PdfOutput, RenderColorChoice, RenderFormatChoice,
     output_password, pdf_conformance,

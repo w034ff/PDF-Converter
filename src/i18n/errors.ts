@@ -29,6 +29,8 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
     "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
   OutputTooLarge:
     "出力する PDF が大きすぎます（見積もり / 上限: {detail}）。区切りを入れて、分けて保存してください。",
+  MergeTooLarge:
+    "結合する PDF が大きすぎます（見積もり / この PC の上限: {detail}）。「1 枚ずつ」で保存するか、画像を減らしてください。",
 };
 
 export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
@@ -55,6 +57,8 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
     "Can't show suggestions (layout analysis is unavailable). You can still select areas by hand.",
   OutputTooLarge:
     "The output PDF is too large (estimate / limit: {detail}). Add breaks and save it in parts.",
+  MergeTooLarge:
+    'The merged PDF is too large (estimate / limit on this PC: {detail}). Save with "Each image" or use fewer images.',
 };
 
 /**

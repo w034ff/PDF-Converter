@@ -20,9 +20,9 @@ use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items, 
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
     PageOrientationChoice, PageSizeChoice, PdfOutput, RenderColorChoice, RenderFormatChoice,
-    RunningGuard, check_page_range_internal, list_existing_files, output_password, pdf_conformance,
-    run_images_to_pdfs, run_pdfs_to_images, run_save_merged_pdf, save_atomic,
-    start_images_to_pdfs_internal, start_pdfs_to_images_internal,
+    RunningGuard, check_merge_size, check_page_range_internal, list_existing_files,
+    merge_output_limit, output_password, pdf_conformance, run_images_to_pdfs, run_pdfs_to_images,
+    run_save_merged_pdf, save_atomic, start_images_to_pdfs_internal, start_pdfs_to_images_internal,
 };
 
 #[path = "../../crates/core/tests/support/fixture_passwords.rs"]
@@ -3628,4 +3628,106 @@ fn a_cancel_during_the_check_takes_effect_at_once_merged() {
     assert!(finished.cancelled);
     assert_eq!(finished.succeeded, 0);
     assert_eq!(finished.unprocessed, 1);
+}
+
+const MB: u64 = 1024 * 1024;
+
+/// An image file of exactly `len` bytes: the fixture with zeros after the last chunk, which a
+/// header probe does not read.
+fn sized_png(dir: &Path, name: &str, len: u64) -> PathBuf {
+    let path = copy_fixture(dir, "dpi300.png", name);
+    let mut bytes = fs::read(&path).unwrap();
+    assert!(bytes.len() as u64 <= len);
+    bytes.resize(usize::try_from(len).unwrap(), 0);
+    fs::write(&path, bytes).unwrap();
+    path
+}
+
+/// The installed memory at which the limit of a merge is exactly `limit` bytes.
+fn installed_for_limit(limit: u64) -> u64 {
+    let installed = (limit * 10).div_ceil(3);
+    assert_eq!(merge_output_limit(installed), limit);
+    installed
+}
+
+fn merge_size_state(installed: Option<u64>) -> AppState {
+    let mut app_state = state();
+    app_state.installed_memory = installed;
+    app_state
+}
+
+#[test]
+fn a_merge_of_exactly_the_limit_is_let_through_and_one_byte_more_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let size = 3 * MB + 17;
+    let path = sized_png(dir.path(), "big.png", size);
+
+    let app_state = merge_size_state(Some(installed_for_limit(size)));
+    let ids = [add_images(&app_state, std::slice::from_ref(&path)).added[0].id];
+    assert_eq!(check_merge_size(&app_state, &ids), Ok(()));
+
+    let app_state = merge_size_state(Some(installed_for_limit(size - 1)));
+    let ids = [add_images(&app_state, &[path]).added[0].id];
+    let error = check_merge_size(&app_state, &ids).unwrap_err();
+    assert_eq!(error.code, ErrorCode::MergeTooLarge);
+    // 3 MB and 17 bytes round up to 4; a limit of 3 MB and 16 bytes reads as 3.
+    assert_eq!(error.detail.as_deref(), Some("4 MB / 3 MB"));
+}
+
+#[test]
+fn the_estimate_is_the_sum_of_the_files_of_the_images_without_an_error() {
+    let dir = TempDir::new().unwrap();
+    let first = sized_png(dir.path(), "first.png", 2 * MB);
+    let second = sized_png(dir.path(), "second.png", 3 * MB);
+    // Its header is cut, so it is in the list with an error; its size must not count.
+    let damaged = dir.path().join("damaged.png");
+    let mut bytes = fs::read(fixture("logo_alpha.png")).unwrap()[..20].to_vec();
+    bytes.resize(usize::try_from(100 * MB).unwrap(), 0);
+    fs::write(&damaged, bytes).unwrap();
+    let pdf = copy_fixture(dir.path(), "shapes.pdf", "shapes.pdf");
+
+    let app_state = merge_size_state(Some(installed_for_limit(5 * MB)));
+    let images = add_images(&app_state, &[first, second, damaged]).added;
+    assert!(images[2].error.is_some());
+    let mut ids: Vec<u64> = images.iter().map(|item| item.id).collect();
+    ids.push(add_pdfs(&app_state, &[pdf]).added[0].id);
+    ids.push(99_999);
+
+    // 2 MB and 3 MB make exactly the limit; the damaged image (100 MB), the PDF and the ID
+    // that is not in the table add nothing.
+    assert_eq!(check_merge_size(&app_state, &ids), Ok(()));
+
+    let tighter = merge_size_state(Some(installed_for_limit(5 * MB - 1)));
+    let ids: Vec<u64> = add_images(
+        &tighter,
+        &[dir.path().join("first.png"), dir.path().join("second.png")],
+    )
+    .added
+    .iter()
+    .map(|item| item.id)
+    .collect();
+    let error = check_merge_size(&tighter, &ids).unwrap_err();
+    assert_eq!(error.code, ErrorCode::MergeTooLarge);
+    assert_eq!(error.detail.as_deref(), Some("5 MB / 4 MB"));
+}
+
+#[test]
+fn a_file_that_cannot_be_read_counts_as_nothing() {
+    let dir = TempDir::new().unwrap();
+    let path = sized_png(dir.path(), "gone.png", 4 * MB);
+    let app_state = merge_size_state(Some(0));
+    let ids = [add_images(&app_state, std::slice::from_ref(&path)).added[0].id];
+    assert!(check_merge_size(&app_state, &ids).is_err());
+
+    fs::remove_file(&path).unwrap();
+    assert_eq!(check_merge_size(&app_state, &ids), Ok(()));
+}
+
+#[test]
+fn a_merge_is_never_refused_when_the_installed_memory_is_unknown() {
+    let dir = TempDir::new().unwrap();
+    let path = sized_png(dir.path(), "big.png", 4 * MB);
+    let app_state = merge_size_state(None);
+    let ids = [add_images(&app_state, &[path]).added[0].id];
+    assert_eq!(check_merge_size(&app_state, &ids), Ok(()));
 }

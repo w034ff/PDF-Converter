@@ -573,6 +573,9 @@ pub async fn save_merged_pdf(
         format!("{stem}.pdf")
     };
 
+    // Refused before the save dialog opens, like the password above (design §6.2).
+    jobs::check_merge_size(&state_inner, &ids)?;
+
     let picked_path = pick_save_pdf_path(&window, default_name).await?;
 
     let Some(dest_path) = picked_path else {

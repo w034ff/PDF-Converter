@@ -29,6 +29,7 @@ const ALL_ERROR_CODES: ErrorCode[] = [
   "CmykNotAllowedInPdfA",
   "LayoutUnavailable",
   "OutputTooLarge",
+  "MergeTooLarge",
 ];
 
 describe("i18n", () => {
@@ -52,7 +53,7 @@ describe("i18n", () => {
   });
 
   describe("formatErrorMessage", () => {
-    it("formats all 20 error codes in Japanese", () => {
+    it("formats all 21 error codes in Japanese", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "ja")).toBe(
         "対応していない形式です",
       );
@@ -115,9 +116,12 @@ describe("i18n", () => {
       ).toBe(
         "出力する PDF が大きすぎます（見積もり / 上限: 613 MB / 512 MB）。区切りを入れて、分けて保存してください。",
       );
+      expect(formatErrorMessage("MergeTooLarge", "613 MB / 512 MB", "ja")).toBe(
+        "結合する PDF が大きすぎます（見積もり / この PC の上限: 613 MB / 512 MB）。「1 枚ずつ」で保存するか、画像を減らしてください。",
+      );
     });
 
-    it("formats all 20 error codes in English", () => {
+    it("formats all 21 error codes in English", () => {
       expect(formatErrorMessage("UnsupportedFormat", null, "en")).toBe(
         "Unsupported file format",
       );
@@ -179,6 +183,9 @@ describe("i18n", () => {
         formatErrorMessage("OutputTooLarge", "613 MB / 512 MB", "en"),
       ).toBe(
         "The output PDF is too large (estimate / limit: 613 MB / 512 MB). Add breaks and save it in parts.",
+      );
+      expect(formatErrorMessage("MergeTooLarge", "613 MB / 512 MB", "en")).toBe(
+        'The merged PDF is too large (estimate / limit on this PC: 613 MB / 512 MB). Save with "Each image" or use fewer images.',
       );
     });
 
