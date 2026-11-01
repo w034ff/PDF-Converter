@@ -218,31 +218,103 @@ describe("selecting with the keys", () => {
     expect(selectedKeys()).toEqual(["1:4"]);
   });
 
-  it("Ctrl+A selects every page, and only while the grid has the focus", async () => {
+  it("Ctrl+A selects every page wherever the focus is, unless text is typed there", async () => {
     await openOrganizeTab({ pdfs: [BOOK] });
     focusCell(1, 2);
 
-    const notPrevented = fireEvent.keyDown(
-      document.activeElement ?? document.body,
-      {
-        key: "a",
-        ctrlKey: true,
-      },
-    );
+    const inGrid = fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "a",
+      ctrlKey: true,
+    });
 
-    expect(notPrevented).toBe(false);
+    expect(inGrid).toBe(false);
     expect(selectedKeys()).toHaveLength(12);
 
-    // The band's button has the focus: the browser's own Ctrl+A is left alone.
     fireEvent.keyDown(document.body, { key: "Escape" });
-    const free = fireEvent.keyDown(
+    expect(selectedKeys()).toEqual([]);
+    const onBand = fireEvent.keyDown(
       screen.getByRole("button", { name: "削除" }),
-      {
-        key: "a",
-        ctrlKey: true,
-      },
+      { key: "a", ctrlKey: true },
     );
-    expect(free).toBe(true);
+    expect(onBand).toBe(false);
+    expect(selectedKeys()).toHaveLength(12);
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    const field = document.createElement("input");
+    document.body.append(field);
+    const inField = fireEvent.keyDown(field, { key: "a", ctrlKey: true });
+    field.remove();
+    expect(inField).toBe(true);
+    expect(selectedKeys()).toEqual([]);
+  });
+
+  describe("with the focus on the band", () => {
+    async function selectFromBand() {
+      await openOrganizeTab({ pdfs: [BOOK] });
+      focusCell(1, 2);
+      key(" ");
+      const button = screen.getByRole("button", { name: "右に回す" });
+      button.focus();
+      return button;
+    }
+
+    it("Esc deselects and gives the focus back to the grid", async () => {
+      const button = await selectFromBand();
+
+      fireEvent.keyDown(button, { key: "Escape" });
+
+      expect(selectedKeys()).toEqual([]);
+      expect(document.activeElement).toBe(cellOf(1, 2));
+    });
+
+    it("Delete deletes the selection and gives the focus to the grid", async () => {
+      const button = await selectFromBand();
+
+      fireEvent.keyDown(button, { key: "Delete" });
+
+      expect(drawnKeys()).not.toContain("1:2");
+      expect(drawnCells()).toContain(document.activeElement);
+    });
+
+    it("the delete button gives the focus to the grid", async () => {
+      await selectFromBand();
+
+      fireEvent.click(screen.getByRole("button", { name: "削除" }));
+
+      expect(drawnKeys()).not.toContain("1:2");
+      expect(drawnCells()).toContain(document.activeElement);
+    });
+
+    it("R and L turn the selection and leave the focus", async () => {
+      const button = await selectFromBand();
+
+      fireEvent.keyDown(button, { key: "r" });
+      expect(cellOf(1, 2).textContent).toContain("90°");
+      fireEvent.keyDown(button, { key: "L" });
+      expect(cellOf(1, 2).textContent).not.toContain("90°");
+      expect(document.activeElement).toBe(button);
+    });
+
+    it("leaves the keys alone with nothing selected", async () => {
+      await openOrganizeTab({ pdfs: [BOOK] });
+      const pages = drawnCells().length;
+      const hints = screen.getByRole("button", { name: "キー操作の一覧" });
+
+      expect(fireEvent.keyDown(hints, { key: "Delete" })).toBe(true);
+      expect(drawnCells()).toHaveLength(pages);
+    });
+
+    it("does not reach a page from another control", async () => {
+      await selectFromBand();
+      const chip = screen.getByRole("button", { name: /を外す/ });
+
+      expect(fireEvent.keyDown(chip, { key: "Delete" })).toBe(true);
+      expect(selectedKeys()).toHaveLength(1);
+
+      const add = screen.getByRole("button", { name: "PDF を追加" });
+      expect(fireEvent.keyDown(add, { key: "Delete" })).toBe(true);
+      expect(selectedKeys()).toHaveLength(1);
+    });
   });
 
   it("Esc deselects", async () => {

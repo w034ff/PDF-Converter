@@ -120,21 +120,21 @@ export const PageCell = memo(function PageCell({
               {formatMessage(t.grid.rotation, { degrees: page.rotation })}
             </span>
           )}
+          {selected && (
+            <span className="organize-cell-check" aria-hidden="true">
+              ✓
+            </span>
+          )}
+          {part !== null && (
+            <span
+              className={`organize-part-badge${partFailed ? " is-failed" : ""}`}
+              aria-hidden="true"
+            >
+              {partFailed && "✕ "}
+              {part}
+            </span>
+          )}
         </div>
-        {selected && (
-          <span className="organize-cell-check" aria-hidden="true">
-            ✓
-          </span>
-        )}
-        {part !== null && (
-          <span
-            className={`organize-part-badge${partFailed ? " is-failed" : ""}`}
-            aria-hidden="true"
-          >
-            {partFailed && "✕ "}
-            {part}
-          </span>
-        )}
       </div>
       <div className="organize-cell-caption" aria-hidden="true">
         <span

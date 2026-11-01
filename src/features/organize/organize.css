@@ -112,13 +112,6 @@
 .organize-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.organize-toolbar-actions {
-  flex: none;
-  display: flex;
-  gap: 8px;
 }
 
 .organize-chips {
@@ -134,7 +127,15 @@
   overflow-y: hidden;
   padding: 4px 2px 0;
   scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
   --organize-chips-bar: 10px;
+}
+
+/* The bar only when it is wanted: a chip cut off at the end of the row already
+   says there are more. */
+.organize-chips:hover,
+.organize-chips:focus-within {
+  scrollbar-color: auto;
 }
 
 .organize-chip {
@@ -159,7 +160,11 @@
   border-color: var(--color-error);
 }
 
+/* Noto Sans keeps more room above its letters than below, which leaves them
+   low in the chip. */
 .organize-chip-name {
+  position: relative;
+  top: -1px;
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -202,6 +207,9 @@
 }
 
 .organize-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 22px;
   padding: 0;
@@ -209,7 +217,6 @@
   border-radius: 11px;
   background: none;
   color: var(--color-text-secondary);
-  font-size: 13px;
   cursor: pointer;
 }
 
@@ -250,8 +257,30 @@
   gap: 6px;
 }
 
-.organize-band-hints {
+/* Far from the buttons on the selection: deleting pages and taking every PDF
+   away are not to be mistaken for each other. */
+.organize-band-actions {
+  flex: none;
   margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* Below this the words do not fit beside the actions (mockup OrganizeSingle). */
+@media (max-width: 1120px) {
+  .organize-band-label {
+    display: none;
+  }
+
+  .btn.organize-band-button {
+    width: 34px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  .organize-band-button svg {
+    flex: none;
+  }
 }
 
 /* ---- The grid ---- */
@@ -311,10 +340,6 @@
   border-radius: var(--radius-md);
 }
 
-.organize-cell.is-selected .organize-cell-box {
-  background: var(--organize-cell-selected);
-}
-
 /* Holds what sits on the page and must not be clipped with it. */
 .organize-thumb-frame {
   position: relative;
@@ -368,10 +393,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Partly off the corner of the page, whatever its shape, to cover little of it. */
 .organize-cell-check {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: -6px;
+  right: -6px;
   width: 18px;
   height: 18px;
   display: flex;
@@ -467,10 +493,10 @@
    from a number (design §10.3). */
 .organize-part-badge {
   position: absolute;
-  top: -8px;
   /* No further left: the padding of the scrolling area would clip the badge of
-     a page at the start of a row. */
-  left: -4px;
+     the widest page at the start of a row. */
+  top: -6px;
+  left: -6px;
   min-width: 20px;
   height: 20px;
   box-sizing: border-box;

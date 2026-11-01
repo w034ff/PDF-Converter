@@ -28,7 +28,7 @@ import { OrganizeBand } from "./OrganizeBand";
 import { OrganizeClearDialog } from "./OrganizeClearDialog";
 import { OrganizePdfChips } from "./OrganizePdfChips";
 import { noticeOf } from "./organizeNotice";
-import { PageGrid } from "./PageGrid";
+import { PageGrid, type PageGridHandle } from "./PageGrid";
 import { useOrganizeKeys } from "./useOrganizeKeys";
 import "./organize.css";
 
@@ -47,6 +47,7 @@ export function OrganizeView() {
   const [clearOpen, setClearOpen] = useState(false);
   const [passwordFor, setPasswordFor] = useState<OrganizePdfEntry | null>(null);
   const hintsButtonRef = useRef<HTMLButtonElement>(null);
+  const gridRef = useRef<PageGridHandle>(null);
   const clearButtonRef = useRef<HTMLButtonElement>(null);
   const passwordTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -164,47 +165,53 @@ export function OrganizeView() {
             setPasswordFor(pdf);
           }}
         />
-        <div className="organize-toolbar-actions">
-          <MenuButton
-            className="btn btn-ghost organize-add-menu"
-            label={t.organize.addMenu.label}
-            menuLabel={t.organize.addMenu.label}
-            disabled={locked}
-            items={[
-              {
-                id: "files",
-                label: t.organize.addMenu.files,
-                onSelect: () => void handleAdd("files"),
-              },
-              {
-                id: "folder",
-                label: t.organize.addMenu.folder,
-                onSelect: () => void handleAdd("folder"),
-              },
-            ]}
-          >
-            {t.organize.addMenu.label}
-            <ChevronDownIcon />
-          </MenuButton>
-          <button
-            ref={clearButtonRef}
-            type="button"
-            className="btn btn-ghost"
-            disabled={locked}
-            onClick={handleClearClick}
-          >
-            {t.organize.clearAll}
-          </button>
-        </div>
       </div>
-      <OrganizeBand ref={hintsButtonRef} onShowKeyHints={openHints} />
+      <OrganizeBand
+        ref={hintsButtonRef}
+        onShowKeyHints={openHints}
+        onDelete={() => gridRef.current?.focusAfterDeleting()}
+        actions={
+          <>
+            <MenuButton
+              className="btn btn-ghost organize-add-menu"
+              label={t.organize.addMenu.label}
+              menuLabel={t.organize.addMenu.label}
+              disabled={locked}
+              items={[
+                {
+                  id: "files",
+                  label: t.organize.addMenu.files,
+                  onSelect: () => void handleAdd("files"),
+                },
+                {
+                  id: "folder",
+                  label: t.organize.addMenu.folder,
+                  onSelect: () => void handleAdd("folder"),
+                },
+              ]}
+            >
+              {t.organize.addMenu.label}
+              <ChevronDownIcon />
+            </MenuButton>
+            <button
+              ref={clearButtonRef}
+              type="button"
+              className="btn btn-ghost"
+              disabled={locked}
+              onClick={handleClearClick}
+            >
+              {t.organize.clearAll}
+            </button>
+          </>
+        }
+      />
       {organize.pages.length === 0 ? (
         <div className="organize-grid-empty">
           <span className="label">{t.organize.grid.empty}</span>
           <span className="hint">{t.organize.grid.emptyHint}</span>
         </div>
       ) : (
-        <PageGrid />
+        <PageGrid ref={gridRef} />
       )}
       {hintsOpen && (
         <KeyHintsDialog
