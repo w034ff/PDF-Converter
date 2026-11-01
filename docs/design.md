@@ -330,7 +330,7 @@
 | `RenderRegion { page, rectPt, imageIndex, dpi, format, color, photoNative, photoOnly }` | 切り出しの 1 つの範囲を描いて書き出す（§4.6）。`imageIndex` は写真の範囲だけ。写真の範囲は、`photoNative` なら元の画素で、そうでなければ `rectPt` を dpi で描き、どちらも `photoOnly` ならほかの物を外す | 本体に画像のバイト列。ヘッダーに `{ width, height, scaledDown }` |
 | `Organize { sources, pages, outputPassword }` | 整理の 1 つの出力を作る（[design/organize.md](design/organize.md) §3）。開いている PDF は使わず、要求で渡された PDF を順に開いて閉じる | 進捗 `{ done }`、出力を `OUTPUT_CHUNK_BYTES` ずつ分けた本体、最後に `{ bytes }` |
 | `ImageThumbnail { path }` | 画像ファイルのサムネイルを作る（§6.1）。開いている PDF には触れない | 本体に PNG |
-| `CheckImage { path }` | 画像ファイルの全画素を読んで捨てる（§6.2）。開いている PDF には触れない | TIFF はページごとに `ImageCheckProgress { done }`、最後に `ImageChecked` |
+| `CheckImage { path }` | 画像ファイルの全画素を読んで捨てる（§6.2）。ファイルは読み進めるだけで、全体を持たない（複数ページの TIFF は `WORKER_MEMORY_LIMIT` より大きいことがあるため。`ImageThumbnail` も同じ）。開いている PDF には触れない | TIFF はページごとに `ImageCheckProgress { done }`、最後に `ImageChecked` |
 | `Close` | 開いている PDF を閉じる | `{}` |
 
 - エラーの応答は `{ code, detail }`（§6.6 のコード）。pdfium のパスワードのエラーは `PasswordProtected`、それ以外で開けないものは `PdfOpenFailed`。

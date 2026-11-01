@@ -486,8 +486,10 @@ fn an_image_thumbnail_is_as_large_as_the_core_makes_it() {
     ] {
         let path = put(dir.path(), name, name);
         let id = add_images(&state, std::slice::from_ref(&path)).added[0].id;
-        let expected = thumbnail_png(&fs::read(&path).expect("reading the image"))
-            .expect("making the thumbnail in the core");
+        let expected = thumbnail_png(std::io::Cursor::new(
+            fs::read(&path).expect("reading the image"),
+        ))
+        .expect("making the thumbnail in the core");
 
         let png = make_thumbnail(&state, id, None, None).expect("making the thumbnail");
         assert_eq!(png_size(&png), png_size(&expected), "{name}");

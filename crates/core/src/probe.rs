@@ -606,7 +606,7 @@ mod tests {
             let bytes = std::fs::read(&path).expect("read fixture");
             let info = probe_reader(Cursor::new(&bytes))
                 .unwrap_or_else(|e| panic!("failed to probe {name}: {e:?}"));
-            let pixels = crate::pdf_write::decode_image_pixels(&bytes)
+            let pixels = crate::pdf_write::decode_image_pixels(std::io::Cursor::new(&bytes))
                 .unwrap_or_else(|e| panic!("failed to decode {name}: {e:?}"));
             let read_bytes = u64::from(pixels.width())
                 * u64::from(pixels.height())

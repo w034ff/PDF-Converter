@@ -1,5 +1,6 @@
 //! The pixel check of input images and the writer that relies on it (design §4.3, §6.2).
 
+use std::io::Cursor;
 use std::path::PathBuf;
 
 use pdfconv_core::{AddImageResult, PageSize, PdfConformance, PdfWriter, ProbeError, verify_image};
@@ -34,7 +35,8 @@ fn page_count(pdf: &[u8]) -> usize {
 #[test]
 fn verify_image_accepts_every_format() {
     for (name, _) in READABLE {
-        verify_image(&fixture(name), |_| {}).unwrap_or_else(|err| panic!("{name}: {err:?}"));
+        verify_image(Cursor::new(fixture(name)), |_| {})
+            .unwrap_or_else(|err| panic!("{name}: {err:?}"));
     }
 }
 
@@ -42,7 +44,8 @@ fn verify_image_accepts_every_format() {
 fn verify_image_reports_each_tiff_page_and_no_page_of_other_formats() {
     for (name, pages) in READABLE {
         let mut reported = Vec::new();
-        verify_image(&fixture(name), |done| reported.push(done)).expect("verifying the image");
+        verify_image(Cursor::new(fixture(name)), |done| reported.push(done))
+            .expect("verifying the image");
         if name.ends_with(".tif") {
             assert_eq!(reported, (1..=*pages).collect::<Vec<_>>(), "{name}");
         } else {
@@ -54,7 +57,7 @@ fn verify_image_reports_each_tiff_page_and_no_page_of_other_formats() {
 #[test]
 fn verify_image_fails_on_a_corrupt_png() {
     assert_eq!(
-        verify_image(&fixture("corrupt.png"), |_| {}),
+        verify_image(Cursor::new(fixture("corrupt.png")), |_| {}),
         Err(ProbeError::DecodeFailed)
     );
 }
@@ -64,7 +67,7 @@ fn verify_image_fails_on_a_truncated_png() {
     let bytes = fixture("dpi300.png");
     let truncated = &bytes[..bytes.len() * 2 / 3];
     assert_eq!(
-        verify_image(truncated, |_| {}),
+        verify_image(Cursor::new(truncated), |_| {}),
         Err(ProbeError::DecodeFailed)
     );
 }
@@ -72,7 +75,9 @@ fn verify_image_fails_on_a_truncated_png() {
 #[test]
 fn verify_image_fails_in_a_later_page_of_a_tiff() {
     let mut reported = Vec::new();
-    let result = verify_image(&fixture("corrupt_page2.tif"), |done| reported.push(done));
+    let result = verify_image(Cursor::new(fixture("corrupt_page2.tif")), |done| {
+        reported.push(done)
+    });
     assert_eq!(result, Err(ProbeError::DecodeFailed));
     assert!(reported.len() < 2, "{reported:?}");
 }
@@ -80,15 +85,15 @@ fn verify_image_fails_in_a_later_page_of_a_tiff() {
 #[test]
 fn verify_image_keeps_the_probe_errors() {
     assert_eq!(
-        verify_image(b"not an image", |_| {}),
+        verify_image(Cursor::new(b"not an image"), |_| {}),
         Err(ProbeError::UnsupportedFormat)
     );
     assert_eq!(
-        verify_image(&fixture("too_large_page2.tif"), |_| {}),
+        verify_image(Cursor::new(fixture("too_large_page2.tif")), |_| {}),
         Err(ProbeError::TooLarge)
     );
     assert_eq!(
-        verify_image(&fixture("too_many_pages.tif"), |_| {}),
+        verify_image(Cursor::new(fixture("too_many_pages.tif")), |_| {}),
         Err(ProbeError::TooManyPages)
     );
 }

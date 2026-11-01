@@ -11,6 +11,7 @@ mod worker_paths;
 
 use pdfconv_worker::client::{RENDER_TIMEOUT, StreamPart, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::{Request, Response};
+use pdfconv_worker::server::WORKER_MEMORY_LIMIT;
 #[cfg(feature = "test-hooks")]
 use pdfconv_worker::server::{CRASH_ON_IMAGE_FILE_NAME, HANG_ON_IMAGE_FILE_NAME};
 use worker_paths::start;
@@ -83,8 +84,10 @@ fn a_thumbnail_is_a_png_with_the_longer_side_at_the_thumbnail_side() {
 #[test]
 fn a_thumbnail_is_the_same_as_the_one_the_core_makes() {
     let mut worker = start();
-    let expected = pdfconv_core::thumbnail_png(&std::fs::read(fixture("photo.jpg")).unwrap())
-        .expect("making the thumbnail");
+    let expected = pdfconv_core::thumbnail_png(std::io::Cursor::new(
+        std::fs::read(fixture("photo.jpg")).unwrap(),
+    ))
+    .expect("making the thumbnail");
     let (_, body) = thumbnail(&mut worker, fixture("photo.jpg")).unwrap();
     assert_eq!(body, expected);
 }
@@ -106,6 +109,27 @@ fn a_thumbnail_that_fails_answers_the_code_of_the_probe_error() {
     );
     // The worker still answers.
     thumbnail(&mut worker, fixture("photo.jpg")).expect("the next thumbnail");
+}
+
+#[test]
+fn an_image_file_larger_than_the_worker_may_hold_is_not_read_whole() {
+    // The TIFF's own data is at the start, so what follows it is never needed. `set_len` leaves
+    // the rest unwritten, so that the test does not fill the disk.
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("larger-than-a-worker.tif");
+    std::fs::copy(fixture("scan_g4.tif"), &path).expect("copying the TIFF");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .and_then(|file| file.set_len(WORKER_MEMORY_LIMIT + 1))
+        .expect("growing the TIFF");
+
+    let mut worker = start();
+    let thumbnail_answer = thumbnail(&mut worker, path.clone());
+    let (_, check_answer) = check(&mut worker, path.clone());
+    std::fs::remove_file(&path).expect("removing the TIFF");
+
+    thumbnail_answer.expect("the thumbnail of the large file");
+    assert_eq!(check_answer.expect("the check"), Response::ImageChecked);
 }
 
 #[test]

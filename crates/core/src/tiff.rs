@@ -403,9 +403,8 @@ pub fn verify_tiff_pages<R: BufRead + Seek>(
     decoder = decoder.with_limits(limits);
 
     for page_idx in 0..total_pages {
-        // The krilla image is dropped at the end of this statement; interpolation is irrelevant
-        // to whether the pixels can be read.
-        decode_single_page(&mut decoder, total_pages, false)?;
+        // Not `decode_single_page`: a krilla image starts compressing as soon as it is made.
+        read_page(&mut decoder, total_pages)?;
         on_page(page_idx + 1);
 
         if page_idx + 1 < total_pages {
@@ -421,6 +420,17 @@ fn decode_single_page<R: Read + Seek>(
     total_pages: u32,
     interpolate: bool,
 ) -> Result<(Image, ImageInfo), ProbeError> {
+    let (custom, info) = read_page(decoder, total_pages)?;
+    let krilla_image =
+        Image::from_custom(custom, interpolate).map_err(|_| ProbeError::DecodeFailed)?;
+    Ok((krilla_image, info))
+}
+
+/// Reads the pixels of the current page IFD.
+fn read_page<R: Read + Seek>(
+    decoder: &mut Decoder<R>,
+    total_pages: u32,
+) -> Result<(CustomTiffImage, ImageInfo), ProbeError> {
     let (width, height) = decoder.dimensions().map_err(|_| ProbeError::DecodeFailed)?;
     let orientation = read_tiff_orientation(decoder)?;
     let (dpi_x, dpi_y) = read_tiff_dpi(decoder)?;
@@ -459,9 +469,6 @@ fn decode_single_page<R: Read + Seek>(
         icc_profile: filtered_icc.map(Arc::new),
     };
 
-    let krilla_image =
-        Image::from_custom(custom, interpolate).map_err(|_| ProbeError::DecodeFailed)?;
-
     let info = ImageInfo {
         format: ImageFormat::Tiff,
         width,
@@ -473,7 +480,7 @@ fn decode_single_page<R: Read + Seek>(
         decoded_bytes: page_decoded_bytes(width, height, Some(color_type), extra_sample_0),
     };
 
-    Ok((krilla_image, info))
+    Ok((custom, info))
 }
 
 type DecodedChannels = (ImageColorspace, BitsPerComponent, Vec<u8>, Option<Vec<u8>>);
@@ -833,11 +840,10 @@ fn process_decoded_samples(
 }
 
 /// Decodes the first page of a TIFF file into an [`image::DynamicImage`] for thumbnail generation.
-pub fn decode_tiff_first_page_as_image(
-    image_bytes: &[u8],
+pub fn decode_tiff_first_page_as_image<R: BufRead + Seek>(
+    reader: R,
 ) -> Result<image::DynamicImage, ProbeError> {
-    let mut reader = std::io::Cursor::new(image_bytes);
-    let mut decoder = Decoder::new(&mut reader).map_err(|_| ProbeError::DecodeFailed)?;
+    let mut decoder = Decoder::new(reader).map_err(|_| ProbeError::DecodeFailed)?;
     let mut limits = Limits::default();
     limits.decoding_buffer_size = (MAX_IMAGE_PIXELS * 8) as usize;
     decoder = decoder.with_limits(limits);
@@ -1454,7 +1460,7 @@ mod tests {
         assert_eq!(info.width, 1);
         assert_eq!(info.height, 1);
 
-        let dyn_img1 = decode_tiff_first_page_as_image(&tiff_rgb_unspec).unwrap();
+        let dyn_img1 = decode_tiff_first_page_as_image(Cursor::new(&tiff_rgb_unspec)).unwrap();
         assert_eq!(dyn_img1.color(), image::ColorType::Rgb8);
 
         // 2. 5-sample RGB with ExtraSamples [2, 0] -> Decodes to RGBA(8) with 1st alpha sample.
@@ -1476,7 +1482,7 @@ mod tests {
         .expect("not cancelled");
         assert_eq!(pages2.len(), 1);
 
-        let dyn_img2 = decode_tiff_first_page_as_image(&tiff_rgba_unassoc).unwrap();
+        let dyn_img2 = decode_tiff_first_page_as_image(Cursor::new(&tiff_rgba_unassoc)).unwrap();
         assert_eq!(dyn_img2.color(), image::ColorType::Rgba8);
         assert_eq!(dyn_img2.to_rgba8().into_raw(), vec![255, 128, 64, 200]);
 
@@ -1499,7 +1505,7 @@ mod tests {
         .expect("not cancelled");
         assert_eq!(pages3.len(), 1);
 
-        let dyn_img3 = decode_tiff_first_page_as_image(&tiff_gray_unspec).unwrap();
+        let dyn_img3 = decode_tiff_first_page_as_image(Cursor::new(&tiff_gray_unspec)).unwrap();
         assert_eq!(dyn_img3.color(), image::ColorType::L8);
         assert_eq!(dyn_img3.to_luma8().into_raw(), vec![180]);
     }

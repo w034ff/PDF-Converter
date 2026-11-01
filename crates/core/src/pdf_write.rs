@@ -1,5 +1,6 @@
 //! PDF document creation and page writing using krilla (design §4.3).
 
+use std::io::{BufRead, Cursor, Seek};
 use std::sync::Arc;
 
 use image::metadata::Orientation;
@@ -22,19 +23,20 @@ use crate::utc_time::{UtcTime, now_utc};
 /// Total pixel count was already verified against [`crate::MAX_IMAGE_PIXELS`] by `probe_reader`.
 /// We disable the image crate's default 512 MiB allocation limit so that valid large
 /// 16-bit RGBA PNGs (up to 80M pixels * 8 bytes = 640 MiB) are not rejected.
-pub(crate) fn decode_image_pixels(image_bytes: &[u8]) -> Result<image::DynamicImage, ProbeError> {
-    decode_without_limits(image_bytes).map_err(|_| ProbeError::DecodeFailed)
+pub(crate) fn decode_image_pixels<R: BufRead + Seek>(
+    image: R,
+) -> Result<image::DynamicImage, ProbeError> {
+    decode_without_limits(image).map_err(|_| ProbeError::DecodeFailed)
 }
 
-fn decode_without_limits(image_bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
-    let mut reader =
-        image::ImageReader::new(std::io::Cursor::new(image_bytes)).with_guessed_format()?;
+fn decode_without_limits<R: BufRead + Seek>(image: R) -> image::ImageResult<image::DynamicImage> {
+    let mut reader = image::ImageReader::new(image).with_guessed_format()?;
     reader.no_limits();
     reader.decode()
 }
 
-/// Reads every pixel of the image in `image_bytes` and drops it, to find out whether the pixels
-/// can be read (design §6.2).
+/// Reads every pixel of `image` and drops it, to find out whether the pixels can be read (design
+/// §6.2). It takes a reader because a multi-page TIFF can be larger than a worker may hold.
 ///
 /// A TIFF is read one page at a time and `on_page` is called after each page with the number of
 /// pages read so far; no other format calls it. This is the same decoding [`PdfWriter`] relies on
@@ -46,12 +48,16 @@ fn decode_without_limits(image_bytes: &[u8]) -> image::ImageResult<image::Dynami
 /// [`ProbeError::TooLarge`] if the image has more than [`crate::MAX_IMAGE_PIXELS`] pixels,
 /// [`ProbeError::TooManyPages`] if a TIFF has more than [`crate::MAX_TIFF_PAGES`] pages, and
 /// [`ProbeError::DecodeFailed`] if the header or the pixels are damaged.
-pub fn verify_image(image_bytes: &[u8], on_page: impl FnMut(u32)) -> Result<(), ProbeError> {
-    let info = probe_reader(std::io::Cursor::new(image_bytes))?;
+pub fn verify_image<R: BufRead + Seek>(
+    mut image: R,
+    on_page: impl FnMut(u32),
+) -> Result<(), ProbeError> {
+    let info = probe_reader(&mut image)?;
+    image.rewind().map_err(|_| ProbeError::ReadFailed)?;
     if info.format == ImageFormat::Tiff {
-        crate::tiff::verify_tiff_pages(&mut std::io::Cursor::new(image_bytes), on_page)
+        crate::tiff::verify_tiff_pages(&mut image, on_page)
     } else {
-        decode_image_pixels(image_bytes).map(drop)
+        decode_image_pixels(image).map(drop)
     }
 }
 
@@ -178,7 +184,7 @@ impl PdfWriter {
         // The pixels are dropped right away, before krilla decodes the image again, so that two
         // decoded copies are not held at once. BMP and TIFF are read for embedding below.
         if !matches!(info.format, ImageFormat::Bmp | ImageFormat::Tiff) {
-            decode_image_pixels(image_bytes)?;
+            decode_image_pixels(Cursor::new(image_bytes))?;
         }
 
         self.add_probed_image(
@@ -301,7 +307,7 @@ impl PdfWriter {
                 Image::from_webp(shared(), interpolate).map_err(|_| ProbeError::DecodeFailed)?
             }
             ImageFormat::Bmp => {
-                let rgba = decode_image_pixels(image_bytes)?.to_rgba8();
+                let rgba = decode_image_pixels(Cursor::new(image_bytes))?.to_rgba8();
                 Image::from_rgba8(rgba.into_raw(), info.width, info.height)
             }
             ImageFormat::Tiff => unreachable!(),
@@ -410,13 +416,13 @@ mod tests {
 
         // The scanlines are missing, so decoding still fails, but not on the
         // allocation limit.
-        let no_limits_err =
-            decode_without_limits(&png_bytes).expect_err("incomplete scanlines should fail");
+        let no_limits_err = decode_without_limits(Cursor::new(&png_bytes))
+            .expect_err("incomplete scanlines should fail");
         assert!(
             !matches!(no_limits_err, image::ImageError::Limits(_)),
             "decoding for a page must not apply the allocation limit, got: {no_limits_err:?}"
         );
-        let decode_res = decode_image_pixels(&png_bytes);
+        let decode_res = decode_image_pixels(Cursor::new(&png_bytes));
         assert_eq!(decode_res.unwrap_err(), ProbeError::DecodeFailed);
     }
 
