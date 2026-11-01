@@ -35,7 +35,15 @@ export function OrganizePdfChips({
   ];
 
   return (
-    <div role="list" aria-label={t.pdfListAria} className="organize-chips">
+    <div
+      role="list"
+      aria-label={t.pdfListAria}
+      className="organize-chips"
+      // Most mice have no sideways wheel, and the row has nowhere else to go.
+      onWheel={(event) => {
+        event.currentTarget.scrollLeft += event.deltaY;
+      }}
+    >
       {chips.map((pdf) => {
         const waiting = pdf.error?.code === "PasswordProtected";
         const broken = pdf.error !== null && !waiting;

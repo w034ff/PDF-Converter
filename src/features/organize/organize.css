@@ -127,7 +127,15 @@
   overflow-y: hidden;
   padding: 4px 2px 0;
   scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
   --organize-chips-bar: 10px;
+}
+
+/* The bar only when it is wanted: a chip cut off at the end of the row already
+   says there are more. */
+.organize-chips:hover,
+.organize-chips:focus-within {
+  scrollbar-color: auto;
 }
 
 .organize-chip {

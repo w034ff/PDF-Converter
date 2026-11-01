@@ -145,6 +145,17 @@ describe("adding PDFs", () => {
     ]);
   });
 
+  it("scrolls the row of PDFs sideways with the vertical wheel", async () => {
+    await openOrganizeTab({ pdfs: [REPORT] });
+    const row = screen.getByRole("list", { name: /PDF/ });
+
+    fireEvent.wheel(row, { deltaY: 120 });
+    expect(row.scrollLeft).toBe(120);
+
+    fireEvent.wheel(row, { deltaY: -50 });
+    expect(row.scrollLeft).toBe(70);
+  });
+
   it("marks a PDF that needed a password with a key, and counts the pages the PDF has", async () => {
     await openOrganizeTab({ pdfs: [REPORT, CONTRACT] });
 
