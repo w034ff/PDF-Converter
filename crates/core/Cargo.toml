@@ -27,7 +27,7 @@ getrandom = "0.4.3"
 # Decompresses FlateDecode streams in tests to verify stripped metadata (design §11.2).
 flate2 = "1.1.10"
 # Encodes the G4 pages of the TIFF fixtures; the same major version as tiff uses.
-fax = "0.2.7"
+fax = "0.3.0"
 # Compresses the LZW pages of the TIFF fixtures; tiff decodes with the same crate.
 weezl = "0.1.12"
 # Writes CMYK JPEGs, which image cannot, and the EXIF and JFIF density segments.
