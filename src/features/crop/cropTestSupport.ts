@@ -179,8 +179,12 @@ export async function flush() {
 
 let room = { width: 600, height: 800 };
 
+/** The list of pages is a narrow column whatever the room of the page. */
+const THUMBS_WIDTH = 123;
+
 function entryFor(target: Element): ResizeObserverEntry {
-  const { width, height } = room;
+  const { height } = room;
+  const width = target.matches(".crop-thumbs") ? THUMBS_WIDTH : room.width;
   const contentRect: DOMRectReadOnly = {
     x: 0,
     y: 0,

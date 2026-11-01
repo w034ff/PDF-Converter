@@ -9,6 +9,11 @@
   overflow-y: auto;
 }
 
+.crop-thumbs:focus {
+  outline: none;
+}
+
+/* `CropThumbnails` works out the height of a row from these sizes. */
 .crop-thumb-list {
   list-style: none;
   margin: 0;
@@ -46,6 +51,10 @@
 
 .crop-thumb-frame.is-current {
   border-color: var(--color-accent);
+}
+
+.crop-thumb-number {
+  line-height: 16px;
 }
 
 .crop-thumb-image {
