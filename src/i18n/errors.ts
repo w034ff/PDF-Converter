@@ -13,8 +13,8 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
   RenderTooLarge:
     "この解像度では大きすぎて画像にできません。解像度を下げてください",
   WorkerCrashed:
-    "PDF の処理中に問題が起きました。ファイルが壊れている可能性があります",
-  WorkerTimeout: "PDF の処理に時間がかかりすぎたため中止しました",
+    "処理中に問題が起きました。ファイルが壊れている可能性があります",
+  WorkerTimeout: "処理に時間がかかりすぎたため中止しました",
   ReadFailed: "ファイルの読み込みに失敗しました",
   WriteFailed: "ファイルの書き込みに失敗しました",
   InvalidPageRange: "ページの範囲の書き方が正しくありません（{detail}）",
@@ -42,8 +42,8 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
   TooManyPages: "Too many pages (limit: {detail})",
   RenderTooLarge: "Too large at this resolution. Choose a lower resolution.",
   WorkerCrashed:
-    "Something went wrong while processing the PDF. The file may be damaged.",
-  WorkerTimeout: "Processing the PDF took too long and was stopped",
+    "Something went wrong during processing. The file may be damaged.",
+  WorkerTimeout: "Processing took too long and was stopped",
   ReadFailed: "Failed to read file",
   WriteFailed: "Failed to write file",
   InvalidPageRange: "Invalid page range ({detail})",

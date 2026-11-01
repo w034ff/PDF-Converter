@@ -2054,7 +2054,7 @@ describe("PdfToImagesView", () => {
       await waitFor(() => {
         expect(
           screen.getByText(
-            "PDF の処理中に問題が起きました。ファイルが壊れている可能性があります",
+            "処理中に問題が起きました。ファイルが壊れている可能性があります",
           ),
         ).toBeInTheDocument();
       });

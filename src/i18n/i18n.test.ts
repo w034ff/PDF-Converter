@@ -76,10 +76,10 @@ describe("i18n", () => {
         "この解像度では大きすぎて画像にできません。解像度を下げてください",
       );
       expect(formatErrorMessage("WorkerCrashed", null, "ja")).toBe(
-        "PDF の処理中に問題が起きました。ファイルが壊れている可能性があります",
+        "処理中に問題が起きました。ファイルが壊れている可能性があります",
       );
       expect(formatErrorMessage("WorkerTimeout", null, "ja")).toBe(
-        "PDF の処理に時間がかかりすぎたため中止しました",
+        "処理に時間がかかりすぎたため中止しました",
       );
       expect(formatErrorMessage("ReadFailed", null, "ja")).toBe(
         "ファイルの読み込みに失敗しました",
@@ -144,10 +144,10 @@ describe("i18n", () => {
         "Too large at this resolution. Choose a lower resolution.",
       );
       expect(formatErrorMessage("WorkerCrashed", null, "en")).toBe(
-        "Something went wrong while processing the PDF. The file may be damaged.",
+        "Something went wrong during processing. The file may be damaged.",
       );
       expect(formatErrorMessage("WorkerTimeout", null, "en")).toBe(
-        "Processing the PDF took too long and was stopped",
+        "Processing took too long and was stopped",
       );
       expect(formatErrorMessage("ReadFailed", null, "en")).toBe(
         "Failed to read file",
