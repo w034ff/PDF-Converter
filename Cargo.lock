@@ -2724,7 +2724,7 @@ dependencies = [
  "pdfium-render",
  "png 0.18.1",
  "tiff",
- "weezl 0.1.12",
+ "weezl 0.2.1",
 ]
 
 [[package]]

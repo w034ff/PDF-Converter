@@ -29,7 +29,7 @@ flate2 = "1.1.10"
 # Encodes the G4 pages of the TIFF fixtures; the same major version as tiff uses.
 fax = "0.2.7"
 # Compresses the LZW pages of the TIFF fixtures; tiff decodes with the same crate.
-weezl = "0.1.12"
+weezl = "0.2.1"
 # Writes CMYK JPEGs, which image cannot, and the EXIF and JFIF density segments.
 jpeg-encoder = "0.7.1"
 # The standard security handler of encrypted.pdf and restricted.pdf is MD5-based.
