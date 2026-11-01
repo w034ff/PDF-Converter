@@ -24,7 +24,7 @@
 /* The input has no box of its own, so the focus ring goes on the label that
    draws the box. */
 .pdf-custom-dpi-field:focus-within {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-text-primary);
   outline-offset: 2px;
 }
 
@@ -141,7 +141,7 @@
 }
 
 .pdf-page-button:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-text-primary);
   outline-offset: 2px;
 }
 
