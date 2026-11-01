@@ -32,6 +32,7 @@ import {
   type JobState,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
+import { formatSkippedSummary } from "../pdf-to-images/pdfUtils";
 import "./ImagesToPdf.css";
 
 function formatBytes(bytes: number): string {
@@ -132,33 +133,6 @@ function imageRowStatus(
   return item.error !== null
     ? { text: t.job.loadFailed, kind: "failed" }
     : null;
-}
-
-function formatSkippedMessage(
-  skipped: Skipped | null,
-  t: Translations,
-): string | null {
-  if (!skipped) {
-    return null;
-  }
-  const total = skipped.unsupported + skipped.folders + skipped.duplicates;
-  if (total <= 0) {
-    return null;
-  }
-  const reasons: string[] = [];
-  if (skipped.folders > 0) {
-    reasons.push(t.imagesToPdf.skippedFolders);
-  }
-  if (skipped.unsupported > 0) {
-    reasons.push(t.imagesToPdf.skippedUnsupported);
-  }
-  if (skipped.duplicates > 0) {
-    reasons.push(t.imagesToPdf.skippedDuplicates);
-  }
-  return formatMessage(t.imagesToPdf.skipped, {
-    count: total,
-    reasons: reasons.join(t.imagesToPdf.skippedSeparator),
-  });
 }
 
 function findRowElement(target: EventTarget | null): HTMLElement | null {
@@ -503,7 +477,7 @@ export function ImagesToPdfView() {
   }
 
   const isMerge = imagesToPdf.output === "merge";
-  const skippedText = formatSkippedMessage(skipped, t);
+  const skippedText = formatSkippedSummary(t, skipped);
 
   return (
     <div className="images-view">
