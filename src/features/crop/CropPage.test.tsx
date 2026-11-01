@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -99,11 +100,48 @@ describe("the thumbnails", () => {
   it("asks for the thumbnail of each page at the default size", async () => {
     const calls = await openPdf();
 
-    const thumbnails = callsOf(calls, "get_thumbnail").filter(
-      (call) => call.args.maxSide === undefined,
-    );
-    expect(thumbnails.map((c) => c.args.page).sort()).toEqual([1, 2, 3, 4]);
-    expect(thumbnails.every((c) => c.args.id === 7)).toBe(true);
+    const thumbnails = () =>
+      callsOf(calls, "get_thumbnail").filter(
+        (call) => call.args.maxSide === undefined,
+      );
+    await waitFor(() => {
+      expect(
+        thumbnails()
+          .map((c) => c.args.page)
+          .sort(),
+      ).toEqual([1, 2, 3, 4]);
+    });
+    expect(thumbnails().every((c) => c.args.id === 7)).toBe(true);
+  });
+
+  it("draws only the pages near the view of a long PDF", async () => {
+    await openPdf({}, cropPdf({ pageCount: 10000 }));
+
+    const nav = screen.getByRole("navigation", { name: "ページ" });
+    const list = within(nav).getByRole("list");
+    const drawn = () => within(nav).getAllByRole("button");
+    expect(drawn().length).toBeLessThan(20);
+    const below = Number.parseFloat(list.style.paddingBottom);
+    expect(below).toBeGreaterThan(1_000_000);
+
+    nav.scrollTop = 500_000;
+    fireEvent.scroll(nav);
+
+    const pages = drawn().map((button) => button.getAttribute("aria-label"));
+    expect(pages).not.toContain("ページ 1");
+    expect(pages.length).toBeLessThan(20);
+    expect(Number.parseFloat(list.style.paddingTop)).toBeGreaterThan(400_000);
+  });
+
+  it("keeps the focus in the list when its row scrolls away", async () => {
+    await openPdf({}, cropPdf({ pageCount: 10000 }));
+
+    const nav = screen.getByRole("navigation", { name: "ページ" });
+    screen.getByRole("button", { name: "ページ 2" }).focus();
+    nav.scrollTop = 500_000;
+    fireEvent.scroll(nav);
+
+    expect(document.activeElement).toBe(nav);
   });
 
   it("shows the page that is pressed, marked by its thumbnail's frame", async () => {

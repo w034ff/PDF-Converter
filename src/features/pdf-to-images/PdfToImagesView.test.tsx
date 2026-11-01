@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AddResult,
   CheckPageRangeResult,
@@ -20,10 +20,12 @@ import {
   createInitialAppState,
   type AppState,
 } from "../../state";
+import { installFakeResizeObserver } from "../crop/cropTestSupport";
 import { JobFooter } from "../job/JobFooter";
 import { PdfToImagesSettings } from "./PdfToImagesSettings";
 import { PdfToImagesStatus } from "./PdfToImagesStatus";
 import { PdfToImagesView } from "./PdfToImagesView";
+import { pdfThumbnails } from "./pdfThumbnails";
 
 const samplePdf1: PdfItem = {
   id: 1,
@@ -172,6 +174,8 @@ describe("PdfToImagesView", () => {
   afterEach(() => {
     cleanup();
     clearMocks();
+    pdfThumbnails.clear();
+    vi.unstubAllGlobals();
   });
 
   describe("empty state", () => {
@@ -289,6 +293,31 @@ describe("PdfToImagesView", () => {
         const fig = screen.getByTestId(`page-thumbnail-${p}`);
         expect(fig).not.toHaveClass("is-dimmed");
       }
+    });
+
+    it("draws only the rows near the view of a long PDF", () => {
+      installFakeResizeObserver(800, 600);
+      mockCommands((cmd) =>
+        cmd === "get_thumbnail" ? new Uint8Array() : undefined,
+      );
+      renderView((state) => {
+        state.pdfToImages.items = [{ ...samplePdf1, pageCount: 10000 }];
+        state.pdfToImages.pageSelection = "all";
+      });
+
+      const grid = document.querySelector<HTMLElement>(".pdf-single-grid");
+      if (grid === null) {
+        throw new Error("no grid");
+      }
+      const drawn = () => within(grid).getAllByRole("button");
+      expect(drawn().length).toBeLessThan(40);
+      expect(screen.getByTestId("page-thumbnail-1")).toBeInTheDocument();
+
+      grid.scrollTop = 100_000;
+      fireEvent.scroll(grid);
+
+      expect(screen.queryByTestId("page-thumbnail-1")).toBeNull();
+      expect(drawn().length).toBeLessThan(40);
     });
 
     it("highlights only pages in intervals when pageSelection is 'range'", async () => {

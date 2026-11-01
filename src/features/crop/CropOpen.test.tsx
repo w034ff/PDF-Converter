@@ -239,7 +239,7 @@ describe("the crop tab: opening a PDF", () => {
     it("activates a PDF that opened and shows its name and page", async () => {
       const calls = mockCropIpc({
         open_crop_pdf: () =>
-          cropPdf({ id: 7, name: "market-report.pdf", pageCount: 12 }),
+          cropPdf({ id: 7, name: "market-report.pdf", pageCount: 6 }),
       });
       renderApp();
       openCropTab();
@@ -257,7 +257,7 @@ describe("the crop tab: opening a PDF", () => {
         "title",
         "market-report.pdf",
       );
-      expectPageShown(1, 12);
+      expectPageShown(1, 6);
       const openAnother = screen.getByRole("button", {
         name: "別の PDF を開く",
       });
