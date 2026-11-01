@@ -12,7 +12,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use pdfconv_core::{
     IMAGE_EXTENSIONS, ImageFormat, ImageInfo, THUMBNAIL_SIDE, orientation_swaps_dimensions, probe,
-    thumbnail_png,
 };
 use pdfconv_worker::PAGE_VIEW_MAX_SIDE;
 use pdfconv_worker::protocol::{PageDimensions, Password, PasswordError, Request, Response};
@@ -21,7 +20,6 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::crop;
-use crate::decode_budget::DECODE_MEMORY_FACTOR_THUMBNAIL;
 use crate::error::{ErrorCode, IpcError};
 use crate::organize;
 use crate::worker_pool::PooledWorker;
@@ -752,26 +750,26 @@ pub fn make_thumbnail(
             if max_side.is_some() {
                 return Err(IpcError::from_code(ErrorCode::InvalidParams));
             }
-            // Borrowed before the file is read, because the file's own bytes are part of the
-            // peak, and held until the PNG is made (design §5.3).
-            let _permit = state
-                .decode_budget
-                .acquire(
-                    entry
-                        .decoded_bytes
-                        .saturating_mul(DECODE_MEMORY_FACTOR_THUMBNAIL),
-                    &|| false,
-                )
-                .expect("a wait that is never cancelled ends with a permit");
-            let bytes = std::fs::read(&entry.path)
-                .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))?;
-            Ok(thumbnail_png(&bytes)?)
+            image_thumbnail(state, &entry.path)
         }
         ItemKind::Pdf => {
             let page = checked_page(page, entry.page_count)?;
             let max_side = checked_max_side(max_side)?;
             pdf_thumbnail(state, id, &entry.open_request(), page, max_side)
         }
+    }
+}
+
+/// Makes the PNG thumbnail of the image at `path` in a pooled worker, which holds the decoder's
+/// time and memory in its limits (design §5.1, §6.1). It takes no part of the decode budget.
+fn image_thumbnail(state: &AppState, path: &Path) -> Result<Vec<u8>, IpcError> {
+    let mut worker = state.pool.acquire()?;
+    let request = Request::ImageThumbnail {
+        path: path.to_path_buf(),
+    };
+    match worker.send(&request)? {
+        (Response::ImageThumbnail, png) => Ok(png),
+        _ => Err(unexpected_response()),
     }
 }
 
