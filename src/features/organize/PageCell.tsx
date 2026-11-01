@@ -125,16 +125,16 @@ export const PageCell = memo(function PageCell({
               ✓
             </span>
           )}
+          {part !== null && (
+            <span
+              className={`organize-part-badge${partFailed ? " is-failed" : ""}`}
+              aria-hidden="true"
+            >
+              {partFailed && "✕ "}
+              {part}
+            </span>
+          )}
         </div>
-        {part !== null && (
-          <span
-            className={`organize-part-badge${partFailed ? " is-failed" : ""}`}
-            aria-hidden="true"
-          >
-            {partFailed && "✕ "}
-            {part}
-          </span>
-        )}
       </div>
       <div className="organize-cell-caption" aria-hidden="true">
         <span
