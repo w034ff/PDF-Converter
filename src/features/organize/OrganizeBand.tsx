@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, type ReactNode } from "react";
 import { getTranslations } from "../../i18n";
 import { isJobActive, useAppDispatch, useAppState } from "../../state";
 import { pluralize } from "../job/jobSummary";
@@ -8,6 +8,8 @@ export interface OrganizeBandProps {
   onShowKeyHints: () => void;
   /** The delete button goes out of use with the focus on it. */
   onDelete: () => void;
+  /** What works on the list of PDFs, at the end of the band. */
+  actions: ReactNode;
 }
 
 function RotateLeftIcon() {
@@ -23,7 +25,7 @@ function RotateLeftIcon() {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M4.2 16.5a9 9 0 1 0 1.8-11.2" />
       <path d="M3 4v5h5" />
     </svg>
   );
@@ -42,7 +44,7 @@ function RotateRightIcon() {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M19.8 16.5a9 9 0 1 1-1.8-11.2" />
       <path d="M21 4v5h-5" />
     </svg>
   );
@@ -72,10 +74,11 @@ function TrashIcon() {
  * The band above the grid (mockup OrganizeSingle): how many pages there are
  * or are selected, the buttons that turn or delete the selected pages, and
  * the one that lists the keys. The buttons stay when nothing is selected, and
- * are pressed in then, so the grid under the band does not move.
+ * are pressed in then, so the grid under the band does not move. Where the
+ * band is narrow they keep their icons alone, with their names as tooltips.
  */
 export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
-  function OrganizeBand({ onShowKeyHints, onDelete }, hintsRef) {
+  function OrganizeBand({ onShowKeyHints, onDelete, actions }, hintsRef) {
     const { organize, job, language } = useAppState();
     const dispatch = useAppDispatch();
     const t = getTranslations(language.language).organize.band;
@@ -101,6 +104,8 @@ export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
         <button
           type="button"
           className="btn btn-ghost organize-band-button"
+          aria-label={t.rotateLeft}
+          title={t.rotateLeft}
           disabled={idle}
           onClick={() =>
             dispatch({
@@ -111,11 +116,13 @@ export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
           }
         >
           <RotateLeftIcon />
-          {t.rotateLeft}
+          <span className="organize-band-label">{t.rotateLeft}</span>
         </button>
         <button
           type="button"
           className="btn btn-ghost organize-band-button"
+          aria-label={t.rotateRight}
+          title={t.rotateRight}
           disabled={idle}
           onClick={() =>
             dispatch({
@@ -126,11 +133,13 @@ export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
           }
         >
           <RotateRightIcon />
-          {t.rotateRight}
+          <span className="organize-band-label">{t.rotateRight}</span>
         </button>
         <button
           type="button"
           className="btn btn-ghost organize-band-button"
+          aria-label={t.delete}
+          title={t.delete}
           disabled={idle}
           onClick={() => {
             onDelete();
@@ -138,8 +147,9 @@ export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
           }}
         >
           <TrashIcon />
-          {t.delete}
+          <span className="organize-band-label">{t.delete}</span>
         </button>
+        <div className="organize-band-actions">{actions}</div>
         <button
           ref={hintsRef}
           type="button"

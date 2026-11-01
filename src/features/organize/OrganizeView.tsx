@@ -165,43 +165,45 @@ export function OrganizeView() {
             setPasswordFor(pdf);
           }}
         />
-        <div className="organize-toolbar-actions">
-          <MenuButton
-            className="btn btn-ghost organize-add-menu"
-            label={t.organize.addMenu.label}
-            menuLabel={t.organize.addMenu.label}
-            disabled={locked}
-            items={[
-              {
-                id: "files",
-                label: t.organize.addMenu.files,
-                onSelect: () => void handleAdd("files"),
-              },
-              {
-                id: "folder",
-                label: t.organize.addMenu.folder,
-                onSelect: () => void handleAdd("folder"),
-              },
-            ]}
-          >
-            {t.organize.addMenu.label}
-            <ChevronDownIcon />
-          </MenuButton>
-          <button
-            ref={clearButtonRef}
-            type="button"
-            className="btn btn-ghost"
-            disabled={locked}
-            onClick={handleClearClick}
-          >
-            {t.organize.clearAll}
-          </button>
-        </div>
       </div>
       <OrganizeBand
         ref={hintsButtonRef}
         onShowKeyHints={openHints}
         onDelete={() => gridRef.current?.focusAfterDeleting()}
+        actions={
+          <>
+            <MenuButton
+              className="btn btn-ghost organize-add-menu"
+              label={t.organize.addMenu.label}
+              menuLabel={t.organize.addMenu.label}
+              disabled={locked}
+              items={[
+                {
+                  id: "files",
+                  label: t.organize.addMenu.files,
+                  onSelect: () => void handleAdd("files"),
+                },
+                {
+                  id: "folder",
+                  label: t.organize.addMenu.folder,
+                  onSelect: () => void handleAdd("folder"),
+                },
+              ]}
+            >
+              {t.organize.addMenu.label}
+              <ChevronDownIcon />
+            </MenuButton>
+            <button
+              ref={clearButtonRef}
+              type="button"
+              className="btn btn-ghost"
+              disabled={locked}
+              onClick={handleClearClick}
+            >
+              {t.organize.clearAll}
+            </button>
+          </>
+        }
       />
       {organize.pages.length === 0 ? (
         <div className="organize-grid-empty">

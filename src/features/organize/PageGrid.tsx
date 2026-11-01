@@ -387,7 +387,9 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     const { target } = event;
     const onBand =
       target === document.body ||
-      (target instanceof Element && target.closest(".organize-band") !== null);
+      (target instanceof Element &&
+        target.closest(".organize-band") !== null &&
+        target.closest(".organize-band-actions") === null);
     if (
       !onBand ||
       selected.size === 0 ||

@@ -310,6 +310,10 @@ describe("selecting with the keys", () => {
 
       expect(fireEvent.keyDown(chip, { key: "Delete" })).toBe(true);
       expect(selectedKeys()).toHaveLength(1);
+
+      const add = screen.getByRole("button", { name: "PDF を追加" });
+      expect(fireEvent.keyDown(add, { key: "Delete" })).toBe(true);
+      expect(selectedKeys()).toHaveLength(1);
     });
   });
 

@@ -112,13 +112,6 @@
 .organize-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.organize-toolbar-actions {
-  flex: none;
-  display: flex;
-  gap: 8px;
 }
 
 .organize-chips {
@@ -250,8 +243,30 @@
   gap: 6px;
 }
 
-.organize-band-hints {
+/* Far from the buttons on the selection: deleting pages and taking every PDF
+   away are not to be mistaken for each other. */
+.organize-band-actions {
+  flex: none;
   margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* Below this the words do not fit beside the actions (mockup OrganizeSingle). */
+@media (max-width: 1120px) {
+  .organize-band-label {
+    display: none;
+  }
+
+  .btn.organize-band-button {
+    width: 34px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  .organize-band-button svg {
+    flex: none;
+  }
 }
 
 /* ---- The grid ---- */
