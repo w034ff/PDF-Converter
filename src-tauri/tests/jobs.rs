@@ -1276,6 +1276,101 @@ fn add_photos(app_state: &AppState, dir: &Path, count: usize) -> Vec<u64> {
     added.iter().map(|item| item.id).collect()
 }
 
+/// A budget with room for the pixels of a small TIFF but not for its file, and the permit that
+/// takes up half of it.
+fn state_with_room_for_pixels_only(
+    dir: &Path,
+) -> (
+    AppState,
+    pdf_converter_lib::decode_budget::DecodeBudgetPermit,
+    Vec<u64>,
+) {
+    const BUDGET: u64 = 2 * 1024 * 1024;
+    const FILE_BYTES: u64 = 3 * BUDGET / 4;
+    let mut app_state = state();
+    app_state.decode_budget = Arc::new(DecodeBudget::new(BUDGET));
+    let held = app_state
+        .decode_budget
+        .acquire(BUDGET / 2, &|| false)
+        .expect("an unused budget is lent at once");
+    let path = copy_fixture(dir, "scan_g4.tif", "scan.tif");
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .and_then(|file| file.set_len(FILE_BYTES))
+        .expect("growing the TIFF");
+    let added = add_images(&app_state, &[path]).added;
+    (app_state, held, added.iter().map(|item| item.id).collect())
+}
+
+#[test]
+fn an_image_waits_for_the_budget_of_its_file_each() {
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let (app_state, held, ids) = state_with_room_for_pixels_only(temp_in.path());
+
+    let recorder = TestRecorder::new();
+    let job = {
+        let app_state = app_state.clone();
+        let out_dir = temp_out.path().to_path_buf();
+        let callbacks = recorder.callbacks();
+        std::thread::spawn(move || {
+            run_images_to_pdfs(
+                &app_state,
+                &ids,
+                PageSizeChoice::Fit,
+                PageOrientationChoice::Auto,
+                &PdfOutput::new(PdfConformance::Standard, None),
+                &out_dir,
+                callbacks,
+            )
+        })
+    };
+
+    wait_until_a_job_waits(&recorder);
+    assert!(
+        recorder.items().is_empty(),
+        "the image was converted with no room for its file"
+    );
+    drop(held);
+    job.join().unwrap().unwrap();
+    assert_eq!(recorder.finished().succeeded, 1);
+}
+
+#[test]
+fn an_image_waits_for_the_budget_of_its_file_merged() {
+    let temp_in = TempDir::new().unwrap();
+    let temp_out = TempDir::new().unwrap();
+    let (app_state, held, ids) = state_with_room_for_pixels_only(temp_in.path());
+
+    let recorder = TestRecorder::new();
+    let job = {
+        let app_state = app_state.clone();
+        let dest = temp_out.path().join("merged.pdf");
+        let callbacks = recorder.callbacks();
+        std::thread::spawn(move || {
+            run_save_merged_pdf(
+                &app_state,
+                &ids,
+                PageSizeChoice::Fit,
+                PageOrientationChoice::Auto,
+                &PdfOutput::new(PdfConformance::Standard, None),
+                &dest,
+                callbacks,
+            )
+        })
+    };
+
+    wait_until_a_job_waits(&recorder);
+    assert!(
+        recorder.items().is_empty(),
+        "the image was added with no room for its file"
+    );
+    drop(held);
+    job.join().unwrap().unwrap();
+    assert_eq!(recorder.finished().succeeded, 1);
+}
+
 #[test]
 fn images_wait_for_the_decode_budget_and_a_cancel_leaves_them_unprocessed() {
     let (app_state, held) = state_with_decode_budget_held();

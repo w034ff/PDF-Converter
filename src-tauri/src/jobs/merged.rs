@@ -13,7 +13,7 @@ use super::options::{PageOrientationChoice, PageSizeChoice, PdfOutput, protect_p
 use super::output::create_output_temp;
 use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload};
 use crate::AppState;
-use crate::decode_budget::DECODE_MEMORY_FACTOR_PDF;
+use crate::decode_budget::pdf_write_estimate;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::ItemKind;
 
@@ -206,7 +206,7 @@ where
         // bytes are let go (design §5.3). A wait that is cancelled is a cancelled
         // `add_checked_image`.
         let Some(_permit) = state.decode_budget.acquire(
-            entry.decoded_bytes.saturating_mul(DECODE_MEMORY_FACTOR_PDF),
+            pdf_write_estimate(&entry.path, entry.decoded_bytes),
             &|| state.cancel_flag.load(Ordering::SeqCst),
         ) else {
             was_cancelled = true;

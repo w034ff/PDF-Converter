@@ -6,6 +6,7 @@
 //! it lets go of the pixels.
 
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -13,7 +14,18 @@ use pdfconv_worker::server::WORKER_MEMORY_LIMIT;
 
 /// What one image-to-PDF write holds at its peak, as a multiple of the decoded pixel bytes:
 /// the measured peak is 3.9 times, and 4 is the round value above it (design §5.3).
-pub const DECODE_MEMORY_FACTOR_PDF: u64 = 4;
+const DECODE_MEMORY_FACTOR_PDF: u64 = 4;
+
+/// What writing the image at `path` into a PDF holds at its peak, for an image with `decoded_bytes`
+/// of pixels (design §5.3). The file is held whole beside the pixels, and a multi-page TIFF can be
+/// far larger than its largest page. A file that cannot be read counts as 0: the read that follows
+/// fails, and it holds nothing.
+pub fn pdf_write_estimate(path: &Path, decoded_bytes: u64) -> u64 {
+    let file_bytes = std::fs::metadata(path).map_or(0, |metadata| metadata.len());
+    decoded_bytes
+        .saturating_mul(DECODE_MEMORY_FACTOR_PDF)
+        .saturating_add(file_bytes)
+}
 
 /// The smallest budget: what one worker may use, for machines with little memory and for when
 /// the installed memory cannot be read (design §5.3).
@@ -162,6 +174,17 @@ mod tests {
     use super::*;
 
     const GIB: u64 = 1024 * 1024 * 1024;
+
+    #[test]
+    fn the_estimate_is_the_pixels_times_the_factor_and_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("image.tif");
+        std::fs::write(&path, [0u8; 10]).unwrap();
+
+        assert_eq!(pdf_write_estimate(&path, 100), 410);
+        assert_eq!(pdf_write_estimate(&dir.path().join("gone.tif"), 100), 400);
+        assert_eq!(pdf_write_estimate(&path, u64::MAX), u64::MAX);
+    }
 
     /// Long enough to see that a request is still waiting; a wait that should end does so
     /// within [`ENDS_WITHIN`] on any machine the tests run on.
