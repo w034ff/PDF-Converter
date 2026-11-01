@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { formatMessage, getTranslations, type Translations } from "../../i18n";
 import type { CropPdf } from "../../ipc";
 import { useAppDispatch, useAppState } from "../../state";
@@ -31,8 +31,7 @@ interface CropThumbnailProps {
   translations: Translations;
 }
 
-/** Memoised: a change of page must redraw two rows, not every page of the PDF. */
-const CropThumbnail = memo(function CropThumbnail({
+function CropThumbnail({
   pdf,
   page,
   isCurrent,
@@ -82,7 +81,7 @@ const CropThumbnail = memo(function CropThumbnail({
       </button>
     </li>
   );
-});
+}
 
 /** How many areas each page has; a page without any is not in the map. */
 function countAreasByPage(areas: readonly { page: number }[]) {
