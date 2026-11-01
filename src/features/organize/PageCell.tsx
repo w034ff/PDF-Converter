@@ -120,12 +120,12 @@ export const PageCell = memo(function PageCell({
               {formatMessage(t.grid.rotation, { degrees: page.rotation })}
             </span>
           )}
+          {selected && (
+            <span className="organize-cell-check" aria-hidden="true">
+              ✓
+            </span>
+          )}
         </div>
-        {selected && (
-          <span className="organize-cell-check" aria-hidden="true">
-            ✓
-          </span>
-        )}
         {part !== null && (
           <span
             className={`organize-part-badge${partFailed ? " is-failed" : ""}`}

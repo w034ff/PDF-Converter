@@ -364,10 +364,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Partly off the corner of the page, whatever its shape, to cover little of it. */
 .organize-cell-check {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: -6px;
+  right: -6px;
   width: 18px;
   height: 18px;
   display: flex;
