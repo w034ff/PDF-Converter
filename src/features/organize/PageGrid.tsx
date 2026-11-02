@@ -3,18 +3,15 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type FocusEvent as ReactFocusEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { contextMenuPoint } from "../../components";
-import { formatMessage, getTranslations } from "../../i18n";
-import { isModalOpen, takesText } from "../shortcuts/keyboard";
+import { getTranslations } from "../../i18n";
 import { useRoom } from "../shared/useRoom";
 import {
   isJobActive,
@@ -25,48 +22,24 @@ import {
   type OrganizePage,
   type PageKey,
 } from "../../state";
-import { fileStem } from "./pdfNames";
 import { OrganizePageMenu } from "./OrganizePageMenu";
+import { PageBreak } from "./PageBreak";
 import { PageCell } from "./PageCell";
 import {
   ORGANIZE_PAGE_BOX_SIDE,
-  breakButtonBox,
-  breakGap,
-  breakMarkLeft,
   cellOffset,
   dropLineLeft,
-  focusIndexAfter,
   gridColumnCount,
   gridContentHeight,
   gridRowCount,
   indexRangeOfRows,
-  isFocusKey,
-  keyInsertIndex,
-  rowOfIndex,
-  scrollTopToCenterRow,
-  scrollTopToShowRow,
   visibleRowRange,
 } from "./organizeGrid";
+import { FOCUS_LANDING, useGridReveal } from "./useGridReveal";
 import { useOrganizeDrag } from "./useOrganizeDrag";
-
-/** Stands for the page the focus lands on after a deletion in `revealRef`. */
-const FOCUS_LANDING = Symbol("focus-landing");
+import { useOrganizeGridKeys } from "./useOrganizeGridKeys";
 
 const NO_PARTS: ReadonlyMap<PageKey, number> = new Map();
-
-/** How far below the top of a break's line its ✂ mark is (mockup OrganizeSplit). */
-const BREAK_MARK_TOP = 50;
-
-/** The keys a page operation by key or button works on: the selection, else the focused page. */
-function operatedKeys(
-  selected: ReadonlySet<PageKey>,
-  focused: PageKey | null,
-): PageKey[] {
-  if (selected.size > 0) {
-    return [...selected];
-  }
-  return focused === null ? [] : [focused];
-}
 
 /** The menu of a page, open at a point. */
 interface PageMenu {
@@ -104,10 +77,8 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const room = useRoom(scrollRef);
-  const [scrollTop, setScrollTop] = useState(0);
   const columns = gridColumnCount(room.width);
   const rows = gridRowCount(pages.length, columns);
-  const range = visibleRowRange(scrollTop, room.height, rows);
 
   const pdfById = useMemo(
     () => new Map(pdfs.map((pdf) => [pdf.id, pdf])),
@@ -132,6 +103,15 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
   const tabStopIndex =
     tabStopKey === null ? -1 : (indexByKey.get(tabStopKey) ?? -1);
 
+  const { scrollTop, setScrollTop, reveal } = useGridReveal({
+    scrollRef,
+    focused,
+    indexByKey,
+    columns,
+    room,
+  });
+  const range = visibleRowRange(scrollTop, room.height, rows);
+
   const drag = useOrganizeDrag({
     scrollRef,
     contentRef,
@@ -142,70 +122,9 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     onSelectOnly: (key) => dispatch({ type: "ORGANIZE_SELECTED_ONLY", key }),
   });
 
-  // The page the keyboard moved or focused, shown and given the focus once the
-  // state has changed. After a deletion it is whichever page the focus
-  // landed on, which only the state knows.
-  const revealRef = useRef<PageKey | typeof FOCUS_LANDING | null>(null);
-  // A key at the edge of the grid changes no state, and what it asks for must
-  // not wait for the next change that does (a press far away, say).
-  const [revealTurn, setRevealTurn] = useState(0);
-  function reveal(target: PageKey | typeof FOCUS_LANDING) {
-    revealRef.current = target;
-    setRevealTurn((turn) => turn + 1);
-  }
   useImperativeHandle(ref, () => ({
     focusAfterDeleting: () => reveal(FOCUS_LANDING),
   }));
-  useLayoutEffect(() => {
-    const wanted = revealRef.current;
-    const scroller = scrollRef.current;
-    if (wanted === null || scroller === null) {
-      return;
-    }
-    revealRef.current = null;
-    const key = wanted === FOCUS_LANDING ? focused : wanted;
-    if (key === null) {
-      return;
-    }
-    const index = indexByKey.get(key);
-    if (index === undefined) {
-      return;
-    }
-    const next = scrollTopToShowRow(
-      rowOfIndex(index, columns),
-      scroller.scrollTop,
-      room.height,
-    );
-    if (next !== scroller.scrollTop) {
-      scroller.scrollTop = next;
-      setScrollTop(next);
-    }
-    const cell = scroller.querySelector<HTMLElement>(
-      `[data-page-key="${CSS.escape(key)}"]`,
-    );
-    cell?.focus({ preventScroll: true });
-  }, [revealTurn, focused, indexByKey, columns, room.height]);
-
-  // The grid is drawn anew when its tab comes back, at the top. The page last
-  // worked on is shown once the room is known; the focus stays where the tab
-  // change left it.
-  const restoredRef = useRef(false);
-  useLayoutEffect(() => {
-    const scroller = scrollRef.current;
-    if (restoredRef.current || room.width === 0 || scroller === null) {
-      return;
-    }
-    restoredRef.current = true;
-    const index = focused === null ? undefined : indexByKey.get(focused);
-    if (index === undefined) {
-      return;
-    }
-    const next = scrollTopToCenterRow(rowOfIndex(index, columns), room.height);
-    if (next !== scroller.scrollTop) {
-      scroller.scrollTop = next;
-      setScrollTop(next);
-    }
-  }, [focused, indexByKey, columns, room.width, room.height]);
 
   const [menu, setMenu] = useState<PageMenu | null>(null);
   // A save takes the pages; the menu does not wait for it.
@@ -314,230 +233,33 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     }
   }
 
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const current = tabStopKey;
-    if (current === null) {
-      return;
-    }
-    const { key } = event;
-    if (isFocusKey(key) && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      const from = indexByKey.get(current) ?? 0;
-      const to = focusIndexAfter(key, from, columns, pages.length);
-      event.preventDefault();
-      const target = keyOfPage(pages[to]);
-      reveal(target);
-      dispatch({
-        type: "ORGANIZE_FOCUSED",
-        key: target,
-        extend: event.shiftKey,
-      });
-      return;
-    }
-    if (event.altKey && !event.ctrlKey && !event.metaKey) {
-      const direction =
-        key === "ArrowLeft" || key === "ArrowUp"
-          ? "before"
-          : key === "ArrowRight" || key === "ArrowDown"
-            ? "after"
-            : null;
-      if (direction !== null) {
-        event.preventDefault();
-        if (locked) {
-          return;
-        }
-        const keys = operatedKeys(selected, current);
-        const vertical = key === "ArrowUp" || key === "ArrowDown";
-        const insertIndex = keyInsertIndex(
-          pages,
-          new Set(keys),
-          direction,
-          vertical ? columns : 1,
-        );
-        reveal(current);
-        dispatch({ type: "ORGANIZE_PAGES_MOVED", keys, insertIndex });
-      }
-      return;
-    }
-    if (event.ctrlKey && !event.altKey && key.toLowerCase() === "a") {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTED_ALL" });
-      return;
-    }
-    if (event.ctrlKey || event.altKey || event.metaKey) {
-      return;
-    }
-    if (key === " ") {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTION_TOGGLED", key: current });
-    } else if (key === "Escape") {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTION_CLEARED" });
-    } else if (!locked && isSplit && (key === "b" || key === "B")) {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_BREAK_TOGGLED", key: current });
-    } else if (!locked && (key === "r" || key === "R")) {
-      event.preventDefault();
-      dispatch({
-        type: "ORGANIZE_PAGES_ROTATED",
-        keys: operatedKeys(selected, current),
-        direction: "right",
-      });
-    } else if (!locked && (key === "l" || key === "L")) {
-      event.preventDefault();
-      dispatch({
-        type: "ORGANIZE_PAGES_ROTATED",
-        keys: operatedKeys(selected, current),
-        direction: "left",
-      });
-    } else if (!locked && (key === "Delete" || key === "Backspace")) {
-      event.preventDefault();
-      // The cell that has the focus is the one going, and the focus must not be lost with it.
-      reveal(FOCUS_LANDING);
-      dispatch({
-        type: "ORGANIZE_PAGES_DELETED",
-        keys: operatedKeys(selected, current),
-      });
-    }
-  }
-
-  /**
-   * The keys that work on the selection also work with the focus on the band,
-   * where the mouse leaves it, or nowhere, where deleting leaves it (design
-   * §10.1). `Ctrl+A` works anywhere text is not typed: it would select the
-   * words of the screen otherwise. Keys in the grid have been dealt with, and
-   * the other controls keep their own.
-   */
-  function handleKeyOutsideGrid(event: KeyboardEvent) {
-    if (event.defaultPrevented || takesText(event.target) || isModalOpen()) {
-      return;
-    }
-    if (
-      event.ctrlKey &&
-      !event.altKey &&
-      !event.metaKey &&
-      event.key.toLowerCase() === "a"
-    ) {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTED_ALL" });
-      return;
-    }
-    const { target } = event;
-    const onBand =
-      target === document.body ||
-      (target instanceof Element &&
-        target.closest(".organize-band") !== null &&
-        target.closest(".organize-band-actions") === null);
-    if (
-      !onBand ||
-      selected.size === 0 ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.metaKey
-    ) {
-      return;
-    }
-    const keys = [...selected];
-    const key = event.key.toLowerCase();
-    if (key === "escape") {
-      event.preventDefault();
-      // The band's buttons are about to go out of use, and the focus with them.
-      if (tabStopKey !== null) {
-        reveal(tabStopKey);
-      }
-      dispatch({ type: "ORGANIZE_SELECTION_CLEARED" });
-    } else if (!locked && (key === "r" || key === "l")) {
-      event.preventDefault();
-      dispatch({
-        type: "ORGANIZE_PAGES_ROTATED",
-        keys,
-        direction: key === "r" ? "right" : "left",
-      });
-    } else if (!locked && (key === "delete" || key === "backspace")) {
-      event.preventDefault();
-      reveal(FOCUS_LANDING);
-      dispatch({ type: "ORGANIZE_PAGES_DELETED", keys });
-    }
-  }
-  const keyOutsideGrid = useRef(handleKeyOutsideGrid);
-  useEffect(() => {
-    keyOutsideGrid.current = handleKeyOutsideGrid;
+  const { handleKeyDown } = useOrganizeGridKeys({
+    pages,
+    selected,
+    tabStopKey,
+    indexByKey,
+    columns,
+    locked,
+    isSplit,
+    reveal,
   });
-  useEffect(() => {
-    function handle(event: KeyboardEvent) {
-      keyOutsideGrid.current(event);
-    }
-    window.addEventListener("keydown", handle);
-    return () => window.removeEventListener("keydown", handle);
-  }, []);
 
-  /** Page numbers alone cannot tell the pages of two PDFs apart, so those also get their PDFs' names. */
-  function breakLabel(index: number): string {
-    const before = pages[index - 1];
-    const after = pages[index];
-    const numbers = { before: before.page, after: after.page };
-    if (before.id === after.id) {
-      return formatMessage(t.grid.breakAria, numbers);
-    }
-    return formatMessage(t.grid.breakAriaAcrossPdfs, {
-      ...numbers,
-      beforeName: fileStem(pdfById.get(before.id)?.name ?? ""),
-      afterName: fileStem(pdfById.get(after.id)?.name ?? ""),
-    });
-  }
-
-  /** The place that presses the break before the page at `index` (1 or more), and its line and mark when it is there. */
-  function renderBreak(index: number): React.ReactNode[] {
+  function renderBreak(index: number) {
     const key = keyOfPage(pages[index]);
-    const { row, slot } = breakGap(index, columns);
-    const top = cellOffset(row * columns, columns).top;
-    const box = breakButtonBox(slot, room.width);
-    const isBreak = breaks.has(key);
-    const nodes: React.ReactNode[] = [
-      <button
+    return (
+      <PageBreak
         key={`break-${key}`}
-        type="button"
-        className="organize-break-button"
-        aria-pressed={isBreak}
-        aria-label={breakLabel(index)}
-        tabIndex={-1}
+        before={pages[index - 1]}
+        after={pages[index]}
+        index={index}
+        columns={columns}
+        roomWidth={room.width}
+        isBreak={breaks.has(key)}
         disabled={locked || drag.dragging}
-        style={{
-          left: box.left,
-          top,
-          width: box.width,
-          height: ORGANIZE_PAGE_BOX_SIDE,
-        }}
-        // The press must not take the focus from the page the keys work on.
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => dispatch({ type: "ORGANIZE_BREAK_TOGGLED", key })}
-      />,
-    ];
-    if (isBreak) {
-      nodes.push(
-        <div
-          key={`break-line-${key}`}
-          className="organize-break-line"
-          aria-hidden="true"
-          style={{
-            left: dropLineLeft(slot, room.width),
-            top,
-            height: ORGANIZE_PAGE_BOX_SIDE,
-          }}
-        />,
-        <span
-          key={`break-mark-${key}`}
-          className="organize-break-mark"
-          aria-hidden="true"
-          style={{
-            left: breakMarkLeft(slot, room.width),
-            top: top + BREAK_MARK_TOP,
-          }}
-        >
-          <ScissorsIcon />
-        </span>,
-      );
-    }
-    return nodes;
+        pdfById={pdfById}
+        t={t}
+      />
+    );
   }
 
   function renderCell(index: number) {
@@ -576,7 +298,7 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     const { start, end } = indexRangeOfRows(range, columns, pages.length);
     if (isSplit) {
       for (let index = Math.max(start, 1); index < end; index += 1) {
-        breakNodes.push(...renderBreak(index));
+        breakNodes.push(renderBreak(index));
       }
     }
     for (let index = start; index < end; index += 1) {
@@ -639,26 +361,3 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     </div>
   );
 });
-
-/** The ✂ of the mark on a break's line (mockup OrganizeSplit). */
-function ScissorsIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <path d="M20 4L8.1 15.9" />
-      <path d="M14.5 14.5L20 20" />
-      <path d="M8.1 8.1L12 12" />
-    </svg>
-  );
-}

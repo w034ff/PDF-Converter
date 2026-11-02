@@ -7,12 +7,11 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 use std::sync::{Mutex, MutexGuard};
 
 use pdfconv_core::PdfConformance;
 use pdfconv_worker::MAX_PDF_PAGES;
-use pdfconv_worker::protocol::{Password, PasswordError, Request};
+use pdfconv_worker::protocol::{Password, Request};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -20,9 +19,10 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
-    kind_of_extension, open_in_pool, pdf_thumbnail, scan_folder, sort_dropped,
+    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, scan_folder,
+    sort_dropped, stops_unlock, unlock_password,
 };
-use crate::jobs::output_password;
+use crate::jobs::{output_password, refuse_while_running};
 
 /// The largest estimated size of one organized output (design organize §2).
 ///
@@ -250,38 +250,15 @@ impl OrganizeState {
     ) -> Option<OrganizePdf> {
         let mut entries = self.lock();
         let entry = entries.iter_mut().find(|entry| entry.id == id)?;
-        match opened {
-            Ok((page_count, pages)) => {
-                entry.page_count = page_count;
-                entry.pages = pages;
-                entry.error = None;
-            }
-            Err(error) => {
-                entry.page_count = 0;
-                entry.pages = Vec::new();
-                entry.error = Some(error);
-            }
-        }
+        record_opened(
+            opened,
+            &mut entry.page_count,
+            &mut entry.pages,
+            &mut entry.error,
+        );
         entry.password = Some(password);
         Some(entry.to_ipc())
     }
-}
-
-fn refuse_while_running(state: &AppState) -> Result<(), IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
-    Ok(())
-}
-
-fn page_sizes(pages: &[pdfconv_worker::protocol::PageDimensions]) -> Vec<PageSizePt> {
-    pages
-        .iter()
-        .map(|page| PageSizePt {
-            width_pt: page.width_pt,
-            height_pt: page.height_pt,
-        })
-        .collect()
 }
 
 /// Adds the PDF files in `paths` to the organize list, one after another (design organize §4).
@@ -418,10 +395,7 @@ fn try_unlock(
 ) -> Result<Option<OrganizePdf>, IpcError> {
     let opened = open_in_pool(state, path, Some(password));
     if let Err(error) = &opened
-        && matches!(
-            error.code,
-            ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
-        )
+        && stops_unlock(error)
     {
         return Err(error.clone());
     }
@@ -448,13 +422,7 @@ pub fn unlock_pdf(state: &AppState, id: u64, password: &str) -> Result<OrganizeU
     if !target.is_password_protected() {
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
-    let password = match Password::new(password) {
-        Ok(password) => password,
-        Err(PasswordError::Empty) => return Err(IpcError::from_code(ErrorCode::InvalidParams)),
-        Err(PasswordError::ContainsNul) => {
-            return Err(IpcError::from_code(ErrorCode::PasswordProtected));
-        }
-    };
+    let password = unlock_password(password)?;
 
     let first = try_unlock(state, id, &target.path, &password)?
         .ok_or_else(|| IpcError::from_code(ErrorCode::UnknownHandle))?;

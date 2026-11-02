@@ -159,7 +159,7 @@ const EMPTY_HISTORY: OrganizeHistory = {
 
 const NO_KEYS: ReadonlySet<PageKey> = new Set();
 
-/** The organize state before anything is added, from the saved organize `settings` if there are any. */
+/** The organize state before anything is added, with the organize `settings` if there are any. */
 export function createInitialOrganizeState(
   settings: OrganizeSettings | null = null,
 ): OrganizeState {
@@ -290,17 +290,26 @@ function breaksHandedOver(
   return handed;
 }
 
-/** `breaks` without the first of `pages`, which starts an output with or without one. */
-function breaksBelowFirst(
-  pages: readonly OrganizePage[],
-  breaks: ReadonlySet<PageKey>,
+/**
+ * The breaks of `next`, which is `step.pages` once the pages of `leaving` are
+ * gone or put somewhere else: they are handed over as in `breaksHandedOver`,
+ * and the first page of `next` holds none, since it starts an output with or
+ * without one.
+ */
+function breaksOfNext(
+  step: OrganizeStep,
+  next: readonly OrganizePage[],
+  leaving: ReadonlySet<PageKey>,
 ): ReadonlySet<PageKey> {
-  if (pages.length === 0 || !breaks.has(keyOfPage(pages[0]))) {
-    return breaks;
+  const breaks = breaksHandedOver(step.pages, step.breaks, leaving);
+  if (next.length > 0) {
+    breaks.delete(keyOfPage(next[0]));
   }
-  const rest = new Set(breaks);
-  rest.delete(keyOfPage(pages[0]));
-  return rest;
+  return breaks;
+}
+
+function hasPage(pages: readonly OrganizePage[], key: PageKey): boolean {
+  return pages.some((page) => keyOfPage(page) === key);
 }
 
 function indexOfKeys(pages: readonly OrganizePage[]): Map<PageKey, number> {
@@ -310,8 +319,7 @@ function indexOfKeys(pages: readonly OrganizePage[]): Map<PageKey, number> {
 /**
  * Moves the pages whose keys are in `selected` to `insertIndex`, a position
  * of `pages` as it is before the move, keeping them in their order as one
- * block. The pages around it keep theirs. The same array comes back when
- * nothing moves.
+ * block. The pages around it keep theirs.
  */
 export function moveSelected(
   pages: readonly OrganizePage[],
@@ -329,16 +337,7 @@ export function moveSelected(
       (index < at ? before : after).push(page);
     }
   });
-  const moved = [...before, ...block, ...after];
-  return samePages(moved, pages) ? pages.slice() : moved;
-}
-
-/** Whether `moveSelected` leaves `pages` as it is, which is no step of the history. */
-function moveChanges(
-  pages: readonly OrganizePage[],
-  moved: readonly OrganizePage[],
-): boolean {
-  return !samePages(pages, moved);
+  return [...before, ...block, ...after];
 }
 
 /** The keys among `keys` that are pages of the grid, as a set. */
@@ -371,29 +370,29 @@ function withStep(
   };
 }
 
-/**
- * Takes out of the selection, the anchor and the focus what is no page of the
- * grid any more, and puts the focus on the first page if it has none.
- */
-function tidied(state: OrganizeState): OrganizeState {
+/** Takes out of the selection, the anchor and the focus what is no page of the grid any more. */
+function withoutGoneKeys(state: OrganizeState): OrganizeState {
   const inGrid = new Set(state.pages.map(keyOfPage));
+  const stayed = (key: PageKey | null) =>
+    key !== null && inGrid.has(key) ? key : null;
   const selected = [...state.selected].filter((key) => inGrid.has(key));
-  const focused =
-    state.focused !== null && inGrid.has(state.focused)
-      ? state.focused
-      : state.pages.length > 0
-        ? keyOfPage(state.pages[0])
-        : null;
   return {
     ...state,
     selected:
       selected.length === state.selected.size
         ? state.selected
         : new Set(selected),
-    anchor:
-      state.anchor !== null && inGrid.has(state.anchor) ? state.anchor : null,
-    focused,
+    anchor: stayed(state.anchor),
+    focused: stayed(state.focused),
   };
+}
+
+/** `withoutGoneKeys`, and the focus on the first page if it has none. */
+function tidied(state: OrganizeState): OrganizeState {
+  const kept = withoutGoneKeys(state);
+  return kept.focused === null && kept.pages.length > 0
+    ? { ...kept, focused: keyOfPage(kept.pages[0]) }
+    : kept;
 }
 
 /** The step without the pages of the PDF `id`, whose breaks go to the pages that follow them. */
@@ -407,10 +406,7 @@ function withPdfPagesRemoved(step: OrganizeStep, id: number): OrganizeStep {
   const pages = step.pages.filter((page) => page.id !== id);
   return {
     pages,
-    breaks: breaksBelowFirst(
-      pages,
-      breaksHandedOver(step.pages, step.breaks, leaving),
-    ),
+    breaks: breaksOfNext(step, pages, leaving),
   };
 }
 
@@ -418,41 +414,23 @@ function removePdf(state: OrganizeState, id: number): OrganizeState {
   if (!state.pdfs.some((pdf) => pdf.id === id)) {
     return state;
   }
-  const keyIsOfPdf = (key: PageKey) => key.startsWith(`${id}:`);
   const pdfs = state.pdfs.filter((pdf) => pdf.id !== id);
   if (pdfs.length === 0) {
     // Nothing is left to undo or to lose.
-    return {
-      ...createInitialOrganizeState(),
-      notice: state.notice,
-      encrypt: state.encrypt,
-      output: state.output,
-      outputDir: state.outputDir,
-    };
+    return { ...createInitialOrganizeState(state), notice: state.notice };
   }
-  const selected = [...state.selected].filter((key) => !keyIsOfPdf(key));
   const rest = withPdfPagesRemoved(stepOf(state), id);
-  return {
+  return withoutGoneKeys({
     ...state,
     pdfs,
     pages: rest.pages,
     breaks: rest.breaks,
-    selected:
-      selected.length === state.selected.size
-        ? state.selected
-        : new Set(selected),
-    anchor:
-      state.anchor !== null && keyIsOfPdf(state.anchor) ? null : state.anchor,
-    focused:
-      state.focused !== null && keyIsOfPdf(state.focused)
-        ? null
-        : state.focused,
     history: {
       ...state.history,
       past: state.history.past.map((step) => withPdfPagesRemoved(step, id)),
       future: state.history.future.map((step) => withPdfPagesRemoved(step, id)),
     },
-  };
+  });
 }
 
 function withPagesAdded(
@@ -529,14 +507,14 @@ function unlockPdfs(state: OrganizeState, items: OrganizePdf[]): OrganizeState {
 }
 
 function selectOnly(state: OrganizeState, key: PageKey): OrganizeState {
-  if (!state.pages.some((page) => keyOfPage(page) === key)) {
+  if (!hasPage(state.pages, key)) {
     return state;
   }
   return { ...state, selected: new Set([key]), anchor: key, focused: key };
 }
 
 function toggle(state: OrganizeState, key: PageKey): OrganizeState {
-  if (!state.pages.some((page) => keyOfPage(page) === key)) {
+  if (!hasPage(state.pages, key)) {
     return state;
   }
   const selected = new Set(state.selected);
@@ -561,11 +539,12 @@ function keysBetween(
   return pages.slice(Math.min(a, b), Math.max(a, b) + 1).map(keyOfPage);
 }
 
-function extend(state: OrganizeState, key: PageKey): OrganizeState {
-  if (!state.pages.some((page) => keyOfPage(page) === key)) {
-    return state;
-  }
-  const anchor = state.anchor ?? key;
+/** Selects from `anchor` to `key`, and nothing else, with the focus on `key`. */
+function selectRange(
+  state: OrganizeState,
+  anchor: PageKey,
+  key: PageKey,
+): OrganizeState {
   return {
     ...state,
     selected: new Set(keysBetween(state.pages, anchor, key)),
@@ -574,25 +553,26 @@ function extend(state: OrganizeState, key: PageKey): OrganizeState {
   };
 }
 
+function extend(state: OrganizeState, key: PageKey): OrganizeState {
+  if (!hasPage(state.pages, key)) {
+    return state;
+  }
+  return selectRange(state, state.anchor ?? key, key);
+}
+
 function focus(
   state: OrganizeState,
   key: PageKey,
   extendSelection: boolean,
 ): OrganizeState {
-  if (!state.pages.some((page) => keyOfPage(page) === key)) {
+  if (!hasPage(state.pages, key)) {
     return state;
   }
   if (!extendSelection) {
     return state.focused === key ? state : { ...state, focused: key };
   }
   // Without an anchor the selection starts where the focus was.
-  const anchor = state.anchor ?? state.focused ?? key;
-  return {
-    ...state,
-    selected: new Set(keysBetween(state.pages, anchor, key)),
-    anchor,
-    focused: key,
-  };
+  return selectRange(state, state.anchor ?? state.focused ?? key, key);
 }
 
 function movePages(
@@ -602,15 +582,13 @@ function movePages(
 ): OrganizeState {
   const moving = keysInGrid(state.pages, keys);
   const moved = moveSelected(state.pages, moving, insertIndex);
-  if (!moveChanges(state.pages, moved)) {
+  // A move that changes nothing is no step of the history.
+  if (samePages(state.pages, moved)) {
     return state;
   }
   return withStep(state, stepOf(state), {
     pages: moved,
-    breaks: breaksBelowFirst(
-      moved,
-      breaksHandedOver(state.pages, state.breaks, moving),
-    ),
+    breaks: breaksOfNext(stepOf(state), moved, moving),
   });
 }
 
@@ -647,7 +625,7 @@ function deletePages(
   const first = indices[0];
   const last = indices[indices.length - 1];
   const pages = state.pages.filter((page) => !doomed.has(keyOfPage(page)));
-  // The page after the deleted ones, else the one before them.
+  // The page after the deleted ones, else the one before them, else one left between them.
   const next = state.pages
     .slice(last + 1)
     .find((page) => !doomed.has(keyOfPage(page)));
@@ -655,14 +633,11 @@ function deletePages(
     .slice(0, first)
     .reverse()
     .find((page) => !doomed.has(keyOfPage(page)));
-  const landing = next ?? previous;
+  const landing = next ?? previous ?? pages[0];
   return {
     ...withStep(state, stepOf(state), {
       pages,
-      breaks: breaksBelowFirst(
-        pages,
-        breaksHandedOver(state.pages, state.breaks, doomed),
-      ),
+      breaks: breaksOfNext(stepOf(state), pages, doomed),
     }),
     selected: NO_KEYS,
     anchor: null,
@@ -777,12 +752,7 @@ export function organizeReducer(
       if (state.pdfs.length === 0 && state.notice === null) {
         return state;
       }
-      return {
-        ...createInitialOrganizeState(),
-        encrypt: state.encrypt,
-        output: state.output,
-        outputDir: state.outputDir,
-      };
+      return createInitialOrganizeState(state);
     case "ORGANIZE_NOTICE":
       return { ...state, notice: action.notice };
     case "ORGANIZE_SELECTED_ONLY":

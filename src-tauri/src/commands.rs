@@ -159,9 +159,7 @@ pub async fn add_images(
     state: tauri::State<'_, AppState>,
     source: AddSource,
 ) -> Result<Option<AddResult<ImageItem>>, IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || match source {
         AddSource::Files => Ok(pick_files(&window, IMAGE_FILTER_NAME, IMAGE_EXTENSIONS)?
@@ -182,9 +180,7 @@ pub async fn add_pdfs(
     state: tauri::State<'_, AppState>,
     source: AddSource,
 ) -> Result<Option<AddResult<PdfItem>>, IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || match source {
         AddSource::Files => Ok(pick_files(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
@@ -224,9 +220,7 @@ pub async fn open_crop_pdf(
     window: tauri::Window,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<CropPdf>, IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         Ok(pick_file(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
@@ -394,9 +388,7 @@ pub async fn add_organize_pdfs(
     state: tauri::State<'_, AppState>,
     source: AddSource,
 ) -> Result<Option<OrganizeAdded>, IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || match source {
         AddSource::Files => pick_files(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?

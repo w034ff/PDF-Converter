@@ -19,7 +19,7 @@ use std::time::Duration;
 use pdfconv_worker::client::WorkerProcess;
 use pdfconv_worker::protocol::{
     CandidateKind as WorkerCandidateKind, EmbeddedImage, LayoutCandidate,
-    NativeSize as WorkerNativeSize, Password, PasswordError, RectPt, Request, Response,
+    NativeSize as WorkerNativeSize, Password, RectPt, Request, Response,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -28,9 +28,10 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
-    kind_of_extension, open_in_pool, pdf_thumbnail, request_on_pdf, unexpected_response,
+    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, request_on_pdf,
+    stops_unlock, unexpected_response, unlock_password,
 };
-use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload};
+use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
 use crate::worker_pool::{WorkerPool, WorkerPoolError};
 
@@ -411,18 +412,12 @@ impl CropState {
             .as_mut()
             .filter(|open| open.entry.id == id)?
             .entry;
-        match opened {
-            Ok((page_count, pages)) => {
-                entry.page_count = page_count;
-                entry.pages = pages;
-                entry.error = None;
-            }
-            Err(error) => {
-                entry.page_count = 0;
-                entry.pages = Vec::new();
-                entry.error = Some(error);
-            }
-        }
+        record_opened(
+            opened,
+            &mut entry.page_count,
+            &mut entry.pages,
+            &mut entry.error,
+        );
         entry.password = Some(password);
         Some(entry.to_ipc())
     }
@@ -614,13 +609,6 @@ impl Analyzer {
     }
 }
 
-fn refuse_while_running(state: &AppState) -> Result<(), IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
-    Ok(())
-}
-
 /// Opens the PDF at `path` and holds it as the pending PDF, dropping the one
 /// before; the open PDF is not touched (design §6.10). A PDF that cannot be
 /// opened is held with its error.
@@ -642,16 +630,6 @@ pub fn open_pdf(state: &AppState, path: &Path) -> CropPdf {
     let held = entry.to_ipc();
     state.crop.hold(entry);
     held
-}
-
-fn page_sizes(pages: &[pdfconv_worker::protocol::PageDimensions]) -> Vec<PageSizePt> {
-    pages
-        .iter()
-        .map(|page| PageSizePt {
-            width_pt: page.width_pt,
-            height_pt: page.height_pt,
-        })
-        .collect()
 }
 
 /// Makes the pending PDF `id` the open PDF and ends the analysis worker of the
@@ -684,19 +662,10 @@ pub fn discard_crop_pdf(state: &AppState, id: u64) {
 pub fn unlock_crop_pdf(state: &AppState, id: u64, password: &str) -> Result<CropPdf, IpcError> {
     refuse_while_running(state)?;
     let path = state.crop.path_to_unlock(id)?;
-    let password = match Password::new(password) {
-        Ok(password) => password,
-        Err(PasswordError::Empty) => return Err(IpcError::from_code(ErrorCode::InvalidParams)),
-        Err(PasswordError::ContainsNul) => {
-            return Err(IpcError::from_code(ErrorCode::PasswordProtected));
-        }
-    };
+    let password = unlock_password(password)?;
     let opened = open_in_pool(state, &path, Some(&password));
     if let Err(error) = &opened
-        && matches!(
-            error.code,
-            ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
-        )
+        && stops_unlock(error)
     {
         return Err(error.clone());
     }

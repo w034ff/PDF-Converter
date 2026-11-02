@@ -150,6 +150,20 @@ impl Drop for RunningGuard {
     }
 }
 
+/// Fails if a conversion is running, for the commands that must not change the
+/// lists or the open PDFs under it. Unlike [`begin_conversion`], it does not
+/// mark anything as running.
+///
+/// # Errors
+///
+/// `ConversionRunning` if a conversion is running.
+pub(crate) fn refuse_while_running(state: &AppState) -> Result<(), IpcError> {
+    if state.is_running.load(Ordering::SeqCst) {
+        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
+    }
+    Ok(())
+}
+
 /// Marks a conversion as running and clears the cancel flag (design §6.5,
 /// §7.1). The guard puts `is_running` back when it is dropped, so a start that
 /// is refused afterwards needs no cleanup of its own.

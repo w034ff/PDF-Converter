@@ -21,6 +21,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::crop;
 use crate::error::{ErrorCode, IpcError};
+use crate::jobs::refuse_while_running;
 use crate::organize;
 use crate::worker_pool::PooledWorker;
 
@@ -549,6 +550,17 @@ pub(crate) fn open_in_pool(
     Ok(opened)
 }
 
+/// The size of every page of `pages`, as [`open_in_pool`] returns them.
+pub(crate) fn page_sizes(pages: &[PageDimensions]) -> Vec<PageSizePt> {
+    pages
+        .iter()
+        .map(|page| PageSizePt {
+            width_pt: page.width_pt,
+            height_pt: page.height_pt,
+        })
+        .collect()
+}
+
 fn load_pdf(
     state: &AppState,
     path: &Path,
@@ -682,12 +694,12 @@ pub fn sort_dropped(paths: &[PathBuf]) -> DropSorting {
 
 /// Adds what was dropped to both lists (design §6.1, §7.2).
 pub fn add_dropped(state: &AppState, paths: &[PathBuf]) -> ItemsDropped {
-    if state.is_running.load(Ordering::SeqCst) {
+    if let Err(error) = refuse_while_running(state) {
         return ItemsDropped {
             images: Vec::new(),
             pdfs: Vec::new(),
             skipped: Skipped::default(),
-            error: Some(IpcError::from_code(ErrorCode::ConversionRunning)),
+            error: Some(error),
         };
     }
     let sorting = sort_dropped(paths);
@@ -708,9 +720,7 @@ pub fn add_dropped(state: &AppState, paths: &[PathBuf]) -> ItemsDropped {
 
 /// Removes items from the table, rejecting with `ConversionRunning` during active conversion (design §6.1, §7.1).
 pub fn remove_items(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    refuse_while_running(state)?;
     state.items.remove(ids);
     Ok(())
 }
@@ -826,6 +836,51 @@ pub(crate) fn pdf_thumbnail(
     }
 }
 
+/// The password that the user typed to unlock a PDF (design §6.8).
+///
+/// # Errors
+///
+/// `InvalidParams` for an empty password, and `PasswordProtected` for one with a
+/// NUL, which is answered as a wrong password without asking a worker.
+pub(crate) fn unlock_password(password: &str) -> Result<Password, IpcError> {
+    Password::new(password).map_err(|error| match error {
+        PasswordError::Empty => IpcError::from_code(ErrorCode::InvalidParams),
+        PasswordError::ContainsNul => IpcError::from_code(ErrorCode::PasswordProtected),
+    })
+}
+
+/// Whether `error`, from opening a PDF with a password, leaves the PDF as it is
+/// (design §6.8). A wrong password and a worker that failed say nothing new
+/// about the file, so the error goes to the caller and nothing is recorded.
+pub(crate) fn stops_unlock(error: &IpcError) -> bool {
+    matches!(
+        error.code,
+        ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
+    )
+}
+
+/// Stores in the fields of a crop or organize PDF what opening it gave: the
+/// page count and sizes, or, if it could not be opened, no pages and the error.
+pub(crate) fn record_opened(
+    opened: Result<(u32, Vec<PageSizePt>), IpcError>,
+    page_count: &mut u32,
+    pages: &mut Vec<PageSizePt>,
+    error: &mut Option<IpcError>,
+) {
+    match opened {
+        Ok((opened_count, opened_pages)) => {
+            *page_count = opened_count;
+            *pages = opened_pages;
+            *error = None;
+        }
+        Err(opened_error) => {
+            *page_count = 0;
+            *pages = Vec::new();
+            *error = Some(opened_error);
+        }
+    }
+}
+
 fn try_unlock(
     state: &AppState,
     id: u64,
@@ -834,10 +889,7 @@ fn try_unlock(
 ) -> Result<PdfItem, IpcError> {
     let (item, loaded) = load_pdf_item(state, id, path, Some(password));
     if let Err(ref err) = loaded
-        && matches!(
-            err.code,
-            ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
-        )
+        && stops_unlock(err)
     {
         return Err(err.clone());
     }
@@ -852,9 +904,7 @@ fn try_unlock(
 /// Unlocks a password-protected PDF and propagates the password to other
 /// password-protected entries in the table (design §6.8, §7.1).
 pub fn unlock_pdf(state: &AppState, id: u64, password: &str) -> Result<UnlockResult, IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    refuse_while_running(state)?;
     let target = state
         .items
         .get(id)
@@ -864,13 +914,7 @@ pub fn unlock_pdf(state: &AppState, id: u64, password: &str) -> Result<UnlockRes
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
 
-    let password = match Password::new(password) {
-        Ok(pw) => pw,
-        Err(PasswordError::Empty) => return Err(IpcError::from_code(ErrorCode::InvalidParams)),
-        Err(PasswordError::ContainsNul) => {
-            return Err(IpcError::from_code(ErrorCode::PasswordProtected));
-        }
-    };
+    let password = unlock_password(password)?;
 
     let target_item = try_unlock(state, id, &target.path, &password)?;
     let mut unlocked_items = vec![target_item];
