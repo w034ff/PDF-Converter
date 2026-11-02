@@ -7,6 +7,7 @@ import {
   type OrganizePdfEntry,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
+import { OrganizeDot } from "./OrganizeDot";
 import { organizeThumbnails } from "./organizeThumbnails";
 import { fileStem } from "./pdfNames";
 import {
@@ -137,12 +138,7 @@ export const PageCell = memo(function PageCell({
         </div>
       </div>
       <div className="organize-cell-caption" aria-hidden="true">
-        <span
-          className="organize-dot"
-          style={{
-            background: `var(--organize-source-${(pdf?.colorIndex ?? 0) + 1})`,
-          }}
-        />
+        <OrganizeDot colorIndex={pdf?.colorIndex ?? 0} />
         <span className="organize-cell-page">
           {formatMessage(t.grid.pageLabel, { page: page.page })}
         </span>
