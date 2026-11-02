@@ -255,6 +255,15 @@ fn check(
     Ok((password, sources))
 }
 
+/// The name of the PDF of the first page of `part` without its extension, which names the output.
+fn stem_of_part<'a>(part: &[OrganizePageInput], sources: &'a HashMap<u64, Source>) -> &'a str {
+    let first = part
+        .first()
+        .and_then(|page| sources.get(&page.id))
+        .expect("check_parts has found that every part has a first page and its PDF");
+    split_stem_and_ext(&first.name).0
+}
+
 /// A single PDF to save: checked, and ready to be made.
 pub struct SingleOutput {
     plan: OutputPlan,
@@ -297,12 +306,7 @@ pub fn begin_single(
 ) -> Result<(jobs::RunningGuard, SingleOutput), IpcError> {
     let guard = jobs::begin_conversion(state)?;
     let (password, sources) = check(state, &[pages], password)?;
-    let first = pages
-        .first()
-        .and_then(|page| sources.get(&page.id))
-        .expect("check_parts has found that there is a first page and its PDF");
-    let (stem, _) = split_stem_and_ext(&first.name);
-    let default_name = format!("{stem}.pdf");
+    let default_name = format!("{}.pdf", stem_of_part(pages, &sources));
     let output = SingleOutput {
         plan: OutputPlan::new(pages, &sources, default_name.clone()),
         password,
@@ -374,14 +378,7 @@ where
             let replaced_id = std::fs::canonicalize(dest_path)
                 .ok()
                 .and_then(|canonical| state.organize.remove_file(&canonical));
-            on_item(JobItemPayload {
-                id: 1,
-                status: JobItemStatus::Ok,
-                outputs: vec![saved_name.clone()],
-                error: None,
-                failed_pages: None,
-                source_id: None,
-            });
+            on_item(saved_item(1, saved_name.clone()));
             on_finished(finished(1, 0, 0, false));
             Ok(SaveOrganizedResult {
                 saved_name: Some(saved_name),
@@ -409,6 +406,17 @@ fn finished(succeeded: u32, failed: u32, unprocessed: u32, cancelled: bool) -> J
         no_pages: 0,
         unprocessed,
         cancelled,
+    }
+}
+
+fn saved_item(id: u64, saved_name: String) -> JobItemPayload {
+    JobItemPayload {
+        id,
+        status: JobItemStatus::Ok,
+        outputs: vec![saved_name],
+        error: None,
+        failed_pages: None,
+        source_id: None,
     }
 }
 
@@ -475,13 +483,7 @@ where
 
     let stems: Vec<String> = slices
         .iter()
-        .map(|part| {
-            let first = part
-                .first()
-                .and_then(|page| sources.get(&page.id))
-                .expect("check_parts has found that every part has a first page and its PDF");
-            split_stem_and_ext(&first.name).0.to_owned()
-        })
+        .map(|part| stem_of_part(part, &sources).to_owned())
         .collect();
     let names = resolve_organize_names(&stems, &existing);
     let taken_lower = existing
@@ -521,6 +523,20 @@ where
     Ok(())
 }
 
+/// The failure of `output` if it takes pages from a PDF that has failed already.
+fn known_failure(output: &OutputPlan, failed_sources: &[(u64, IpcError)]) -> Option<OutputStop> {
+    output.source_ids.iter().find_map(|id| {
+        failed_sources
+            .iter()
+            .find(|(failed_id, _)| failed_id == id)
+            .map(|(failed_id, error)| OutputStop::Failed {
+                error: error.clone(),
+                source_id: Some(*failed_id),
+                writing: false,
+            })
+    })
+}
+
 /// Makes the outputs of `plan` and reports them. Returns the end of the job.
 fn run_split(
     state: &AppState,
@@ -552,18 +568,8 @@ fn run_split(
             break;
         }
         let number = u64::try_from(index + 1).unwrap_or(u64::MAX);
-        let known_failure = output.source_ids.iter().find_map(|id| {
-            failed_sources
-                .iter()
-                .find(|(failed_id, _)| failed_id == id)
-                .map(|(failed_id, error)| (*failed_id, error.clone()))
-        });
-        let made = match known_failure {
-            Some((source_id, error)) => Err(OutputStop::Failed {
-                error,
-                source_id: Some(source_id),
-                writing: false,
-            }),
+        let made = match known_failure(output, &failed_sources) {
+            Some(stop) => Err(stop),
             None => {
                 let base = pages_before;
                 make_output_file(
@@ -582,14 +588,7 @@ fn run_split(
         let ends_job = match made {
             Ok(saved_name) => {
                 succeeded += 1;
-                on_item(JobItemPayload {
-                    id: number,
-                    status: JobItemStatus::Ok,
-                    outputs: vec![saved_name],
-                    error: None,
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(saved_item(number, saved_name));
                 false
             }
             Err(OutputStop::Cancelled) => {
