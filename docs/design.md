@@ -56,7 +56,7 @@
 | PDF の暗号化 | `lopdf`（既定の機能なし）、`getrandom` | krilla も pdfium も暗号化した PDF を書けないため（§4.3.1）。純 Rust で、AES-256（revision 6）を持つ |
 | 画像の読み込み | `image`（png、jpeg、webp、bmp 機能のみ） | 寸法・EXIF の向きの取得、BMP の読み込み、PDF → 画像の PNG / JPEG / WebP の書き出し |
 | TIFF の読み込み | `tiff`（deflate、fax、jpeg、lzw 機能のみ） | `image` は TIFF の最初のページしか読まないため（§4.1.1）。純 Rust で、ファクスの G4 も読める |
-| レイアウトの解析（切り出しの候補） | PP-DocLayout_plus-L（PaddlePaddle、Apache-2.0）を int8 に量子化したもの（§8.5）を、onnxruntime 1.26.0（Microsoft の公式のビルド、MIT）で動かす。Rust からは `ort`（`=2.0.0-rc.14`、`load-dynamic`、`api-26`） | 埋め込み画像の下調べ（2026-10-16）で、図・グラフ・表の 87 % の範囲が合い（論文・白書は 99 %）、int8 でも元のモデルとの一致が 99.7 %、ファイルは 130 MB から 34 MB になった。より小さい PP-DocLayout-M・S は 4 割前後を取りこぼした。`ort` は ocr-bench（OCR の検証）と同じ版で、同じ入力で Python の onnxruntime と同じ箱を出した |
+| レイアウトの解析（切り出しの候補） | PP-DocLayout_plus-L（PaddlePaddle、Apache-2.0）を int8 に量子化したもの（§8.5）を、onnxruntime 1.26.0（Microsoft の公式のビルド、MIT）で動かす。Rust からは `ort`（`=2.0.0-rc.15`、`load-dynamic`、`api-26`） | 埋め込み画像の下調べ（2026-10-16）で、図・グラフ・表の 87 % の範囲が合い（論文・白書は 99 %）、int8 でも元のモデルとの一致が 99.7 %、ファイルは 130 MB から 34 MB になった。より小さい PP-DocLayout-M・S は 4 割前後を取りこぼした。`ort` は ocr-bench（OCR の検証）と同じ版で、同じ入力で Python の onnxruntime と同じ箱を出した |
 | 並列処理 | `std::thread` とチャネル | ワーカーはプロセスなので、スレッドプールのライブラリは要らない |
 | 一時ファイル | `tempfile` | 原子的な保存（§6.5） |
 | IPC 型共有 | `ts-rs` | SVG Tracer と同じ |

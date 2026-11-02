@@ -2867,9 +2867,7 @@ fn encode_g4(width: u32, height: u32, is_black: impl Fn(u32, u32) -> bool) -> Ve
                 fax::Color::White
             }
         });
-        encoder
-            .encode_line(line, width as u16)
-            .expect("encode g4 line");
+        encoder.encode_line(line, width).expect("encode g4 line");
     }
     encoder.finish().expect("finish g4").finish()
 }
