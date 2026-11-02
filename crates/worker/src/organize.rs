@@ -263,9 +263,11 @@ fn organize<W: Write>(
             );
         }
 
+        // Unknown if the file cannot be read: it then adds nothing to the estimate, and lopdf is
+        // not run on it.
+        let file_len = std::fs::metadata(&source.path).ok().map(|meta| meta.len());
         if page_count > 0 {
-            let file_len = std::fs::metadata(&source.path).map_or(0, |meta| meta.len());
-            estimate += file_len * used.len() as u64 / u64::from(page_count);
+            estimate += file_len.unwrap_or(0) * used.len() as u64 / u64::from(page_count);
         }
         // The next source is opened only after this one is closed.
         drop(doc);
@@ -274,7 +276,13 @@ fn organize<W: Write>(
         // view settings are those of the PDF that the first page of the output comes from.
         let want_view = index == first_source;
         if want_view || !flattened_links.keys.is_empty() {
-            let details = read_raw(source, page_count, want_view, &flattened_links.keys);
+            let details = read_raw(
+                source,
+                file_len,
+                page_count,
+                want_view,
+                &flattened_links.keys,
+            );
             if let Some(details) = details {
                 if want_view {
                     relinking.view = details.view;
@@ -650,14 +658,16 @@ fn fits_in_budget(file_len: u64, usage: Option<u64>) -> bool {
 
 /// Reads the view settings and the link frames of `source` with lopdf, if the memory allows it
 /// (design organize §1, "元の PDF を `lopdf` で読む"). `None` means that they are not known; the
-/// output is then made without them, not failed.
+/// output is then made without them, not failed. `file_len` is the length of the file, `None` if
+/// it could not be read.
 fn read_raw(
     source: &OrganizeSource,
+    file_len: Option<u64>,
     page_count: u32,
     want_view: bool,
     links: &[SourceLinkKey],
 ) -> Option<SourceDetails> {
-    let file_len = std::fs::metadata(&source.path).ok()?.len();
+    let file_len = file_len?;
     // Read just before lopdf starts, because the usage grows with every source.
     if !fits_in_budget(file_len, current_usage()) {
         return None;
