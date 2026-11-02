@@ -1,6 +1,6 @@
-import { useEffect } from "react";
 import { onOrganizeDropped } from "../../ipc";
 import { useAppDispatch } from "../../state";
+import { useIpcEvent } from "../shared/useIpcEvent";
 import { noticeOf } from "./organizeNotice";
 
 /**
@@ -12,28 +12,11 @@ import { noticeOf } from "./organizeNotice";
 export function useOrganizeDropped(): void {
   const dispatch = useAppDispatch();
 
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-
-    void onOrganizeDropped((dropped) => {
-      dispatch({ type: "ORGANIZE_PDFS_ADDED", items: dropped.added });
-      dispatch({
-        type: "ORGANIZE_NOTICE",
-        notice: noticeOf(dropped.skipped, dropped.error),
-      });
-    }).then((stop) => {
-      // `listen` resolves after the component may already have unmounted.
-      if (disposed) {
-        stop();
-      } else {
-        unlisten = stop;
-      }
+  useIpcEvent(onOrganizeDropped, (dropped) => {
+    dispatch({ type: "ORGANIZE_PDFS_ADDED", items: dropped.added });
+    dispatch({
+      type: "ORGANIZE_NOTICE",
+      notice: noticeOf(dropped.skipped, dropped.error),
     });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [dispatch]);
+  });
 }

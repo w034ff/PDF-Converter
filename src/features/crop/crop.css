@@ -812,8 +812,3 @@
 .icon-btn.crop-area-remove:active:not(:disabled) {
   color: var(--color-error);
 }
-
-.crop-replace-count {
-  margin: 0;
-  font-size: 13px;
-}

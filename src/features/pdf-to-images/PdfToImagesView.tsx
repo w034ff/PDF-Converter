@@ -42,12 +42,12 @@ import {
   rowOffsets,
   useVirtualRows,
 } from "../shared/virtualRows";
+import { formatSkippedSummary } from "../shared/skipped";
 import {
   countPagesInIntervals,
   formatFileSize,
   formatPaperSize,
   failedAsAWhole,
-  formatSkippedSummary,
   intervalsToRangeText,
   isPageInIntervals,
   selectedIntervals,

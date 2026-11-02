@@ -11,10 +11,10 @@ export const ORGANIZE_PAGE_BOX_SIDE = 124;
 export const ORGANIZE_PAGE_MAX_SIDE = 119;
 
 /** Between the page box and the caption under it. */
-export const ORGANIZE_CAPTION_GAP = 6;
+const ORGANIZE_CAPTION_GAP = 6;
 
 /** The caption's line; fixed so the cell's height is. */
-export const ORGANIZE_CAPTION_HEIGHT = 18;
+const ORGANIZE_CAPTION_HEIGHT = 18;
 
 /** Height of a cell: the page box and its caption. */
 export const ORGANIZE_CELL_HEIGHT =
@@ -27,6 +27,12 @@ export const ORGANIZE_CELL_HEIGHT =
 export const ORGANIZE_COLUMN_GAP = 16;
 
 export const ORGANIZE_ROW_GAP = 18;
+
+/** From the left of a cell to the left of the next in its row. */
+const ORGANIZE_COLUMN_PITCH = ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP;
+
+/** From the top of a row to the top of the next. */
+const ORGANIZE_ROW_PITCH = ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP;
 
 /** Rows drawn above and below the ones in view. */
 export const ORGANIZE_OVERSCAN_ROWS = 2;
@@ -47,10 +53,7 @@ const HALF = 2;
 export function gridColumnCount(width: number): number {
   return Math.max(
     1,
-    Math.floor(
-      (width + ORGANIZE_COLUMN_GAP) /
-        (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP),
-    ),
+    Math.floor((width + ORGANIZE_COLUMN_GAP) / ORGANIZE_COLUMN_PITCH),
   );
 }
 
@@ -75,8 +78,8 @@ export function cellOffset(
   columns: number,
 ): { left: number; top: number } {
   return {
-    left: (index % columns) * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP),
-    top: rowOfIndex(index, columns) * (ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP),
+    left: (index % columns) * ORGANIZE_COLUMN_PITCH,
+    top: rowOfIndex(index, columns) * ORGANIZE_ROW_PITCH,
   };
 }
 
@@ -100,10 +103,11 @@ export function visibleRowRange(
   if (rowCount <= 0) {
     return null;
   }
-  const pitch = ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP;
   const top = Math.max(scrollTop, 0);
-  const firstInView = Math.floor(top / pitch);
-  const lastInView = Math.floor((top + Math.max(viewportHeight, 0)) / pitch);
+  const firstInView = Math.floor(top / ORGANIZE_ROW_PITCH);
+  const lastInView = Math.floor(
+    (top + Math.max(viewportHeight, 0)) / ORGANIZE_ROW_PITCH,
+  );
   return {
     first: Math.min(Math.max(firstInView - overscan, 0), rowCount - 1),
     last: Math.min(Math.max(lastInView + overscan, 0), rowCount - 1),
@@ -150,13 +154,15 @@ export function insertPointAt(
   }
   const lastRow = rowOfIndex(count - 1, columns);
   const row = Math.min(
-    Math.max(Math.floor(y / (ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP)), 0),
+    Math.max(Math.floor(y / ORGANIZE_ROW_PITCH), 0),
     lastRow,
   );
   const inRow = Math.min(columns, count - row * columns);
-  const pitch = ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP;
   const slot = Math.min(
-    Math.max(Math.round((x + ORGANIZE_COLUMN_GAP / HALF) / pitch), 0),
+    Math.max(
+      Math.round((x + ORGANIZE_COLUMN_GAP / HALF) / ORGANIZE_COLUMN_PITCH),
+      0,
+    ),
     inRow,
   );
   return { index: row * columns + slot, row, slot };
@@ -196,7 +202,7 @@ function fitInView(left: number, width: number, gridWidth: number): number {
 export function dropLineLeft(slot: number, gridWidth: number): number {
   return (
     fitInView(
-      slot * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) -
+      slot * ORGANIZE_COLUMN_PITCH -
         ORGANIZE_COLUMN_GAP / HALF -
         ORGANIZE_LINE_LEAD,
       ORGANIZE_LINE_WIDTH,
@@ -240,8 +246,7 @@ export function breakButtonBox(
   slot: number,
   gridWidth: number,
 ): { left: number; width: number } {
-  const left =
-    slot * (ORGANIZE_CELL_WIDTH + ORGANIZE_COLUMN_GAP) - ORGANIZE_COLUMN_GAP;
+  const left = slot * ORGANIZE_COLUMN_PITCH - ORGANIZE_COLUMN_GAP;
   const right = Math.min(
     left + ORGANIZE_COLUMN_GAP,
     gridWidth + ORGANIZE_GRID_PADDING_X,
@@ -354,7 +359,7 @@ export function scrollTopToShowRow(
   scrollTop: number,
   viewportHeight: number,
 ): number {
-  const top = row * (ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP);
+  const top = row * ORGANIZE_ROW_PITCH;
   const bottom = top + ORGANIZE_CELL_HEIGHT;
   if (top < scrollTop) {
     return top;
@@ -371,7 +376,7 @@ export function scrollTopToCenterRow(
   row: number,
   viewportHeight: number,
 ): number {
-  const top = row * (ORGANIZE_CELL_HEIGHT + ORGANIZE_ROW_GAP);
+  const top = row * ORGANIZE_ROW_PITCH;
   return Math.max(top - (viewportHeight - ORGANIZE_CELL_HEIGHT) / HALF, 0);
 }
 

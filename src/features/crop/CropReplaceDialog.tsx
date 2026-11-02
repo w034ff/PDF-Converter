@@ -1,5 +1,5 @@
-import { useRef, type RefObject } from "react";
-import { ModalDialog } from "../../components";
+import type { RefObject } from "react";
+import { ConfirmDialog } from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
 import {
   unexportedAreaCount,
@@ -22,9 +22,7 @@ export interface CropReplaceDialogProps {
 
 /**
  * Asks whether to open another PDF in place of the open one while it has
- * areas that were never exported (design §6.10, §10.1). The focus starts on
- * "キャンセル", so that holding Enter down does not lose the areas. It looks
- * like the password dialog: one card without dividers.
+ * areas that were never exported (design §6.10, §10.1).
  */
 export function CropReplaceDialog({
   pending,
@@ -34,7 +32,6 @@ export function CropReplaceDialog({
   const { language, crop } = useAppState();
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language);
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const count = unexportedAreaCount(crop);
 
   function handleCancel() {
@@ -43,45 +40,21 @@ export function CropReplaceDialog({
   }
 
   return (
-    <ModalDialog
-      isOpen={true}
-      onClose={handleCancel}
-      titleId="crop-replace-title"
-      dialogClassName="modal-dialog password-dialog"
-      initialFocusRef={cancelRef}
+    <ConfirmDialog
+      title={t.crop.replaceDialog.title}
+      detail={pending.pdf.name}
+      cancelLabel={t.crop.replaceDialog.cancel}
+      confirmLabel={t.crop.replaceDialog.discard}
+      onCancel={handleCancel}
+      onConfirm={() => void confirmReplace(dispatch, pending)}
       returnFocusRef={returnFocusRef}
     >
-      <div className="password-dialog-header">
-        <h2 id="crop-replace-title" className="modal-title">
-          {t.crop.replaceDialog.title}
-        </h2>
-        <div className="password-dialog-filename mono">{pending.pdf.name}</div>
-      </div>
-      <p className="crop-replace-count">
-        {formatMessage(
-          count === 1
-            ? t.crop.replaceDialog.countSingle
-            : t.crop.replaceDialog.countMultiple,
-          { count },
-        )}
-      </p>
-      <div className="password-dialog-actions">
-        <button
-          ref={cancelRef}
-          type="button"
-          className="btn btn-ghost"
-          onClick={handleCancel}
-        >
-          {t.crop.replaceDialog.cancel}
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => void confirmReplace(dispatch, pending)}
-        >
-          {t.crop.replaceDialog.discard}
-        </button>
-      </div>
-    </ModalDialog>
+      {formatMessage(
+        count === 1
+          ? t.crop.replaceDialog.countSingle
+          : t.crop.replaceDialog.countMultiple,
+        { count },
+      )}
+    </ConfirmDialog>
   );
 }

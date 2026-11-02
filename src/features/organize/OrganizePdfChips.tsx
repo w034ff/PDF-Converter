@@ -1,7 +1,12 @@
 import { CloseIcon, LockIcon } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import {
+  formatErrorMessage,
+  formatMessage,
+  getTranslations,
+  pluralize,
+} from "../../i18n";
 import { isJobActive, useAppState, type OrganizePdfEntry } from "../../state";
-import { pluralize } from "../job/jobSummary";
+import { OrganizeDot } from "./OrganizeDot";
 import "./organize.css";
 
 export interface OrganizePdfChipsProps {
@@ -62,12 +67,7 @@ export function OrganizePdfChips({
                 : undefined
             }
           >
-            <span
-              className="organize-dot"
-              style={{
-                background: `var(--organize-source-${pdf.colorIndex + 1})`,
-              }}
-            />
+            <OrganizeDot colorIndex={pdf.colorIndex} />
             <span className="organize-chip-name">{pdf.name}</span>
             {pdf.encrypted && (
               <span

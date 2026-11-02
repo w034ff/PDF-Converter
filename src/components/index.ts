@@ -1,5 +1,6 @@
 export * from "./ChevronDownIcon";
 export * from "./CloseIcon";
+export * from "./ConfirmDialog";
 export * from "./ContextMenu";
 export * from "./contextMenuPoint";
 export * from "./DropZone";

@@ -20,7 +20,7 @@ export const ORGANIZE_SOURCE_COLORS = 6;
 export const ORGANIZE_HISTORY_LIMIT = 100;
 
 /** The turn of one rotation button, in degrees. */
-export const ORGANIZE_QUARTER_TURN = 90;
+const ORGANIZE_QUARTER_TURN = 90;
 
 const FULL_TURN = 360;
 

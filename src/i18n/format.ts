@@ -11,3 +11,12 @@ export function formatMessage(
     Object.hasOwn(values, key) ? String(values[key]) : placeholder,
   );
 }
+
+/** `count` with the template for one or for several. */
+export function pluralize(
+  count: number,
+  single: string,
+  multiple: string,
+): string {
+  return formatMessage(count === 1 ? single : multiple, { count });
+}
