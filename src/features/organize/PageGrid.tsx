@@ -11,7 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { contextMenuPoint } from "../../components";
-import { formatMessage, getTranslations } from "../../i18n";
+import { getTranslations } from "../../i18n";
 import { useRoom } from "../shared/useRoom";
 import {
   isJobActive,
@@ -22,14 +22,11 @@ import {
   type OrganizePage,
   type PageKey,
 } from "../../state";
-import { fileStem } from "./pdfNames";
 import { OrganizePageMenu } from "./OrganizePageMenu";
+import { PageBreak } from "./PageBreak";
 import { PageCell } from "./PageCell";
 import {
   ORGANIZE_PAGE_BOX_SIDE,
-  breakButtonBox,
-  breakGap,
-  breakMarkLeft,
   cellOffset,
   dropLineLeft,
   gridColumnCount,
@@ -43,9 +40,6 @@ import { useOrganizeDrag } from "./useOrganizeDrag";
 import { useOrganizeGridKeys } from "./useOrganizeGridKeys";
 
 const NO_PARTS: ReadonlyMap<PageKey, number> = new Map();
-
-/** How far below the top of a break's line its ✂ mark is (mockup OrganizeSplit). */
-const BREAK_MARK_TOP = 50;
 
 /** The menu of a page, open at a point. */
 interface PageMenu {
@@ -250,74 +244,22 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     reveal,
   });
 
-  /** Page numbers alone cannot tell the pages of two PDFs apart, so those also get their PDFs' names. */
-  function breakLabel(index: number): string {
-    const before = pages[index - 1];
-    const after = pages[index];
-    const numbers = { before: before.page, after: after.page };
-    if (before.id === after.id) {
-      return formatMessage(t.grid.breakAria, numbers);
-    }
-    return formatMessage(t.grid.breakAriaAcrossPdfs, {
-      ...numbers,
-      beforeName: fileStem(pdfById.get(before.id)?.name ?? ""),
-      afterName: fileStem(pdfById.get(after.id)?.name ?? ""),
-    });
-  }
-
-  /** The place that presses the break before the page at `index` (1 or more), and its line and mark when it is there. */
-  function renderBreak(index: number): React.ReactNode[] {
+  function renderBreak(index: number) {
     const key = keyOfPage(pages[index]);
-    const { row, slot } = breakGap(index, columns);
-    const top = cellOffset(row * columns, columns).top;
-    const box = breakButtonBox(slot, room.width);
-    const isBreak = breaks.has(key);
-    const nodes: React.ReactNode[] = [
-      <button
+    return (
+      <PageBreak
         key={`break-${key}`}
-        type="button"
-        className="organize-break-button"
-        aria-pressed={isBreak}
-        aria-label={breakLabel(index)}
-        tabIndex={-1}
+        before={pages[index - 1]}
+        after={pages[index]}
+        index={index}
+        columns={columns}
+        roomWidth={room.width}
+        isBreak={breaks.has(key)}
         disabled={locked || drag.dragging}
-        style={{
-          left: box.left,
-          top,
-          width: box.width,
-          height: ORGANIZE_PAGE_BOX_SIDE,
-        }}
-        // The press must not take the focus from the page the keys work on.
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => dispatch({ type: "ORGANIZE_BREAK_TOGGLED", key })}
-      />,
-    ];
-    if (isBreak) {
-      nodes.push(
-        <div
-          key={`break-line-${key}`}
-          className="organize-break-line"
-          aria-hidden="true"
-          style={{
-            left: dropLineLeft(slot, room.width),
-            top,
-            height: ORGANIZE_PAGE_BOX_SIDE,
-          }}
-        />,
-        <span
-          key={`break-mark-${key}`}
-          className="organize-break-mark"
-          aria-hidden="true"
-          style={{
-            left: breakMarkLeft(slot, room.width),
-            top: top + BREAK_MARK_TOP,
-          }}
-        >
-          <ScissorsIcon />
-        </span>,
-      );
-    }
-    return nodes;
+        pdfById={pdfById}
+        t={t}
+      />
+    );
   }
 
   function renderCell(index: number) {
@@ -356,7 +298,7 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     const { start, end } = indexRangeOfRows(range, columns, pages.length);
     if (isSplit) {
       for (let index = Math.max(start, 1); index < end; index += 1) {
-        breakNodes.push(...renderBreak(index));
+        breakNodes.push(renderBreak(index));
       }
     }
     for (let index = start; index < end; index += 1) {
@@ -419,26 +361,3 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     </div>
   );
 });
-
-/** The ✂ of the mark on a break's line (mockup OrganizeSplit). */
-function ScissorsIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <path d="M20 4L8.1 15.9" />
-      <path d="M14.5 14.5L20 20" />
-      <path d="M8.1 8.1L12 12" />
-    </svg>
-  );
-}
