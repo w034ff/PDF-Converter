@@ -65,7 +65,7 @@
 | ライセンス | `cargo-about`、`cargo-deny`、`license-checker-rseidelsohn`、pdfium の同梱ライセンス（§8.3） | NFR-05 |
 
 - ライブラリは実装開始時点の最新安定版とし、`Cargo.lock` と `package-lock.json` をコミットして固定する。
-- `pdfium-render` の pdfium の API の版を選ぶ機能（`pdfium_NNNN`）は、同梱する pdfium の版以下で最も新しいものを明示する（2026-10 時点では、同梱の 8076 に対して `pdfium_7881`。スパイクはこの組み合わせで動いた）。`pdfium_latest` は使わない（crate の更新で API の版が同梱の pdfium より新しくならないようにするため）。
+- `pdfium-render` の pdfium の API の版を選ぶ機能（`pdfium_NNNN`）は、同梱する pdfium の版以下で最も新しいものを明示する（2026-11 時点では、同梱の 8125 に対して `pdfium_7881`。スパイクはこの組み合わせで動いた）。`pdfium_latest` は使わない（crate の更新で API の版が同梱の pdfium より新しくならないようにするため）。
 - Tauri のプラグインは `tauri-plugin-dialog` だけを使い、Rust 側からだけ呼ぶ（§9）。
 - `ort` はリリース候補の版（2.0.0-rc）しかない（2026-10 時点）。版を `=` で固定し、安定版が出たら §9 の依存の入手経路の規則（公開から 7 日）で移る。onnxruntime は実行時に読み込み（`load-dynamic`）、`ort` の既定のビルド時の取得（pyke の配布物）は使わない（§8.5 で版とハッシュを固定して取得するため）。
 
@@ -609,7 +609,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 
 ### 8.3 ライセンス
 
-- `scripts/generate-licenses.ts` が、取得した tgz の `LICENSE` と `licenses/` の 14 件を第三者ライセンス一覧に加える。版は `pdfium-version.json` から入れる。
+- `scripts/generate-licenses.ts` が、取得した tgz の `LICENSE` と `licenses/` の 18 件を第三者ライセンス一覧に加える。版は `pdfium-version.json` から入れる。
 - FreeType のライセンスが求める表示は、「このアプリについて」の一覧で満たす。
 - ライセンスの許可リストの検査（NFR-05）と第三者ライセンス一覧は、配布物に入る依存だけを対象にする。テストとフィクスチャの生成にだけ使う dev-dependencies は除く（`deny.toml` の `[graph] exclude-dev = true`）。配布物に入らないものに同梱の条件は掛からないため。例: `jpeg-encoder` は IJG ライセンスを含むが、フィクスチャの生成にだけ使う。
 
