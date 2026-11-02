@@ -341,7 +341,6 @@ fn runs<'a, 'b>(used: &'a [(u32, &'b OrganizePage)]) -> Vec<&'a [(u32, &'b Organ
             start = index;
         }
     }
-    runs.retain(|run| !run.is_empty());
     runs
 }
 
