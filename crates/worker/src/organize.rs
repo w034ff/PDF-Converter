@@ -227,20 +227,19 @@ fn organize<W: Write>(
         // The bookmarks are noted before any page is touched (design organize §1, step 2).
         relinking.outline.extend(outline_of(&doc, &kept));
 
-        let mut flattened_links = FlattenedLinks::default();
+        let mut notes = LinkNotes::new(&mut relinking.links);
         for (position, page) in used {
-            prepare_page(
-                &doc,
-                page.page,
-                *position,
-                &kept,
-                &mut relinking.links,
-                &mut flattened_links,
-            )
-            .map_err(|code| Failure::source(code, source_index))?;
+            let page = SourcePage {
+                index: page.page,
+                position: *position,
+                kept: &kept,
+            };
+            prepare_page(&doc, &page, &mut notes)
+                .map_err(|code| Failure::source(code, source_index))?;
             done += 1;
             write_message(out, &Response::OrganizeProgress { done }, &[])?;
         }
+        let flattened_links = notes.flattened;
 
         for run in runs(used) {
             let start = run[0].0;
@@ -366,32 +365,31 @@ fn turn(output: &PdfDocument<'_>, index: usize, rotation: u16) -> Result<(), &'s
     Ok(())
 }
 
-/// Prepares page `index` of `doc` for copying to output position `position`: notes its links
-/// (design organize §1, step 3), then flattens it if it has an annotation other than a link
-/// (step 4). Every annotation kind but links, form fields included, is drawn into the page and
-/// removed, and so are the links with them, which is why they are noted first.
+/// A page of a source and where it goes in the output.
+struct SourcePage<'a> {
+    /// The page's index in the source.
+    index: u32,
+    /// The page's position in the output.
+    position: u32,
+    /// Where each used page of the source goes in the output, by index in the source.
+    kept: &'a HashMap<u32, u32>,
+}
+
+/// Prepares `source_page` of `doc` for copying: notes its links (design organize §1, step 3),
+/// then flattens it if it has an annotation other than a link (step 4). Every annotation kind but
+/// links, form fields included, is drawn into the page and removed, and so are the links with
+/// them, which is why they are noted first.
 fn prepare_page(
     doc: &PdfDocument<'_>,
-    index: u32,
-    position: u32,
-    kept: &HashMap<u32, u32>,
-    links: &mut Vec<OutputLink>,
-    flattened_links: &mut FlattenedLinks,
+    source_page: &SourcePage<'_>,
+    notes: &mut LinkNotes<'_>,
 ) -> Result<(), &'static str> {
     let mut page = doc
         .pages()
-        .get(index as i32)
+        .get(source_page.index as i32)
         .map_err(|_| CODE_PDF_OPEN_FAILED)?;
     let flattens = has_annotation_besides_links(&page);
-    note_links(
-        &page,
-        index,
-        position,
-        flattens,
-        kept,
-        links,
-        flattened_links,
-    );
+    note_links(&page, source_page, flattens, notes);
     if !flattens {
         return Ok(());
     }
@@ -428,19 +426,32 @@ struct FlattenedLinks {
     slots: Vec<usize>,
 }
 
-/// Adds the links of `page` that lead somewhere the output has to `links`.
+/// Where the links of the pages of one source are noted: the links of the output, and which of
+/// them sit on flattened pages.
+struct LinkNotes<'a> {
+    links: &'a mut Vec<OutputLink>,
+    flattened: FlattenedLinks,
+}
+
+impl<'a> LinkNotes<'a> {
+    fn new(links: &'a mut Vec<OutputLink>) -> Self {
+        Self {
+            links,
+            flattened: FlattenedLinks::default(),
+        }
+    }
+}
+
+/// Adds the links of `page` that lead somewhere the output has to `notes`.
 ///
 /// The links are taken from `annotations()` one by one: `links()` returns a link several times
 /// on a page that mixes links with other annotations. A link that is left out still counts in
 /// `nth`, because the output's copy of the page keeps all of them in the order of the source.
 fn note_links(
     page: &PdfPage<'_>,
-    index: u32,
-    position: u32,
+    source_page: &SourcePage<'_>,
     flattens: bool,
-    kept: &HashMap<u32, u32>,
-    links: &mut Vec<OutputLink>,
-    flattened_links: &mut FlattenedLinks,
+    notes: &mut LinkNotes<'_>,
 ) {
     let mut nth: u32 = 0;
     for annotation in page.annotations().iter() {
@@ -455,7 +466,7 @@ fn note_links(
         let Ok(rect) = link.rect() else {
             continue;
         };
-        let Reach::Kept(target) = reach(link.destination(), link.action(), kept) else {
+        let Reach::Kept(target) = reach(link.destination(), link.action(), source_page.kept) else {
             continue;
         };
         let (left, right) = (rect.left().value, rect.right().value);
@@ -467,18 +478,18 @@ fn note_links(
             bottom.max(top),
         ];
         let style = if flattens {
-            flattened_links.keys.push(SourceLinkKey {
-                page: index,
+            notes.flattened.keys.push(SourceLinkKey {
+                page: source_page.index,
                 nth: this,
                 rect,
             });
-            flattened_links.slots.push(links.len());
+            notes.flattened.slots.push(notes.links.len());
             LinkStyleSource::Source(None)
         } else {
             LinkStyleSource::Copied { nth: this }
         };
-        links.push(OutputLink {
-            page: position,
+        notes.links.push(OutputLink {
+            page: source_page.position,
             rect,
             target,
             style,
