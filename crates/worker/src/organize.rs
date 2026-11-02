@@ -105,30 +105,6 @@ impl Failure {
             detail: None,
         }
     }
-
-    /// The failure of source `source`, with the code and detail of the error response `response`.
-    fn from_response(response: Response, source: u32) -> Self {
-        match response {
-            Response::Error { code, detail } => Self::Source {
-                code,
-                detail,
-                source,
-            },
-            _ => Self::Source {
-                code: CODE_PDF_OPEN_FAILED.into(),
-                detail: None,
-                source,
-            },
-        }
-    }
-
-    fn source(code: &str, source: u32) -> Self {
-        Self::Source {
-            code: code.into(),
-            detail: None,
-            source,
-        }
-    }
 }
 
 impl From<io::Error> for Failure {
@@ -183,16 +159,7 @@ fn organize<W: Write>(
         ..
     } = args;
 
-    let mut output = pdfium.create_new_pdf().map_err(|error| Failure::General {
-        code: CODE_PDFIUM_UNAVAILABLE.into(),
-        detail: Some(format!("{error:?}")),
-    })?;
-    // Output positions already filled, in order. A page of a source goes in front of the later
-    // sources' pages that come after it in the output, so its index is the number of filled
-    // positions before it.
-    let mut filled: Vec<u32> = Vec::new();
-    let mut done: u32 = 0;
-    let mut estimate: u64 = 0;
+    let mut assembly = Assembly::new(pdfium)?;
 
     // The pages of each source with their output positions, in output order.
     let mut by_source: Vec<Vec<(u32, &OrganizePage)>> = vec![Vec::new(); sources.len()];
@@ -202,105 +169,17 @@ fn organize<W: Write>(
     // `validate` has checked that there is a first page.
     let first_source = pages[0].source as usize;
 
-    let mut relinking = Relinking::default();
-
-    for (index, source) in sources.iter().enumerate() {
-        let source_index = index as u32;
-        let used = &by_source[index];
-
-        let doc = pdfium
-            .load_pdf_from_file(&source.path, source.password.as_deref())
-            .map_err(|error| Failure::from_response(map_pdfium_open_error(&error), source_index))?;
-        let page_count = doc.pages().len() as u32;
-        check_page_count(page_count)
-            .map_err(|response| Failure::from_response(response, source_index))?;
-        if used.iter().any(|(_, page)| page.page >= page_count) {
-            return Err(Failure::source(CODE_INVALID_PARAMS, source_index));
-        }
-
-        // Where each used page of this source goes in the output. A page that is not in it is
-        // gone, and so is whatever leads to it.
-        let kept: HashMap<u32, u32> = used
-            .iter()
-            .map(|(position, page)| (page.page, *position))
-            .collect();
-        // The bookmarks are noted before any page is touched (design organize §1, step 2).
-        relinking.outline.extend(outline_of(&doc, &kept));
-
-        let mut notes = LinkNotes::new(&mut relinking.links);
-        for (position, page) in used {
-            let page = SourcePage {
-                index: page.page,
-                position: *position,
-                kept: &kept,
-            };
-            prepare_page(&doc, &page, &mut notes)
-                .map_err(|code| Failure::source(code, source_index))?;
-            done += 1;
-            write_message(out, &Response::OrganizeProgress { done }, &[])?;
-        }
-        let flattened_links = notes.flattened;
-
-        for run in runs(used) {
-            let start = run[0].0;
-            let destination = filled.partition_point(|&position| position < start);
-            let list = run
-                .iter()
-                .map(|(_, page)| (page.page + 1).to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            output
-                .pages_mut()
-                .copy_pages_from_document(&doc, &list, destination as i32)
-                .map_err(|_| Failure::source(CODE_PDF_OPEN_FAILED, source_index))?;
-            for (offset, (_, page)) in run.iter().enumerate() {
-                turn(&output, destination + offset, page.rotation)
-                    .map_err(|code| Failure::source(code, source_index))?;
-            }
-            filled.splice(
-                destination..destination,
-                run.iter().map(|(position, _)| *position),
-            );
-        }
-
-        // Unknown if the file cannot be read: it then adds nothing to the estimate, and lopdf is
-        // not run on it.
-        let file_len = std::fs::metadata(&source.path).ok().map(|meta| meta.len());
-        if page_count > 0 {
-            estimate += file_len.unwrap_or(0) * used.len() as u64 / u64::from(page_count);
-        }
-        // The next source is opened only after this one is closed.
-        drop(doc);
-
-        // What pdfium does not show is read from the file, after pdfium is done with it. The
-        // view settings are those of the PDF that the first page of the output comes from.
-        let want_view = index == first_source;
-        if want_view || !flattened_links.keys.is_empty() {
-            let details = read_raw(
-                source,
-                file_len,
-                page_count,
-                want_view,
-                &flattened_links.keys,
-            );
-            if let Some(details) = details {
-                if want_view {
-                    relinking.view = details.view;
-                }
-                for (slot, style) in flattened_links.slots.iter().zip(details.styles) {
-                    relinking.links[*slot].style = LinkStyleSource::Source(style);
-                }
-            }
-        }
+    for (index, file) in sources.iter().enumerate() {
+        let source = CurrentSource {
+            index: index as u32,
+            file,
+            used: &by_source[index],
+            want_view: index == first_source,
+        };
+        assembly.copy_source(pdfium, out, &source)?;
     }
 
-    let mut saved: Vec<u8> = Vec::new();
-    // A failed reservation only costs the doubling that the reservation avoids.
-    let _ = saved.try_reserve_exact((estimate / 100 * SAVE_BUFFER_FACTOR_PERCENT) as usize);
-    output
-        .save_to_writer(&mut saved)
-        .map_err(|_| Failure::general(CODE_WRITE_FAILED))?;
-    drop(output);
+    let (saved, relinking) = assembly.save()?;
 
     let mut chunks = ChunkWriter::new(out);
     let finished = finish_organized(saved, &creator, relinking, password.as_ref(), &mut chunks);
@@ -314,6 +193,186 @@ fn organize<W: Write>(
     let bytes = chunks.finish()?;
     write_message(out, &Response::Organized { bytes }, &[])?;
     Ok(())
+}
+
+/// The output being built, and what is kept from one source to the next.
+struct Assembly {
+    output: PdfDocument<'static>,
+    /// Output positions already filled, in order. A page of a source goes in front of the later
+    /// sources' pages that come after it in the output, so its index is the number of filled
+    /// positions before it.
+    filled: Vec<u32>,
+    /// The pages prepared so far.
+    done: u32,
+    /// How many bytes the saved document is expected to take.
+    estimate: u64,
+    relinking: Relinking,
+}
+
+/// A source of the request that is being copied.
+struct CurrentSource<'a> {
+    /// The index of the source in the request.
+    index: u32,
+    file: &'a OrganizeSource,
+    /// The pages of the source that the output uses with their output positions, in output order.
+    used: &'a [(u32, &'a OrganizePage)],
+    /// Whether the first page of the output comes from this source, whose view settings the
+    /// output then takes.
+    want_view: bool,
+}
+
+impl CurrentSource<'_> {
+    /// The failure of this source with `code`.
+    fn fail(&self, code: &str) -> Failure {
+        Failure::Source {
+            code: code.into(),
+            detail: None,
+            source: self.index,
+        }
+    }
+
+    /// The failure of this source with the code and detail of the error response `response`.
+    fn fail_with(&self, response: Response) -> Failure {
+        match response {
+            Response::Error { code, detail } => Failure::Source {
+                code,
+                detail,
+                source: self.index,
+            },
+            _ => self.fail(CODE_PDF_OPEN_FAILED),
+        }
+    }
+}
+
+impl Assembly {
+    fn new(pdfium: &'static Pdfium) -> Result<Self, Failure> {
+        let output = pdfium.create_new_pdf().map_err(|error| Failure::General {
+            code: CODE_PDFIUM_UNAVAILABLE.into(),
+            detail: Some(format!("{error:?}")),
+        })?;
+        Ok(Self {
+            output,
+            filled: Vec::new(),
+            done: 0,
+            estimate: 0,
+            relinking: Relinking::default(),
+        })
+    }
+
+    /// Copies the pages of `source` that the output uses into the output, and notes the bookmarks,
+    /// links and view settings of the source. Sends one `OrganizeProgress` to `out` per page.
+    fn copy_source<W: Write>(
+        &mut self,
+        pdfium: &'static Pdfium,
+        out: &mut W,
+        source: &CurrentSource<'_>,
+    ) -> Result<(), Failure> {
+        let used = source.used;
+
+        let doc = pdfium
+            .load_pdf_from_file(&source.file.path, source.file.password.as_deref())
+            .map_err(|error| source.fail_with(map_pdfium_open_error(&error)))?;
+        let page_count = doc.pages().len() as u32;
+        check_page_count(page_count).map_err(|response| source.fail_with(response))?;
+        if used.iter().any(|(_, page)| page.page >= page_count) {
+            return Err(source.fail(CODE_INVALID_PARAMS));
+        }
+
+        // Where each used page of this source goes in the output. A page that is not in it is
+        // gone, and so is whatever leads to it.
+        let kept: HashMap<u32, u32> = used
+            .iter()
+            .map(|(position, page)| (page.page, *position))
+            .collect();
+        // The bookmarks are noted before any page is touched (design organize §1, step 2).
+        self.relinking.outline.extend(outline_of(&doc, &kept));
+
+        let mut notes = LinkNotes::new(&mut self.relinking.links);
+        for (position, page) in used {
+            let page = SourcePage {
+                index: page.page,
+                position: *position,
+                kept: &kept,
+            };
+            prepare_page(&doc, &page, &mut notes).map_err(|code| source.fail(code))?;
+            self.done += 1;
+            write_message(out, &Response::OrganizeProgress { done: self.done }, &[])?;
+        }
+        let flattened_links = notes.flattened;
+
+        for run in runs(used) {
+            let start = run[0].0;
+            let destination = self.filled.partition_point(|&position| position < start);
+            let list = run
+                .iter()
+                .map(|(_, page)| (page.page + 1).to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            self.output
+                .pages_mut()
+                .copy_pages_from_document(&doc, &list, destination as i32)
+                .map_err(|_| source.fail(CODE_PDF_OPEN_FAILED))?;
+            for (offset, (_, page)) in run.iter().enumerate() {
+                turn(&self.output, destination + offset, page.rotation)
+                    .map_err(|code| source.fail(code))?;
+            }
+            self.filled.splice(
+                destination..destination,
+                run.iter().map(|(position, _)| *position),
+            );
+        }
+
+        // Unknown if the file cannot be read: it then adds nothing to the estimate, and lopdf is
+        // not run on it.
+        let file_len = std::fs::metadata(&source.file.path)
+            .ok()
+            .map(|meta| meta.len());
+        if page_count > 0 {
+            self.estimate += file_len.unwrap_or(0) * used.len() as u64 / u64::from(page_count);
+        }
+        // The next source is opened only after this one is closed.
+        drop(doc);
+
+        // What pdfium does not show is read from the file, after pdfium is done with it. The
+        // view settings are those of the PDF that the first page of the output comes from.
+        if source.want_view || !flattened_links.keys.is_empty() {
+            let details = read_raw(
+                source.file,
+                file_len,
+                page_count,
+                source.want_view,
+                &flattened_links.keys,
+            );
+            if let Some(details) = details {
+                if source.want_view {
+                    self.relinking.view = details.view;
+                }
+                for (slot, style) in flattened_links.slots.iter().zip(details.styles) {
+                    self.relinking.links[*slot].style = LinkStyleSource::Source(style);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Saves the output and returns the bytes with what was noted on the way. The output document
+    /// is closed before this returns.
+    fn save(self) -> Result<(Vec<u8>, Relinking), Failure> {
+        let Self {
+            output,
+            estimate,
+            relinking,
+            ..
+        } = self;
+        let mut saved: Vec<u8> = Vec::new();
+        // A failed reservation only costs the doubling that the reservation avoids.
+        let _ = saved.try_reserve_exact((estimate / 100 * SAVE_BUFFER_FACTOR_PERCENT) as usize);
+        output
+            .save_to_writer(&mut saved)
+            .map_err(|_| Failure::general(CODE_WRITE_FAILED))?;
+        drop(output);
+        Ok((saved, relinking))
+    }
 }
 
 /// Checks the arguments of the request (design organize §3) and returns the output password.
