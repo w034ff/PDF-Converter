@@ -489,6 +489,18 @@ describe("moving, turning and deleting with the keys", () => {
 
     expect(focusedKey()).toBe("1:11");
   });
+
+  it("keeps the focus in the grid when the first and the last page are deleted", async () => {
+    await openOrganizeTab({ pdfs: [BOOK] });
+    focusCell(1, 1);
+    ctrlClick(cellOf(1, 1));
+    ctrlClick(cellOf(1, 12));
+
+    key("Delete");
+    await flush();
+
+    expect(focusedKey()).toBe("1:2");
+  });
 });
 
 describe("the keys of the whole tab", () => {

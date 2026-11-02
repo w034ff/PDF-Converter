@@ -680,6 +680,18 @@ describe("page operations and the history", () => {
     expect(state.focused).toBe(k(1, 2));
   });
 
+  it("a deletion at both ends moves the focus to a page left between them", () => {
+    let state = stateWith(pdf(1, 3));
+
+    state = reduce(state, {
+      type: "ORGANIZE_PAGES_DELETED",
+      keys: [k(1, 1), k(1, 3)],
+    });
+
+    expect(grid(state)).toEqual(["1:2"]);
+    expect(state.focused).toBe(k(1, 2));
+  });
+
   it("deleting every page leaves nothing to focus", () => {
     let state = stateWith(pdf(1, 2));
 

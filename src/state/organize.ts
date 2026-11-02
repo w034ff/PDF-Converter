@@ -647,7 +647,7 @@ function deletePages(
   const first = indices[0];
   const last = indices[indices.length - 1];
   const pages = state.pages.filter((page) => !doomed.has(keyOfPage(page)));
-  // The page after the deleted ones, else the one before them.
+  // The page after the deleted ones, else the one before them, else one left between them.
   const next = state.pages
     .slice(last + 1)
     .find((page) => !doomed.has(keyOfPage(page)));
@@ -655,7 +655,7 @@ function deletePages(
     .slice(0, first)
     .reverse()
     .find((page) => !doomed.has(keyOfPage(page)));
-  const landing = next ?? previous;
+  const landing = next ?? previous ?? pages[0];
   return {
     ...withStep(state, stepOf(state), {
       pages,
