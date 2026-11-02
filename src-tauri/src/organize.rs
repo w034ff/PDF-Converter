@@ -7,7 +7,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 use std::sync::{Mutex, MutexGuard};
 
 use pdfconv_core::PdfConformance;
@@ -22,7 +21,7 @@ use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
     kind_of_extension, open_in_pool, pdf_thumbnail, scan_folder, sort_dropped,
 };
-use crate::jobs::output_password;
+use crate::jobs::{output_password, refuse_while_running};
 
 /// The largest estimated size of one organized output (design organize §2).
 ///
@@ -265,13 +264,6 @@ impl OrganizeState {
         entry.password = Some(password);
         Some(entry.to_ipc())
     }
-}
-
-fn refuse_while_running(state: &AppState) -> Result<(), IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
-    Ok(())
 }
 
 fn page_sizes(pages: &[pdfconv_worker::protocol::PageDimensions]) -> Vec<PageSizePt> {

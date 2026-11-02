@@ -21,6 +21,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::crop;
 use crate::error::{ErrorCode, IpcError};
+use crate::jobs::refuse_while_running;
 use crate::organize;
 use crate::worker_pool::PooledWorker;
 
@@ -682,12 +683,12 @@ pub fn sort_dropped(paths: &[PathBuf]) -> DropSorting {
 
 /// Adds what was dropped to both lists (design §6.1, §7.2).
 pub fn add_dropped(state: &AppState, paths: &[PathBuf]) -> ItemsDropped {
-    if state.is_running.load(Ordering::SeqCst) {
+    if let Err(error) = refuse_while_running(state) {
         return ItemsDropped {
             images: Vec::new(),
             pdfs: Vec::new(),
             skipped: Skipped::default(),
-            error: Some(IpcError::from_code(ErrorCode::ConversionRunning)),
+            error: Some(error),
         };
     }
     let sorting = sort_dropped(paths);
@@ -708,9 +709,7 @@ pub fn add_dropped(state: &AppState, paths: &[PathBuf]) -> ItemsDropped {
 
 /// Removes items from the table, rejecting with `ConversionRunning` during active conversion (design §6.1, §7.1).
 pub fn remove_items(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    refuse_while_running(state)?;
     state.items.remove(ids);
     Ok(())
 }
@@ -852,9 +851,7 @@ fn try_unlock(
 /// Unlocks a password-protected PDF and propagates the password to other
 /// password-protected entries in the table (design §6.8, §7.1).
 pub fn unlock_pdf(state: &AppState, id: u64, password: &str) -> Result<UnlockResult, IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
+    refuse_while_running(state)?;
     let target = state
         .items
         .get(id)

@@ -30,7 +30,7 @@ use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
     kind_of_extension, open_in_pool, pdf_thumbnail, request_on_pdf, unexpected_response,
 };
-use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload};
+use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
 use crate::worker_pool::{WorkerPool, WorkerPoolError};
 
@@ -612,13 +612,6 @@ impl Analyzer {
             .map_err(WorkerPoolError::from);
         settle(&mut state, running, result)
     }
-}
-
-fn refuse_while_running(state: &AppState) -> Result<(), IpcError> {
-    if state.is_running.load(Ordering::SeqCst) {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
-    Ok(())
 }
 
 /// Opens the PDF at `path` and holds it as the pending PDF, dropping the one
