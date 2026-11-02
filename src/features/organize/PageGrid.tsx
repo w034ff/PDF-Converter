@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -42,15 +41,10 @@ import {
   indexRangeOfRows,
   isFocusKey,
   keyInsertIndex,
-  rowOfIndex,
-  scrollTopToCenterRow,
-  scrollTopToShowRow,
   visibleRowRange,
 } from "./organizeGrid";
 import { useOrganizeDrag } from "./useOrganizeDrag";
-
-/** Stands for the page the focus lands on after a deletion in `revealRef`. */
-const FOCUS_LANDING = Symbol("focus-landing");
+import { FOCUS_LANDING, useGridReveal } from "./useGridReveal";
 
 const NO_PARTS: ReadonlyMap<PageKey, number> = new Map();
 
@@ -104,10 +98,8 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const room = useRoom(scrollRef);
-  const [scrollTop, setScrollTop] = useState(0);
   const columns = gridColumnCount(room.width);
   const rows = gridRowCount(pages.length, columns);
-  const range = visibleRowRange(scrollTop, room.height, rows);
 
   const pdfById = useMemo(
     () => new Map(pdfs.map((pdf) => [pdf.id, pdf])),
@@ -132,6 +124,15 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
   const tabStopIndex =
     tabStopKey === null ? -1 : (indexByKey.get(tabStopKey) ?? -1);
 
+  const { scrollTop, setScrollTop, reveal } = useGridReveal({
+    scrollRef,
+    focused,
+    indexByKey,
+    columns,
+    room,
+  });
+  const range = visibleRowRange(scrollTop, room.height, rows);
+
   const drag = useOrganizeDrag({
     scrollRef,
     contentRef,
@@ -142,70 +143,9 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     onSelectOnly: (key) => dispatch({ type: "ORGANIZE_SELECTED_ONLY", key }),
   });
 
-  // The page the keyboard moved or focused, shown and given the focus once the
-  // state has changed. After a deletion it is whichever page the focus
-  // landed on, which only the state knows.
-  const revealRef = useRef<PageKey | typeof FOCUS_LANDING | null>(null);
-  // A key at the edge of the grid changes no state, and what it asks for must
-  // not wait for the next change that does (a press far away, say).
-  const [revealTurn, setRevealTurn] = useState(0);
-  function reveal(target: PageKey | typeof FOCUS_LANDING) {
-    revealRef.current = target;
-    setRevealTurn((turn) => turn + 1);
-  }
   useImperativeHandle(ref, () => ({
     focusAfterDeleting: () => reveal(FOCUS_LANDING),
   }));
-  useLayoutEffect(() => {
-    const wanted = revealRef.current;
-    const scroller = scrollRef.current;
-    if (wanted === null || scroller === null) {
-      return;
-    }
-    revealRef.current = null;
-    const key = wanted === FOCUS_LANDING ? focused : wanted;
-    if (key === null) {
-      return;
-    }
-    const index = indexByKey.get(key);
-    if (index === undefined) {
-      return;
-    }
-    const next = scrollTopToShowRow(
-      rowOfIndex(index, columns),
-      scroller.scrollTop,
-      room.height,
-    );
-    if (next !== scroller.scrollTop) {
-      scroller.scrollTop = next;
-      setScrollTop(next);
-    }
-    const cell = scroller.querySelector<HTMLElement>(
-      `[data-page-key="${CSS.escape(key)}"]`,
-    );
-    cell?.focus({ preventScroll: true });
-  }, [revealTurn, focused, indexByKey, columns, room.height]);
-
-  // The grid is drawn anew when its tab comes back, at the top. The page last
-  // worked on is shown once the room is known; the focus stays where the tab
-  // change left it.
-  const restoredRef = useRef(false);
-  useLayoutEffect(() => {
-    const scroller = scrollRef.current;
-    if (restoredRef.current || room.width === 0 || scroller === null) {
-      return;
-    }
-    restoredRef.current = true;
-    const index = focused === null ? undefined : indexByKey.get(focused);
-    if (index === undefined) {
-      return;
-    }
-    const next = scrollTopToCenterRow(rowOfIndex(index, columns), room.height);
-    if (next !== scroller.scrollTop) {
-      scroller.scrollTop = next;
-      setScrollTop(next);
-    }
-  }, [focused, indexByKey, columns, room.width, room.height]);
 
   const [menu, setMenu] = useState<PageMenu | null>(null);
   // A save takes the pages; the menu does not wait for it.
