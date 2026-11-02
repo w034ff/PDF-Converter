@@ -1,7 +1,11 @@
 import { CloseIcon, LockIcon } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import {
+  formatErrorMessage,
+  formatMessage,
+  getTranslations,
+  pluralize,
+} from "../../i18n";
 import { isJobActive, useAppState, type OrganizePdfEntry } from "../../state";
-import { pluralize } from "../job/jobSummary";
 import "./organize.css";
 
 export interface OrganizePdfChipsProps {

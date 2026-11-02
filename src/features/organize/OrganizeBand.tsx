@@ -1,7 +1,6 @@
 import { forwardRef, type ReactNode } from "react";
-import { getTranslations } from "../../i18n";
+import { getTranslations, pluralize } from "../../i18n";
 import { isJobActive, useAppDispatch, useAppState } from "../../state";
-import { pluralize } from "../job/jobSummary";
 import "./organize.css";
 
 export interface OrganizeBandProps {

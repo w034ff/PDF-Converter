@@ -32,7 +32,7 @@ import {
   type JobState,
 } from "../../state";
 import { useThumbnail } from "../items/useThumbnail";
-import { formatSkippedSummary } from "../pdf-to-images/pdfUtils";
+import { formatSkippedSummary } from "../shared/skipped";
 import "./ImagesToPdf.css";
 
 function formatBytes(bytes: number): string {

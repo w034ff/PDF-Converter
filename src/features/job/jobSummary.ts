@@ -1,6 +1,7 @@
 import {
   formatErrorMessage,
   formatMessage,
+  pluralize,
   type Language,
   type Translations,
 } from "../../i18n";
@@ -53,15 +54,6 @@ export interface PartFailure {
 }
 
 const ITEMS_SHAPE: JobSummaryShape = { kind: "items", partial: 0 };
-
-/** `count` with the template for one or for several. */
-export function pluralize(
-  count: number,
-  single: string,
-  multiple: string,
-): string {
-  return formatMessage(count === 1 ? single : multiple, { count });
-}
 
 /** The parts of the summary, none of them for a count of zero. */
 function summaryParts(

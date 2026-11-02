@@ -1,7 +1,6 @@
 import { useMemo } from "react";
-import { formatMessage, getTranslations } from "../../i18n";
+import { formatMessage, getTranslations, pluralize } from "../../i18n";
 import { MAX_PDF_PAGES, splitIntoParts, useAppState } from "../../state";
-import { pluralize } from "../job/jobSummary";
 import {
   bytesToMegabytes,
   estimateOutputBytes,

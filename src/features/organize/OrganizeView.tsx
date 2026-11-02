@@ -21,8 +21,8 @@ import {
   type OrganizePdfEntry,
 } from "../../state";
 import { OutputDirError } from "../output";
-import { formatSkippedDetails } from "../pdf-to-images/pdfUtils";
 import { PasswordDialog } from "../pdf-to-images/PasswordDialog";
+import { formatSkippedDetails } from "../shared/skipped";
 import { KeyHintsDialog } from "../shortcuts/KeyHintsDialog";
 import { OrganizeBand } from "./OrganizeBand";
 import { OrganizeClearDialog } from "./OrganizeClearDialog";
