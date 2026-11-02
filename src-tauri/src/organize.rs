@@ -19,7 +19,7 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
-    kind_of_extension, open_in_pool, pdf_thumbnail, scan_folder, sort_dropped,
+    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, scan_folder, sort_dropped,
 };
 use crate::jobs::{output_password, refuse_while_running};
 
@@ -264,16 +264,6 @@ impl OrganizeState {
         entry.password = Some(password);
         Some(entry.to_ipc())
     }
-}
-
-fn page_sizes(pages: &[pdfconv_worker::protocol::PageDimensions]) -> Vec<PageSizePt> {
-    pages
-        .iter()
-        .map(|page| PageSizePt {
-            width_pt: page.width_pt,
-            height_pt: page.height_pt,
-        })
-        .collect()
 }
 
 /// Adds the PDF files in `paths` to the organize list, one after another (design organize §4).

@@ -550,6 +550,17 @@ pub(crate) fn open_in_pool(
     Ok(opened)
 }
 
+/// The size of every page of `pages`, as [`open_in_pool`] returns them.
+pub(crate) fn page_sizes(pages: &[PageDimensions]) -> Vec<PageSizePt> {
+    pages
+        .iter()
+        .map(|page| PageSizePt {
+            width_pt: page.width_pt,
+            height_pt: page.height_pt,
+        })
+        .collect()
+}
+
 fn load_pdf(
     state: &AppState,
     path: &Path,

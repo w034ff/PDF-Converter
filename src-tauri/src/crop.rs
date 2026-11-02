@@ -28,7 +28,8 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
-    kind_of_extension, open_in_pool, pdf_thumbnail, request_on_pdf, unexpected_response,
+    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, request_on_pdf,
+    unexpected_response,
 };
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
@@ -635,16 +636,6 @@ pub fn open_pdf(state: &AppState, path: &Path) -> CropPdf {
     let held = entry.to_ipc();
     state.crop.hold(entry);
     held
-}
-
-fn page_sizes(pages: &[pdfconv_worker::protocol::PageDimensions]) -> Vec<PageSizePt> {
-    pages
-        .iter()
-        .map(|page| PageSizePt {
-            width_pt: page.width_pt,
-            height_pt: page.height_pt,
-        })
-        .collect()
 }
 
 /// Makes the pending PDF `id` the open PDF and ends the analysis worker of the
