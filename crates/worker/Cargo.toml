@@ -23,7 +23,7 @@ ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "
 pdfconv-core = { path = "../core" }
 # Encodes rendered pages as PNG, JPEG or lossless WebP (design §2, §4.4).
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
-# pdfium_7881 is the newest API the bundled pdfium (chromium/8076) supports
+# pdfium_7881 is the newest API the bundled pdfium (chromium/8125) supports
 # (design §2); pdfium_latest would follow the crate instead of the binary.
 pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
 serde = { version = "1", features = ["derive"] }

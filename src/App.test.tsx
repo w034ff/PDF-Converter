@@ -623,10 +623,10 @@ describe("App", () => {
       expect(toggle).toHaveAttribute("aria-expanded", "true");
 
       expect(
-        await within(dialog).findByText("pdfium-binaries chromium/8076"),
+        await within(dialog).findByText("pdfium-binaries chromium/8125"),
       ).toBeInTheDocument();
       expect(
-        within(dialog).getByText("pdfium/freetype.txt chromium/8076"),
+        within(dialog).getByText("pdfium/freetype.txt chromium/8125"),
       ).toBeInTheDocument();
       expect(within(dialog).getAllByText(/^tauri /).length).toBeGreaterThan(0);
       expect(within(dialog).getAllByText(/^react /).length).toBeGreaterThan(0);
