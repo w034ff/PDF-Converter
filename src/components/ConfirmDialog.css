@@ -1,0 +1,28 @@
+.modal-dialog.confirm-dialog {
+  max-width: 400px;
+  padding: 24px;
+  gap: 16px;
+}
+
+.confirm-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.confirm-dialog-detail {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.confirm-dialog-body {
+  margin: 0;
+  font-size: 13px;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
