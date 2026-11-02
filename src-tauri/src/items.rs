@@ -849,6 +849,16 @@ pub(crate) fn unlock_password(password: &str) -> Result<Password, IpcError> {
     })
 }
 
+/// Whether `error`, from opening a PDF with a password, leaves the PDF as it is
+/// (design §6.8). A wrong password and a worker that failed say nothing new
+/// about the file, so the error goes to the caller and nothing is recorded.
+pub(crate) fn stops_unlock(error: &IpcError) -> bool {
+    matches!(
+        error.code,
+        ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
+    )
+}
+
 fn try_unlock(
     state: &AppState,
     id: u64,
@@ -857,10 +867,7 @@ fn try_unlock(
 ) -> Result<PdfItem, IpcError> {
     let (item, loaded) = load_pdf_item(state, id, path, Some(password));
     if let Err(ref err) = loaded
-        && matches!(
-            err.code,
-            ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
-        )
+        && stops_unlock(err)
     {
         return Err(err.clone());
     }

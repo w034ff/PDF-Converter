@@ -20,7 +20,7 @@ use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
     kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, scan_folder, sort_dropped,
-    unlock_password,
+    stops_unlock, unlock_password,
 };
 use crate::jobs::{output_password, refuse_while_running};
 
@@ -401,10 +401,7 @@ fn try_unlock(
 ) -> Result<Option<OrganizePdf>, IpcError> {
     let opened = open_in_pool(state, path, Some(password));
     if let Err(error) = &opened
-        && matches!(
-            error.code,
-            ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
-        )
+        && stops_unlock(error)
     {
         return Err(error.clone());
     }

@@ -28,7 +28,7 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
-    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, request_on_pdf,
+    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, request_on_pdf, stops_unlock,
     unexpected_response, unlock_password,
 };
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
@@ -671,10 +671,7 @@ pub fn unlock_crop_pdf(state: &AppState, id: u64, password: &str) -> Result<Crop
     let password = unlock_password(password)?;
     let opened = open_in_pool(state, &path, Some(&password));
     if let Err(error) = &opened
-        && matches!(
-            error.code,
-            ErrorCode::PasswordProtected | ErrorCode::WorkerCrashed | ErrorCode::WorkerTimeout
-        )
+        && stops_unlock(error)
     {
         return Err(error.clone());
     }
