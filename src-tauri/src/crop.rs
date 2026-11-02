@@ -19,7 +19,7 @@ use std::time::Duration;
 use pdfconv_worker::client::WorkerProcess;
 use pdfconv_worker::protocol::{
     CandidateKind as WorkerCandidateKind, EmbeddedImage, LayoutCandidate,
-    NativeSize as WorkerNativeSize, Password, PasswordError, RectPt, Request, Response,
+    NativeSize as WorkerNativeSize, Password, RectPt, Request, Response,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -29,7 +29,7 @@ use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
     kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, request_on_pdf,
-    unexpected_response,
+    unexpected_response, unlock_password,
 };
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
@@ -668,13 +668,7 @@ pub fn discard_crop_pdf(state: &AppState, id: u64) {
 pub fn unlock_crop_pdf(state: &AppState, id: u64, password: &str) -> Result<CropPdf, IpcError> {
     refuse_while_running(state)?;
     let path = state.crop.path_to_unlock(id)?;
-    let password = match Password::new(password) {
-        Ok(password) => password,
-        Err(PasswordError::Empty) => return Err(IpcError::from_code(ErrorCode::InvalidParams)),
-        Err(PasswordError::ContainsNul) => {
-            return Err(IpcError::from_code(ErrorCode::PasswordProtected));
-        }
-    };
+    let password = unlock_password(password)?;
     let opened = open_in_pool(state, &path, Some(&password));
     if let Err(error) = &opened
         && matches!(

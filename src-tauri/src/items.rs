@@ -836,6 +836,19 @@ pub(crate) fn pdf_thumbnail(
     }
 }
 
+/// The password that the user typed to unlock a PDF (design §6.8).
+///
+/// # Errors
+///
+/// `InvalidParams` for an empty password, and `PasswordProtected` for one with a
+/// NUL, which is answered as a wrong password without asking a worker.
+pub(crate) fn unlock_password(password: &str) -> Result<Password, IpcError> {
+    Password::new(password).map_err(|error| match error {
+        PasswordError::Empty => IpcError::from_code(ErrorCode::InvalidParams),
+        PasswordError::ContainsNul => IpcError::from_code(ErrorCode::PasswordProtected),
+    })
+}
+
 fn try_unlock(
     state: &AppState,
     id: u64,
@@ -872,13 +885,7 @@ pub fn unlock_pdf(state: &AppState, id: u64, password: &str) -> Result<UnlockRes
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
 
-    let password = match Password::new(password) {
-        Ok(pw) => pw,
-        Err(PasswordError::Empty) => return Err(IpcError::from_code(ErrorCode::InvalidParams)),
-        Err(PasswordError::ContainsNul) => {
-            return Err(IpcError::from_code(ErrorCode::PasswordProtected));
-        }
-    };
+    let password = unlock_password(password)?;
 
     let target_item = try_unlock(state, id, &target.path, &password)?;
     let mut unlocked_items = vec![target_item];

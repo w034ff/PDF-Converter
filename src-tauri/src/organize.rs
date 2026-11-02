@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use pdfconv_core::PdfConformance;
 use pdfconv_worker::MAX_PDF_PAGES;
-use pdfconv_worker::protocol::{Password, PasswordError, Request};
+use pdfconv_worker::protocol::{Password, Request};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -20,6 +20,7 @@ use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
     kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, scan_folder, sort_dropped,
+    unlock_password,
 };
 use crate::jobs::{output_password, refuse_while_running};
 
@@ -430,13 +431,7 @@ pub fn unlock_pdf(state: &AppState, id: u64, password: &str) -> Result<OrganizeU
     if !target.is_password_protected() {
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
-    let password = match Password::new(password) {
-        Ok(password) => password,
-        Err(PasswordError::Empty) => return Err(IpcError::from_code(ErrorCode::InvalidParams)),
-        Err(PasswordError::ContainsNul) => {
-            return Err(IpcError::from_code(ErrorCode::PasswordProtected));
-        }
-    };
+    let password = unlock_password(password)?;
 
     let first = try_unlock(state, id, &target.path, &password)?
         .ok_or_else(|| IpcError::from_code(ErrorCode::UnknownHandle))?;
