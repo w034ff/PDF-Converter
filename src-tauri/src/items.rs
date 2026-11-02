@@ -859,6 +859,28 @@ pub(crate) fn stops_unlock(error: &IpcError) -> bool {
     )
 }
 
+/// Stores in the fields of a crop or organize PDF what opening it gave: the
+/// page count and sizes, or, if it could not be opened, no pages and the error.
+pub(crate) fn record_opened(
+    opened: Result<(u32, Vec<PageSizePt>), IpcError>,
+    page_count: &mut u32,
+    pages: &mut Vec<PageSizePt>,
+    error: &mut Option<IpcError>,
+) {
+    match opened {
+        Ok((opened_count, opened_pages)) => {
+            *page_count = opened_count;
+            *pages = opened_pages;
+            *error = None;
+        }
+        Err(opened_error) => {
+            *page_count = 0;
+            *pages = Vec::new();
+            *error = Some(opened_error);
+        }
+    }
+}
+
 fn try_unlock(
     state: &AppState,
     id: u64,

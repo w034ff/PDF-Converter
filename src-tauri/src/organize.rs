@@ -19,8 +19,8 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
-    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, scan_folder, sort_dropped,
-    stops_unlock, unlock_password,
+    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, scan_folder,
+    sort_dropped, stops_unlock, unlock_password,
 };
 use crate::jobs::{output_password, refuse_while_running};
 
@@ -250,18 +250,12 @@ impl OrganizeState {
     ) -> Option<OrganizePdf> {
         let mut entries = self.lock();
         let entry = entries.iter_mut().find(|entry| entry.id == id)?;
-        match opened {
-            Ok((page_count, pages)) => {
-                entry.page_count = page_count;
-                entry.pages = pages;
-                entry.error = None;
-            }
-            Err(error) => {
-                entry.page_count = 0;
-                entry.pages = Vec::new();
-                entry.error = Some(error);
-            }
-        }
+        record_opened(
+            opened,
+            &mut entry.page_count,
+            &mut entry.pages,
+            &mut entry.error,
+        );
         entry.password = Some(password);
         Some(entry.to_ipc())
     }

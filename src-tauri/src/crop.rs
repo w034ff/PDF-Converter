@@ -28,8 +28,8 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
-    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, request_on_pdf, stops_unlock,
-    unexpected_response, unlock_password,
+    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, request_on_pdf,
+    stops_unlock, unexpected_response, unlock_password,
 };
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
@@ -412,18 +412,12 @@ impl CropState {
             .as_mut()
             .filter(|open| open.entry.id == id)?
             .entry;
-        match opened {
-            Ok((page_count, pages)) => {
-                entry.page_count = page_count;
-                entry.pages = pages;
-                entry.error = None;
-            }
-            Err(error) => {
-                entry.page_count = 0;
-                entry.pages = Vec::new();
-                entry.error = Some(error);
-            }
-        }
+        record_opened(
+            opened,
+            &mut entry.page_count,
+            &mut entry.pages,
+            &mut entry.error,
+        );
         entry.password = Some(password);
         Some(entry.to_ipc())
     }
