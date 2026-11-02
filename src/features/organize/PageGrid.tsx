@@ -7,13 +7,11 @@ import {
   useRef,
   useState,
   type FocusEvent as ReactFocusEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { contextMenuPoint } from "../../components";
 import { formatMessage, getTranslations } from "../../i18n";
-import { isModalOpen, takesText } from "../shortcuts/keyboard";
 import { useRoom } from "../shared/useRoom";
 import {
   isJobActive,
@@ -34,33 +32,20 @@ import {
   breakMarkLeft,
   cellOffset,
   dropLineLeft,
-  focusIndexAfter,
   gridColumnCount,
   gridContentHeight,
   gridRowCount,
   indexRangeOfRows,
-  isFocusKey,
-  keyInsertIndex,
   visibleRowRange,
 } from "./organizeGrid";
-import { useOrganizeDrag } from "./useOrganizeDrag";
 import { FOCUS_LANDING, useGridReveal } from "./useGridReveal";
+import { useOrganizeDrag } from "./useOrganizeDrag";
+import { useOrganizeGridKeys } from "./useOrganizeGridKeys";
 
 const NO_PARTS: ReadonlyMap<PageKey, number> = new Map();
 
 /** How far below the top of a break's line its ✂ mark is (mockup OrganizeSplit). */
 const BREAK_MARK_TOP = 50;
-
-/** The keys a page operation by key or button works on: the selection, else the focused page. */
-function operatedKeys(
-  selected: ReadonlySet<PageKey>,
-  focused: PageKey | null,
-): PageKey[] {
-  if (selected.size > 0) {
-    return [...selected];
-  }
-  return focused === null ? [] : [focused];
-}
 
 /** The menu of a page, open at a point. */
 interface PageMenu {
@@ -254,161 +239,16 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
     }
   }
 
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const current = tabStopKey;
-    if (current === null) {
-      return;
-    }
-    const { key } = event;
-    if (isFocusKey(key) && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      const from = indexByKey.get(current) ?? 0;
-      const to = focusIndexAfter(key, from, columns, pages.length);
-      event.preventDefault();
-      const target = keyOfPage(pages[to]);
-      reveal(target);
-      dispatch({
-        type: "ORGANIZE_FOCUSED",
-        key: target,
-        extend: event.shiftKey,
-      });
-      return;
-    }
-    if (event.altKey && !event.ctrlKey && !event.metaKey) {
-      const direction =
-        key === "ArrowLeft" || key === "ArrowUp"
-          ? "before"
-          : key === "ArrowRight" || key === "ArrowDown"
-            ? "after"
-            : null;
-      if (direction !== null) {
-        event.preventDefault();
-        if (locked) {
-          return;
-        }
-        const keys = operatedKeys(selected, current);
-        const vertical = key === "ArrowUp" || key === "ArrowDown";
-        const insertIndex = keyInsertIndex(
-          pages,
-          new Set(keys),
-          direction,
-          vertical ? columns : 1,
-        );
-        reveal(current);
-        dispatch({ type: "ORGANIZE_PAGES_MOVED", keys, insertIndex });
-      }
-      return;
-    }
-    if (event.ctrlKey && !event.altKey && key.toLowerCase() === "a") {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTED_ALL" });
-      return;
-    }
-    if (event.ctrlKey || event.altKey || event.metaKey) {
-      return;
-    }
-    if (key === " ") {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTION_TOGGLED", key: current });
-    } else if (key === "Escape") {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTION_CLEARED" });
-    } else if (!locked && isSplit && (key === "b" || key === "B")) {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_BREAK_TOGGLED", key: current });
-    } else if (!locked && (key === "r" || key === "R")) {
-      event.preventDefault();
-      dispatch({
-        type: "ORGANIZE_PAGES_ROTATED",
-        keys: operatedKeys(selected, current),
-        direction: "right",
-      });
-    } else if (!locked && (key === "l" || key === "L")) {
-      event.preventDefault();
-      dispatch({
-        type: "ORGANIZE_PAGES_ROTATED",
-        keys: operatedKeys(selected, current),
-        direction: "left",
-      });
-    } else if (!locked && (key === "Delete" || key === "Backspace")) {
-      event.preventDefault();
-      // The cell that has the focus is the one going, and the focus must not be lost with it.
-      reveal(FOCUS_LANDING);
-      dispatch({
-        type: "ORGANIZE_PAGES_DELETED",
-        keys: operatedKeys(selected, current),
-      });
-    }
-  }
-
-  /**
-   * The keys that work on the selection also work with the focus on the band,
-   * where the mouse leaves it, or nowhere, where deleting leaves it (design
-   * §10.1). `Ctrl+A` works anywhere text is not typed: it would select the
-   * words of the screen otherwise. Keys in the grid have been dealt with, and
-   * the other controls keep their own.
-   */
-  function handleKeyOutsideGrid(event: KeyboardEvent) {
-    if (event.defaultPrevented || takesText(event.target) || isModalOpen()) {
-      return;
-    }
-    if (
-      event.ctrlKey &&
-      !event.altKey &&
-      !event.metaKey &&
-      event.key.toLowerCase() === "a"
-    ) {
-      event.preventDefault();
-      dispatch({ type: "ORGANIZE_SELECTED_ALL" });
-      return;
-    }
-    const { target } = event;
-    const onBand =
-      target === document.body ||
-      (target instanceof Element &&
-        target.closest(".organize-band") !== null &&
-        target.closest(".organize-band-actions") === null);
-    if (
-      !onBand ||
-      selected.size === 0 ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.metaKey
-    ) {
-      return;
-    }
-    const keys = [...selected];
-    const key = event.key.toLowerCase();
-    if (key === "escape") {
-      event.preventDefault();
-      // The band's buttons are about to go out of use, and the focus with them.
-      if (tabStopKey !== null) {
-        reveal(tabStopKey);
-      }
-      dispatch({ type: "ORGANIZE_SELECTION_CLEARED" });
-    } else if (!locked && (key === "r" || key === "l")) {
-      event.preventDefault();
-      dispatch({
-        type: "ORGANIZE_PAGES_ROTATED",
-        keys,
-        direction: key === "r" ? "right" : "left",
-      });
-    } else if (!locked && (key === "delete" || key === "backspace")) {
-      event.preventDefault();
-      reveal(FOCUS_LANDING);
-      dispatch({ type: "ORGANIZE_PAGES_DELETED", keys });
-    }
-  }
-  const keyOutsideGrid = useRef(handleKeyOutsideGrid);
-  useEffect(() => {
-    keyOutsideGrid.current = handleKeyOutsideGrid;
+  const { handleKeyDown } = useOrganizeGridKeys({
+    pages,
+    selected,
+    tabStopKey,
+    indexByKey,
+    columns,
+    locked,
+    isSplit,
+    reveal,
   });
-  useEffect(() => {
-    function handle(event: KeyboardEvent) {
-      keyOutsideGrid.current(event);
-    }
-    window.addEventListener("keydown", handle);
-    return () => window.removeEventListener("keydown", handle);
-  }, []);
 
   /** Page numbers alone cannot tell the pages of two PDFs apart, so those also get their PDFs' names. */
   function breakLabel(index: number): string {
