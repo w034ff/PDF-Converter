@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onItemsDropped, type IpcError, type ItemsDropped } from "../../ipc";
 import { useAppDispatch, useAppState, type ActiveTab } from "../../state";
+import { useIpcEvent } from "../shared/useIpcEvent";
 
 /**
  * The tab to show after a drop (design §6.1): the list that received items,
@@ -39,40 +40,23 @@ export function useItemsDropped(): DropError {
   const { language } = useAppState();
   const [error, setError] = useState<IpcError | null>(null);
 
-  // The listener is subscribed once, so it reads the tab through a ref rather
-  // than the value from when it subscribed.
+  // Two drops can arrive before the next render, so the tab is read through a
+  // ref that the handler keeps up to date itself.
   const activeTab = useRef(language.activeTab);
   useEffect(() => {
     activeTab.current = language.activeTab;
   }, [language.activeTab]);
 
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-
-    void onItemsDropped((dropped) => {
-      setError(dropped.error);
-      dispatch({ type: "ADD_IMAGE_ITEMS", items: dropped.images });
-      dispatch({ type: "ADD_PDF_ITEMS", items: dropped.pdfs });
-      const tab = tabAfterDrop(dropped, activeTab.current);
-      if (tab !== activeTab.current) {
-        activeTab.current = tab;
-        dispatch({ type: "SET_ACTIVE_TAB", tab });
-      }
-    }).then((stop) => {
-      // `listen` resolves after the component may already have unmounted.
-      if (disposed) {
-        stop();
-      } else {
-        unlisten = stop;
-      }
-    });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [dispatch]);
+  useIpcEvent(onItemsDropped, (dropped) => {
+    setError(dropped.error);
+    dispatch({ type: "ADD_IMAGE_ITEMS", items: dropped.images });
+    dispatch({ type: "ADD_PDF_ITEMS", items: dropped.pdfs });
+    const tab = tabAfterDrop(dropped, activeTab.current);
+    if (tab !== activeTab.current) {
+      activeTab.current = tab;
+      dispatch({ type: "SET_ACTIVE_TAB", tab });
+    }
+  });
 
   const dismiss = useCallback(() => setError(null), []);
   return { error, dismiss };
