@@ -14,16 +14,7 @@ import {
   type Language,
   type Translations,
 } from "../../i18n";
-import {
-  addImages,
-  normalizeIpcError,
-  removeItems,
-  type AddSource,
-  type ImageItem,
-  type IpcError,
-  type JobItemPayload,
-  type Skipped,
-} from "../../ipc";
+import { addImages, type ImageItem, type JobItemPayload } from "../../ipc";
 import {
   isJobActive,
   jobRowStatus,
@@ -32,6 +23,7 @@ import {
   type JobRowStatus,
   type JobState,
 } from "../../state";
+import { useItemList } from "../items/useItemList";
 import { useThumbnail } from "../items/useThumbnail";
 import { formatSkippedSummary } from "../shared/skipped";
 import "./ImagesToPdf.css";
@@ -221,8 +213,13 @@ export function ImagesToPdfView() {
   const disabled = isJobActive(job);
   const headingId = useId();
 
-  const [skipped, setSkipped] = useState<Skipped | null>(null);
-  const [error, setError] = useState<IpcError | null>(null);
+  const list = useItemList({
+    items: imagesToPdf.items,
+    add: addImages,
+    onAdded: (items) => dispatch({ type: "ADD_IMAGE_ITEMS", items }),
+    onRemoved: (id) => dispatch({ type: "REMOVE_IMAGE_ITEM", id }),
+    onCleared: () => dispatch({ type: "CLEAR_IMAGE_ITEMS" }),
+  });
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -232,43 +229,6 @@ export function ImagesToPdfView() {
   const listRef = useRef<HTMLOListElement | null>(null);
   const focusedItemIdRef = useRef<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map());
-
-  async function handleAdd(source: AddSource) {
-    setError(null);
-    try {
-      const result = await addImages(source);
-      if (result !== null) {
-        if (result.added.length > 0) {
-          dispatch({ type: "ADD_IMAGE_ITEMS", items: result.added });
-        }
-        setSkipped(result.skipped);
-      }
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleRemove(id: number) {
-    setError(null);
-    try {
-      await removeItems([id]);
-      dispatch({ type: "REMOVE_IMAGE_ITEM", id });
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleClearAll() {
-    setError(null);
-    const ids = imagesToPdf.items.map((item) => item.id);
-    try {
-      await removeItems(ids);
-      dispatch({ type: "CLEAR_IMAGE_ITEMS" });
-      setSkipped(null);
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLOListElement>) => {
     if (
@@ -451,10 +411,10 @@ export function ImagesToPdfView() {
     }
   });
 
-  const errorDisplay = error !== null && (
+  const errorDisplay = list.error !== null && (
     <ErrorDisplay
-      message={formatIpcError(error, language.language)}
-      onDismiss={() => setError(null)}
+      message={formatIpcError(list.error, language.language)}
+      onDismiss={list.dismissError}
       dismissLabel={t.errors.dismiss}
     />
   );
@@ -468,15 +428,15 @@ export function ImagesToPdfView() {
           description={t.dropZone.descriptionImages}
           addFilesLabel={t.dropZone.addImages}
           addFolderLabel={t.dropZone.addFolder}
-          onAddFiles={() => void handleAdd("files")}
-          onAddFolder={() => void handleAdd("folder")}
+          onAddFiles={() => void list.add("files")}
+          onAddFolder={() => void list.add("folder")}
         />
       </div>
     );
   }
 
   const isMerge = imagesToPdf.output === "merge";
-  const skippedText = formatSkippedSummary(t, skipped);
+  const skippedText = formatSkippedSummary(t, list.skipped);
 
   return (
     <div className="images-view">
@@ -499,7 +459,7 @@ export function ImagesToPdfView() {
             type="button"
             className="btn btn-ghost"
             disabled={disabled}
-            onClick={() => void handleAdd("files")}
+            onClick={() => void list.add("files")}
           >
             {t.imagesToPdf.addImages}
           </button>
@@ -507,7 +467,7 @@ export function ImagesToPdfView() {
             type="button"
             className="btn btn-ghost"
             disabled={disabled}
-            onClick={() => void handleAdd("folder")}
+            onClick={() => void list.add("folder")}
           >
             {t.imagesToPdf.addFolder}
           </button>
@@ -515,7 +475,7 @@ export function ImagesToPdfView() {
             type="button"
             className="btn btn-ghost"
             disabled={disabled}
-            onClick={() => void handleClearAll()}
+            onClick={() => void list.clearAll()}
           >
             {t.imagesToPdf.clearAll}
           </button>
@@ -584,7 +544,7 @@ export function ImagesToPdfView() {
                           })
                   }
                   onRemove={
-                    disabled ? undefined : () => void handleRemove(item.id)
+                    disabled ? undefined : () => void list.remove(item.id)
                   }
                   canMoveUp={!disabled && index > 0}
                   canMoveDown={
@@ -656,7 +616,7 @@ export function ImagesToPdfView() {
                         type="button"
                         className="btn btn-ghost"
                         disabled={disabled}
-                        onClick={() => void handleRemove(item.id)}
+                        onClick={() => void list.remove(item.id)}
                       >
                         {t.imagesToPdf.remove}
                       </button>

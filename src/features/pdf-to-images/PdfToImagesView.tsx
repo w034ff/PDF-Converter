@@ -16,15 +16,10 @@ import {
 } from "../../i18n";
 import {
   addPdfs,
-  normalizeIpcError,
-  removeItems,
-  type AddSource,
   type CheckPageRangeResult,
-  type IpcError,
   type JobItemPayload,
   type PageSizePt,
   type PdfItem,
-  type Skipped,
   unlockPdf,
 } from "../../ipc";
 import {
@@ -35,6 +30,7 @@ import {
   type JobState,
   type PageSelection,
 } from "../../state";
+import { useItemList } from "../items/useItemList";
 import { useThumbnail } from "../items/useThumbnail";
 import { OutputDirError } from "../output";
 import { useRoom } from "../shared/useRoom";
@@ -488,8 +484,13 @@ export function PdfToImagesView() {
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language);
   const busy = isJobActive(job);
-  const [lastSkipped, setLastSkipped] = useState<Skipped | null>(null);
-  const [error, setError] = useState<IpcError | null>(null);
+  const list = useItemList({
+    items: pdfToImages.items,
+    add: addPdfs,
+    onAdded: (items) => dispatch({ type: "ADD_PDF_ITEMS", items }),
+    onRemoved: (id) => dispatch({ type: "REMOVE_PDF_ITEM", id }),
+    onCleared: () => dispatch({ type: "CLEAR_PDF_ITEMS" }),
+  });
   const displayed = useDisplayedRange(pdfToImages);
 
   const isSingle = pdfToImages.items.length === 1;
@@ -529,61 +530,26 @@ export function PdfToImagesView() {
     setAnchorPage(null);
   }
 
-  async function handleAdd(source: AddSource) {
-    setError(null);
-    try {
-      const result = await addPdfs(source);
-      if (result !== null) {
-        if (result.added.length > 0) {
-          dispatch({ type: "ADD_PDF_ITEMS", items: result.added });
-        }
-        setLastSkipped(result.skipped);
-      }
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleRemove(id: number) {
-    setError(null);
-    try {
-      await removeItems([id]);
-      dispatch({ type: "REMOVE_PDF_ITEM", id });
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleClearAll() {
-    setError(null);
-    const ids = pdfToImages.items.map((i) => i.id);
-    try {
-      await removeItems(ids);
-      dispatch({ type: "CLEAR_PDF_ITEMS" });
-      setLastSkipped(null);
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
+  const errorDisplay = list.error !== null && (
+    <ErrorDisplay
+      message={formatIpcError(list.error, language.language)}
+      onDismiss={list.dismissError}
+      dismissLabel={t.errors.dismiss}
+    />
+  );
 
   if (pdfToImages.items.length === 0) {
     return (
       <div className="pdf-view">
-        {error !== null && (
-          <ErrorDisplay
-            message={formatIpcError(error, language.language)}
-            onDismiss={() => setError(null)}
-            dismissLabel={t.errors.dismiss}
-          />
-        )}
+        {errorDisplay}
         <DropZone
           icon={<PdfFileIcon />}
           title={t.dropZone.titlePdfs}
           description={t.dropZone.descriptionPdfs}
           addFilesLabel={t.dropZone.addPdfs}
           addFolderLabel={t.dropZone.addFolder}
-          onAddFiles={busy ? undefined : () => void handleAdd("files")}
-          onAddFolder={busy ? undefined : () => void handleAdd("folder")}
+          onAddFiles={busy ? undefined : () => void list.add("files")}
+          onAddFolder={busy ? undefined : () => void list.add("folder")}
         />
       </div>
     );
@@ -644,7 +610,7 @@ export function PdfToImagesView() {
     });
   }
 
-  const skippedText = formatSkippedSummary(t, lastSkipped);
+  const skippedText = formatSkippedSummary(t, list.skipped);
   const results = job.kind === "pdfToImages" ? job.results : {};
   // The single-PDF view has no table, so its result goes under its name.
   const singleStatus =
@@ -683,13 +649,7 @@ export function PdfToImagesView() {
 
   return (
     <div className="pdf-view">
-      {error !== null && (
-        <ErrorDisplay
-          message={formatIpcError(error, language.language)}
-          onDismiss={() => setError(null)}
-          dismissLabel={t.errors.dismiss}
-        />
-      )}
+      {errorDisplay}
       <OutputDirError tab="pdfToImages" />
 
       {/* Header above content */}
@@ -746,7 +706,7 @@ export function PdfToImagesView() {
             type="button"
             className="btn btn-ghost"
             disabled={busy}
-            onClick={() => void handleAdd("files")}
+            onClick={() => void list.add("files")}
           >
             {t.dropZone.addPdfs}
           </button>
@@ -754,7 +714,7 @@ export function PdfToImagesView() {
             type="button"
             className="btn btn-ghost"
             disabled={busy}
-            onClick={() => void handleAdd("folder")}
+            onClick={() => void list.add("folder")}
           >
             {t.dropZone.addFolder}
           </button>
@@ -763,7 +723,7 @@ export function PdfToImagesView() {
               type="button"
               className="btn btn-ghost"
               disabled={busy}
-              onClick={() => void handleRemove(singleItem.id)}
+              onClick={() => void list.remove(singleItem.id)}
             >
               {t.pdfToImages.remove}
             </button>
@@ -772,7 +732,7 @@ export function PdfToImagesView() {
               type="button"
               className="btn btn-ghost"
               disabled={busy}
-              onClick={() => void handleClearAll()}
+              onClick={() => void list.clearAll()}
             >
               {t.pdfToImages.clearAll}
             </button>
@@ -843,7 +803,7 @@ export function PdfToImagesView() {
                   job={job}
                   pageSelection={displayed.pageSelection}
                   rangeResult={displayed.rangeResult}
-                  onRemove={() => void handleRemove(item.id)}
+                  onRemove={() => void list.remove(item.id)}
                   onEnterPassword={handleOpenPassword}
                   disabled={busy}
                   translations={t}

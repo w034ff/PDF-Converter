@@ -138,7 +138,7 @@
 │   ├── features/pdf-to-images/
 │   ├── features/crop/
 │   ├── features/about/
-│   ├── features/items/、job/、output/、settings/、shortcuts/   タブをまたいで使う処理（D&D、変換の実行と下部バー、保存先、設定の保存、ブラウザのショートカットの無効化）
+│   ├── features/items/、job/、output/、settings/、shortcuts/   タブをまたいで使う処理（一覧への追加と削除、D&D、変換の実行と下部バー、保存先、設定の保存、ブラウザのショートカットの無効化）
 │   ├── components/           一覧、切り替えボタン、進捗など
 │   ├── state/                画面の状態（§10.2）
 │   ├── ipc/、ipc/generated/
