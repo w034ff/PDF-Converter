@@ -2065,11 +2065,15 @@ describe("PdfToImagesView", () => {
       await waitFor(() => {
         expect(screen.getByText("パスワードが違います")).toBeInTheDocument();
       });
+      // The text is selected in an effect once the input is enabled again,
+      // which can be a render after the message shows.
+      await waitFor(() => {
+        expect(selectSpy).toHaveBeenCalled();
+      });
 
       // Dialog is still open
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(document.activeElement).toBe(input);
-      expect(selectSpy).toHaveBeenCalled();
 
       // Changing input clears error
       fireEvent.change(input, { target: { value: "wrong2" } });
