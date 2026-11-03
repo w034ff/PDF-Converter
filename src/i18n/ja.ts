@@ -471,8 +471,8 @@ export const ja = {
     skippedNotice: "追加されなかったファイル: {details}",
     pageMenu: {
       label: "ページの操作",
-      addBreak: "このページの前で区切る",
-      removeBreak: "このページの前の区切りを外す",
+      addBreak: "前に区切りを追加",
+      removeBreak: "前の区切りを解除",
     },
     settings: {
       outputTitle: "保存の方法",
@@ -555,7 +555,7 @@ export const ja = {
             {
               keys: [["B"]],
               action:
-                "フォーカスのページの前に区切りを入れる・外す（分割のとき）",
+                "フォーカスのページの前の区切りを追加・解除（分割のとき）",
             },
             {
               keys: [["右クリック"], ["Shift", "F10"]],

@@ -363,7 +363,7 @@ describe("the B key", () => {
 
     expect(
       screen.getByText(
-        "フォーカスのページの前に区切りを入れる・外す（分割のとき）",
+        "フォーカスのページの前の区切りを追加・解除（分割のとき）",
       ),
     ).toBeInTheDocument();
   });
