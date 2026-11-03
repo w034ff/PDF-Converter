@@ -1,4 +1,5 @@
 @import "./tokens.css";
+@import "./fonts.css";
 
 *,
 *::before,
@@ -469,7 +470,7 @@ a:hover {
 .about-section-title {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .about-toggle-btn {
@@ -510,7 +511,7 @@ a:hover {
 
 .license-item-header {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .license-packages {

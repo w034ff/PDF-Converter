@@ -18,13 +18,15 @@
     "format:check": "prettier --check .",
     "pdfium:fetch": "node scripts/fetch-pdfium.ts",
     "layout:fetch": "node scripts/fetch-layout.ts",
-    "licenses:check": "cargo deny check licenses bans sources && license-checker-rseidelsohn --production --excludePrivatePackages --summary --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;Zlib\"",
+    "licenses:check": "cargo deny check licenses bans sources && license-checker-rseidelsohn --production --excludePrivatePackages --summary --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;Zlib;OFL-1.1\"",
     "licenses:generate": "node scripts/generate-licenses.ts",
     "manual-test:files": "node scripts/make-manual-test-files.ts",
     "layers:check": "node scripts/check-layers.ts",
     "check": "cargo fmt --check && cargo clippy --workspace --all-targets --all-features --quiet -- -D warnings && cargo test --workspace --all-features --quiet && npm run --silent format:check && npm run --silent lint && npm run --silent typecheck && npm test --silent && npm run --silent layers:check"
   },
   "dependencies": {
+    "@ibm/plex-mono": "^2.5.0",
+    "@ibm/plex-sans-jp": "^3.0.0",
     "@tauri-apps/api": "^2.12.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
