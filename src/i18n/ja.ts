@@ -193,7 +193,7 @@ export const ja = {
     pdfFormatPdfA: "PDF/A",
     pdfFormatEncrypt: "パスワード",
     pdfAHint: "CMYK の画像は使えません",
-    encryptHint: "保存時にパスワードを入れます",
+    encryptHint: "パスワードは保存するときに入力します",
     passwordProtected: "パスワード付き",
     passwordDialog: {
       title: "パスワードを付ける",
