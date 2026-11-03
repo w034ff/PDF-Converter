@@ -208,7 +208,9 @@ function OutputPasswordDialogInner({
           />
         </ul>
         <div className="hint">
-          {mode === "each" ? t.forgetWarningEach : t.forgetWarningMerge}
+          {mode === "each" && count > 1
+            ? t.forgetWarningMultiple
+            : t.forgetWarningSingle}
         </div>
         <div className="password-dialog-actions">
           <button type="button" className="btn btn-ghost" onClick={onCancel}>

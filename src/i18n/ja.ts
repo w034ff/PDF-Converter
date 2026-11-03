@@ -196,8 +196,7 @@ export const ja = {
     passwordProtected: "パスワード付き",
     passwordDialog: {
       title: "パスワードを付ける",
-      eachNoticeSingle:
-        "保存する {count} 個の PDF すべてに、同じパスワードを付けます。",
+      eachNoticeSingle: "保存する PDF にパスワードを付けます。",
       eachNoticeMultiple:
         "保存する {count} 個の PDF すべてに、同じパスワードを付けます。",
       passwordLabel: "パスワード",
@@ -209,9 +208,9 @@ export const ja = {
       conditionMet: "満たしています",
       conditionNotMet: "満たしていません",
       tooLong: "{max} 文字までです",
-      forgetWarningMerge:
+      forgetWarningSingle:
         "パスワードを忘れると、この PDF はだれも開けなくなります。",
-      forgetWarningEach:
+      forgetWarningMultiple:
         "パスワードを忘れると、これらの PDF はだれも開けなくなります。",
       cancel: "キャンセル",
       confirmMerge: "保存先を選ぶ…",

@@ -210,9 +210,9 @@ export const en: Translations = {
       conditionMet: "Met",
       conditionNotMet: "Not met",
       tooLong: "Use {max} characters or fewer",
-      forgetWarningMerge:
+      forgetWarningSingle:
         "If you forget the password, no one can open the PDF.",
-      forgetWarningEach:
+      forgetWarningMultiple:
         "If you forget the password, no one can open these PDFs.",
       cancel: "Cancel",
       confirmMerge: "Choose where to save…",

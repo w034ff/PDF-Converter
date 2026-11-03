@@ -120,6 +120,18 @@ describe("OutputPasswordDialog", () => {
     expect(primaryButton("始める")).toBeDisabled();
   });
 
+  it("speaks of one PDF for one at a time with a single PDF", () => {
+    renderDialog({ mode: "each", count: 1 });
+    expect(
+      screen.getByText("保存する PDF にパスワードを付けます。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "パスワードを忘れると、この PDF はだれも開けなくなります。",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("marks the characters met for ASCII and failed for anything else", () => {
     renderDialog();
 
@@ -315,7 +327,7 @@ describe("OutputPasswordDialog", () => {
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        "If you forget the password, no one can open these PDFs.",
+        "If you forget the password, no one can open the PDF.",
       ),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Password")).toBeInTheDocument();
@@ -337,6 +349,11 @@ describe("OutputPasswordDialog", () => {
     renderDialog({ mode: "each", count: 4, lang: "en-US" });
     expect(
       screen.getByText("All 4 PDFs will get the same password."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "If you forget the password, no one can open these PDFs.",
+      ),
     ).toBeInTheDocument();
 
     cleanup();
