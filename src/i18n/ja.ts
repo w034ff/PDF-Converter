@@ -496,9 +496,9 @@ export const ja = {
       tooManyPages:
         "1 つの PDF は {max} ページまでです（今は {count} ページ）。分割して保存してください",
       willSplitSingle:
-        "{pages} ページを {parts} 個の PDF に分割して保存します（合計 約 {size} MB）",
+        "{pages} ページを 1 つの PDF に保存します（約 {size} MB）",
       willSplitOnePart:
-        "{pages} ページを {parts} 個の PDF に分割して保存します（合計 約 {size} MB）",
+        "{pages} ページを 1 つの PDF に保存します（約 {size} MB）",
       willSplitMultiple:
         "{pages} ページを {parts} 個の PDF に分割して保存します（合計 約 {size} MB）",
       splitTooManyPages:

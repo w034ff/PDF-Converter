@@ -500,10 +500,8 @@ export const en: Translations = {
       noPages: "No pages to save",
       tooManyPages:
         "One PDF has at most {max} pages (now {count}). Split it before saving",
-      willSplitSingle:
-        "Split {pages} page into {parts} PDF (about {size} MB in total)",
-      willSplitOnePart:
-        "Split {pages} pages into {parts} PDF (about {size} MB in total)",
+      willSplitSingle: "Save {pages} page as one PDF (about {size} MB)",
+      willSplitOnePart: "Save {pages} pages as one PDF (about {size} MB)",
       willSplitMultiple:
         "Split {pages} pages into {parts} PDFs (about {size} MB in total)",
       splitTooManyPages:
