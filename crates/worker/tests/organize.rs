@@ -15,6 +15,7 @@ mod organize_fixtures;
 mod worker_paths;
 
 use image::RgbImage;
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::client::{ORGANIZE_STEP_TIMEOUT, StreamPart, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::{
     OUTPUT_CHUNK_BYTES, OrganizePage, OrganizeSource, Password, RenderColor, RenderFormat, Request,
@@ -138,7 +139,7 @@ fn organize(
 fn expect_invalid_params(worker: &mut WorkerProcess, request: &Request) {
     let result = run_organize(worker, request).map(|_| ());
     assert!(
-        matches!(&result, Err(WorkerError::Remote { code, .. }) if code == "InvalidParams"),
+        matches!(&result, Err(WorkerError::Remote { code, .. }) if *code == ErrorCode::InvalidParams.into()),
         "expected InvalidParams, got {result:?}"
     );
 }
@@ -411,7 +412,9 @@ fn an_output_password_opens_the_output_and_only_that() {
             ANSWER_TIMEOUT,
         );
         match refused {
-            Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+            Err(WorkerError::Remote { code, .. }) => {
+                assert_eq!(code, ErrorCode::PasswordProtected.into())
+            }
             other => panic!("expected PasswordProtected for {wrong:?}, got {other:?}"),
         }
     }
@@ -474,7 +477,7 @@ fn a_source_with_a_password_needs_it_and_one_with_restrictions_does_not() {
     );
     match missing {
         Err(WorkerError::SourceFailed { code, source, .. }) => {
-            assert_eq!((code.as_str(), source), ("PasswordProtected", 1));
+            assert_eq!((code, source), (ErrorCode::PasswordProtected.into(), 1));
         }
         other => panic!("expected PasswordProtected, got {:?}", other.map(|_| ())),
     }
@@ -488,7 +491,7 @@ fn a_source_with_a_password_needs_it_and_one_with_restrictions_does_not() {
     );
     assert!(matches!(
         wrong,
-        Err(WorkerError::SourceFailed { ref code, source: 0, .. }) if code == "PasswordProtected"
+        Err(WorkerError::SourceFailed { ref code, source: 0, .. }) if *code == ErrorCode::PasswordProtected.into()
     ));
 }
 
@@ -505,7 +508,7 @@ fn a_corrupt_source_fails_with_its_number_and_the_worker_goes_on() {
     );
     match result {
         Err(WorkerError::SourceFailed { code, source, .. }) => {
-            assert_eq!((code.as_str(), source), ("PdfOpenFailed", 1));
+            assert_eq!((code, source), (ErrorCode::PdfOpenFailed.into(), 1));
         }
         other => panic!("expected PdfOpenFailed, got {:?}", other.map(|_| ())),
     }
@@ -534,7 +537,7 @@ fn a_page_past_the_end_of_its_source_fails_that_source() {
     );
     match result {
         Err(WorkerError::SourceFailed { code, source, .. }) => {
-            assert_eq!((code.as_str(), source), ("InvalidParams", 1));
+            assert_eq!((code, source), (ErrorCode::InvalidParams.into(), 1));
         }
         other => panic!("expected InvalidParams, got {:?}", other.map(|_| ())),
     }

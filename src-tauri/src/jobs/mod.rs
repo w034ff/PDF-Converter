@@ -30,7 +30,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
+use pdfconv_core::ErrorCode;
 
 /// Name of the event emitted for job progress updates (design §7.2).
 pub const JOB_PROGRESS_EVENT: &str = "job-progress";

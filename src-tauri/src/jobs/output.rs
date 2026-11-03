@@ -9,8 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use pdfconv_core::naming::split_stem_and_ext;
 
 use crate::AppState;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::settings::{self, OutputKind};
+use pdfconv_core::ErrorCode;
 
 /// Lists existing file and directory names directly under `dir` (design §5.2, §6.4).
 pub fn list_existing_files(dir: &Path) -> Result<HashSet<String>, IpcError> {

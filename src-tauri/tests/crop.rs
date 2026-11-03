@@ -16,7 +16,7 @@ use pdf_converter_lib::crop::{
     discard_crop_pdf, handle_drop, list_page_images, open_pdf, start_detect_all_internal,
     unlock_crop_pdf,
 };
-use pdf_converter_lib::error::{ErrorCode, IpcError};
+use pdf_converter_lib::error::IpcError;
 use pdf_converter_lib::items::{add_images, add_pdfs, make_thumbnail, remove_items, unlock_pdf};
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobProgressPayload, RenderColorChoice, RenderFormatChoice,
@@ -24,7 +24,7 @@ use pdf_converter_lib::jobs::{
 };
 use pdf_converter_lib::settings::OutputKind;
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
-use pdfconv_core::THUMBNAIL_SIDE;
+use pdfconv_core::{ErrorCode, THUMBNAIL_SIDE};
 use pdfconv_worker::{PAGE_VIEW_MAX_SIDE, WORKER_FLAG};
 
 #[path = "../../crates/core/tests/support/fixture_passwords.rs"]

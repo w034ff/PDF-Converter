@@ -1,11 +1,11 @@
 //! Choices of the settings panel and what a PDF is written as, per design §6.2, §6.3, §6.9, §7.1.
 
-use pdfconv_core::{OutputPassword, PdfConformance, encrypt_pdf};
+use pdfconv_core::{ErrorCode, OutputPassword, PdfConformance, encrypt_pdf};
 use pdfconv_worker::protocol::RenderFormat;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 
 /// Page size choice for image-to-PDF conversion (design §6.2, §7.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

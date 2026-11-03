@@ -9,6 +9,7 @@ use std::io::{self, Read, Write};
 use std::ops::Deref;
 use std::path::PathBuf;
 
+use pdfconv_core::ErrorCode;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Upper bound on a header, so a corrupt length cannot make the reader
@@ -299,6 +300,51 @@ pub enum Request {
     HangForTest,
 }
 
+/// The code of a failed request: one of the error codes of design §6.6, or a
+/// code that only the worker uses.
+///
+/// On the wire it is the plain name of the code, so a message with a name that
+/// is neither fails to decode and the client treats it as a crash.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum WorkerCode {
+    /// A code of design §6.6.
+    Ipc(ErrorCode),
+    /// A code the main process turns into one of design §6.6 before it
+    /// reaches the IPC.
+    Worker(WorkerOnlyCode),
+}
+
+/// The codes that only the worker sends. They are not in [`ErrorCode`] because
+/// they are not codes of design §6.6, and so not in the TypeScript type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkerOnlyCode {
+    /// The pdfium library cannot be loaded or used (design §6.6: the main
+    /// process answers `WorkerCrashed`).
+    PdfiumUnavailable,
+}
+
+impl WorkerCode {
+    /// The pdfium library cannot be loaded or used.
+    pub const PDFIUM_UNAVAILABLE: Self = Self::Worker(WorkerOnlyCode::PdfiumUnavailable);
+}
+
+impl From<ErrorCode> for WorkerCode {
+    fn from(code: ErrorCode) -> Self {
+        Self::Ipc(code)
+    }
+}
+
+impl fmt::Display for WorkerCode {
+    /// Writes the name of the code, as it is on the wire.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ipc(code) => fmt::Display::fmt(code, f),
+            Self::Worker(code) => fmt::Debug::fmt(code, f),
+        }
+    }
+}
+
 /// A response from the worker.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -351,15 +397,15 @@ pub enum Response {
     /// of the chunks sent.
     Organized { bytes: u64 },
     /// A source PDF of an `Organize` request could not be used; `source` is
-    /// its index in the request and `code` one of the codes of design §6.6.
+    /// its index in the request and `code` why.
     OrganizeFailed {
-        code: String,
+        code: WorkerCode,
         detail: Option<String>,
         source: u32,
     },
-    /// The request failed; `code` is one of the error codes of design §6.6.
+    /// The request failed with `code`.
     Error {
-        code: String,
+        code: WorkerCode,
         detail: Option<String>,
     },
     /// A test allocation succeeded.
@@ -466,7 +512,7 @@ mod tests {
         let mut buffer = Vec::new();
         write_message(&mut buffer, &Response::Hello, &[]).unwrap();
         let error = Response::Error {
-            code: "PdfOpenFailed".into(),
+            code: ErrorCode::PdfOpenFailed.into(),
             detail: None,
         };
         write_message(&mut buffer, &error, &[]).unwrap();
@@ -502,11 +548,42 @@ mod tests {
     #[test]
     fn uses_camel_case_tags_on_the_wire() {
         let json = serde_json::to_string(&Response::Error {
-            code: "X".into(),
+            code: ErrorCode::InvalidParams.into(),
             detail: Some("d".into()),
         })
         .unwrap();
-        assert_eq!(json, r#"{"type":"error","code":"X","detail":"d"}"#);
+        assert_eq!(
+            json,
+            r#"{"type":"error","code":"InvalidParams","detail":"d"}"#
+        );
+    }
+
+    #[test]
+    fn a_worker_only_code_is_a_plain_string_too() {
+        let error = Response::Error {
+            code: WorkerCode::PDFIUM_UNAVAILABLE,
+            detail: None,
+        };
+        let json = serde_json::to_string(&error).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"error","code":"PdfiumUnavailable","detail":null}"#
+        );
+        assert_eq!(serde_json::from_str::<Response>(&json).unwrap(), error);
+        assert_eq!(
+            WorkerCode::PDFIUM_UNAVAILABLE.to_string(),
+            "PdfiumUnavailable"
+        );
+    }
+
+    #[test]
+    fn a_message_with_an_unknown_code_does_not_decode() {
+        for json in [
+            r#"{"type":"error","code":"Surprise","detail":null}"#,
+            r#"{"type":"organizeFailed","code":"Surprise","detail":null,"source":0}"#,
+        ] {
+            assert!(serde_json::from_str::<Response>(json).is_err());
+        }
     }
 
     #[test]
@@ -787,7 +864,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&Response::OrganizeFailed {
-                code: "PdfOpenFailed".into(),
+                code: ErrorCode::PdfOpenFailed.into(),
                 detail: None,
                 source: 1
             })

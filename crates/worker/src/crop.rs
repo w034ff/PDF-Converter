@@ -9,7 +9,7 @@
 
 use std::collections::BTreeSet;
 
-use pdfconv_core::POINTS_PER_INCH;
+use pdfconv_core::{ErrorCode, POINTS_PER_INCH};
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfMatrix, PdfPage, PdfPageContentRegenerationStrategy, PdfPageObject,
     PdfPageObjectsCommon, PdfPoints, PdfRenderConfig,
@@ -17,10 +17,7 @@ use pdfium_render::prelude::{
 
 use crate::is_render_dpi_in_range;
 use crate::protocol::{EmbeddedImage, NativeSize, RectPt, RenderColor, RenderFormat, Response};
-use crate::server::{
-    CODE_INVALID_PARAMS, CODE_PDF_OPEN_FAILED, CODE_RENDER_TOO_LARGE, encode_pixels,
-    error_response, load_page, pixels_from_rgba,
-};
+use crate::server::{encode_pixels, error_response, load_page, pixels_from_rgba};
 
 /// Device pixels per point when measuring the display matrix. Large, so that
 /// pdfium's integer device coordinates are exact to a hundred-thousandth of a
@@ -145,7 +142,7 @@ fn display_matrix(page: &PdfPage<'_>) -> Result<Matrix, Response> {
     let probe = |x: f32, y: f32| -> Result<(f64, f64), Response> {
         let (device_x, device_y) = page
             .points_to_pixels(PdfPoints::new(x), PdfPoints::new(y), &config)
-            .map_err(|e| error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}"))))?;
+            .map_err(|e| error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}"))))?;
         Ok((
             f64::from(device_x) * width / f64::from(probe_width),
             f64::from(device_y) * height / f64::from(probe_height),
@@ -369,7 +366,7 @@ fn image_grid(image: &ListedImage, max_pixels: u64) -> Result<Grid, Response> {
         let (px_width, px_height) = (image.placed.px_width, image.placed.px_height);
         let (width, height, scaled_down) = photo_output_size(px_width, px_height, max_pixels);
         let matrix = photo_grid_matrix(image.pixel_to_display, px_width, px_height, width, height)
-            .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+            .ok_or_else(|| error_response(ErrorCode::InvalidParams, None))?;
         return Ok(Grid {
             width,
             height,
@@ -523,7 +520,7 @@ fn shown_rect(
         return Ok(None);
     };
     let to_display =
-        invert(grid.matrix).ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+        invert(grid.matrix).ok_or_else(|| error_response(ErrorCode::InvalidParams, None))?;
     let (left, top) = (
         visible.left.saturating_sub(1),
         visible.top.saturating_sub(1),
@@ -603,7 +600,7 @@ fn listed_image(
         .map(|image| visible_image(doc, page_number, image))
         .transpose()?
         .flatten()
-        .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))
+        .ok_or_else(|| error_response(ErrorCode::InvalidParams, None))
 }
 
 /// The embedded images of page `page` (1-based), in drawing order, each with
@@ -650,7 +647,7 @@ pub(crate) fn page_images(
 /// wider on each side.
 fn grid_reach(grid: &Grid) -> Result<RectPt, Response> {
     let to_display =
-        invert(grid.matrix).ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+        invert(grid.matrix).ok_or_else(|| error_response(ErrorCode::InvalidParams, None))?;
     let (right, bottom) = (f64::from(grid.width) + 1.0, f64::from(grid.height) + 1.0);
     let corners = [(-1.0, -1.0), (right, -1.0), (-1.0, bottom), (right, bottom)]
         .map(|(x, y)| apply(to_display, x, y));
@@ -873,7 +870,7 @@ fn isolated_page<'a>(
 /// which are relative to it.
 fn keep_in_form(object: &mut PdfPageObject<'_>, paths: &[&[usize]]) -> Result<(), Response> {
     let PdfPageObject::XObjectForm(form) = object else {
-        return Err(error_response(CODE_PDF_OPEN_FAILED, None));
+        return Err(error_response(ErrorCode::PdfOpenFailed, None));
     };
     // From the front, as on the page.
     let kept = kept_heads(paths);
@@ -912,7 +909,7 @@ fn paths_below<'p>(paths: &[&'p [usize]], index: usize) -> Vec<&'p [usize]> {
 }
 
 fn removal_failed(e: pdfium_render::prelude::PdfiumError) -> Response {
-    error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}")))
+    error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}")))
 }
 
 /// What to draw: the page (or the isolated image), into a bitmap of
@@ -930,7 +927,7 @@ struct Draw<'a, 'b> {
 /// Renders to RGBA bytes (straight alpha).
 fn render_rgba(draw: &Draw<'_, '_>) -> Result<Vec<u8>, Response> {
     let failed = |e: pdfium_render::prelude::PdfiumError| {
-        error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}")))
+        error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}")))
     };
     let mut config = PdfRenderConfig::new()
         .set_fixed_size(draw.width as i32, draw.height as i32)
@@ -1060,7 +1057,7 @@ pub(crate) fn render_region(
         && rect.x1 <= page_width + outside
         && rect.y1 <= page_height + outside;
     if !(rect.x0 < rect.x1 && rect.y0 < rect.y1 && inside_page) {
-        return Err(error_response(CODE_INVALID_PARAMS, None));
+        return Err(error_response(ErrorCode::InvalidParams, None));
     }
 
     let photo = match request.image_index {
@@ -1071,7 +1068,7 @@ pub(crate) fn render_region(
         .as_ref()
         .filter(|image| request.photo_native && image.is_native());
     if own_pixels.is_none() && !is_render_dpi_in_range(request.dpi) {
-        return Err(error_response(CODE_INVALID_PARAMS, None));
+        return Err(error_response(ErrorCode::InvalidParams, None));
     }
 
     // Everything but the photo is left out of a photo-only render, and the
@@ -1108,7 +1105,7 @@ pub(crate) fn render_region(
             let width = ((rect.x1 - rect.x0) * scale).round().max(1.0) as u64;
             let height = ((rect.y1 - rect.y0) * scale).round().max(1.0) as u64;
             if width.saturating_mul(height) > max_pixels {
-                return Err(error_response(CODE_RENDER_TOO_LARGE, None));
+                return Err(error_response(ErrorCode::RenderTooLarge, None));
             }
             let grid = Grid {
                 width: width as u32,

@@ -14,7 +14,7 @@ use pdf_converter_lib::crop::{
     DropTarget, Dropped, activate_crop_pdf, handle_drop, list_page_images, open_pdf,
     unlock_crop_pdf,
 };
-use pdf_converter_lib::error::{ErrorCode, IpcError};
+use pdf_converter_lib::error::IpcError;
 use pdf_converter_lib::items::{self, make_thumbnail};
 use pdf_converter_lib::jobs::{
     self, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
@@ -29,6 +29,7 @@ use pdf_converter_lib::organize_export::{
 };
 use pdf_converter_lib::settings::OutputKind;
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::WORKER_FLAG;
 use pdfconv_worker::protocol::{Password, Request, Response};
 #[cfg(feature = "test-hooks")]

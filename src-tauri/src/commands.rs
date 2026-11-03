@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use pdfconv_core::IMAGE_EXTENSIONS;
+use pdfconv_core::{ErrorCode, IMAGE_EXTENSIONS};
 use pdfconv_worker::client::WorkerError;
 use pdfconv_worker::protocol::Request;
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ use crate::crop::{
     self, Candidate, CropPdf, DetectAllCallbacks, DropTarget, LAYOUT_PAGE_EVENT, PageImage,
 };
 use crate::crop_export::{self, CropRegionInput};
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
     self, CheckPageRangeResult, JobCallbacks, JobFinishedPayload, JobItemPayload,

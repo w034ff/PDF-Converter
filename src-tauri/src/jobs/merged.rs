@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use pdfconv_core::{AddImageResult, PdfWriter};
+use pdfconv_core::{AddImageResult, ErrorCode, PdfWriter};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -14,7 +14,7 @@ use super::output::create_output_temp;
 use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload};
 use crate::AppState;
 use crate::decode_budget::pdf_write_estimate;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{ItemKind, file_name};
 
 /// How many times the output a merge holds at its peak: the whole output in memory, and the same

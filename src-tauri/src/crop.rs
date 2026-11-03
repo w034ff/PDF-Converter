@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
     kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, request_on_pdf,
@@ -34,6 +34,7 @@ use crate::items::{
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
 use crate::worker_pool::{WorkerPool, WorkerPoolError};
+use pdfconv_core::ErrorCode;
 
 /// Name of the event that carries the candidates of one page of
 /// `start_detect_all` (design §7.2).

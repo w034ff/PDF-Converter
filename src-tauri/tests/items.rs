@@ -10,14 +10,14 @@ use std::time::Duration;
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::decode_budget::DecodeBudget;
-use pdf_converter_lib::error::{ErrorCode, IpcError};
+use pdf_converter_lib::error::IpcError;
 use pdf_converter_lib::items::{
     AddResult, ImageFormatName, ImageItem, PdfItem, Skipped, add_dropped, add_images,
     add_images_from_folder, add_pdfs, add_pdfs_from_folder, make_thumbnail, sort_dropped,
     unlock_pdf,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
-use pdfconv_core::{THUMBNAIL_SIDE, probe, thumbnail_png};
+use pdfconv_core::{ErrorCode, THUMBNAIL_SIDE, probe, thumbnail_png};
 use pdfconv_worker::WORKER_FLAG;
 #[cfg(feature = "test-hooks")]
 use pdfconv_worker::server::CRASH_ON_IMAGE_FILE_NAME;

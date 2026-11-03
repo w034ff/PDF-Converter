@@ -7,7 +7,7 @@ mod worker_paths;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use pdfconv_core::{PageRect, iou};
+use pdfconv_core::{ErrorCode, PageRect, iou};
 use pdfconv_worker::client::{DETECT_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::{
     CandidateKind, EmbeddedImage, LayoutCandidate, RectPt, RenderColor, RenderFormat, Request,
@@ -54,9 +54,9 @@ fn detect(worker: &mut WorkerProcess, page: u32) -> Vec<LayoutCandidate> {
     }
 }
 
-fn expect_error(worker: &mut WorkerProcess, request: &Request, expected_code: &str) {
+fn expect_error(worker: &mut WorkerProcess, request: &Request, expected_code: ErrorCode) {
     match worker.request(request, DETECT_TIMEOUT) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, expected_code),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, expected_code.into()),
         other => unreachable!("expected {expected_code}, got {other:?}"),
     }
 }
@@ -146,13 +146,13 @@ fn unavailable_stays_unavailable(args: [OsString; 3]) {
     expect_error(
         &mut worker,
         &Request::Detect { page: 1 },
-        "LayoutUnavailable",
+        ErrorCode::LayoutUnavailable,
     );
     assert_eq!(page_images(&mut worker).len(), 1);
     expect_error(
         &mut worker,
         &Request::Detect { page: 1 },
-        "LayoutUnavailable",
+        ErrorCode::LayoutUnavailable,
     );
     assert_eq!(page_images(&mut worker).len(), 1);
 }
@@ -178,10 +178,26 @@ fn detect_needs_an_open_pdf_and_a_page_before_loading_anything() {
     // With nothing to load, a load would answer LayoutUnavailable; these
     // requests must be rejected before that.
     let mut worker = worker_paths::start_with(args_with(missing("onnxruntime"), missing("model")));
-    expect_error(&mut worker, &Request::Detect { page: 1 }, "InvalidParams");
+    expect_error(
+        &mut worker,
+        &Request::Detect { page: 1 },
+        ErrorCode::InvalidParams,
+    );
     open(&mut worker, "crop_layout.pdf");
-    expect_error(&mut worker, &Request::Detect { page: 0 }, "InvalidParams");
-    expect_error(&mut worker, &Request::Detect { page: 2 }, "InvalidParams");
+    expect_error(
+        &mut worker,
+        &Request::Detect { page: 0 },
+        ErrorCode::InvalidParams,
+    );
+    expect_error(
+        &mut worker,
+        &Request::Detect { page: 2 },
+        ErrorCode::InvalidParams,
+    );
     assert!(worker.request(&Request::Close, RENDER_TIMEOUT).is_ok());
-    expect_error(&mut worker, &Request::Detect { page: 1 }, "InvalidParams");
+    expect_error(
+        &mut worker,
+        &Request::Detect { page: 1 },
+        ErrorCode::InvalidParams,
+    );
 }
