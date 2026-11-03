@@ -9,6 +9,7 @@ import { OutputDirError } from "../output";
 import {
   formatErrorMessage,
   formatMessage,
+  pluralize,
   getTranslations,
   type Language,
   type Translations,
@@ -487,9 +488,11 @@ export function ImagesToPdfView() {
       <div className="images-view-header">
         <div className="images-view-title-group">
           <span className="label" id={headingId}>
-            {formatMessage(t.imagesToPdf.imageCount, {
-              count: imagesToPdf.items.length,
-            })}
+            {pluralize(
+              imagesToPdf.items.length,
+              t.imagesToPdf.imageCountSingle,
+              t.imagesToPdf.imageCountMultiple,
+            )}
           </span>
           {skippedText ? <span className="hint">{skippedText}</span> : null}
         </div>

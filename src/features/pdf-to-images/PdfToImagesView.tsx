@@ -711,11 +711,16 @@ export function PdfToImagesView() {
               <span className="pdf-status-failed">{t.job.loadFailed}</span>
             ) : (
               <span className="mono">
-                {formatMessage(t.pdfToImages.single.meta, {
-                  pages: singleItem.pageCount,
-                  size: formatPaperSize(singleItem.firstPageSizePt),
-                  fileSize: formatFileSize(singleItem.bytes),
-                })}
+                {formatMessage(
+                  singleItem.pageCount === 1
+                    ? t.pdfToImages.single.metaSingle
+                    : t.pdfToImages.single.metaMultiple,
+                  {
+                    pages: singleItem.pageCount,
+                    size: formatPaperSize(singleItem.firstPageSizePt),
+                    fileSize: formatFileSize(singleItem.bytes),
+                  },
+                )}
               </span>
             )}
             {showSingleResult && (

@@ -120,7 +120,8 @@ export const ja = {
       renderDimension: "{size} の 1 ページ → {width} × {height} px",
     },
     single: {
-      meta: "{pages} ページ · {size} · {fileSize}",
+      metaSingle: "{pages} ページ · {size} · {fileSize}",
+      metaMultiple: "{pages} ページ · {size} · {fileSize}",
       convertPage: "{page}  ✓ 変換する",
       donePage: "{page}  ✓ 完了",
       pageWithStatus: "{page}  {status}",
@@ -217,7 +218,8 @@ export const ja = {
     },
     outputDirHint:
       "同じ名前の PDF があるときは「name (1).pdf」のように番号を付けて保存します",
-    imageCount: "画像 {count} 枚",
+    imageCountSingle: "画像 {count} 枚",
+    imageCountMultiple: "画像 {count} 枚",
     pageCount: "{count} ページ",
     addImages: "画像を追加",
     addFolder: "フォルダを追加",

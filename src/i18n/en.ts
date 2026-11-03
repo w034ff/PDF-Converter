@@ -123,7 +123,8 @@ export const en: Translations = {
       renderDimension: "1 page of {size} → {width} × {height} px",
     },
     single: {
-      meta: "{pages} pages · {size} · {fileSize}",
+      metaSingle: "{pages} page · {size} · {fileSize}",
+      metaMultiple: "{pages} pages · {size} · {fileSize}",
       convertPage: "{page}  ✓ Convert",
       donePage: "{page}  ✓ Done",
       pageWithStatus: "{page}  {status}",
@@ -219,7 +220,8 @@ export const en: Translations = {
     },
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
-    imageCount: "{count} image(s)",
+    imageCountSingle: "{count} image",
+    imageCountMultiple: "{count} images",
     pageCount: "{count} pages",
     addImages: "Add images",
     addFolder: "Add folder",

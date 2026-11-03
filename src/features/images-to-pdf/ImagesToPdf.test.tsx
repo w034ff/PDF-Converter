@@ -1878,6 +1878,28 @@ describe("ImagesToPdf (T11)", () => {
     ]);
   });
 
+  it("says 'image' for one and 'images' for several in English", async () => {
+    let added = [sampleImage1];
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        const result: AddResult<ImageItem> = {
+          added,
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+        return result;
+      }
+      return undefined;
+    });
+    renderHarness("en-US");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add images" }));
+    expect(await screen.findByText("1 image")).toBeInTheDocument();
+
+    added = [sampleImage2];
+    fireEvent.click(screen.getByRole("button", { name: "Add images" }));
+    expect(await screen.findByText("2 images")).toBeInTheDocument();
+  });
+
   it("renders page size select with all 8 choices in order in English", async () => {
     mockAppIpc(() => undefined);
     renderHarness("en-US");

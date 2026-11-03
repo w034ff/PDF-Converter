@@ -273,6 +273,22 @@ describe("PdfToImagesView", () => {
       });
     });
 
+    it("says 'page' for a one-page PDF and 'pages' otherwise in English", () => {
+      mockCommands(() => undefined);
+      renderView((state) => {
+        state.language.language = "en";
+        state.pdfToImages.items = [{ ...samplePdf1, pageCount: 1 }];
+      });
+      expect(screen.getByText("1 page · A4 · 1.9 MB")).toBeInTheDocument();
+      cleanup();
+
+      renderView((state) => {
+        state.language.language = "en";
+        state.pdfToImages.items = [samplePdf1];
+      });
+      expect(screen.getByText("4 pages · A4 · 1.9 MB")).toBeInTheDocument();
+    });
+
     it("highlights all pages when pageSelection is 'all'", async () => {
       mockCommands((cmd) =>
         cmd === "get_thumbnail" ? new Uint8Array() : undefined,
