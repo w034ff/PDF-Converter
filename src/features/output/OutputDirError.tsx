@@ -1,5 +1,5 @@
 import { ErrorDisplay } from "../../components";
-import { formatErrorMessage } from "../../i18n";
+import { formatIpcError } from "../../i18n";
 import { useAppState, type ActiveTab } from "../../state";
 import { isOutputDirError } from "./outputDirErrors";
 
@@ -22,12 +22,6 @@ export function OutputDirError({ tab }: OutputDirErrorProps) {
     return null;
   }
   return (
-    <ErrorDisplay
-      message={formatErrorMessage(
-        job.error.code,
-        job.error.detail,
-        language.language,
-      )}
-    />
+    <ErrorDisplay message={formatIpcError(job.error, language.language)} />
   );
 }

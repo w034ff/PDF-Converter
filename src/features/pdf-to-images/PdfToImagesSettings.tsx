@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { SegmentedControl, type SegmentedOption } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import { formatIpcError, formatMessage, getTranslations } from "../../i18n";
 import { checkPageRange, normalizeIpcError } from "../../ipc";
 import {
   hasInvalidCustomDpi,
@@ -167,11 +167,7 @@ export function PdfToImagesSettings() {
             {/* How many pages this converts is in the footer (design §10.1). */}
             {isRangeErrorShown && pdfToImages.rangeError !== null && (
               <span className="error-text" role="alert">
-                {formatErrorMessage(
-                  pdfToImages.rangeError.code,
-                  pdfToImages.rangeError.detail,
-                  language.language,
-                )}
+                {formatIpcError(pdfToImages.rangeError, language.language)}
               </span>
             )}
             {pdfToImages.items.length > 1 && (

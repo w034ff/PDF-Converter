@@ -6,7 +6,11 @@ import {
   NoticeDisplay,
   PdfFileIcon,
 } from "../../components";
-import { formatErrorMessage, getTranslations } from "../../i18n";
+import {
+  formatErrorMessage,
+  formatIpcError,
+  getTranslations,
+} from "../../i18n";
 import { unlockCropPdf, type CropPdf, type IpcError } from "../../ipc";
 import { isJobActive, useAppDispatch, useAppState } from "../../state";
 import { openCropPdfFromDialog } from "./cropOpen";
@@ -31,11 +35,7 @@ function CropNotices() {
     notices.push(
       <ErrorDisplay
         key="open"
-        message={formatErrorMessage(
-          openNotice.error.code,
-          openNotice.error.detail,
-          language.language,
-        )}
+        message={formatIpcError(openNotice.error, language.language)}
         onDismiss={() => dispatch({ type: "CROP_OPEN_NOTICE", notice: null })}
         dismissLabel={t.errors.dismiss}
       />,
@@ -146,7 +146,7 @@ function CropPageStatus({ pdf }: { pdf: CropPdf }) {
       {hidden && <span className="hint">{t.crop.candidatesHidden}</span>}
       {failures.map((error, index) => (
         <span key={index} className="error-text">
-          {formatErrorMessage(error.code, error.detail, language.language)}
+          {formatIpcError(error, language.language)}
         </span>
       ))}
     </div>
@@ -234,11 +234,7 @@ export function CropMain({
       {pdf.error !== null && !needsPassword && (
         <div className="crop-notices">
           <ErrorDisplay
-            message={formatErrorMessage(
-              pdf.error.code,
-              pdf.error.detail,
-              language.language,
-            )}
+            message={formatIpcError(pdf.error, language.language)}
           />
         </div>
       )}

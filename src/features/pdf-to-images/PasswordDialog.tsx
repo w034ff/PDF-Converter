@@ -6,7 +6,7 @@ import {
   type RefObject,
 } from "react";
 import { ModalDialog } from "../../components";
-import { formatErrorMessage, getTranslations } from "../../i18n";
+import { formatIpcError, getTranslations } from "../../i18n";
 import { normalizeIpcError } from "../../ipc";
 import { useAppState } from "../../state";
 
@@ -87,9 +87,7 @@ export function PasswordDialog<T>({
       if (ipcErr.code === "PasswordProtected") {
         setErrorText(t.pdfToImages.passwordDialog.incorrectPassword);
       } else {
-        setErrorText(
-          formatErrorMessage(ipcErr.code, ipcErr.detail, language.language),
-        );
+        setErrorText(formatIpcError(ipcErr, language.language));
       }
     }
   }

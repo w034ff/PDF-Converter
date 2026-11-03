@@ -4,6 +4,7 @@ import {
   detectInitialLanguage,
   en,
   formatErrorMessage,
+  formatIpcError,
   ja,
   type Translations,
 } from "./index";
@@ -194,6 +195,17 @@ describe("i18n", () => {
         expect(formatErrorMessage(code, "detail", "ja")).not.toBe("");
         expect(formatErrorMessage(code, "detail", "en")).not.toBe("");
       }
+    });
+  });
+
+  describe("formatIpcError", () => {
+    it("reads the code and the detail of the error", () => {
+      expect(
+        formatIpcError({ code: "TooManyPages", detail: "10,000" }, "en"),
+      ).toBe("Too many pages (limit: 10,000 pages)");
+      expect(formatIpcError({ code: "ReadFailed", detail: null }, "ja")).toBe(
+        formatErrorMessage("ReadFailed", null, "ja"),
+      );
     });
   });
 

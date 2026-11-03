@@ -1,6 +1,6 @@
 import { CloseIcon, LockIcon } from "../../components";
 import {
-  formatErrorMessage,
+  formatIpcError,
   formatMessage,
   getTranslations,
   pluralize,
@@ -59,11 +59,7 @@ export function OrganizePdfChips({
             className={`organize-chip${waiting ? " is-waiting" : ""}${broken ? " is-broken" : ""}`}
             title={
               broken && pdf.error !== null
-                ? formatErrorMessage(
-                    pdf.error.code,
-                    pdf.error.detail,
-                    language.language,
-                  )
+                ? formatIpcError(pdf.error, language.language)
                 : undefined
             }
           >

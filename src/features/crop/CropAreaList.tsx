@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import {
-  formatErrorMessage,
+  formatIpcError,
   formatMessage,
   getTranslations,
   type Language,
@@ -74,10 +74,7 @@ function rowStatus(
       return {
         text: t.job.rowStatus[status],
         tone: "failed",
-        reason:
-          error === undefined
-            ? null
-            : formatErrorMessage(error.code, error.detail, language),
+        reason: error === undefined ? null : formatIpcError(error, language),
       };
     }
   }

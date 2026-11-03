@@ -8,7 +8,7 @@ import {
 } from "../../components";
 import { PasswordDialog } from "./PasswordDialog";
 import {
-  formatErrorMessage,
+  formatIpcError,
   formatMessage,
   getTranslations,
   type Language,
@@ -307,11 +307,7 @@ function describeItemStatus(
   } else if (item.error !== null) {
     statusText = t.job.loadFailed;
     statusClass = "pdf-status-failed";
-    reasonText = formatErrorMessage(
-      item.error.code,
-      item.error.detail,
-      language,
-    );
+    reasonText = formatIpcError(item.error, language);
   } else if (job.kind === "pdfToImages") {
     const status = jobRowStatus(job, item.id);
     if (status !== null) {
@@ -324,11 +320,7 @@ function describeItemStatus(
           statusClass = "pdf-status-failed";
           const itemResult = job.results[item.id];
           if (itemResult && itemResult.error) {
-            reasonText = formatErrorMessage(
-              itemResult.error.code,
-              itemResult.error.detail,
-              language,
-            );
+            reasonText = formatIpcError(itemResult.error, language);
           }
           break;
         }
@@ -568,11 +560,7 @@ export function PdfToImagesView() {
       <div className="pdf-view">
         {error !== null && (
           <ErrorDisplay
-            message={formatErrorMessage(
-              error.code,
-              error.detail,
-              language.language,
-            )}
+            message={formatIpcError(error, language.language)}
             onDismiss={() => setError(null)}
             dismissLabel={t.errors.dismiss}
           />
@@ -686,11 +674,7 @@ export function PdfToImagesView() {
     <div className="pdf-view">
       {error !== null && (
         <ErrorDisplay
-          message={formatErrorMessage(
-            error.code,
-            error.detail,
-            language.language,
-          )}
+          message={formatIpcError(error, language.language)}
           onDismiss={() => setError(null)}
           dismissLabel={t.errors.dismiss}
         />
@@ -804,11 +788,7 @@ export function PdfToImagesView() {
       {isSingle && singleItem !== null ? (
         singleItem.error?.code === "PasswordProtected" ? (
           <NoticeDisplay
-            message={formatErrorMessage(
-              singleItem.error.code,
-              singleItem.error.detail,
-              language.language,
-            )}
+            message={formatIpcError(singleItem.error, language.language)}
             action={
               <button
                 type="button"
@@ -823,11 +803,7 @@ export function PdfToImagesView() {
         ) : singleItem.error !== null ? (
           // The reason, once; the header says only that it could not be read.
           <ErrorDisplay
-            message={formatErrorMessage(
-              singleItem.error.code,
-              singleItem.error.detail,
-              language.language,
-            )}
+            message={formatIpcError(singleItem.error, language.language)}
           />
         ) : (
           <PdfPageGrid

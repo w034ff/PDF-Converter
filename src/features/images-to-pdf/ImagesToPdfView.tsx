@@ -7,7 +7,7 @@ import {
 } from "../../components";
 import { OutputDirError } from "../output";
 import {
-  formatErrorMessage,
+  formatIpcError,
   formatMessage,
   pluralize,
   getTranslations,
@@ -105,9 +105,7 @@ function failureReason(
   language: Language,
 ): string | null {
   const error = item.error ?? result?.error ?? null;
-  return error === null
-    ? null
-    : formatErrorMessage(error.code, error.detail, language);
+  return error === null ? null : formatIpcError(error, language);
 }
 
 /**
@@ -455,7 +453,7 @@ export function ImagesToPdfView() {
 
   const errorDisplay = error !== null && (
     <ErrorDisplay
-      message={formatErrorMessage(error.code, error.detail, language.language)}
+      message={formatIpcError(error, language.language)}
       onDismiss={() => setError(null)}
       dismissLabel={t.errors.dismiss}
     />
