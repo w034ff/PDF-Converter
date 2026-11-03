@@ -348,11 +348,14 @@
   border-style: dashed;
 }
 
-/* The gap tells the ring from the line of the frame. */
+/* The gap tells the ring from the line of the frame. It is filled in the
+   page's colour because a ring past the page's edge lands on the app's ground,
+   which in the dark theme hides the dark ring; the gap still shows there. */
 .crop-photo-frame:focus-visible,
 .crop-candidate:focus-visible,
 .crop-area:focus-visible {
   outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--color-page-bg);
 }
 
 /* The shape of an area being drawn: it takes no press itself. */
