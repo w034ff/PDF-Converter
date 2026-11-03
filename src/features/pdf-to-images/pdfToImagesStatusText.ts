@@ -1,5 +1,9 @@
 import { formatMessage, type Translations } from "../../i18n";
-import { hasInvalidCustomDpi, type PdfToImagesState } from "../../state";
+import {
+  hasInvalidCustomDpi,
+  readablePdfs,
+  type PdfToImagesState,
+} from "../../state";
 
 function formatSavePages(
   pages: number,
@@ -56,7 +60,7 @@ export function describePdfToImagesStatus(
   if (state.items.length === 0) {
     return plain(t.footer.noPdfs);
   }
-  const validPdfs = state.items.filter((item) => item.error === null);
+  const validPdfs = readablePdfs(state);
   const count = validPdfs.length;
   if (count === 0) {
     const allLocked = state.items.every(

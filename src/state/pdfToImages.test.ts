@@ -9,8 +9,10 @@ import {
   RENDER_DPI_MIN,
   hasInvalidCustomDpi,
   initialPdfToImagesState,
+  maxPageCount,
   parseCustomDpi,
   pdfToImagesReducer,
+  readablePdfs,
 } from "./pdfToImages";
 
 const samplePdf1: PdfItem = {
@@ -382,5 +384,32 @@ describe("pdfToImagesReducer", () => {
     expect(
       hasInvalidCustomDpi({ isCustomDpi: true, customDpiText: "abc" }),
     ).toBe(true);
+  });
+});
+
+describe("readablePdfs and maxPageCount", () => {
+  const locked: PdfItem = {
+    ...samplePdf2,
+    id: 3,
+    name: "locked.pdf",
+    pageCount: 0,
+    error: { code: "PasswordProtected", detail: null },
+  };
+  const longUnread: PdfItem = {
+    ...samplePdf2,
+    id: 4,
+    pageCount: 50,
+    error: { code: "PdfOpenFailed", detail: null },
+  };
+
+  it("keeps the PDFs that were read, in list order", () => {
+    const items = [samplePdf2, locked, samplePdf1, longUnread];
+    expect(readablePdfs({ items })).toEqual([samplePdf2, samplePdf1]);
+    expect(maxPageCount({ items })).toBe(10);
+  });
+
+  it("counts 0 pages when no PDF could be read", () => {
+    expect(readablePdfs({ items: [locked] })).toEqual([]);
+    expect(maxPageCount({ items: [locked] })).toBe(0);
   });
 });

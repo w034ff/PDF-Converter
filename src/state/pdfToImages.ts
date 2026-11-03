@@ -67,6 +67,27 @@ export function hasInvalidCustomDpi(
   return state.isCustomDpi && parseCustomDpi(state.customDpiText) === null;
 }
 
+/**
+ * The PDFs that could be read, in list order: the ones a conversion and a
+ * range check take (design §6.1, §6.3).
+ */
+export function readablePdfs(
+  state: Pick<PdfToImagesState, "items">,
+): PdfItem[] {
+  return state.items.filter((item) => item.error === null);
+}
+
+/**
+ * The page count of the longest readable PDF, so `1-{it}` selects every
+ * page of every PDF (design §6.3); 0 when none could be read.
+ */
+export function maxPageCount(state: Pick<PdfToImagesState, "items">): number {
+  return readablePdfs(state).reduce(
+    (max, item) => Math.max(max, item.pageCount),
+    0,
+  );
+}
+
 /** The resolution fields that "PDF to images" and the crop tab share. */
 export type DpiFields = Pick<
   PdfToImagesState,
