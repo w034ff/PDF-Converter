@@ -20,8 +20,9 @@ use crate::crop_export::{self, CropRegionInput};
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{self, AddResult, ImageItem, PDF_EXTENSION, PdfItem};
 use crate::jobs::{
-    self, CheckPageRangeResult, PageOrientationChoice, PageSizeChoice, RenderColorChoice,
-    RenderFormatChoice, SaveMergedPdfResult, pdf_conformance,
+    self, CheckPageRangeResult, JobCallbacks, JobFinishedPayload, JobItemPayload,
+    JobProgressPayload, PageOrientationChoice, PageSizeChoice, RenderColorChoice,
+    RenderFormatChoice, RunningGuard, SaveMergedPdfResult, pdf_conformance,
 };
 use crate::organize::{self, OrganizeAdded, OrganizePageInput, OrganizeUnlocked};
 use crate::organize_export::{self, SaveOrganizedResult};
@@ -126,7 +127,7 @@ pub async fn pick_output_dir(
     kind: OutputKind,
 ) -> Result<Option<OutputDirLabel>, IpcError> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let Some(dir) = pick_folder(&window)? else {
             return Ok(None);
         };
@@ -140,7 +141,6 @@ pub async fn pick_output_dir(
         Ok(Some(label))
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Where `add_images` and `add_pdfs` take their files from (design §7.1).
@@ -161,7 +161,7 @@ pub async fn add_images(
 ) -> Result<Option<AddResult<ImageItem>>, IpcError> {
     jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || match source {
+    run_blocking(move || match source {
         AddSource::Files => Ok(pick_files(&window, IMAGE_FILTER_NAME, IMAGE_EXTENSIONS)?
             .map(|paths| items::add_images(&state, &paths))),
         AddSource::Folder => pick_folder(&window)?
@@ -169,7 +169,6 @@ pub async fn add_images(
             .transpose(),
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Asks for PDF files or a folder and adds the PDFs in them to the list of
@@ -182,7 +181,7 @@ pub async fn add_pdfs(
 ) -> Result<Option<AddResult<PdfItem>>, IpcError> {
     jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || match source {
+    run_blocking(move || match source {
         AddSource::Files => Ok(pick_files(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
             .map(|paths| items::add_pdfs(&state, &paths))),
         AddSource::Folder => pick_folder(&window)?
@@ -190,7 +189,6 @@ pub async fn add_pdfs(
             .transpose(),
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Removes items from the lists. An ID that is not in the table is ignored.
@@ -207,9 +205,7 @@ pub async fn unlock_pdf(
     password: String,
 ) -> Result<items::UnlockResult, IpcError> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || items::unlock_pdf(&state, id, &password))
-        .await
-        .map_err(task_failed)?
+    run_blocking(move || items::unlock_pdf(&state, id, &password)).await
 }
 
 /// Asks for one PDF and holds it as the pending crop PDF (design §6.10, §7.1).
@@ -222,12 +218,11 @@ pub async fn open_crop_pdf(
 ) -> Result<Option<CropPdf>, IpcError> {
     jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         Ok(pick_file(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
             .map(|path| crop::open_pdf(&state, &path)))
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Makes the pending crop PDF `id` the open one (design §6.10, §7.1).
@@ -250,9 +245,7 @@ pub async fn unlock_crop_pdf(
     password: String,
 ) -> Result<CropPdf, IpcError> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || crop::unlock_crop_pdf(&state, id, &password))
-        .await
-        .map_err(task_failed)?
+    run_blocking(move || crop::unlock_crop_pdf(&state, id, &password)).await
 }
 
 /// Tells Rust where a drop goes: the lists or the crop tab (design §6.10, §7.1).
@@ -269,9 +262,7 @@ pub async fn list_page_images(
     page: u32,
 ) -> Result<Vec<PageImage>, IpcError> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || crop::list_page_images(&state, id, page))
-        .await
-        .map_err(task_failed)?
+    run_blocking(move || crop::list_page_images(&state, id, page)).await
 }
 
 /// Whether anything is drawn over an embedded image of the open crop PDF
@@ -284,9 +275,7 @@ pub async fn check_on_top(
     image_index: u32,
 ) -> Result<bool, IpcError> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || crop::check_on_top(&state, id, page, image_index))
-        .await
-        .map_err(task_failed)?
+    run_blocking(move || crop::check_on_top(&state, id, page, image_index)).await
 }
 
 /// The candidates for cropping on a page of the open crop PDF. Allowed during
@@ -298,9 +287,7 @@ pub async fn detect_layout(
     page: u32,
 ) -> Result<Vec<Candidate>, IpcError> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || crop::detect_layout(&state, id, page))
-        .await
-        .map_err(task_failed)?
+    run_blocking(move || crop::detect_layout(&state, id, page)).await
 }
 
 /// Starts the layout analysis of every page of the open crop PDF that has not
@@ -347,21 +334,7 @@ pub async fn start_crop_export(
     photo_native: bool,
     photo_only: bool,
 ) -> Result<(), IpcError> {
-    let w1 = window.clone();
-    let w2 = window.clone();
-    let w3 = window.clone();
-
-    let callbacks = jobs::JobCallbacks {
-        on_progress: move |p| {
-            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
-        },
-        on_item: move |item| {
-            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
-        },
-        on_finished: move |fin| {
-            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
-        },
-    };
+    let callbacks = job_callbacks(&window);
     let options = CropOptions {
         format,
         color_mode,
@@ -373,11 +346,10 @@ pub async fn start_crop_export(
     // Listing the images of the pages takes workers, which do not belong on
     // the async runtime's threads.
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         crop_export::start_crop_export_internal(&state, id, &regions, options, callbacks)
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Asks for PDF files or a folder and adds the PDFs in them to the organize list. Returns `None`
@@ -390,7 +362,7 @@ pub async fn add_organize_pdfs(
 ) -> Result<Option<OrganizeAdded>, IpcError> {
     jobs::refuse_while_running(&state)?;
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || match source {
+    run_blocking(move || match source {
         AddSource::Files => pick_files(&window, PDF_FILTER_NAME, &[PDF_EXTENSION])?
             .map(|paths| organize::add_pdfs(&state, &paths))
             .transpose(),
@@ -399,7 +371,6 @@ pub async fn add_organize_pdfs(
             .transpose(),
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Removes PDFs from the organize list. An ID that is not there is ignored.
@@ -420,9 +391,7 @@ pub async fn unlock_organize_pdf(
     password: String,
 ) -> Result<OrganizeUnlocked, IpcError> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || organize::unlock_pdf(&state, id, &password))
-        .await
-        .map_err(task_failed)?
+    run_blocking(move || organize::unlock_pdf(&state, id, &password)).await
 }
 
 /// Opens a save dialog to save the pages as one PDF (design organize §4, design §7.1).
@@ -445,27 +414,12 @@ pub async fn save_organized_pdf(
         return Ok(None);
     };
 
-    let w1 = window.clone();
-    let w2 = window.clone();
-    let w3 = window.clone();
+    let callbacks = guarded_job_callbacks(&window, &running_guard);
 
-    let callbacks = jobs::JobCallbacks {
-        on_progress: move |p| {
-            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
-        },
-        on_item: move |item| {
-            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
-        },
-        on_finished: running_guard.wrap_on_finished(move |fin| {
-            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
-        }),
-    };
-
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         organize_export::run_save_organized_pdf(&state_inner, &output, &dest_path, callbacks)
     })
     .await
-    .map_err(task_failed)?
     .map(Some)
 }
 
@@ -478,28 +432,13 @@ pub async fn start_organize_split(
     parts: Vec<Vec<OrganizePageInput>>,
     password: Option<String>,
 ) -> Result<(), IpcError> {
-    let w1 = window.clone();
-    let w2 = window.clone();
-    let w3 = window.clone();
-
-    let callbacks = jobs::JobCallbacks {
-        on_progress: move |p| {
-            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
-        },
-        on_item: move |item| {
-            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
-        },
-        on_finished: move |fin| {
-            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
-        },
-    };
+    let callbacks = job_callbacks(&window);
 
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         organize_export::start_organize_split_internal(&state, &parts, password, callbacks)
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Validates a page range string and counts matching pages across the specified PDF items (design §7.1).
@@ -532,17 +471,8 @@ pub async fn save_merged_pdf(
     pdf_a: bool,
     password: Option<String>,
 ) -> Result<Option<SaveMergedPdfResult>, IpcError> {
-    if state
-        .is_running
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err(IpcError::from_code(ErrorCode::ConversionRunning));
-    }
-    state.cancel_flag.store(false, Ordering::SeqCst);
-
+    let running_guard = jobs::begin_conversion(&state)?;
     let state_inner = state.inner().clone();
-    let running_guard = jobs::RunningGuard::new(Arc::clone(&state_inner.is_running));
 
     // Refused before the save dialog opens, so that nothing is asked for a refused call.
     let conformance = pdf_conformance(pdf_a);
@@ -556,11 +486,7 @@ pub async fn save_merged_pdf(
             .items
             .get(*first_id)
             .ok_or_else(|| IpcError::from_code(ErrorCode::UnknownHandle))?;
-        let filename = entry
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let filename = items::file_name(&entry.path);
         let (stem, _) = pdfconv_core::naming::split_stem_and_ext(&filename);
         format!("{stem}.pdf")
     };
@@ -574,23 +500,9 @@ pub async fn save_merged_pdf(
         return Ok(None);
     };
 
-    let w1 = window.clone();
-    let w2 = window.clone();
-    let w3 = window.clone();
+    let callbacks = guarded_job_callbacks(&window, &running_guard);
 
-    let callbacks = jobs::JobCallbacks {
-        on_progress: move |p| {
-            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
-        },
-        on_item: move |item| {
-            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
-        },
-        on_finished: running_guard.wrap_on_finished(move |fin| {
-            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
-        }),
-    };
-
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         jobs::run_save_merged_pdf(
             &state_inner,
             &ids,
@@ -602,7 +514,6 @@ pub async fn save_merged_pdf(
         )
     })
     .await
-    .map_err(task_failed)?
     .map(Some)
 }
 
@@ -617,21 +528,7 @@ pub async fn start_images_to_pdfs(
     pdf_a: bool,
     password: Option<String>,
 ) -> Result<(), IpcError> {
-    let w1 = window.clone();
-    let w2 = window.clone();
-    let w3 = window.clone();
-
-    let callbacks = jobs::JobCallbacks {
-        on_progress: move |p| {
-            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
-        },
-        on_item: move |item| {
-            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
-        },
-        on_finished: move |fin| {
-            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
-        },
-    };
+    let callbacks = job_callbacks(&window);
 
     jobs::start_images_to_pdfs_internal(
         &state,
@@ -655,21 +552,7 @@ pub async fn start_pdfs_to_images(
     color_mode: RenderColorChoice,
     dpi: u32,
 ) -> Result<(), IpcError> {
-    let w1 = window.clone();
-    let w2 = window.clone();
-    let w3 = window.clone();
-
-    let callbacks = jobs::JobCallbacks {
-        on_progress: move |p| {
-            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
-        },
-        on_item: move |item| {
-            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
-        },
-        on_finished: move |fin| {
-            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
-        },
-    };
+    let callbacks = job_callbacks(&window);
 
     jobs::start_pdfs_to_images_internal(&state, &ids, &range, format, color_mode, dpi, callbacks)
 }
@@ -685,11 +568,7 @@ pub async fn get_thumbnail(
     max_side: Option<u32>,
 ) -> Result<tauri::ipc::Response, IpcError> {
     let state = state.inner().clone();
-    let png = tauri::async_runtime::spawn_blocking(move || {
-        items::make_thumbnail(&state, id, page, max_side)
-    })
-    .await
-    .map_err(task_failed)??;
+    let png = run_blocking(move || items::make_thumbnail(&state, id, page, max_side)).await?;
     Ok(tauri::ipc::Response::new(png))
 }
 
@@ -700,7 +579,7 @@ async fn pick_save_pdf_path(
     default_name: String,
 ) -> Result<Option<PathBuf>, IpcError> {
     let dialog_window = window.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let patterns = filter_extensions(&[PDF_EXTENSION]);
         let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
         let dialog = dialog_window
@@ -715,7 +594,6 @@ async fn pick_save_pdf_path(
             .transpose()
     })
     .await
-    .map_err(task_failed)?
 }
 
 /// Opens a dialog, a child of `window`, to pick one file with one of
@@ -811,6 +689,63 @@ fn dialog_path(picked: tauri_plugin_dialog::FilePath) -> Result<PathBuf, IpcErro
     picked
         .into_path()
         .map_err(|_| IpcError::from_code(ErrorCode::ReadFailed))
+}
+
+/// The callbacks of a job that send its events to `window` (design §7.2). An emit fails only
+/// when the window is gone, and then there is nobody left to tell.
+fn job_callbacks(
+    window: &tauri::Window,
+) -> JobCallbacks<
+    impl Fn(JobProgressPayload) + Send + Sync + 'static + use<>,
+    impl Fn(JobItemPayload) + Send + Sync + 'static + use<>,
+    impl FnOnce(JobFinishedPayload) + Send + Sync + 'static + use<>,
+> {
+    let (w1, w2, w3) = (window.clone(), window.clone(), window.clone());
+    JobCallbacks {
+        on_progress: move |p| {
+            let _ = w1.emit(jobs::JOB_PROGRESS_EVENT, &p);
+        },
+        on_item: move |item| {
+            let _ = w2.emit(jobs::JOB_ITEM_EVENT, &item);
+        },
+        on_finished: move |fin| {
+            let _ = w3.emit(jobs::JOB_FINISHED_EVENT, &fin);
+        },
+    }
+}
+
+/// [`job_callbacks`] whose `on_finished` puts `is_running` back through `guard` before the
+/// event is sent.
+fn guarded_job_callbacks(
+    window: &tauri::Window,
+    guard: &RunningGuard,
+) -> JobCallbacks<
+    impl Fn(JobProgressPayload) + Send + Sync + 'static + use<>,
+    impl Fn(JobItemPayload) + Send + Sync + 'static + use<>,
+    impl FnOnce(JobFinishedPayload) + Send + Sync + 'static + use<>,
+> {
+    let JobCallbacks {
+        on_progress,
+        on_item,
+        on_finished,
+    } = job_callbacks(window);
+    JobCallbacks {
+        on_progress,
+        on_item,
+        on_finished: guard.wrap_on_finished(on_finished),
+    }
+}
+
+/// Runs `task` on a thread that may block and waits for it. Opening files and waiting for
+/// workers must not hold up the async runtime's threads.
+async fn run_blocking<T, F>(task: F) -> Result<T, IpcError>
+where
+    F: FnOnce() -> Result<T, IpcError> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(task_failed)?
 }
 
 /// The error of a blocking task that panicked or was cancelled.
