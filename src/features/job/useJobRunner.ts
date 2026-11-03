@@ -18,7 +18,24 @@ import {
   type RenderColorChoice,
   type RenderFormatChoice,
 } from "../../ipc";
-import { useAppDispatch, type ActiveTab, type JobTarget } from "../../state";
+import {
+  useAppDispatch,
+  type ActiveTab,
+  type AppAction,
+  type JobTarget,
+} from "../../state";
+
+/**
+ * What makes each tab forget its output folder. The organize tab hears of a
+ * missing folder only from the save in parts: the save in one PDF asks for
+ * no folder.
+ */
+const FORGET_OUTPUT_DIR: Record<ActiveTab, AppAction> = {
+  imagesToPdf: { type: "SET_IMAGES_OUTPUT_DIR", outputDir: null },
+  pdfToImages: { type: "SET_PDFS_OUTPUT_DIR", outputDir: null },
+  crop: { type: "SET_CROP_OUTPUT_DIR", outputDir: null },
+  organize: { type: "SET_ORGANIZE_OUTPUT_DIR", outputDir: null },
+};
 
 export interface JobRunner {
   /** Starts "1 つの PDF": opens the save dialog, then merges `targets` in order. */
@@ -114,22 +131,7 @@ export function useJobRunner(): JobRunner {
           // the next start asks for a folder (`useEnsureOutputDir`). This
           // comes before JOB_FAILED because changing a setting drops a
           // result that is already there.
-          switch (kind) {
-            case "imagesToPdf":
-              dispatch({ type: "SET_IMAGES_OUTPUT_DIR", outputDir: null });
-              break;
-            case "pdfToImages":
-              dispatch({ type: "SET_PDFS_OUTPUT_DIR", outputDir: null });
-              break;
-            case "crop":
-              dispatch({ type: "SET_CROP_OUTPUT_DIR", outputDir: null });
-              break;
-            case "organize":
-              // The save in one PDF asks for no folder, so this comes for the
-              // save in parts only.
-              dispatch({ type: "SET_ORGANIZE_OUTPUT_DIR", outputDir: null });
-              break;
-          }
+          dispatch(FORGET_OUTPUT_DIR[kind]);
         }
         dispatch({ type: "JOB_FAILED", error: ipcError });
         return { error: ipcError };
