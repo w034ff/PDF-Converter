@@ -454,7 +454,7 @@ function PdfTableRow({
           <div className="pdf-status-action">
             <button
               type="button"
-              className="btn btn-ghost"
+              className="pdf-status-password"
               disabled={disabled}
               onClick={(e) => onEnterPassword(item, e.currentTarget)}
             >
