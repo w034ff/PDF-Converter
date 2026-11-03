@@ -41,11 +41,7 @@ export function CropAction() {
         pdf.id,
         checked.map((area) => ({ id: area.key, name: pdf.name })),
         regions,
-        crop.format,
-        crop.colorMode,
-        crop.dpi,
-        crop.photoNative,
-        crop.photoOnly,
+        crop,
       );
     });
   }

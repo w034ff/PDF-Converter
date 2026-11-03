@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ProgressBar } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import { formatIpcError, formatMessage, getTranslations } from "../../i18n";
 import {
   isJobActive,
   runningIds,
@@ -143,11 +143,7 @@ export function JobFooter({ tab, idleStatus, action }: JobFooterProps) {
   ) {
     status = (
       <span className="error-text" role="alert">
-        {formatErrorMessage(
-          job.error.code,
-          job.error.detail,
-          language.language,
-        )}
+        {formatIpcError(job.error, language.language)}
       </span>
     );
   } else if (job.kind === tab && job.finished !== null) {

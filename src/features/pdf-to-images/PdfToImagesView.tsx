@@ -8,7 +8,8 @@ import {
 } from "../../components";
 import { PasswordDialog } from "./PasswordDialog";
 import {
-  formatErrorMessage,
+  formatByteSize,
+  formatIpcError,
   formatMessage,
   getTranslations,
   type Language,
@@ -16,14 +17,10 @@ import {
 } from "../../i18n";
 import {
   addPdfs,
-  normalizeIpcError,
-  removeItems,
-  type AddSource,
   type CheckPageRangeResult,
-  type IpcError,
+  type JobItemPayload,
   type PageSizePt,
   type PdfItem,
-  type Skipped,
   unlockPdf,
 } from "../../ipc";
 import {
@@ -34,6 +31,7 @@ import {
   type JobState,
   type PageSelection,
 } from "../../state";
+import { useItemList } from "../items/useItemList";
 import { useThumbnail } from "../items/useThumbnail";
 import { OutputDirError } from "../output";
 import { useRoom } from "../shared/useRoom";
@@ -45,7 +43,6 @@ import {
 import { formatSkippedSummary } from "../shared/skipped";
 import {
   countPagesInIntervals,
-  formatFileSize,
   formatPaperSize,
   failedAsAWhole,
   intervalsToRangeText,
@@ -296,80 +293,116 @@ function describeItemStatus(
   t: Translations,
   language: Language,
 ): ItemStatus | null {
-  let statusText: string | null = null;
-  let statusClass = "";
-  let reasonText: string | null = null;
-
   if (item.error?.code === "PasswordProtected") {
     // Waiting for input, not an error: it opens once the password is in.
-    statusText = t.pdfToImages.passwordRequired;
-    statusClass = "pdf-status-locked";
-  } else if (item.error !== null) {
-    statusText = t.job.loadFailed;
-    statusClass = "pdf-status-failed";
-    reasonText = formatErrorMessage(
-      item.error.code,
-      item.error.detail,
-      language,
-    );
-  } else if (job.kind === "pdfToImages") {
-    const status = jobRowStatus(job, item.id);
-    if (status !== null) {
-      statusText = t.job.rowStatus[status];
-      switch (status) {
-        case "ok":
-          statusClass = "pdf-status-ok";
-          break;
-        case "failed": {
-          statusClass = "pdf-status-failed";
-          const itemResult = job.results[item.id];
-          if (itemResult && itemResult.error) {
-            reasonText = formatErrorMessage(
-              itemResult.error.code,
-              itemResult.error.detail,
-              language,
-            );
-          }
-          break;
-        }
-        case "partial": {
-          statusClass = "pdf-status-partial";
-          const itemResult = job.results[item.id];
-          if (
-            itemResult &&
-            itemResult.failedPages &&
-            itemResult.failedPages.length > 0
-          ) {
-            reasonText = formatMessage(t.pdfToImages.batch.failedPagesReason, {
-              pages: itemResult.failedPages.join(", "),
-            });
-          }
-          break;
-        }
-        case "cancelled":
-          statusClass = "pdf-status-neutral";
-          reasonText = formatMessage(t.pdfToImages.batch.cancelledSavedReason, {
-            count: job.results[item.id]?.outputs.length ?? 0,
-          });
-          break;
-        case "noPages":
-          statusClass = "pdf-status-neutral";
-          reasonText = t.pdfToImages.batch.noPagesReason;
-          break;
-        case "running":
-          statusClass = "pdf-status-running";
-          break;
-        case "waiting":
-        case "unprocessed":
-          statusClass = "pdf-status-muted";
-          break;
-      }
-    }
+    return {
+      text: t.pdfToImages.passwordRequired,
+      className: "pdf-status-locked",
+      reason: null,
+    };
   }
+  if (item.error !== null) {
+    return {
+      text: t.job.loadFailed,
+      className: "pdf-status-failed",
+      reason: formatIpcError(item.error, language),
+    };
+  }
+  if (job.kind !== "pdfToImages") {
+    return null;
+  }
+  const status = jobRowStatus(job, item.id);
+  if (status === null) {
+    return null;
+  }
+  const text = t.job.rowStatus[status];
+  const result: JobItemPayload | undefined = job.results[item.id];
+  switch (status) {
+    case "ok":
+      return { text, className: "pdf-status-ok", reason: null };
+    case "failed":
+      return {
+        text,
+        className: "pdf-status-failed",
+        reason:
+          result?.error === undefined
+            ? null
+            : formatIpcError(result.error, language),
+      };
+    case "partial":
+      return {
+        text,
+        className: "pdf-status-partial",
+        reason:
+          result?.failedPages === undefined || result.failedPages.length === 0
+            ? null
+            : formatMessage(t.pdfToImages.batch.failedPagesReason, {
+                pages: result.failedPages.join(", "),
+              }),
+      };
+    case "cancelled":
+      return {
+        text,
+        className: "pdf-status-neutral",
+        reason: formatMessage(t.pdfToImages.batch.cancelledSavedReason, {
+          count: result?.outputs.length ?? 0,
+        }),
+      };
+    case "noPages":
+      return {
+        text,
+        className: "pdf-status-neutral",
+        reason: t.pdfToImages.batch.noPagesReason,
+      };
+    case "running":
+      return { text, className: "pdf-status-running", reason: null };
+    case "waiting":
+    case "unprocessed":
+      return { text, className: "pdf-status-muted", reason: null };
+  }
+}
 
-  return statusText === null
-    ? null
-    : { text: statusText, className: statusClass, reason: reasonText };
+/**
+ * The table's pages column: how many pages the last conversion saved, or how
+ * many the next one will take, out of all the pages of the PDF.
+ */
+function pagesText(
+  item: PdfItem,
+  result: JobItemPayload | undefined,
+  pageSelection: PageSelection,
+  rangeResult: CheckPageRangeResult | null,
+): string {
+  if (item.error !== null) {
+    return "—";
+  }
+  const ofAll = (count: number | null) => `${count ?? "—"} / ${item.pageCount}`;
+  if (result !== undefined) {
+    return ofAll(
+      result.status === "noPages" || result.status === "failed"
+        ? null
+        : result.outputs.length,
+    );
+  }
+  if (pageSelection === "all") {
+    return ofAll(item.pageCount);
+  }
+  if (rangeResult === null) {
+    return ofAll(null);
+  }
+  const count = countPagesInIntervals(
+    selectedIntervals(rangeResult, item.pageCount),
+    item.pageCount,
+  );
+  return ofAll(count > 0 ? count : null);
+}
+
+/** The table's saved-files column: the first file, and "…" when there are more. */
+function savedFilesText(result: JobItemPayload | undefined): string {
+  const outputs = result?.outputs ?? [];
+  if (outputs.length === 0) {
+    return "—";
+  }
+  return outputs.length === 1 ? outputs[0] : `${outputs[0]} …`;
 }
 
 interface PdfTableRowProps {
@@ -395,43 +428,7 @@ function PdfTableRow({
   translations: t,
   language,
 }: PdfTableRowProps) {
-  let pagesText = "—";
-  if (item.error === null) {
-    if (job.kind === "pdfToImages" && job.results[item.id] !== undefined) {
-      const res = job.results[item.id];
-      if (res.status === "noPages") {
-        pagesText = `— / ${item.pageCount}`;
-      } else if (res.status === "failed") {
-        pagesText = `— / ${item.pageCount}`;
-      } else {
-        pagesText = `${res.outputs.length} / ${item.pageCount}`;
-      }
-    } else {
-      if (pageSelection === "all") {
-        pagesText = `${item.pageCount} / ${item.pageCount}`;
-      } else if (rangeResult !== null) {
-        const count = countPagesInIntervals(
-          selectedIntervals(rangeResult, item.pageCount),
-          item.pageCount,
-        );
-        pagesText =
-          count > 0 ? `${count} / ${item.pageCount}` : `— / ${item.pageCount}`;
-      } else {
-        pagesText = `— / ${item.pageCount}`;
-      }
-    }
-  }
-
-  let savedFilesText = "—";
-  if (job.kind === "pdfToImages" && job.results[item.id] !== undefined) {
-    const outputs = job.results[item.id].outputs;
-    if (outputs.length === 1) {
-      savedFilesText = outputs[0];
-    } else if (outputs.length > 1) {
-      savedFilesText = `${outputs[0]} …`;
-    }
-  }
-
+  const result = job.kind === "pdfToImages" ? job.results[item.id] : undefined;
   const described = describeItemStatus(item, job, t, language);
   const statusText = described?.text ?? "—";
   const statusClass = described?.className ?? "";
@@ -440,8 +437,10 @@ function PdfTableRow({
   return (
     <tr>
       <td>{item.name}</td>
-      <td className="mono pdf-col-pages">{pagesText}</td>
-      <td className="mono">{savedFilesText}</td>
+      <td className="mono pdf-col-pages">
+        {pagesText(item, result, pageSelection, rangeResult)}
+      </td>
+      <td className="mono">{savedFilesText(result)}</td>
       <td className={statusClass}>
         {item.error?.code === "PasswordProtected" && (
           <LockIcon size={13} className="pdf-status-icon" />
@@ -485,8 +484,13 @@ export function PdfToImagesView() {
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language);
   const busy = isJobActive(job);
-  const [lastSkipped, setLastSkipped] = useState<Skipped | null>(null);
-  const [error, setError] = useState<IpcError | null>(null);
+  const list = useItemList({
+    items: pdfToImages.items,
+    add: addPdfs,
+    onAdded: (items) => dispatch({ type: "ADD_PDF_ITEMS", items }),
+    onRemoved: (id) => dispatch({ type: "REMOVE_PDF_ITEM", id }),
+    onCleared: () => dispatch({ type: "CLEAR_PDF_ITEMS" }),
+  });
   const displayed = useDisplayedRange(pdfToImages);
 
   const isSingle = pdfToImages.items.length === 1;
@@ -526,65 +530,26 @@ export function PdfToImagesView() {
     setAnchorPage(null);
   }
 
-  async function handleAdd(source: AddSource) {
-    setError(null);
-    try {
-      const result = await addPdfs(source);
-      if (result !== null) {
-        if (result.added.length > 0) {
-          dispatch({ type: "ADD_PDF_ITEMS", items: result.added });
-        }
-        setLastSkipped(result.skipped);
-      }
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleRemove(id: number) {
-    setError(null);
-    try {
-      await removeItems([id]);
-      dispatch({ type: "REMOVE_PDF_ITEM", id });
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleClearAll() {
-    setError(null);
-    const ids = pdfToImages.items.map((i) => i.id);
-    try {
-      await removeItems(ids);
-      dispatch({ type: "CLEAR_PDF_ITEMS" });
-      setLastSkipped(null);
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
+  const errorDisplay = list.error !== null && (
+    <ErrorDisplay
+      message={formatIpcError(list.error, language.language)}
+      onDismiss={list.dismissError}
+      dismissLabel={t.errors.dismiss}
+    />
+  );
 
   if (pdfToImages.items.length === 0) {
     return (
       <div className="pdf-view">
-        {error !== null && (
-          <ErrorDisplay
-            message={formatErrorMessage(
-              error.code,
-              error.detail,
-              language.language,
-            )}
-            onDismiss={() => setError(null)}
-            dismissLabel={t.errors.dismiss}
-          />
-        )}
+        {errorDisplay}
         <DropZone
           icon={<PdfFileIcon />}
           title={t.dropZone.titlePdfs}
           description={t.dropZone.descriptionPdfs}
           addFilesLabel={t.dropZone.addPdfs}
           addFolderLabel={t.dropZone.addFolder}
-          onAddFiles={busy ? undefined : () => void handleAdd("files")}
-          onAddFolder={busy ? undefined : () => void handleAdd("folder")}
+          onAddFiles={busy ? undefined : () => void list.add("files")}
+          onAddFolder={busy ? undefined : () => void list.add("folder")}
         />
       </div>
     );
@@ -645,7 +610,7 @@ export function PdfToImagesView() {
     });
   }
 
-  const skippedText = formatSkippedSummary(t, lastSkipped);
+  const skippedText = formatSkippedSummary(t, list.skipped);
   const results = job.kind === "pdfToImages" ? job.results : {};
   // The single-PDF view has no table, so its result goes under its name.
   const singleStatus =
@@ -684,17 +649,7 @@ export function PdfToImagesView() {
 
   return (
     <div className="pdf-view">
-      {error !== null && (
-        <ErrorDisplay
-          message={formatErrorMessage(
-            error.code,
-            error.detail,
-            language.language,
-          )}
-          onDismiss={() => setError(null)}
-          dismissLabel={t.errors.dismiss}
-        />
-      )}
+      {errorDisplay}
       <OutputDirError tab="pdfToImages" />
 
       {/* Header above content */}
@@ -718,7 +673,7 @@ export function PdfToImagesView() {
                   {
                     pages: singleItem.pageCount,
                     size: formatPaperSize(singleItem.firstPageSizePt),
-                    fileSize: formatFileSize(singleItem.bytes),
+                    fileSize: formatByteSize(singleItem.bytes),
                   },
                 )}
               </span>
@@ -733,32 +688,6 @@ export function PdfToImagesView() {
                 )}
               </span>
             )}
-            <div className="pdf-view-actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => void handleAdd("files")}
-              >
-                {t.dropZone.addPdfs}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => void handleAdd("folder")}
-              >
-                {t.dropZone.addFolder}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => void handleRemove(singleItem.id)}
-              >
-                {t.pdfToImages.remove}
-              </button>
-            </div>
           </>
         ) : (
           <>
@@ -770,45 +699,52 @@ export function PdfToImagesView() {
             {skippedText !== null && (
               <span className="hint">{skippedText}</span>
             )}
-            <div className="pdf-view-actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => void handleAdd("files")}
-              >
-                {t.dropZone.addPdfs}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => void handleAdd("folder")}
-              >
-                {t.dropZone.addFolder}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => void handleClearAll()}
-              >
-                {t.pdfToImages.clearAll}
-              </button>
-            </div>
           </>
         )}
+        <div className="pdf-view-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={busy}
+            onClick={() => void list.add("files")}
+          >
+            {t.dropZone.addPdfs}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={busy}
+            onClick={() => void list.add("folder")}
+          >
+            {t.dropZone.addFolder}
+          </button>
+          {singleItem !== null ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy}
+              onClick={() => void list.remove(singleItem.id)}
+            >
+              {t.pdfToImages.remove}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy}
+              onClick={() => void list.clearAll()}
+            >
+              {t.pdfToImages.clearAll}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Body: Single PDF thumbnail grid OR Batch PDFs table */}
       {isSingle && singleItem !== null ? (
         singleItem.error?.code === "PasswordProtected" ? (
           <NoticeDisplay
-            message={formatErrorMessage(
-              singleItem.error.code,
-              singleItem.error.detail,
-              language.language,
-            )}
+            message={formatIpcError(singleItem.error, language.language)}
             action={
               <button
                 type="button"
@@ -823,11 +759,7 @@ export function PdfToImagesView() {
         ) : singleItem.error !== null ? (
           // The reason, once; the header says only that it could not be read.
           <ErrorDisplay
-            message={formatErrorMessage(
-              singleItem.error.code,
-              singleItem.error.detail,
-              language.language,
-            )}
+            message={formatIpcError(singleItem.error, language.language)}
           />
         ) : (
           <PdfPageGrid
@@ -871,7 +803,7 @@ export function PdfToImagesView() {
                   job={job}
                   pageSelection={displayed.pageSelection}
                   rangeResult={displayed.rangeResult}
-                  onRemove={() => void handleRemove(item.id)}
+                  onRemove={() => void list.remove(item.id)}
                   onEnterPassword={handleOpenPassword}
                   disabled={busy}
                   translations={t}

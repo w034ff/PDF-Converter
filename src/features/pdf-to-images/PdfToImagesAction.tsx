@@ -1,5 +1,11 @@
 import { getTranslations } from "../../i18n";
-import { hasInvalidCustomDpi, isJobActive, useAppState } from "../../state";
+import {
+  hasInvalidCustomDpi,
+  isJobActive,
+  maxPageCount,
+  readablePdfs,
+  useAppState,
+} from "../../state";
 import { useEnsureOutputDir } from "../output";
 import { useJobRunner } from "../job/useJobRunner";
 
@@ -12,10 +18,10 @@ export function PdfToImagesAction() {
   const { runWithOutputDir, isPicking } = useEnsureOutputDir("pdfToImages");
   const t = getTranslations(language.language);
 
-  // Targets are error-free items in list order (design §6.1, §6.3)
-  const targets = pdfToImages.items
-    .filter((item) => item.error === null)
-    .map((item) => ({ id: item.id, name: item.name }));
+  const targets = readablePdfs(pdfToImages).map((item) => ({
+    id: item.id,
+    name: item.name,
+  }));
 
   const hasTargets = targets.length > 0;
   const isBusy = isJobActive(job);
@@ -40,24 +46,12 @@ export function PdfToImagesAction() {
       return;
     }
     await runWithOutputDir(pdfToImages.outputDir, async () => {
-      // When "all", range is 1-{maxPages} across targets (design §6.3)
-      let range: string;
-      if (pdfToImages.pageSelection === "all") {
-        const maxPages = pdfToImages.items
-          .filter((item) => item.error === null)
-          .reduce((max, item) => Math.max(max, item.pageCount), 0);
-        range = `1-${maxPages}`;
-      } else {
-        range = pdfToImages.rangeText;
-      }
+      const range =
+        pdfToImages.pageSelection === "all"
+          ? `1-${maxPageCount(pdfToImages)}`
+          : pdfToImages.rangeText;
 
-      await runner.startPdfsToImages(
-        targets,
-        range,
-        pdfToImages.format,
-        pdfToImages.colorMode,
-        pdfToImages.dpi,
-      );
+      await runner.startPdfsToImages(targets, range, pdfToImages);
     });
   }
 

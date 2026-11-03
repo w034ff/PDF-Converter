@@ -1,5 +1,5 @@
 import {
-  formatErrorMessage,
+  formatIpcError,
   formatMessage,
   pluralize,
   type Language,
@@ -366,10 +366,7 @@ export function organizeSummaryShape(
   return {
     kind: "organizedPdfFailed",
     name: sourceName(item, pdfs),
-    message:
-      error === undefined
-        ? ""
-        : formatErrorMessage(error.code, error.detail, language),
+    message: error === undefined ? "" : formatIpcError(error, language),
   };
 }
 
@@ -418,11 +415,7 @@ function organizeSplitSummaryShape(
       message:
         failed.error === undefined
           ? ""
-          : formatErrorMessage(
-              failed.error.code,
-              failed.error.detail,
-              language,
-            ),
+          : formatIpcError(failed.error, language),
     },
   };
 }

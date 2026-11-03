@@ -17,7 +17,6 @@ import { useCropDropped } from "./features/crop/useCropDropped";
 import { useCropAreaQueries } from "./features/crop/useCropAreaQueries";
 import { useCropLayoutPage } from "./features/crop/useCropLayoutPage";
 import { useCropPageData } from "./features/crop/useCropPageData";
-import { useDropTarget } from "./features/crop/useDropTarget";
 import { ImagesToPdfView } from "./features/images-to-pdf/ImagesToPdfView";
 import { useItemsDropped } from "./features/items/useItemsDropped";
 import { JobFooter } from "./features/job/JobFooter";
@@ -32,8 +31,9 @@ import { OrganizeStatus } from "./features/organize/OrganizeStatus";
 import { OrganizeView } from "./features/organize/OrganizeView";
 import { useOrganizeDropped } from "./features/organize/useOrganizeDropped";
 import { useSettingsAutoSave } from "./features/settings/useSettingsAutoSave";
+import { useDropTarget } from "./features/shared/useDropTarget";
 import { useBlockBrowserShortcuts } from "./features/shortcuts/useBlockBrowserShortcuts";
-import { formatErrorMessage, getTranslations, type Language } from "./i18n";
+import { formatIpcError, getTranslations, type Language } from "./i18n";
 import { getSettings, type Settings } from "./ipc";
 import {
   AppStateProvider,
@@ -202,11 +202,7 @@ function AppShell() {
               <main className="app-main">
                 {dropError.error !== null && (
                   <ErrorDisplay
-                    message={formatErrorMessage(
-                      dropError.error.code,
-                      dropError.error.detail,
-                      language.language,
-                    )}
+                    message={formatIpcError(dropError.error, language.language)}
                     onDismiss={dropError.dismiss}
                     dismissLabel={t.errors.dismiss}
                   />

@@ -34,22 +34,10 @@ export function ImagesToPdfAction() {
 
   const start = (password: string | null) => {
     if (isMerge) {
-      void runner.saveMergedPdf(
-        validTargets,
-        imagesToPdf.pageSize,
-        imagesToPdf.orientation,
-        imagesToPdf.pdfA,
-        password,
-      );
+      void runner.saveMergedPdf(validTargets, imagesToPdf, password);
     } else {
       void runWithOutputDir(imagesToPdf.outputDir, () =>
-        runner.startImagesToPdfs(
-          validTargets,
-          imagesToPdf.pageSize,
-          imagesToPdf.orientation,
-          imagesToPdf.pdfA,
-          password,
-        ),
+        runner.startImagesToPdfs(validTargets, imagesToPdf, password),
       );
     }
   };

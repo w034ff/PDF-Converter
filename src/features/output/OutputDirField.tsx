@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { formatErrorMessage, getTranslations } from "../../i18n";
+import { formatIpcError, getTranslations } from "../../i18n";
 import {
   normalizeIpcError,
   pickOutputDir,
@@ -68,7 +68,7 @@ export function OutputDirField({
       </button>
       {error !== null && (
         <span className="error-text" role="alert">
-          {formatErrorMessage(error.code, error.detail, language.language)}
+          {formatIpcError(error, language.language)}
         </span>
       )}
       {hint !== undefined && <span className="hint">{hint}</span>}

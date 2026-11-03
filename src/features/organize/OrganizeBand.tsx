@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { getTranslations, pluralize } from "../../i18n";
 import { isJobActive, useAppDispatch, useAppState } from "../../state";
 import "./organize.css";
@@ -9,6 +9,8 @@ export interface OrganizeBandProps {
   onDelete: () => void;
   /** What works on the list of PDFs, at the end of the band. */
   actions: ReactNode;
+  /** The "?" button, which the list of keys gives the focus back to. */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 function RotateLeftIcon() {
@@ -76,90 +78,93 @@ function TrashIcon() {
  * are pressed in then, so the grid under the band does not move. Where the
  * band is narrow they keep their icons alone, with their names as tooltips.
  */
-export const OrganizeBand = forwardRef<HTMLButtonElement, OrganizeBandProps>(
-  function OrganizeBand({ onShowKeyHints, onDelete, actions }, hintsRef) {
-    const { organize, job, language } = useAppState();
-    const dispatch = useAppDispatch();
-    const t = getTranslations(language.language).organize.band;
-    const selectedCount = organize.selected.size;
-    const idle = selectedCount === 0 || isJobActive(job);
-    const keys = [...organize.selected];
+export function OrganizeBand({
+  onShowKeyHints,
+  onDelete,
+  actions,
+  ref: hintsRef,
+}: OrganizeBandProps) {
+  const { organize, job, language } = useAppState();
+  const dispatch = useAppDispatch();
+  const t = getTranslations(language.language).organize.band;
+  const selectedCount = organize.selected.size;
+  const idle = selectedCount === 0 || isJobActive(job);
+  const keys = [...organize.selected];
 
-    return (
-      <div className="organize-band">
-        <span className="organize-band-count">
-          {selectedCount === 0
-            ? pluralize(
-                organize.pages.length,
-                t.countNoneSingle,
-                t.countNoneMultiple,
-              )
-            : pluralize(
-                selectedCount,
-                t.countSelectedSingle,
-                t.countSelectedMultiple,
-              )}
-        </span>
-        <button
-          type="button"
-          className="btn btn-ghost organize-band-button"
-          aria-label={t.rotateLeft}
-          title={t.rotateLeft}
-          disabled={idle}
-          onClick={() =>
-            dispatch({
-              type: "ORGANIZE_PAGES_ROTATED",
-              keys,
-              direction: "left",
-            })
-          }
-        >
-          <RotateLeftIcon />
-          <span className="organize-band-label">{t.rotateLeft}</span>
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost organize-band-button"
-          aria-label={t.rotateRight}
-          title={t.rotateRight}
-          disabled={idle}
-          onClick={() =>
-            dispatch({
-              type: "ORGANIZE_PAGES_ROTATED",
-              keys,
-              direction: "right",
-            })
-          }
-        >
-          <RotateRightIcon />
-          <span className="organize-band-label">{t.rotateRight}</span>
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost organize-band-button"
-          aria-label={t.delete}
-          title={t.delete}
-          disabled={idle}
-          onClick={() => {
-            onDelete();
-            dispatch({ type: "ORGANIZE_PAGES_DELETED", keys });
-          }}
-        >
-          <TrashIcon />
-          <span className="organize-band-label">{t.delete}</span>
-        </button>
-        <div className="organize-band-actions">{actions}</div>
-        <button
-          ref={hintsRef}
-          type="button"
-          className="icon-btn organize-band-hints"
-          aria-label={t.keyHints}
-          title={t.keyHintsTitle}
-          onClick={onShowKeyHints}
-        >
-          ?
-        </button>
-      </div>
-    );
-  },
-);
+  return (
+    <div className="organize-band">
+      <span className="organize-band-count">
+        {selectedCount === 0
+          ? pluralize(
+              organize.pages.length,
+              t.countNoneSingle,
+              t.countNoneMultiple,
+            )
+          : pluralize(
+              selectedCount,
+              t.countSelectedSingle,
+              t.countSelectedMultiple,
+            )}
+      </span>
+      <button
+        type="button"
+        className="btn btn-ghost organize-band-button"
+        aria-label={t.rotateLeft}
+        title={t.rotateLeft}
+        disabled={idle}
+        onClick={() =>
+          dispatch({
+            type: "ORGANIZE_PAGES_ROTATED",
+            keys,
+            direction: "left",
+          })
+        }
+      >
+        <RotateLeftIcon />
+        <span className="organize-band-label">{t.rotateLeft}</span>
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost organize-band-button"
+        aria-label={t.rotateRight}
+        title={t.rotateRight}
+        disabled={idle}
+        onClick={() =>
+          dispatch({
+            type: "ORGANIZE_PAGES_ROTATED",
+            keys,
+            direction: "right",
+          })
+        }
+      >
+        <RotateRightIcon />
+        <span className="organize-band-label">{t.rotateRight}</span>
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost organize-band-button"
+        aria-label={t.delete}
+        title={t.delete}
+        disabled={idle}
+        onClick={() => {
+          onDelete();
+          dispatch({ type: "ORGANIZE_PAGES_DELETED", keys });
+        }}
+      >
+        <TrashIcon />
+        <span className="organize-band-label">{t.delete}</span>
+      </button>
+      <div className="organize-band-actions">{actions}</div>
+      <button
+        ref={hintsRef}
+        type="button"
+        className="icon-btn organize-band-hints"
+        aria-label={t.keyHints}
+        title={t.keyHintsTitle}
+        onClick={onShowKeyHints}
+      >
+        ?
+      </button>
+    </div>
+  );
+}

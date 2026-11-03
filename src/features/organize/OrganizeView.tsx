@@ -6,7 +6,7 @@ import {
   MenuButton,
   NoticeDisplay,
 } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import { formatIpcError, formatMessage, getTranslations } from "../../i18n";
 import {
   addOrganizePdfs,
   normalizeIpcError,
@@ -116,11 +116,7 @@ export function OrganizeView() {
     <>
       {notice?.error != null && (
         <ErrorDisplay
-          message={formatErrorMessage(
-            notice.error.code,
-            notice.error.detail,
-            language.language,
-          )}
+          message={formatIpcError(notice.error, language.language)}
           onDismiss={() =>
             dispatch({
               type: "ORGANIZE_NOTICE",
