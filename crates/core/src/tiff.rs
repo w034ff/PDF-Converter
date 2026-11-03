@@ -483,6 +483,36 @@ fn read_page<R: Read + Seek>(
     Ok((custom, info))
 }
 
+/// Expands grey samples of `bits` (1, 2 or 4) per pixel, packed from the high bit down with
+/// every row starting on a new byte, to one byte per pixel so that the largest
+/// sample becomes 255.
+fn expand_packed_gray(
+    data: &[u8],
+    width: u32,
+    height: u32,
+    bits: u8,
+) -> Result<Vec<u8>, ProbeError> {
+    let width = width as usize;
+    let height = height as usize;
+    let bits = usize::from(bits);
+    let row_bytes = (width * bits).div_ceil(8);
+    if data.len() < row_bytes * height {
+        return Err(ProbeError::DecodeFailed);
+    }
+    let per_byte = 8 / bits;
+    let max = (1u8 << bits) - 1;
+    let scale = u8::MAX / max;
+    let mut out = Vec::with_capacity(width * height);
+    for y in 0..height {
+        let row = &data[y * row_bytes..];
+        for x in 0..width {
+            let shift = (per_byte - 1 - x % per_byte) * bits;
+            out.push(((row[x / per_byte] >> shift) & max) * scale);
+        }
+    }
+    Ok(out)
+}
+
 type DecodedChannels = (ImageColorspace, BitsPerComponent, Vec<u8>, Option<Vec<u8>>);
 
 fn process_decoded_samples(
@@ -521,71 +551,12 @@ fn process_decoded_samples(
             };
 
             match bit_depth {
-                1 => {
-                    let row_bytes = (width as usize).div_ceil(8);
-                    if u8_data.len() < row_bytes * height as usize {
-                        return Err(ProbeError::DecodeFailed);
-                    }
-                    let mut color_channel = Vec::with_capacity(total_pixels);
-                    for y in 0..height as usize {
-                        let row_start = y * row_bytes;
-                        for x in 0..width as usize {
-                            let byte = u8_data[row_start + x / 8];
-                            let bit = (byte >> (7 - (x % 8))) & 1;
-                            color_channel.push(if bit == 1 { 255 } else { 0 });
-                        }
-                    }
-                    Ok((
-                        ImageColorspace::Luma,
-                        BitsPerComponent::Eight,
-                        color_channel,
-                        None,
-                    ))
-                }
-                2 => {
-                    let row_bytes = (width as usize * 2).div_ceil(8);
-                    if u8_data.len() < row_bytes * height as usize {
-                        return Err(ProbeError::DecodeFailed);
-                    }
-                    let mut color_channel = Vec::with_capacity(total_pixels);
-                    for y in 0..height as usize {
-                        let row_start = y * row_bytes;
-                        for x in 0..width as usize {
-                            let byte = u8_data[row_start + x / 4];
-                            let shift = (3 - (x % 4)) * 2;
-                            let val = ((byte >> shift) & 0x03) * 85;
-                            color_channel.push(val);
-                        }
-                    }
-                    Ok((
-                        ImageColorspace::Luma,
-                        BitsPerComponent::Eight,
-                        color_channel,
-                        None,
-                    ))
-                }
-                4 => {
-                    let row_bytes = (width as usize * 4).div_ceil(8);
-                    if u8_data.len() < row_bytes * height as usize {
-                        return Err(ProbeError::DecodeFailed);
-                    }
-                    let mut color_channel = Vec::with_capacity(total_pixels);
-                    for y in 0..height as usize {
-                        let row_start = y * row_bytes;
-                        for x in 0..width as usize {
-                            let byte = u8_data[row_start + x / 2];
-                            let shift = (1 - (x % 2)) * 4;
-                            let val = ((byte >> shift) & 0x0F) * 17;
-                            color_channel.push(val);
-                        }
-                    }
-                    Ok((
-                        ImageColorspace::Luma,
-                        BitsPerComponent::Eight,
-                        color_channel,
-                        None,
-                    ))
-                }
+                1 | 2 | 4 => Ok((
+                    ImageColorspace::Luma,
+                    BitsPerComponent::Eight,
+                    expand_packed_gray(&u8_data, width, height, bit_depth)?,
+                    None,
+                )),
                 8 => {
                     if u8_data.len() != total_pixels {
                         return Err(ProbeError::DecodeFailed);
@@ -1374,6 +1345,21 @@ mod tests {
         assert_eq!(cs, ImageColorspace::Luma);
         assert_eq!(bpc, BitsPerComponent::Eight);
         assert_eq!(data, vec![255, 0]);
+    }
+
+    #[test]
+    fn pixel_expansion_starts_each_row_on_a_new_byte() {
+        // 3 pixels of 2 bits leave the low 2 bits of each row's byte unused.
+        let raw = tiff::decoder::DecodingResult::U8(vec![0b0001_1011, 0b1110_0111]);
+        let (_, _, data, _) =
+            process_decoded_samples(3, 2, tiff::ColorType::Gray(2), 0, raw).unwrap();
+        assert_eq!(data, vec![0, 85, 170, 255, 170, 85]);
+
+        let short = tiff::decoder::DecodingResult::U8(vec![0b0001_1011]);
+        assert_eq!(
+            process_decoded_samples(3, 2, tiff::ColorType::Gray(2), 0, short),
+            Err(ProbeError::DecodeFailed)
+        );
     }
 
     #[test]
