@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use pdfconv_core::naming::resolve_image_to_pdf_names;
-use pdfconv_core::{AddImageResult, PdfConformance, PdfWriter};
+use pdfconv_core::{AddImageResult, ErrorCode, PdfConformance, PdfWriter};
 
 use super::image_check::{ImageCheckStop, check_image};
 use super::options::{
@@ -22,7 +22,7 @@ use super::{
 };
 use crate::AppState;
 use crate::decode_budget::pdf_write_estimate;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{ItemKind, file_name};
 use crate::settings::OutputKind;
 

@@ -9,7 +9,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::protocol::{Request, Response, read_message, write_message};
+use crate::protocol::{Request, Response, WorkerCode, read_message, write_message};
 
 /// Why a request to a worker failed.
 #[derive(Debug)]
@@ -20,15 +20,15 @@ pub enum WorkerError {
     Crashed,
     /// The worker did not answer in time and was killed.
     Timeout,
-    /// The worker answered with an error (a code of design §6.6).
+    /// The worker answered with an error.
     Remote {
-        code: String,
+        code: WorkerCode,
         detail: Option<String>,
     },
     /// A source PDF of an `Organize` request could not be used (design
     /// organize §3). The worker is still usable.
     SourceFailed {
-        code: String,
+        code: WorkerCode,
         detail: Option<String>,
         /// Index of the source in the request.
         source: u32,

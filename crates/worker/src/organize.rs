@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 
 use pdfconv_core::{
-    DestinationView, LinkStyleSource, LinkTarget, OutlineItem, OutputLink, OutputPassword,
-    Relinking, SourceDetails, SourceLinkKey, finish_organized, read_source_details,
+    DestinationView, ErrorCode, LinkStyleSource, LinkTarget, OutlineItem, OutputLink,
+    OutputPassword, Relinking, SourceDetails, SourceLinkKey, finish_organized, read_source_details,
 };
 use pdfium_render::prelude::{
     PdfAction, PdfBookmark, PdfDestination, PdfDestinationViewSettings, PdfDocument, PdfPage,
@@ -16,12 +16,10 @@ use pdfium_render::prelude::{
 };
 
 use crate::protocol::{
-    OUTPUT_CHUNK_BYTES, OrganizePage, OrganizeSource, Password, Request, Response, write_message,
+    OUTPUT_CHUNK_BYTES, OrganizePage, OrganizeSource, Password, Request, Response, WorkerCode,
+    write_message,
 };
-use crate::server::{
-    CODE_INVALID_PARAMS, CODE_PDF_OPEN_FAILED, CODE_PDFIUM_UNAVAILABLE, WORKER_MEMORY_LIMIT,
-    check_page_count, map_pdfium_open_error,
-};
+use crate::server::{WORKER_MEMORY_LIMIT, check_page_count, map_pdfium_open_error};
 use crate::system_memory::current_usage;
 
 /// Width in pixels of the render that makes pdfium build the appearance of annotations that have
@@ -49,9 +47,6 @@ const RAW_MEMORY_FACTOR: u64 = 4;
 /// What is kept free when deciding whether lopdf may read a file: the allocations that the
 /// worker's usage does not show (pdfium's and the allocator's).
 const RAW_MARGIN: u64 = 256 * 1024 * 1024;
-
-/// Error code when the rewritten document cannot be written.
-const CODE_WRITE_FAILED: &str = "WriteFailed";
 
 /// The arguments of `Request::Organize`.
 pub(crate) struct OrganizeArgs {
@@ -85,13 +80,13 @@ impl OrganizeArgs {
 enum Failure {
     /// A source PDF could not be used.
     Source {
-        code: String,
+        code: WorkerCode,
         detail: Option<String>,
         source: u32,
     },
     /// Anything else.
     General {
-        code: String,
+        code: WorkerCode,
         detail: Option<String>,
     },
     /// The pipe to the main process failed; nobody is left to tell.
@@ -99,7 +94,7 @@ enum Failure {
 }
 
 impl Failure {
-    fn general(code: &str) -> Self {
+    fn general(code: impl Into<WorkerCode>) -> Self {
         Self::General {
             code: code.into(),
             detail: None,
@@ -198,7 +193,7 @@ fn send_organized<W: Write>(
         return Err(Failure::Io(error));
     }
     finished.map_err(|error| Failure::General {
-        code: CODE_WRITE_FAILED.into(),
+        code: ErrorCode::WriteFailed.into(),
         detail: Some(error.to_string()),
     })?;
     let bytes = chunks.finish()?;
@@ -234,7 +229,7 @@ struct CurrentSource<'a> {
 
 impl CurrentSource<'_> {
     /// The failure of this source with `code`.
-    fn fail(&self, code: &str) -> Failure {
+    fn fail(&self, code: impl Into<WorkerCode>) -> Failure {
         Failure::Source {
             code: code.into(),
             detail: None,
@@ -250,7 +245,7 @@ impl CurrentSource<'_> {
                 detail,
                 source: self.index,
             },
-            _ => self.fail(CODE_PDF_OPEN_FAILED),
+            _ => self.fail(ErrorCode::PdfOpenFailed),
         }
     }
 
@@ -263,7 +258,7 @@ impl CurrentSource<'_> {
         let page_count = doc.pages().len() as u32;
         check_page_count(page_count).map_err(|response| self.fail_with(response))?;
         if self.used.iter().any(|(_, page)| page.page >= page_count) {
-            return Err(self.fail(CODE_INVALID_PARAMS));
+            return Err(self.fail(ErrorCode::InvalidParams));
         }
         Ok((doc, page_count))
     }
@@ -272,7 +267,7 @@ impl CurrentSource<'_> {
 impl Assembly {
     fn new(pdfium: &'static Pdfium) -> Result<Self, Failure> {
         let output = pdfium.create_new_pdf().map_err(|error| Failure::General {
-            code: CODE_PDFIUM_UNAVAILABLE.into(),
+            code: WorkerCode::PDFIUM_UNAVAILABLE,
             detail: Some(format!("{error:?}")),
         })?;
         Ok(Self {
@@ -380,7 +375,7 @@ impl Assembly {
         self.output
             .pages_mut()
             .copy_pages_from_document(doc, &list, destination as i32)
-            .map_err(|_| source.fail(CODE_PDF_OPEN_FAILED))?;
+            .map_err(|_| source.fail(ErrorCode::PdfOpenFailed))?;
         for (offset, (_, page)) in run.iter().enumerate() {
             turn(&self.output, destination + offset, page.rotation)
                 .map_err(|code| source.fail(code))?;
@@ -422,7 +417,7 @@ impl Assembly {
         let _ = saved.try_reserve_exact((estimate / 100 * SAVE_BUFFER_FACTOR_PERCENT) as usize);
         output
             .save_to_writer(&mut saved)
-            .map_err(|_| Failure::general(CODE_WRITE_FAILED))?;
+            .map_err(|_| Failure::general(ErrorCode::WriteFailed))?;
         drop(output);
         Ok((saved, relinking))
     }
@@ -430,7 +425,7 @@ impl Assembly {
 
 /// Checks the arguments of the request (design organize §3) and returns the output password.
 fn validate(args: &OrganizeArgs) -> Result<Option<OutputPassword>, Failure> {
-    let invalid = || Failure::general(CODE_INVALID_PARAMS);
+    let invalid = || Failure::general(ErrorCode::InvalidParams);
     if args.pages.is_empty() || i32::try_from(args.pages.len()).is_err() {
         return Err(invalid());
     }
@@ -464,17 +459,17 @@ fn runs<'a, 'b>(used: &'a [(u32, &'b OrganizePage)]) -> Vec<&'a [(u32, &'b Organ
 }
 
 /// Adds `rotation` degrees to the rotation of output page `index`.
-fn turn(output: &PdfDocument<'_>, index: usize, rotation: u16) -> Result<(), &'static str> {
+fn turn(output: &PdfDocument<'_>, index: usize, rotation: u16) -> Result<(), ErrorCode> {
     if rotation == 0 {
         return Ok(());
     }
     let mut page = output
         .pages()
         .get(index as i32)
-        .map_err(|_| CODE_PDF_OPEN_FAILED)?;
+        .map_err(|_| ErrorCode::PdfOpenFailed)?;
     let own = page
         .rotation()
-        .map_err(|_| CODE_PDF_OPEN_FAILED)?
+        .map_err(|_| ErrorCode::PdfOpenFailed)?
         .as_degrees() as u16;
     page.set_rotation(match (own + rotation) % 360 {
         90 => PdfPageRenderRotation::Degrees90,
@@ -503,11 +498,11 @@ fn prepare_page(
     doc: &PdfDocument<'_>,
     source_page: &SourcePage<'_>,
     notes: &mut LinkNotes<'_>,
-) -> Result<(), &'static str> {
+) -> Result<(), ErrorCode> {
     let mut page = doc
         .pages()
         .get(source_page.index as i32)
-        .map_err(|_| CODE_PDF_OPEN_FAILED)?;
+        .map_err(|_| ErrorCode::PdfOpenFailed)?;
     let flattens = has_annotation_besides_links(&page);
     note_links(&page, source_page, flattens, notes);
     if !flattens {
@@ -515,20 +510,20 @@ fn prepare_page(
     }
     // pdfium builds the appearance of an annotation that has none only when it draws the page.
     page.render_with_config(&PdfRenderConfig::new().set_target_width(FLATTEN_PRERENDER_WIDTH))
-        .map_err(|_| CODE_PDF_OPEN_FAILED)?;
+        .map_err(|_| ErrorCode::PdfOpenFailed)?;
     // Flattening draws only the annotations that print.
     let annotations = page.annotations();
     for position in annotations.as_range() {
         let mut annotation = annotations
             .get(position)
-            .map_err(|_| CODE_PDF_OPEN_FAILED)?;
+            .map_err(|_| ErrorCode::PdfOpenFailed)?;
         if !annotation.is_hidden() && !annotation.is_printed() {
             annotation
                 .set_is_printed(true)
-                .map_err(|_| CODE_PDF_OPEN_FAILED)?;
+                .map_err(|_| ErrorCode::PdfOpenFailed)?;
         }
     }
-    page.flatten().map_err(|_| CODE_PDF_OPEN_FAILED)
+    page.flatten().map_err(|_| ErrorCode::PdfOpenFailed)
 }
 
 fn has_annotation_besides_links(page: &PdfPage<'_>) -> bool {

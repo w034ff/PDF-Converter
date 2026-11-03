@@ -13,8 +13,11 @@ mod worker_paths;
 
 use worker_paths::start;
 
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError};
-use pdfconv_worker::protocol::{Password, RenderColor, RenderFormat, Request, Response};
+use pdfconv_worker::protocol::{
+    Password, RenderColor, RenderFormat, Request, Response, WorkerCode,
+};
 use pdfconv_worker::{RENDER_DPI_MAX, RENDER_DPI_MIN};
 
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
@@ -93,7 +96,7 @@ fn reports_a_missing_library_as_an_error_without_crashing() {
     let empty = std::env::temp_dir().join("pdfconv-no-pdfium-here");
     let mut worker = worker_paths::start_with([empty.into(), onnxruntime, model]);
     match worker.request(&Request::Hello, ANSWER_TIMEOUT) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PdfiumUnavailable"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, WorkerCode::PDFIUM_UNAVAILABLE),
         other => panic!("expected PdfiumUnavailable, got {other:?}"),
     }
     // The worker is still alive and answers the next request the same way.
@@ -283,7 +286,9 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+        Err(WorkerError::Remote { code, .. }) => {
+            assert_eq!(code, ErrorCode::PasswordProtected.into())
+        }
         other => panic!("expected PasswordProtected, got {other:?}"),
     }
 
@@ -295,7 +300,9 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+        Err(WorkerError::Remote { code, .. }) => {
+            assert_eq!(code, ErrorCode::PasswordProtected.into())
+        }
         other => panic!("expected PasswordProtected, got {other:?}"),
     }
 
@@ -309,7 +316,9 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+        Err(WorkerError::Remote { code, .. }) => {
+            assert_eq!(code, ErrorCode::PasswordProtected.into())
+        }
         other => panic!("expected PasswordProtected, got {other:?}"),
     }
 
@@ -345,7 +354,9 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PasswordProtected"),
+        Err(WorkerError::Remote { code, .. }) => {
+            assert_eq!(code, ErrorCode::PasswordProtected.into())
+        }
         other => panic!("expected PasswordProtected, got {other:?}"),
     }
 
@@ -400,7 +411,7 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
         &open_req(fixtures_dir().join("corrupt.pdf")),
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "PdfOpenFailed"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::PdfOpenFailed.into()),
         other => panic!("expected PdfOpenFailed, got {other:?}"),
     }
 
@@ -409,7 +420,7 @@ fn handles_encrypted_restricted_and_corrupt_pdfs() {
         &open_req(fixtures_dir().join("non_existent_file.pdf")),
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "ReadFailed"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::ReadFailed.into()),
         other => panic!("expected ReadFailed, got {other:?}"),
     }
 }
@@ -431,7 +442,7 @@ fn rejects_thumbnail_exceeding_the_page_view_size() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 }
@@ -456,7 +467,7 @@ fn rejects_render_exceeding_max_render_pixels() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "RenderTooLarge"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::RenderTooLarge.into()),
         other => panic!("expected RenderTooLarge, got {other:?}"),
     }
 }
@@ -475,7 +486,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -487,7 +498,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -505,7 +516,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -519,7 +530,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -533,7 +544,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -547,7 +558,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -561,7 +572,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -588,7 +599,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 
@@ -608,7 +619,7 @@ fn rejects_invalid_parameters_and_closed_documents() {
         },
         ANSWER_TIMEOUT,
     ) {
-        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, "InvalidParams"),
+        Err(WorkerError::Remote { code, .. }) => assert_eq!(code, ErrorCode::InvalidParams.into()),
         other => panic!("expected InvalidParams, got {other:?}"),
     }
 }

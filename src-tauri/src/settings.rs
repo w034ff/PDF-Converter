@@ -14,8 +14,9 @@ use serde_json::{Map, Value};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::jobs::{PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice};
+use pdfconv_core::ErrorCode;
 
 /// The `schemaVersion` this build reads and writes (design §6.7).
 pub const SCHEMA_VERSION: u32 = 1;

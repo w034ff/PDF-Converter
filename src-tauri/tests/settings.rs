@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use pdf_converter_lib::AppState;
-use pdf_converter_lib::error::{ErrorCode, IpcError};
+use pdf_converter_lib::error::IpcError;
 use pdf_converter_lib::jobs::{
     PageOrientationChoice, PageSizeChoice, RenderColorChoice, RenderFormatChoice,
 };
@@ -17,6 +17,7 @@ use pdf_converter_lib::settings::{
     save_settings_to_dir,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::{DEFAULT_RENDER_DPI, RENDER_DPI_MAX, RENDER_DPI_MIN};
 use serde_json::{Value, json};
 use tempfile::TempDir;

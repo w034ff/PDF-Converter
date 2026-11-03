@@ -1,11 +1,48 @@
-//! Error types for image probing and operations (design §6.6).
+//! The error codes of design §6.6 and the error types of image probing and operations.
 
 use std::fmt;
+
+use serde::{Deserialize, Serialize};
 
 use crate::probe::MAX_IMAGE_PIXELS;
 
 /// Maximum pages allowed in a multi-page TIFF image (design §4.1.1).
 pub const MAX_TIFF_PAGES: u32 = 1_000;
+
+/// The error codes of design §6.6.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub enum ErrorCode {
+    UnsupportedFormat,
+    DecodeFailed,
+    PdfOpenFailed,
+    PasswordProtected,
+    TooLarge,
+    TooManyPages,
+    RenderTooLarge,
+    WorkerCrashed,
+    WorkerTimeout,
+    ReadFailed,
+    WriteFailed,
+    InvalidPageRange,
+    ConversionRunning,
+    UnknownHandle,
+    InvalidParams,
+    OutputDirMissing,
+    OutputDirNotWritable,
+    CmykNotAllowedInPdfA,
+    LayoutUnavailable,
+    OutputTooLarge,
+    MergeTooLarge,
+}
+
+impl fmt::Display for ErrorCode {
+    /// Writes the name of the code in design §6.6, which is the variant name
+    /// and so the string serde writes.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
 
 /// Error returned when probing an image header fails (design §4.1, §6.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,16 +62,16 @@ pub enum ProbeError {
 }
 
 impl ProbeError {
-    /// Returns the IPC error code name of design §6.6.
+    /// Returns the IPC error code of design §6.6.
     #[must_use]
-    pub fn code(&self) -> &'static str {
+    pub fn code(&self) -> ErrorCode {
         match self {
-            Self::UnsupportedFormat => "UnsupportedFormat",
-            Self::DecodeFailed => "DecodeFailed",
-            Self::TooLarge => "TooLarge",
-            Self::ReadFailed => "ReadFailed",
-            Self::CmykNotAllowedInPdfA => "CmykNotAllowedInPdfA",
-            Self::TooManyPages => "TooManyPages",
+            Self::UnsupportedFormat => ErrorCode::UnsupportedFormat,
+            Self::DecodeFailed => ErrorCode::DecodeFailed,
+            Self::TooLarge => ErrorCode::TooLarge,
+            Self::ReadFailed => ErrorCode::ReadFailed,
+            Self::CmykNotAllowedInPdfA => ErrorCode::CmykNotAllowedInPdfA,
+            Self::TooManyPages => ErrorCode::TooManyPages,
         }
     }
 
@@ -102,10 +139,10 @@ impl std::error::Error for ProbeError {}
 pub struct PdfWriteError(pub(crate) String);
 
 impl PdfWriteError {
-    /// Returns the IPC error code name of design §6.6.
+    /// Returns the IPC error code of design §6.6.
     #[must_use]
-    pub fn code(&self) -> &'static str {
-        "WriteFailed"
+    pub fn code(&self) -> ErrorCode {
+        ErrorCode::WriteFailed
     }
 
     /// Returns the error detail string if applicable (design §6.6).
@@ -139,32 +176,50 @@ mod tests {
 
     #[test]
     fn probe_error_code_and_detail() {
-        assert_eq!(ProbeError::UnsupportedFormat.code(), "UnsupportedFormat");
+        assert_eq!(
+            ProbeError::UnsupportedFormat.code(),
+            ErrorCode::UnsupportedFormat
+        );
         assert_eq!(ProbeError::UnsupportedFormat.detail(), None);
 
-        assert_eq!(ProbeError::DecodeFailed.code(), "DecodeFailed");
+        assert_eq!(ProbeError::DecodeFailed.code(), ErrorCode::DecodeFailed);
         assert_eq!(ProbeError::DecodeFailed.detail(), None);
 
-        assert_eq!(ProbeError::TooLarge.code(), "TooLarge");
+        assert_eq!(ProbeError::TooLarge.code(), ErrorCode::TooLarge);
         assert_eq!(ProbeError::TooLarge.detail().as_deref(), Some("80,000,000"));
 
-        assert_eq!(ProbeError::ReadFailed.code(), "ReadFailed");
+        assert_eq!(ProbeError::ReadFailed.code(), ErrorCode::ReadFailed);
         assert_eq!(ProbeError::ReadFailed.detail(), None);
 
         assert_eq!(
             ProbeError::CmykNotAllowedInPdfA.code(),
-            "CmykNotAllowedInPdfA"
+            ErrorCode::CmykNotAllowedInPdfA
         );
         assert_eq!(ProbeError::CmykNotAllowedInPdfA.detail(), None);
 
-        assert_eq!(ProbeError::TooManyPages.code(), "TooManyPages");
+        assert_eq!(ProbeError::TooManyPages.code(), ErrorCode::TooManyPages);
         assert_eq!(ProbeError::TooManyPages.detail().as_deref(), Some("1,000"));
+    }
+
+    #[test]
+    fn display_is_the_string_serde_writes() {
+        for code in [
+            ErrorCode::UnsupportedFormat,
+            ErrorCode::PdfOpenFailed,
+            ErrorCode::CmykNotAllowedInPdfA,
+            ErrorCode::MergeTooLarge,
+        ] {
+            let json = serde_json::to_string(&code).expect("serializing a code");
+            assert_eq!(json, format!("\"{code}\""));
+            let back: ErrorCode = serde_json::from_str(&json).expect("reading a code");
+            assert_eq!(back, code);
+        }
     }
 
     #[test]
     fn pdf_write_error_code_and_detail() {
         let err = PdfWriteError("unexpected error".to_string());
-        assert_eq!(err.code(), "WriteFailed");
+        assert_eq!(err.code(), ErrorCode::WriteFailed);
         assert_eq!(err.detail(), None);
         assert_eq!(err.to_string(), "failed to write PDF: unexpected error");
     }

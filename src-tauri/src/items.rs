@@ -11,7 +11,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use pdfconv_core::{
-    IMAGE_EXTENSIONS, ImageFormat, ImageInfo, THUMBNAIL_SIDE, orientation_swaps_dimensions, probe,
+    ErrorCode, IMAGE_EXTENSIONS, ImageFormat, ImageInfo, THUMBNAIL_SIDE,
+    orientation_swaps_dimensions, probe,
 };
 use pdfconv_worker::PAGE_VIEW_MAX_SIDE;
 use pdfconv_worker::protocol::{PageDimensions, Password, PasswordError, Request, Response};
@@ -20,7 +21,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::crop;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::jobs::refuse_while_running;
 use crate::organize;
 use crate::worker_pool::PooledWorker;

@@ -21,9 +21,19 @@ tiff = { version = "0.11.3", default-features = false, features = ["deflate", "f
 lopdf = { version = "0.46.0", default-features = false }
 # The file encryption key lopdf takes from the caller comes from the OS.
 getrandom = "0.4.3"
+# `ErrorCode` crosses the worker pipe and the IPC as its variant name (design §6.6).
+serde = { version = "1", features = ["derive"] }
+# Generates the TypeScript type of `ErrorCode` for the frontend (design §2).
+# src-tauri enables it; the worker needs no TypeScript types.
+ts-rs = { version = "12", optional = true }
+
+[features]
+ts = ["dep:ts-rs"]
 
 # Only examples/gen_fixtures.rs and the tests use these (design §11.1, §11.2).
 [dev-dependencies]
+# Checks that `ErrorCode` is written as its name (design §6.6).
+serde_json = "1"
 # Decompresses FlateDecode streams in tests to verify stripped metadata (design §11.2).
 flate2 = "1.1.10"
 # Encodes the G4 pages of the TIFF fixtures.

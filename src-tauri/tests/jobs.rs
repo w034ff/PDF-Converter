@@ -15,7 +15,6 @@ use std::time::Duration;
 
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::decode_budget::DecodeBudget;
-use pdf_converter_lib::error::ErrorCode;
 use pdf_converter_lib::items::{add_dropped, add_images, add_pdfs, remove_items, unlock_pdf};
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
@@ -32,7 +31,7 @@ use pdf_converter_lib::settings::{
     OutputKind, apply_picked_dir, get_settings_internal, load_settings, restore_settings,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig, default_worker_limit};
-use pdfconv_core::{OutputPassword, PdfConformance, parse_page_range};
+use pdfconv_core::{ErrorCode, OutputPassword, PdfConformance, parse_page_range};
 use pdfconv_worker::WORKER_FLAG;
 #[cfg(feature = "test-hooks")]
 use pdfconv_worker::server::{
