@@ -89,7 +89,7 @@
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 2px 8px var(--color-overlay-backdrop);
+  box-shadow: 0 1px 3px var(--color-page-shadow);
 }
 
 .crop-main-empty {
@@ -535,10 +535,11 @@
 }
 
 .crop-ranges {
+  --crop-ranges-padding-top: 12px;
   flex: 1 1 0;
   min-height: 72px;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: var(--crop-ranges-padding-top) 16px 12px;
 }
 
 .crop-ranges p {
@@ -654,10 +655,11 @@
 
 /* A page's heading stays at the top while its rows scroll under it. Its
    ground reaches down over the gap to the first row, so a row scrolled
-   under it does not show above that row. */
+   under it does not show above that row. It sticks to the edge of the
+   scroller, past the padding, or rows would show in the padding above it. */
 .crop-page-head {
   position: sticky;
-  top: 0;
+  top: calc(-1 * var(--crop-ranges-padding-top));
   z-index: 1;
   box-sizing: border-box;
   height: var(--crop-page-head-height);
