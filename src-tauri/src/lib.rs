@@ -1,9 +1,8 @@
 //! Application entry point.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
 
 use pdfconv_worker::WORKER_FLAG;
 use pdfconv_worker::system_memory;
@@ -28,7 +27,7 @@ use crop::{CropState, Dropped};
 use decode_budget::{DecodeBudget, budget_for};
 use items::ItemTable;
 use organize::OrganizeState;
-use settings::SettingsStore;
+use settings::{OutputDirs, SettingsStore};
 use worker_pool::{WorkerPool, WorkerPoolConfig};
 
 /// Name of the event that reports what a drop added (design §7.2).
@@ -55,14 +54,8 @@ pub struct AppState {
     pub is_running: Arc<AtomicBool>,
     /// Shared cancellation flag checked during conversion jobs (design §6.5).
     pub cancel_flag: Arc<AtomicBool>,
-    /// Output folder for images to PDF conversion (design §6.5).
-    pub images_output_dir: Arc<Mutex<Option<PathBuf>>>,
-    /// Output folder for PDF to images conversion (design §6.5).
-    pub pdfs_output_dir: Arc<Mutex<Option<PathBuf>>>,
-    /// Output folder for crop exports (design §6.5).
-    pub crop_output_dir: Arc<Mutex<Option<PathBuf>>>,
-    /// Output folder for organizing in parts (design §6.5).
-    pub organize_output_dir: Arc<Mutex<Option<PathBuf>>>,
+    /// The output folder of each conversion (design §6.5).
+    pub output_dirs: Arc<OutputDirs>,
     /// The settings in memory and the file they are written to (design §6.7).
     pub settings: Arc<SettingsStore>,
     /// The memory that reading image pixels in this process may use at once (design §5.3).
@@ -83,10 +76,7 @@ impl AppState {
             pool,
             is_running: Arc::new(AtomicBool::new(false)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
-            images_output_dir: Arc::new(Mutex::new(None)),
-            pdfs_output_dir: Arc::new(Mutex::new(None)),
-            crop_output_dir: Arc::new(Mutex::new(None)),
-            organize_output_dir: Arc::new(Mutex::new(None)),
+            output_dirs: Arc::new(OutputDirs::default()),
             settings: Arc::new(SettingsStore::default()),
             decode_budget: Arc::new(DecodeBudget::new(budget_for(installed_memory))),
             installed_memory,

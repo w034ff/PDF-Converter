@@ -9,6 +9,7 @@
 
 use std::collections::BTreeSet;
 
+use pdfconv_core::POINTS_PER_INCH;
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfMatrix, PdfPage, PdfPageContentRegenerationStrategy, PdfPageObject,
     PdfPageObjectsCommon, PdfPoints, PdfRenderConfig,
@@ -1103,7 +1104,7 @@ pub(crate) fn render_region(
             (grid, Orientation::of(image.pixel_to_display), visible)
         }
         _ => {
-            let scale = f64::from(request.dpi) / 72.0;
+            let scale = f64::from(request.dpi) / f64::from(POINTS_PER_INCH);
             let width = ((rect.x1 - rect.x0) * scale).round().max(1.0) as u64;
             let height = ((rect.y1 - rect.y0) * scale).round().max(1.0) as u64;
             if width.saturating_mul(height) > max_pixels {

@@ -94,7 +94,9 @@ fn exporting_with(config: WorkerPoolConfig, fixture_name: &str) -> (AppState, Cr
     let state = state_with(config);
     let pdf = open_active(&state, fixture_name);
     let out = TempDir::new().expect("creating the output folder");
-    *state.crop_output_dir.lock().expect("output folder lock") = Some(out.path().to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::Crop, Some(out.path().to_path_buf()));
     (state, pdf, out)
 }
 
@@ -598,7 +600,7 @@ fn an_export_during_a_conversion_is_refused_and_leaves_the_conversion_running() 
 #[test]
 fn a_folder_that_is_not_chosen_is_refused() {
     let (state, pdf, out) = exporting("shapes.pdf");
-    *state.crop_output_dir.lock().expect("output folder lock") = None;
+    state.output_dirs.set(OutputKind::Crop, None);
     let regions = [manual(1, 1, [10.0, 10.0, 60.0, 60.0])];
 
     assert_refused(
@@ -630,9 +632,9 @@ fn a_folder_that_is_gone_is_refused_and_goes_back_to_not_chosen_only_for_crops()
 
     assert_eq!(code, ErrorCode::OutputDirMissing);
     assert!(!state.is_running.load(Ordering::SeqCst));
-    assert_eq!(*state.crop_output_dir.lock().expect("lock"), None);
+    assert_eq!(state.output_dirs.get(OutputKind::Crop), None);
     assert_eq!(
-        *state.images_output_dir.lock().expect("lock"),
+        state.output_dirs.get(OutputKind::ImagesToPdf),
         Some(images_dir.clone())
     );
     let file = load_settings(&config_dir);

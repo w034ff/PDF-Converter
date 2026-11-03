@@ -22,6 +22,7 @@ use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobProgressPayload, RenderColorChoice, RenderFormatChoice,
     check_page_range_internal, start_pdfs_to_images_internal,
 };
+use pdf_converter_lib::settings::OutputKind;
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_core::THUMBNAIL_SIDE;
 use pdfconv_worker::{PAGE_VIEW_MAX_SIDE, WORKER_FLAG};
@@ -342,8 +343,10 @@ fn the_commands_of_the_lists_do_not_know_a_crop_pdf() {
         ErrorCode::UnknownHandle
     );
 
-    *state.pdfs_output_dir.lock().expect("output folder lock") =
-        Some(tempfile::tempdir().expect("a folder").keep());
+    state.output_dirs.set(
+        OutputKind::PdfToImages,
+        Some(tempfile::tempdir().expect("a folder").keep()),
+    );
     let started = start_pdfs_to_images_internal(
         &state,
         &[cropped.id],

@@ -21,8 +21,7 @@ use crate::crop::ExportTarget;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{PageSizePt, close_pdf, send_open, unexpected_response};
 use crate::jobs::{
-    self, FinishJob, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus,
-    JobProgressPayload,
+    self, FinishJob, JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload,
 };
 use crate::settings::{CropOptions, OutputKind};
 use crate::worker_pool::PooledWorker;
@@ -242,13 +241,7 @@ where
     }
     check_regions(regions, &pages)?;
 
-    let output_dir = state
-        .crop_output_dir
-        .lock()
-        .expect("output_dir lock")
-        .clone()
-        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
-    jobs::check_output_dir(state, OutputKind::Crop, &output_dir)?;
+    let output_dir = jobs::chosen_output_dir(state, OutputKind::Crop)?;
 
     check_image_indices(state, &open, regions)?;
     let existing = jobs::list_existing_files(&output_dir)?;
@@ -312,25 +305,11 @@ fn report(
     on_item(match result {
         Ok(saved_name) => {
             tally.succeeded += 1;
-            JobItemPayload {
-                id: range.key,
-                status: JobItemStatus::Ok,
-                outputs: vec![saved_name],
-                error: None,
-                failed_pages: None,
-                source_id: None,
-            }
+            JobItemPayload::ok(range.key, vec![saved_name])
         }
         Err(error) => {
             tally.failed += 1;
-            JobItemPayload {
-                id: range.key,
-                status: JobItemStatus::Failed,
-                outputs: Vec::new(),
-                error: Some(error),
-                failed_pages: None,
-                source_id: None,
-            }
+            JobItemPayload::failed(range.key, error)
         }
     });
 }

@@ -9,6 +9,7 @@ use image::ImageEncoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
 use image::codecs::webp::WebPEncoder;
+use pdfconv_core::POINTS_PER_INCH;
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfPage, PdfRenderConfig, Pdfium, PdfiumError, PdfiumInternalError,
 };
@@ -147,15 +148,12 @@ fn fail_organize_for_test(args: &OrganizeArgs) {
 pub(crate) fn check_page_count(count: u32) -> Result<(), Response> {
     // Every screen assumes an open PDF has a first page to show.
     if count == 0 {
-        Err(Response::Error {
-            code: CODE_PDF_OPEN_FAILED.into(),
-            detail: None,
-        })
+        Err(error_response(CODE_PDF_OPEN_FAILED, None))
     } else if count > MAX_PDF_PAGES {
-        Err(Response::Error {
-            code: CODE_TOO_MANY_PAGES.into(),
-            detail: Some(format_number_with_commas(MAX_PDF_PAGES)),
-        })
+        Err(error_response(
+            CODE_TOO_MANY_PAGES,
+            Some(format_number_with_commas(MAX_PDF_PAGES)),
+        ))
     } else {
         Ok(())
     }
@@ -185,45 +183,35 @@ struct State {
 
 impl State {
     fn handle(&mut self, request: Request) -> (Response, Vec<u8>) {
+        self.answer(request)
+            .unwrap_or_else(|response| (response, Vec::new()))
+    }
+
+    /// The answer to `request` and its body, or the error response, which has no body.
+    fn answer(&mut self, request: Request) -> Result<(Response, Vec<u8>), Response> {
         match request {
-            Request::Hello => match self.pdfium() {
-                Ok(pdfium) => match pdfium.create_new_pdf() {
-                    Ok(_) => (Response::Hello, Vec::new()),
-                    Err(e) => (unavailable(&e), Vec::new()),
-                },
-                Err(response) => (response, Vec::new()),
-            },
+            Request::Hello => {
+                self.pdfium()?
+                    .create_new_pdf()
+                    .map_err(|e| unavailable(&e))?;
+                Ok((Response::Hello, Vec::new()))
+            }
             Request::Open { path, password } => {
                 #[cfg(feature = "test-hooks")]
                 if path.file_name().and_then(|n| n.to_str()) == Some(CRASH_ON_OPEN_FILE_NAME) {
                     std::process::abort();
                 }
                 self.document = None;
-                let pdfium = match self.pdfium() {
-                    Ok(p) => p,
-                    Err(resp) => return (resp, Vec::new()),
-                };
-                let doc = match pdfium.load_pdf_from_file(&path, password.as_deref()) {
-                    Ok(doc) => doc,
-                    Err(e) => return (map_pdfium_open_error(&e), Vec::new()),
-                };
+                let doc = self
+                    .pdfium()?
+                    .load_pdf_from_file(&path, password.as_deref())
+                    .map_err(|e| map_pdfium_open_error(&e))?;
                 let page_count = doc.pages().len() as u32;
-                if let Err(resp) = check_page_count(page_count) {
-                    return (resp, Vec::new());
-                }
-                let page_sizes = match doc.pages().page_sizes() {
-                    Ok(sizes) => sizes,
-                    Err(_) => {
-                        return (
-                            Response::Error {
-                                code: CODE_PDF_OPEN_FAILED.into(),
-                                detail: None,
-                            },
-                            Vec::new(),
-                        );
-                    }
-                };
-                let pages = page_sizes
+                check_page_count(page_count)?;
+                let pages = doc
+                    .pages()
+                    .page_sizes()
+                    .map_err(|_| error_response(CODE_PDF_OPEN_FAILED, None))?
                     .into_iter()
                     .map(|rect| PageDimensions {
                         width_pt: rect.width().value,
@@ -231,7 +219,7 @@ impl State {
                     })
                     .collect();
                 self.document = Some(doc);
-                (Response::Open { page_count, pages }, Vec::new())
+                Ok((Response::Open { page_count, pages }, Vec::new()))
             }
             Request::Render {
                 page,
@@ -240,62 +228,34 @@ impl State {
                 color,
             } => {
                 if !is_render_dpi_in_range(dpi) {
-                    return (
-                        Response::Error {
-                            code: CODE_INVALID_PARAMS.into(),
-                            detail: None,
-                        },
-                        Vec::new(),
-                    );
+                    return Err(error_response(CODE_INVALID_PARAMS, None));
                 }
-                let pdf_page = match self.page_for_rendering(page) {
-                    Ok(p) => p,
-                    Err(resp) => return (resp, Vec::new()),
-                };
+                let pdf_page = self.page_for_rendering(page)?;
                 let width_pt = f64::from(pdf_page.width().value);
                 let height_pt = f64::from(pdf_page.height().value);
-                let width_px = (width_pt / 72.0 * (dpi as f64)).round() as u64;
-                let height_px = (height_pt / 72.0 * (dpi as f64)).round() as u64;
+                let points_per_inch = f64::from(POINTS_PER_INCH);
+                let width_px = (width_pt / points_per_inch * (dpi as f64)).round() as u64;
+                let height_px = (height_pt / points_per_inch * (dpi as f64)).round() as u64;
 
                 let total_pixels = width_px.saturating_mul(height_px);
                 if total_pixels > MAX_RENDER_PIXELS {
-                    return (
-                        Response::Error {
-                            code: CODE_RENDER_TOO_LARGE.into(),
-                            detail: None,
-                        },
-                        Vec::new(),
-                    );
+                    return Err(error_response(CODE_RENDER_TOO_LARGE, None));
                 }
 
                 let target_width = (width_px as u32).max(1);
                 let target_height = (height_px as u32).max(1);
 
                 let (pixels, color_type) =
-                    match render_page_pixels(&pdf_page, target_width, target_height, color) {
-                        Ok(p) => p,
-                        Err(resp) => return (resp, Vec::new()),
-                    };
-
-                match encode_pixels(&pixels, target_width, target_height, color_type, format) {
-                    Ok(encoded) => (Response::Render, encoded),
-                    Err(response) => (response, Vec::new()),
-                }
+                    render_page_pixels(&pdf_page, target_width, target_height, color)?;
+                let encoded =
+                    encode_pixels(&pixels, target_width, target_height, color_type, format)?;
+                Ok((Response::Render, encoded))
             }
             Request::Thumbnail { page, max_side } => {
                 if max_side == 0 || max_side > PAGE_VIEW_MAX_SIDE {
-                    return (
-                        Response::Error {
-                            code: CODE_INVALID_PARAMS.into(),
-                            detail: None,
-                        },
-                        Vec::new(),
-                    );
+                    return Err(error_response(CODE_INVALID_PARAMS, None));
                 }
-                let pdf_page = match self.page_for_rendering(page) {
-                    Ok(p) => p,
-                    Err(resp) => return (resp, Vec::new()),
-                };
+                let pdf_page = self.page_for_rendering(page)?;
                 let (target_w, target_h) = size_for_long_side(
                     f64::from(pdf_page.width().value),
                     f64::from(pdf_page.height().value),
@@ -304,62 +264,35 @@ impl State {
 
                 let total_pixels = (target_w as u64).saturating_mul(target_h as u64);
                 if total_pixels > MAX_RENDER_PIXELS {
-                    return (
-                        Response::Error {
-                            code: CODE_RENDER_TOO_LARGE.into(),
-                            detail: None,
-                        },
-                        Vec::new(),
-                    );
+                    return Err(error_response(CODE_RENDER_TOO_LARGE, None));
                 }
 
                 let (pixels, color_type) =
-                    match render_page_pixels(&pdf_page, target_w, target_h, RenderColor::Color) {
-                        Ok(p) => p,
-                        Err(resp) => return (resp, Vec::new()),
-                    };
-
-                let mut encoded = Vec::new();
-                match PngEncoder::new(&mut encoded)
-                    .write_image(&pixels, target_w, target_h, color_type)
-                {
-                    Ok(()) => (Response::Thumbnail, encoded),
-                    Err(e) => (
-                        Response::Error {
-                            code: CODE_PDF_OPEN_FAILED.into(),
-                            detail: Some(format!("{e:?}")),
-                        },
-                        Vec::new(),
-                    ),
-                }
+                    render_page_pixels(&pdf_page, target_w, target_h, RenderColor::Color)?;
+                let encoded =
+                    encode_pixels(&pixels, target_w, target_h, color_type, RenderFormat::Png)?;
+                Ok((Response::Thumbnail, encoded))
             }
             Request::PageImages { page } => {
-                let result = self
-                    .document()
-                    .and_then(|doc| crop::page_images(doc, page, MAX_RENDER_PIXELS));
-                match result {
-                    Ok(images) => (Response::PageImages { images }, Vec::new()),
-                    Err(response) => (response, Vec::new()),
-                }
+                let images = crop::page_images(self.document()?, page, MAX_RENDER_PIXELS)?;
+                Ok((Response::PageImages { images }, Vec::new()))
             }
             Request::ImageOnTop { page, image_index } => {
-                let result = self.document().and_then(|doc| {
-                    crop::image_on_top(doc, page, image_index, crop::ON_TOP_CHECK_PIXELS)
-                });
-                match result {
-                    Ok(on_top) => (Response::ImageOnTop { on_top }, Vec::new()),
-                    Err(response) => (response, Vec::new()),
-                }
+                let on_top = crop::image_on_top(
+                    self.document()?,
+                    page,
+                    image_index,
+                    crop::ON_TOP_CHECK_PIXELS,
+                )?;
+                Ok((Response::ImageOnTop { on_top }, Vec::new()))
             }
             Request::Detect { page } => {
-                let result = match &self.document {
-                    Some(doc) => self.detector.detect(doc, page),
-                    None => Err(error_response(CODE_INVALID_PARAMS, None)),
-                };
-                match result {
-                    Ok(candidates) => (Response::Detect { candidates }, Vec::new()),
-                    Err(response) => (response, Vec::new()),
-                }
+                let doc = self
+                    .document
+                    .as_ref()
+                    .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+                let candidates = self.detector.detect(doc, page)?;
+                Ok((Response::Detect { candidates }, Vec::new()))
             }
             Request::RenderRegion {
                 page,
@@ -381,27 +314,21 @@ impl State {
                     photo_native,
                     photo_only,
                 };
-                let result = self
-                    .document()
-                    .and_then(|doc| crop::render_region(doc, &request, MAX_RENDER_PIXELS));
-                match result {
-                    Ok((response, image)) => (response, image),
-                    Err(response) => (response, Vec::new()),
-                }
+                crop::render_region(self.document()?, &request, MAX_RENDER_PIXELS)
             }
             Request::ImageThumbnail { path } => {
                 #[cfg(feature = "test-hooks")]
                 fail_image_for_test(&path);
-                crate::image::thumbnail(&path)
+                Ok(crate::image::thumbnail(&path))
             }
             // `run` sends `Organize` to `organize::run` and `CheckImage` to `image::check`,
             // which answer with several messages.
             Request::Organize { .. } | Request::CheckImage { .. } => {
-                (error_response(CODE_INVALID_PARAMS, None), Vec::new())
+                Err(error_response(CODE_INVALID_PARAMS, None))
             }
             Request::Close => {
                 self.document = None;
-                (Response::Close, Vec::new())
+                Ok((Response::Close, Vec::new()))
             }
             #[cfg(feature = "test-hooks")]
             Request::AllocateForTest { mebibytes } => {
@@ -416,7 +343,7 @@ impl State {
                     *byte = 1;
                 }
                 std::hint::black_box(&block);
-                (Response::Allocated, Vec::new())
+                Ok((Response::Allocated, Vec::new()))
             }
             #[cfg(feature = "test-hooks")]
             Request::CrashForTest => std::process::abort(),
@@ -523,19 +450,10 @@ pub(crate) fn pixels_from_rgba(
 pub(crate) fn map_pdfium_open_error(error: &PdfiumError) -> Response {
     match error {
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::PasswordError) => {
-            Response::Error {
-                code: CODE_PASSWORD_PROTECTED.into(),
-                detail: None,
-            }
+            error_response(CODE_PASSWORD_PROTECTED, None)
         }
-        PdfiumError::IoError(_) => Response::Error {
-            code: CODE_READ_FAILED.into(),
-            detail: None,
-        },
-        _ => Response::Error {
-            code: CODE_PDF_OPEN_FAILED.into(),
-            detail: None,
-        },
+        PdfiumError::IoError(_) => error_response(CODE_READ_FAILED, None),
+        _ => error_response(CODE_PDF_OPEN_FAILED, None),
     }
 }
 
@@ -573,19 +491,13 @@ pub(crate) fn render_page_pixels(
 
     let bitmap = page
         .render_with_config(&config)
-        .map_err(|e| Response::Error {
-            code: CODE_PDF_OPEN_FAILED.into(),
-            detail: Some(format!("{e:?}")),
-        })?;
+        .map_err(|e| error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}"))))?;
 
     Ok(pixels_from_rgba(bitmap.as_rgba_bytes(), color, false))
 }
 
 fn unavailable(error: &dyn std::fmt::Debug) -> Response {
-    Response::Error {
-        code: CODE_PDFIUM_UNAVAILABLE.into(),
-        detail: Some(format!("{error:?}")),
-    }
+    error_response(CODE_PDFIUM_UNAVAILABLE, Some(format!("{error:?}")))
 }
 
 #[cfg(target_os = "linux")]

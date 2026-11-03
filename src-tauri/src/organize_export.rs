@@ -20,9 +20,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{file_name, unexpected_response};
-use crate::jobs::{
-    self, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
-};
+use crate::jobs::{self, JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload};
 use crate::organize::{
     OrganizePageInput, Source, check_output_password, check_parts, check_sizes, ids_of,
 };
@@ -136,15 +134,6 @@ impl OutputStop {
     }
 }
 
-fn write_failure(error: &std::io::Error) -> IpcError {
-    IpcError::new(ErrorCode::WriteFailed, error.to_string())
-}
-
-/// The producer written into the document information of every output.
-fn creator() -> String {
-    format!("PDF Converter {}", env!("CARGO_PKG_VERSION"))
-}
-
 /// Builds the output `plan` in a pooled worker and writes what it sends to `sink` as it arrives
 /// (design organize §3, §6). `on_pages_done` gets the number of pages done in this output.
 ///
@@ -170,7 +159,7 @@ fn write_output(
     let request = Request::Organize {
         sources: plan.sources.clone(),
         pages: plan.pages.clone(),
-        creator: creator(),
+        creator: jobs::creator(),
         output_password: output_password.cloned(),
     };
     let step_timeout = state.pool.timeout_for(&request);
@@ -187,7 +176,7 @@ fn write_output(
             }
             match sink.write_all(&bytes) {
                 Ok(()) => written += u64::try_from(bytes.len()).unwrap_or(u64::MAX),
-                Err(error) => *write_error.borrow_mut() = Some(write_failure(&error)),
+                Err(error) => *write_error.borrow_mut() = Some(IpcError::write_failed(&error)),
             }
         }
     };
@@ -199,7 +188,7 @@ fn write_output(
     match answer {
         Ok(Response::Organized { bytes }) if bytes == written => sink
             .flush()
-            .map_err(|error| OutputStop::writing(write_failure(&error))),
+            .map_err(|error| OutputStop::writing(IpcError::write_failed(&error))),
         Ok(Response::Organized { bytes }) => Err(OutputStop::failed(IpcError::new(
             ErrorCode::WorkerCrashed,
             format!("the worker announced {bytes} bytes and {written} were written"),
@@ -236,7 +225,7 @@ fn make_output_file(
     on_pages_done: &dyn Fn(u32),
 ) -> Result<NamedTempFile, OutputStop> {
     let mut temp = jobs::create_output_temp(output_dir)
-        .map_err(|error| OutputStop::writing(write_failure(&error)))?;
+        .map_err(|error| OutputStop::writing(IpcError::write_failed(&error)))?;
     write_output(state, plan, output_password, &mut temp, on_pages_done)?;
     Ok(temp)
 }
@@ -367,7 +356,7 @@ where
         .and_then(|temp| {
             temp.persist(dest_path)
                 .map(drop)
-                .map_err(|error| OutputStop::writing(write_failure(&error.error)))
+                .map_err(|error| OutputStop::writing(IpcError::write_failed(&error.error)))
         })
     };
     match made {
@@ -378,7 +367,7 @@ where
             let replaced_id = std::fs::canonicalize(dest_path)
                 .ok()
                 .and_then(|canonical| state.organize.remove_file(&canonical));
-            on_item(saved_item(1, saved_name.clone()));
+            on_item(JobItemPayload::ok(1, vec![saved_name.clone()]));
             on_finished(finished(1, 0, 0, false));
             Ok(SaveOrganizedResult {
                 saved_name: Some(saved_name),
@@ -392,7 +381,10 @@ where
         Err(OutputStop::Failed {
             error, source_id, ..
         }) => {
-            on_item(failed_item(1, error, source_id));
+            on_item(JobItemPayload {
+                source_id,
+                ..JobItemPayload::failed(1, error)
+            });
             on_finished(finished(0, 1, 0, false));
             Ok(SaveOrganizedResult::not_saved())
         }
@@ -406,28 +398,6 @@ fn finished(succeeded: u32, failed: u32, unprocessed: u32, cancelled: bool) -> J
         no_pages: 0,
         unprocessed,
         cancelled,
-    }
-}
-
-fn saved_item(id: u64, saved_name: String) -> JobItemPayload {
-    JobItemPayload {
-        id,
-        status: JobItemStatus::Ok,
-        outputs: vec![saved_name],
-        error: None,
-        failed_pages: None,
-        source_id: None,
-    }
-}
-
-fn failed_item(id: u64, error: IpcError, source_id: Option<u64>) -> JobItemPayload {
-    JobItemPayload {
-        id,
-        status: JobItemStatus::Failed,
-        outputs: Vec::new(),
-        error: Some(error),
-        failed_pages: None,
-        source_id,
     }
 }
 
@@ -472,13 +442,7 @@ where
     let slices: Vec<&[OrganizePageInput]> = parts.iter().map(Vec::as_slice).collect();
     let (password, sources) = check(state, &slices, password)?;
 
-    let output_dir = state
-        .organize_output_dir
-        .lock()
-        .expect("output_dir lock")
-        .clone()
-        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
-    jobs::check_output_dir(state, OutputKind::Organize, &output_dir)?;
+    let output_dir = jobs::chosen_output_dir(state, OutputKind::Organize)?;
     let existing = jobs::list_existing_files(&output_dir)?;
 
     let stems: Vec<String> = slices
@@ -588,7 +552,7 @@ fn run_split(
         let ends_job = match made {
             Ok(saved_name) => {
                 succeeded += 1;
-                on_item(saved_item(number, saved_name));
+                on_item(JobItemPayload::ok(number, vec![saved_name]));
                 false
             }
             Err(OutputStop::Cancelled) => {
@@ -606,7 +570,10 @@ fn run_split(
                     failed_sources.push((id, error.clone()));
                 }
                 failed += 1;
-                on_item(failed_item(number, error, source_id));
+                on_item(JobItemPayload {
+                    source_id,
+                    ..JobItemPayload::failed(number, error)
+                });
                 writing
             }
         };

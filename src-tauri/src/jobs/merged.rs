@@ -9,13 +9,13 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::image_check::{ImageCheckStop, check_image};
-use super::options::{PageOrientationChoice, PageSizeChoice, PdfOutput, protect_pdf};
+use super::options::{PageOrientationChoice, PageSizeChoice, PdfOutput, creator, protect_pdf};
 use super::output::create_output_temp;
-use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload};
+use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload};
 use crate::AppState;
 use crate::decode_budget::pdf_write_estimate;
 use crate::error::{ErrorCode, IpcError};
-use crate::items::ItemKind;
+use crate::items::{ItemKind, file_name};
 
 /// How many times the output a merge holds at its peak: the whole output in memory, and the same
 /// again while `finish` serializes it (design §6.2).
@@ -122,11 +122,9 @@ where
         current: None,
     });
 
-    let creator = format!("PDF Converter {}", env!("CARGO_PKG_VERSION"));
-    let mut writer = PdfWriter::new(&creator, output.conformance);
+    let mut writer = PdfWriter::new(&creator(), output.conformance);
 
-    let mut temp = create_output_temp(output_dir)
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    let mut temp = create_output_temp(output_dir).map_err(IpcError::write_failed)?;
 
     let mut done = 0u32;
     let mut succeeded = 0u32;
@@ -141,11 +139,7 @@ where
             break;
         }
 
-        let file_name = entry
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let file_name = file_name(&entry.path);
 
         on_progress(JobProgressPayload {
             done,
@@ -155,14 +149,7 @@ where
 
         if let Some(err) = entry.error.clone() {
             failed += 1;
-            on_item(JobItemPayload {
-                id: *id,
-                status: JobItemStatus::Failed,
-                outputs: Vec::new(),
-                error: Some(err),
-                failed_pages: None,
-                source_id: None,
-            });
+            on_item(JobItemPayload::failed(*id, err));
             on_progress(JobProgressPayload {
                 done,
                 total,
@@ -180,14 +167,7 @@ where
             Err(ImageCheckStop::Failed(error)) => {
                 failed += 1;
                 done += entry.page_count;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Failed,
-                    outputs: Vec::new(),
-                    error: Some(error),
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::failed(*id, error));
                 on_progress(JobProgressPayload {
                     done,
                     total,
@@ -219,14 +199,10 @@ where
             Err(_) => {
                 failed += 1;
                 done += entry.page_count;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Failed,
-                    outputs: Vec::new(),
-                    error: Some(IpcError::from_code(ErrorCode::ReadFailed)),
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::failed(
+                    *id,
+                    IpcError::from_code(ErrorCode::ReadFailed),
+                ));
                 on_progress(JobProgressPayload {
                     done,
                     total,
@@ -255,14 +231,7 @@ where
         match add_result {
             Ok(AddImageResult::Ok { .. }) => {
                 succeeded += 1;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Ok,
-                    outputs: Vec::new(),
-                    error: None,
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::ok(*id, Vec::new()));
             }
             Ok(AddImageResult::Cancelled) => {
                 was_cancelled = true;
@@ -273,14 +242,7 @@ where
                 let remaining = entry.page_count.saturating_sub(item_pages_done);
                 done += remaining;
                 failed += 1;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Failed,
-                    outputs: Vec::new(),
-                    error: Some(IpcError::from(probe_err)),
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::failed(*id, IpcError::from(probe_err)));
             }
         }
 
@@ -316,24 +278,17 @@ where
         return Ok(SaveMergedPdfResult { saved_name: None });
     }
 
-    let pdf_bytes = writer
-        .finish()
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    let pdf_bytes = writer.finish().map_err(IpcError::write_failed)?;
     let pdf_bytes = protect_pdf(pdf_bytes, output.password.as_ref())?;
 
-    temp.write_all(&pdf_bytes)
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
-    temp.flush()
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    temp.write_all(&pdf_bytes).map_err(IpcError::write_failed)?;
+    temp.flush().map_err(IpcError::write_failed)?;
 
     // Merged PDF save dialog allows overwriting (design §6.2)
     temp.persist(dest_path)
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.error.to_string()))?;
+        .map_err(|e| IpcError::write_failed(e.error))?;
 
-    let saved_name = dest_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let saved_name = file_name(dest_path);
 
     on_finished(JobFinishedPayload {
         succeeded,

@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -52,6 +52,21 @@ pub(crate) fn create_output_temp(output_dir: &Path) -> std::io::Result<tempfile:
     builder.tempfile_in(output_dir)
 }
 
+/// The output folder of `kind`, checked with [`check_output_dir`] before a conversion starts
+/// writing to it.
+///
+/// # Errors
+///
+/// `InvalidParams` while no folder is chosen, and the errors of [`check_output_dir`].
+pub(crate) fn chosen_output_dir(state: &AppState, kind: OutputKind) -> Result<PathBuf, IpcError> {
+    let dir = state
+        .output_dirs
+        .get(kind)
+        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
+    check_output_dir(state, kind, &dir)?;
+    Ok(dir)
+}
+
 /// Checks, before a conversion starts, that the output folder of `kind` is
 /// still there and that a file can be created in it (design §6.5).
 ///
@@ -99,13 +114,10 @@ pub fn save_atomic(
     bytes: &[u8],
     used_names_lower: &Mutex<HashSet<String>>,
 ) -> Result<String, IpcError> {
-    let mut temp = create_output_temp(output_dir)
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    let mut temp = create_output_temp(output_dir).map_err(IpcError::write_failed)?;
 
-    temp.write_all(bytes)
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
-    temp.flush()
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    temp.write_all(bytes).map_err(IpcError::write_failed)?;
+    temp.flush().map_err(IpcError::write_failed)?;
 
     persist_unique(temp, output_dir, initial_output_name, used_names_lower)
 }

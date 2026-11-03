@@ -722,8 +722,12 @@ fn conversion_running_rejects_operations() {
     let add_res = add_images(&app_state, &[path]);
     let id = add_res.added[0].id;
 
-    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
-    *app_state.pdfs_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
+    app_state
+        .output_dirs
+        .set(OutputKind::PdfToImages, Some(temp_out.path().to_path_buf()));
 
     // Flag conversion running
     app_state.is_running.store(true, Ordering::SeqCst);
@@ -767,8 +771,8 @@ fn conversion_running_rejects_operations() {
     );
 
     // ConversionRunning takes precedence even if output directories are unset (Item 7)
-    *app_state.images_output_dir.lock().unwrap() = None;
-    *app_state.pdfs_output_dir.lock().unwrap() = None;
+    app_state.output_dirs.set(OutputKind::ImagesToPdf, None);
+    app_state.output_dirs.set(OutputKind::PdfToImages, None);
 
     let recorder = TestRecorder::new();
     let err_img_unset = start_images_to_pdfs_internal(
@@ -841,8 +845,12 @@ fn unknown_handle_rejects() {
     let app_state = state();
     let temp_out = TempDir::new().unwrap();
 
-    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
-    *app_state.pdfs_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
+    app_state
+        .output_dirs
+        .set(OutputKind::PdfToImages, Some(temp_out.path().to_path_buf()));
 
     let nonexistent_id = 999_999u64;
 
@@ -935,8 +943,12 @@ fn output_dir_that_cannot_be_listed_rejects_and_resets_is_running() {
     fs::create_dir(&unreadable_dir).unwrap();
     fs::set_permissions(&unreadable_dir, fs::Permissions::from_mode(0o300)).unwrap();
 
-    *app_state.images_output_dir.lock().unwrap() = Some(unreadable_dir.clone());
-    *app_state.pdfs_output_dir.lock().unwrap() = Some(unreadable_dir.clone());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(unreadable_dir.clone()));
+    app_state
+        .output_dirs
+        .set(OutputKind::PdfToImages, Some(unreadable_dir.clone()));
 
     let recorder = TestRecorder::new();
     let err_img = start_images_to_pdfs_internal(
@@ -982,8 +994,12 @@ fn start_internal_ok_delivers_job_finished() {
     let img_id = add_img.added[0].id;
     let pdf_id = add_pdf.added[0].id;
 
-    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
-    *app_state.pdfs_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
+    app_state
+        .output_dirs
+        .set(OutputKind::PdfToImages, Some(temp_out.path().to_path_buf()));
 
     let recorder = TestRecorder::new();
     start_images_to_pdfs_internal(
@@ -1035,7 +1051,9 @@ fn starting_images_to_pdfs_passes_the_conformance_on() {
         let temp_out = TempDir::new().unwrap();
         let img_path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
         let id = add_images(&app_state, &[img_path]).added[0].id;
-        *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+        app_state
+            .output_dirs
+            .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
 
         let recorder = TestRecorder::new();
         start_images_to_pdfs_internal(
@@ -2086,8 +2104,8 @@ fn state_with_chosen_output_dir(config_dir: &Path, dir: &Path) -> AppState {
 /// Asserts that both output folders are "not chosen" in memory, in what
 /// `get_settings` returns, and in the settings file.
 fn assert_output_dirs_not_chosen(app_state: &AppState, config_dir: &Path) {
-    assert!(app_state.images_output_dir.lock().unwrap().is_none());
-    assert!(app_state.pdfs_output_dir.lock().unwrap().is_none());
+    assert!(app_state.output_dirs.get(OutputKind::ImagesToPdf).is_none());
+    assert!(app_state.output_dirs.get(OutputKind::PdfToImages).is_none());
     let settings = get_settings_internal(app_state);
     assert!(settings.images_to_pdf.output_dir.is_none());
     assert!(settings.pdf_to_images.output_dir.is_none());
@@ -2202,9 +2220,12 @@ fn only_the_missing_output_dir_is_forgotten() {
     .unwrap_err();
 
     assert_eq!(err.code, ErrorCode::OutputDirMissing);
-    assert!(app_state.images_output_dir.lock().unwrap().is_none());
+    assert!(app_state.output_dirs.get(OutputKind::ImagesToPdf).is_none());
     assert_eq!(
-        app_state.pdfs_output_dir.lock().unwrap().as_deref(),
+        app_state
+            .output_dirs
+            .get(OutputKind::PdfToImages)
+            .as_deref(),
         Some(kept.as_path())
     );
     let file = load_settings(temp_config.path());
@@ -2245,11 +2266,17 @@ fn an_output_dir_that_cannot_be_written_is_refused_and_kept() {
     assert!(!app_state.is_running.load(Ordering::SeqCst));
     assert!(list_existing_files(&out_dir).unwrap().is_empty());
     assert_eq!(
-        app_state.images_output_dir.lock().unwrap().as_deref(),
+        app_state
+            .output_dirs
+            .get(OutputKind::ImagesToPdf)
+            .as_deref(),
         Some(out_dir.as_path())
     );
     assert_eq!(
-        app_state.pdfs_output_dir.lock().unwrap().as_deref(),
+        app_state
+            .output_dirs
+            .get(OutputKind::PdfToImages)
+            .as_deref(),
         Some(out_dir.as_path())
     );
     let file = load_settings(temp_config.path());
@@ -2640,7 +2667,9 @@ fn a4_landscape_produces_landscape_pdf_from_portrait_image() {
     let add_img = add_images(&app_state, &[path]);
     let id = add_img.added[0].id;
 
-    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
 
     let recorder = TestRecorder::new();
     start_images_to_pdfs_internal(
@@ -2730,7 +2759,9 @@ fn jis_b5_landscape_produces_expected_dimensions_in_each_mode() {
     let add_img = add_images(&app_state, &[path]);
     let id = add_img.added[0].id;
 
-    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
 
     let recorder = TestRecorder::new();
     start_images_to_pdfs_internal(
@@ -2982,7 +3013,9 @@ fn start_pdfs_to_images_out_of_range_dpi_resets_is_running() {
     let add_pdf = add_pdfs(&app_state, &[pdf_path]);
     let pdf_id = add_pdf.added[0].id;
 
-    *app_state.pdfs_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::PdfToImages, Some(temp_out.path().to_path_buf()));
 
     for bad_dpi in [35, 1001, 0] {
         let recorder = TestRecorder::new();
@@ -3328,7 +3361,9 @@ fn starting_images_to_pdfs_passes_the_password_on() {
     let temp_out = TempDir::new().unwrap();
     let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
     let id = add_images(&app_state, &[path]).added[0].id;
-    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
 
     let recorder = TestRecorder::new();
     start_images_to_pdfs_internal(
@@ -3353,7 +3388,9 @@ fn a_password_with_pdf_a_or_against_the_rule_is_refused_before_anything_starts()
     let temp_out = TempDir::new().unwrap();
     let path = copy_fixture(temp_in.path(), "photo.jpg", "photo.jpg");
     let id = add_images(&app_state, &[path]).added[0].id;
-    *app_state.images_output_dir.lock().unwrap() = Some(temp_out.path().to_path_buf());
+    app_state
+        .output_dirs
+        .set(OutputKind::ImagesToPdf, Some(temp_out.path().to_path_buf()));
 
     let refused = [
         (PdfConformance::PdfA2b, OUTPUT_PASSWORD),

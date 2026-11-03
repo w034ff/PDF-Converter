@@ -7,15 +7,17 @@ mod merged;
 mod options;
 mod output;
 mod pdfs_to_images;
+mod queue;
 
 pub use images_to_pdfs::{run_images_to_pdfs, start_images_to_pdfs_internal};
 pub use merged::{SaveMergedPdfResult, check_merge_size, merge_output_limit, run_save_merged_pdf};
+pub(crate) use options::creator;
 pub use options::{
     PageOrientationChoice, PageSizeChoice, PdfOutput, RenderColorChoice, RenderFormatChoice,
     output_password, pdf_conformance,
 };
-pub(crate) use output::create_output_temp;
 pub use output::{check_output_dir, list_existing_files, persist_unique, save_atomic};
+pub(crate) use output::{chosen_output_dir, create_output_temp};
 pub use pdfs_to_images::{
     CheckPageRangeResult, check_page_range_internal, run_pdfs_to_images,
     start_pdfs_to_images_internal,
@@ -82,6 +84,45 @@ pub struct JobItemPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional, type = "number")]
     pub source_id: Option<u64>,
+}
+
+impl JobItemPayload {
+    /// An item that was done, with the names of the files it wrote, if any.
+    pub fn ok(id: u64, outputs: Vec<String>) -> Self {
+        Self {
+            outputs,
+            ..Self::with_status(id, JobItemStatus::Ok)
+        }
+    }
+
+    /// An item that failed with `error` and wrote nothing.
+    pub fn failed(id: u64, error: IpcError) -> Self {
+        Self {
+            error: Some(error),
+            ..Self::with_status(id, JobItemStatus::Failed)
+        }
+    }
+
+    /// An item that was stopped by the cancel and wrote nothing.
+    pub fn cancelled(id: u64) -> Self {
+        Self::with_status(id, JobItemStatus::Cancelled)
+    }
+
+    /// A PDF that has no page in the page range (design §4.5, §6.6).
+    pub fn no_pages(id: u64) -> Self {
+        Self::with_status(id, JobItemStatus::NoPages)
+    }
+
+    fn with_status(id: u64, status: JobItemStatus) -> Self {
+        Self {
+            id,
+            status,
+            outputs: Vec::new(),
+            error: None,
+            failed_pages: None,
+            source_id: None,
+        }
+    }
 }
 
 /// Final summary emitted via `job-finished` event (design §7.2).
