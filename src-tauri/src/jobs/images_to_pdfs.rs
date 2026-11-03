@@ -14,8 +14,8 @@ use super::options::{
 };
 use super::output::{check_output_dir, list_existing_files, save_atomic, stop_after_write_failure};
 use super::{
-    JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
-    begin_conversion, spawn_conversion,
+    JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload, begin_conversion,
+    spawn_conversion,
 };
 use crate::AppState;
 use crate::decode_budget::pdf_write_estimate;
@@ -190,14 +190,7 @@ where
 
                 if let Some(err) = task.initial_error {
                     failed.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::Failed,
-                        outputs: Vec::new(),
-                        error: Some(err),
-                        failed_pages: None,
-                        source_id: None,
-                    });
+                    on_item(JobItemPayload::failed(task.id, err));
                     continue;
                 }
 
@@ -219,14 +212,7 @@ where
                         let cur_done =
                             done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
                         failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload {
-                            id: task.id,
-                            status: JobItemStatus::Failed,
-                            outputs: Vec::new(),
-                            error: Some(error),
-                            failed_pages: None,
-                            source_id: None,
-                        });
+                        on_item(JobItemPayload::failed(task.id, error));
                         on_progress(JobProgressPayload {
                             done: cur_done,
                             total,
@@ -267,14 +253,10 @@ where
                         let cur_done =
                             done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
                         failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload {
-                            id: task.id,
-                            status: JobItemStatus::Failed,
-                            outputs: Vec::new(),
-                            error: Some(IpcError::from_code(ErrorCode::ReadFailed)),
-                            failed_pages: None,
-                            source_id: None,
-                        });
+                        on_item(JobItemPayload::failed(
+                            task.id,
+                            IpcError::from_code(ErrorCode::ReadFailed),
+                        ));
                         on_progress(JobProgressPayload {
                             done: cur_done,
                             total,
@@ -309,14 +291,7 @@ where
                         // queue are; which of the images in flight it catches depends on how
                         // far each thread has got, so it must not show as an item.
                         if cancel_flag.load(Ordering::SeqCst) {
-                            on_item(JobItemPayload {
-                                id: task.id,
-                                status: JobItemStatus::Cancelled,
-                                outputs: Vec::new(),
-                                error: None,
-                                failed_pages: None,
-                                source_id: None,
-                            });
+                            on_item(JobItemPayload::cancelled(task.id));
                         }
                         let mut q = match queue.lock() {
                             Ok(g) => g,
@@ -330,14 +305,7 @@ where
                         let remaining = task.page_count.saturating_sub(item_pages_done);
                         let cur_done = done.fetch_add(remaining, Ordering::SeqCst) + remaining;
                         failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload {
-                            id: task.id,
-                            status: JobItemStatus::Failed,
-                            outputs: Vec::new(),
-                            error: Some(IpcError::from(probe_err)),
-                            failed_pages: None,
-                            source_id: None,
-                        });
+                        on_item(JobItemPayload::failed(task.id, IpcError::from(probe_err)));
                         on_progress(JobProgressPayload {
                             done: cur_done,
                             total,
@@ -361,14 +329,7 @@ where
                 match process_result {
                     Ok(saved_name) => {
                         succeeded.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload {
-                            id: task.id,
-                            status: JobItemStatus::Ok,
-                            outputs: vec![saved_name],
-                            error: None,
-                            failed_pages: None,
-                            source_id: None,
-                        });
+                        on_item(JobItemPayload::ok(task.id, vec![saved_name]));
                         on_progress(JobProgressPayload {
                             done: done.load(Ordering::SeqCst),
                             total,
@@ -377,14 +338,7 @@ where
                     }
                     Err(err) => {
                         failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload {
-                            id: task.id,
-                            status: JobItemStatus::Failed,
-                            outputs: Vec::new(),
-                            error: Some(err),
-                            failed_pages: None,
-                            source_id: None,
-                        });
+                        on_item(JobItemPayload::failed(task.id, err));
                         on_progress(JobProgressPayload {
                             done: done.load(Ordering::SeqCst),
                             total,

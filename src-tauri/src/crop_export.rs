@@ -21,8 +21,7 @@ use crate::crop::ExportTarget;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{PageSizePt, close_pdf, send_open, unexpected_response};
 use crate::jobs::{
-    self, FinishJob, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus,
-    JobProgressPayload,
+    self, FinishJob, JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload,
 };
 use crate::settings::{CropOptions, OutputKind};
 use crate::worker_pool::PooledWorker;
@@ -312,25 +311,11 @@ fn report(
     on_item(match result {
         Ok(saved_name) => {
             tally.succeeded += 1;
-            JobItemPayload {
-                id: range.key,
-                status: JobItemStatus::Ok,
-                outputs: vec![saved_name],
-                error: None,
-                failed_pages: None,
-                source_id: None,
-            }
+            JobItemPayload::ok(range.key, vec![saved_name])
         }
         Err(error) => {
             tally.failed += 1;
-            JobItemPayload {
-                id: range.key,
-                status: JobItemStatus::Failed,
-                outputs: Vec::new(),
-                error: Some(error),
-                failed_pages: None,
-                source_id: None,
-            }
+            JobItemPayload::failed(range.key, error)
         }
     });
 }

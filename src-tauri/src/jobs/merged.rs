@@ -11,7 +11,7 @@ use ts_rs::TS;
 use super::image_check::{ImageCheckStop, check_image};
 use super::options::{PageOrientationChoice, PageSizeChoice, PdfOutput, creator, protect_pdf};
 use super::output::create_output_temp;
-use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload};
+use super::{JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload};
 use crate::AppState;
 use crate::decode_budget::pdf_write_estimate;
 use crate::error::{ErrorCode, IpcError};
@@ -149,14 +149,7 @@ where
 
         if let Some(err) = entry.error.clone() {
             failed += 1;
-            on_item(JobItemPayload {
-                id: *id,
-                status: JobItemStatus::Failed,
-                outputs: Vec::new(),
-                error: Some(err),
-                failed_pages: None,
-                source_id: None,
-            });
+            on_item(JobItemPayload::failed(*id, err));
             on_progress(JobProgressPayload {
                 done,
                 total,
@@ -174,14 +167,7 @@ where
             Err(ImageCheckStop::Failed(error)) => {
                 failed += 1;
                 done += entry.page_count;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Failed,
-                    outputs: Vec::new(),
-                    error: Some(error),
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::failed(*id, error));
                 on_progress(JobProgressPayload {
                     done,
                     total,
@@ -213,14 +199,10 @@ where
             Err(_) => {
                 failed += 1;
                 done += entry.page_count;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Failed,
-                    outputs: Vec::new(),
-                    error: Some(IpcError::from_code(ErrorCode::ReadFailed)),
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::failed(
+                    *id,
+                    IpcError::from_code(ErrorCode::ReadFailed),
+                ));
                 on_progress(JobProgressPayload {
                     done,
                     total,
@@ -249,14 +231,7 @@ where
         match add_result {
             Ok(AddImageResult::Ok { .. }) => {
                 succeeded += 1;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Ok,
-                    outputs: Vec::new(),
-                    error: None,
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::ok(*id, Vec::new()));
             }
             Ok(AddImageResult::Cancelled) => {
                 was_cancelled = true;
@@ -267,14 +242,7 @@ where
                 let remaining = entry.page_count.saturating_sub(item_pages_done);
                 done += remaining;
                 failed += 1;
-                on_item(JobItemPayload {
-                    id: *id,
-                    status: JobItemStatus::Failed,
-                    outputs: Vec::new(),
-                    error: Some(IpcError::from(probe_err)),
-                    failed_pages: None,
-                    source_id: None,
-                });
+                on_item(JobItemPayload::failed(*id, IpcError::from(probe_err)));
             }
         }
 

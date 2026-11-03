@@ -85,6 +85,45 @@ pub struct JobItemPayload {
     pub source_id: Option<u64>,
 }
 
+impl JobItemPayload {
+    /// An item that was done, with the names of the files it wrote, if any.
+    pub fn ok(id: u64, outputs: Vec<String>) -> Self {
+        Self {
+            outputs,
+            ..Self::with_status(id, JobItemStatus::Ok)
+        }
+    }
+
+    /// An item that failed with `error` and wrote nothing.
+    pub fn failed(id: u64, error: IpcError) -> Self {
+        Self {
+            error: Some(error),
+            ..Self::with_status(id, JobItemStatus::Failed)
+        }
+    }
+
+    /// An item that was stopped by the cancel and wrote nothing.
+    pub fn cancelled(id: u64) -> Self {
+        Self::with_status(id, JobItemStatus::Cancelled)
+    }
+
+    /// A PDF that has no page in the page range (design §4.5, §6.6).
+    pub fn no_pages(id: u64) -> Self {
+        Self::with_status(id, JobItemStatus::NoPages)
+    }
+
+    fn with_status(id: u64, status: JobItemStatus) -> Self {
+        Self {
+            id,
+            status,
+            outputs: Vec::new(),
+            error: None,
+            failed_pages: None,
+            source_id: None,
+        }
+    }
+}
+
 /// Final summary emitted via `job-finished` event (design §7.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

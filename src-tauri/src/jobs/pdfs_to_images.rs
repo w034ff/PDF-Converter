@@ -231,28 +231,14 @@ where
                 // If entry already failed probe / initial open
                 if let Some(err) = task.initial_error {
                     failed_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::Failed,
-                        outputs: Vec::new(),
-                        error: Some(err),
-                        failed_pages: None,
-                        source_id: None,
-                    });
+                    on_item(JobItemPayload::failed(task.id, err));
                     continue;
                 }
 
                 // If no pages match the page range for this PDF (design §4.5, §6.6)
                 if task.pages.is_empty() {
                     no_pages_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::NoPages,
-                        outputs: Vec::new(),
-                        error: None,
-                        failed_pages: None,
-                        source_id: None,
-                    });
+                    on_item(JobItemPayload::no_pages(task.id));
                     continue;
                 }
 
@@ -260,14 +246,7 @@ where
                     Ok(w) => w,
                     Err(err) => {
                         failed_count.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload {
-                            id: task.id,
-                            status: JobItemStatus::Failed,
-                            outputs: Vec::new(),
-                            error: Some(IpcError::from(&err)),
-                            failed_pages: None,
-                            source_id: None,
-                        });
+                        on_item(JobItemPayload::failed(task.id, IpcError::from(&err)));
                         continue;
                     }
                 };
@@ -276,14 +255,7 @@ where
 
                 if let Err(err) = open_result {
                     failed_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::Failed,
-                        outputs: Vec::new(),
-                        error: Some(IpcError::from(&err)),
-                        failed_pages: None,
-                        source_id: None,
-                    });
+                    on_item(JobItemPayload::failed(task.id, IpcError::from(&err)));
                     continue;
                 }
 
@@ -393,14 +365,7 @@ where
                     });
                 } else if failed_pages.is_empty() && outputs.len() == task.pages.len() {
                     succeeded_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::Ok,
-                        outputs,
-                        error: None,
-                        failed_pages: None,
-                        source_id: None,
-                    });
+                    on_item(JobItemPayload::ok(task.id, outputs));
                 } else if !outputs.is_empty() {
                     // Partial failure: at least one page succeeded, some failed
                     failed_count.fetch_add(1, Ordering::SeqCst);

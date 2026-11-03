@@ -20,9 +20,7 @@ use ts_rs::TS;
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{file_name, unexpected_response};
-use crate::jobs::{
-    self, JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
-};
+use crate::jobs::{self, JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload};
 use crate::organize::{
     OrganizePageInput, Source, check_output_password, check_parts, check_sizes, ids_of,
 };
@@ -369,7 +367,7 @@ where
             let replaced_id = std::fs::canonicalize(dest_path)
                 .ok()
                 .and_then(|canonical| state.organize.remove_file(&canonical));
-            on_item(saved_item(1, saved_name.clone()));
+            on_item(JobItemPayload::ok(1, vec![saved_name.clone()]));
             on_finished(finished(1, 0, 0, false));
             Ok(SaveOrganizedResult {
                 saved_name: Some(saved_name),
@@ -383,7 +381,10 @@ where
         Err(OutputStop::Failed {
             error, source_id, ..
         }) => {
-            on_item(failed_item(1, error, source_id));
+            on_item(JobItemPayload {
+                source_id,
+                ..JobItemPayload::failed(1, error)
+            });
             on_finished(finished(0, 1, 0, false));
             Ok(SaveOrganizedResult::not_saved())
         }
@@ -397,28 +398,6 @@ fn finished(succeeded: u32, failed: u32, unprocessed: u32, cancelled: bool) -> J
         no_pages: 0,
         unprocessed,
         cancelled,
-    }
-}
-
-fn saved_item(id: u64, saved_name: String) -> JobItemPayload {
-    JobItemPayload {
-        id,
-        status: JobItemStatus::Ok,
-        outputs: vec![saved_name],
-        error: None,
-        failed_pages: None,
-        source_id: None,
-    }
-}
-
-fn failed_item(id: u64, error: IpcError, source_id: Option<u64>) -> JobItemPayload {
-    JobItemPayload {
-        id,
-        status: JobItemStatus::Failed,
-        outputs: Vec::new(),
-        error: Some(error),
-        failed_pages: None,
-        source_id,
     }
 }
 
@@ -579,7 +558,7 @@ fn run_split(
         let ends_job = match made {
             Ok(saved_name) => {
                 succeeded += 1;
-                on_item(saved_item(number, saved_name));
+                on_item(JobItemPayload::ok(number, vec![saved_name]));
                 false
             }
             Err(OutputStop::Cancelled) => {
@@ -597,7 +576,10 @@ fn run_split(
                     failed_sources.push((id, error.clone()));
                 }
                 failed += 1;
-                on_item(failed_item(number, error, source_id));
+                on_item(JobItemPayload {
+                    source_id,
+                    ..JobItemPayload::failed(number, error)
+                });
                 writing
             }
         };
