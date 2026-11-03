@@ -259,10 +259,19 @@ export interface ObjectUrls {
   revoke: ReturnType<typeof vi.fn<(url: string) => void>>;
 }
 
+/**
+ * Counts on across tests: the caches of thumbnails outlive a test and are
+ * cleared at the start of the next (`mockCropIpc`), so the URLs an earlier
+ * test made are revoked through this test's `revoke`, and must not share a
+ * name with one this test makes.
+ */
+let nextObjectUrl = 0;
+
 /** Gives the `blob:` URLs of the pictures names a test can follow. */
 export function installFakeObjectUrls(): ObjectUrls {
-  let next = 0;
-  const create = vi.fn<(blob: Blob) => string>(() => `blob:picture-${++next}`);
+  const create = vi.fn<(blob: Blob) => string>(
+    () => `blob:picture-${++nextObjectUrl}`,
+  );
   const revoke = vi.fn<(url: string) => void>();
   vi.stubGlobal("URL", {
     ...URL,

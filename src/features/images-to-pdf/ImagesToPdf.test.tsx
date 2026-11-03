@@ -329,7 +329,7 @@ describe("ImagesToPdf (T11)", () => {
 
     // Skipped message is displayed in header
     expect(
-      screen.getByText("（対象外: 非対応 1 件、フォルダ 1 件）"),
+      screen.getByText("（対象外：非対応 1 件、フォルダ 1 件）"),
     ).toBeInTheDocument();
 
     // Footer shows page count, and summary is no longer below the list
@@ -1519,7 +1519,7 @@ describe("ImagesToPdf (T11)", () => {
       expect(screen.getByText("photo.jpg")).toBeInTheDocument();
       expect(screen.getByText("diagram.png")).toBeInTheDocument();
     });
-    expect(screen.getByText("（対象外: 非対応 1 件）")).toBeInTheDocument();
+    expect(screen.getByText("（対象外：非対応 1 件）")).toBeInTheDocument();
 
     // 1. Try removing first item (photo.jpg)
     const removeButtons = screen.getAllByRole("button", {
@@ -1558,7 +1558,7 @@ describe("ImagesToPdf (T11)", () => {
     expect(screen.getByText("photo.jpg")).toBeInTheDocument();
     expect(screen.getByText("diagram.png")).toBeInTheDocument();
     expect(screen.queryByTestId("drop-zone")).not.toBeInTheDocument();
-    expect(screen.getByText("（対象外: 非対応 1 件）")).toBeInTheDocument();
+    expect(screen.getByText("（対象外：非対応 1 件）")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
@@ -1876,6 +1876,28 @@ describe("ImagesToPdf (T11)", () => {
       { value: "letter", label: "Letter (8.5 × 11 in)" },
       { value: "legal", label: "Legal (8.5 × 14 in)" },
     ]);
+  });
+
+  it("says 'image' for one and 'images' for several in English", async () => {
+    let added = [sampleImage1];
+    mockAppIpc((cmd) => {
+      if (cmd === "add_images") {
+        const result: AddResult<ImageItem> = {
+          added,
+          skipped: { unsupported: 0, folders: 0, duplicates: 0 },
+        };
+        return result;
+      }
+      return undefined;
+    });
+    renderHarness("en-US");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add images" }));
+    expect(await screen.findByText("1 image")).toBeInTheDocument();
+
+    added = [sampleImage2];
+    fireEvent.click(screen.getByRole("button", { name: "Add images" }));
+    expect(await screen.findByText("2 images")).toBeInTheDocument();
   });
 
   it("renders page size select with all 8 choices in order in English", async () => {

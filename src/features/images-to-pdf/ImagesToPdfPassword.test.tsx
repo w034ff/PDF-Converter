@@ -129,7 +129,7 @@ describe("the PDF format", () => {
 
     expect(standardButton()).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.queryByText("保存時にパスワードを入れます"),
+      screen.queryByText("パスワードは保存するときに入力します"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("CMYK の画像は使えません"),
@@ -137,9 +137,9 @@ describe("the PDF format", () => {
 
     fireEvent.click(encryptButton());
     expect(encryptButton()).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("保存時にパスワードを入れます")).toHaveClass(
-      "hint",
-    );
+    expect(
+      screen.getByText("パスワードは保存するときに入力します"),
+    ).toHaveClass("hint");
     expect(
       screen.queryByText("CMYK の画像は使えません"),
     ).not.toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("the PDF format", () => {
     expect(encryptButton()).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("CMYK の画像は使えません")).toHaveClass("hint");
     expect(
-      screen.queryByText("保存時にパスワードを入れます"),
+      screen.queryByText("パスワードは保存するときに入力します"),
     ).not.toBeInTheDocument();
 
     fireEvent.click(standardButton());
@@ -293,7 +293,7 @@ describe("starting with a password", () => {
     await screen.findByRole("dialog", { name: "パスワードを付ける" });
     expect(
       screen.getByText(
-        "保存する 2 個の PDF すべてに、同じパスワードを付けます。",
+        "保存する 2 個の PDF すべてに、同じパスワードを付けます",
       ),
     ).toBeInTheDocument();
     // No folder is chosen yet, and the dialog comes before that question.

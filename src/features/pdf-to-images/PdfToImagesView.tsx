@@ -454,7 +454,7 @@ function PdfTableRow({
           <div className="pdf-status-action">
             <button
               type="button"
-              className="btn btn-ghost"
+              className="pdf-status-password"
               disabled={disabled}
               onClick={(e) => onEnterPassword(item, e.currentTarget)}
             >
@@ -711,11 +711,16 @@ export function PdfToImagesView() {
               <span className="pdf-status-failed">{t.job.loadFailed}</span>
             ) : (
               <span className="mono">
-                {formatMessage(t.pdfToImages.single.meta, {
-                  pages: singleItem.pageCount,
-                  size: formatPaperSize(singleItem.firstPageSizePt),
-                  fileSize: formatFileSize(singleItem.bytes),
-                })}
+                {formatMessage(
+                  singleItem.pageCount === 1
+                    ? t.pdfToImages.single.metaSingle
+                    : t.pdfToImages.single.metaMultiple,
+                  {
+                    pages: singleItem.pageCount,
+                    size: formatPaperSize(singleItem.firstPageSizePt),
+                    fileSize: formatFileSize(singleItem.bytes),
+                  },
+                )}
               </span>
             )}
             {showSingleResult && (

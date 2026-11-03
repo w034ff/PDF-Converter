@@ -114,10 +114,10 @@ describe("i18n", () => {
       expect(
         formatErrorMessage("OutputTooLarge", "613 MB / 512 MB", "ja"),
       ).toBe(
-        "出力サイズが上限を超えています（613 MB / 512 MB）。分割して保存してください。",
+        "出力サイズが上限を超えています（613 MB / 512 MB）。分割して保存してください",
       );
       expect(formatErrorMessage("MergeTooLarge", "613 MB / 512 MB", "ja")).toBe(
-        "結合する PDF が大きすぎます（見積もり / この PC の上限: 613 MB / 512 MB）。「1 枚ずつ」で保存するか、画像を減らしてください。",
+        "結合する PDF が大きすぎます（見積もり / この PC の上限：613 MB / 512 MB）。「1 枚ずつ」で保存するか、画像を減らしてください",
       );
     });
 
@@ -138,7 +138,7 @@ describe("i18n", () => {
         "Image is too large (limit: 80,000,000 pixels)",
       );
       expect(formatErrorMessage("TooManyPages", "10,000", "en")).toBe(
-        "Too many pages (limit: 10,000)",
+        "Too many pages (limit: 10,000 pages)",
       );
       expect(formatErrorMessage("RenderTooLarge", null, "en")).toBe(
         "Too large at this resolution. Choose a lower resolution.",

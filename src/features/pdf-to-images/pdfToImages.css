@@ -254,14 +254,17 @@
 }
 
 /* Right-aligned so the page counts line up digit by digit; the header
-   follows its column. */
+   follows its column. As narrow as its one-line header, so that at the
+   window's minimum width the file names keep the room. */
 .pdf-table .pdf-col-pages {
-  width: 120px;
+  width: 1%;
+  white-space: nowrap;
   text-align: right;
 }
 
+/* Room for a failure's reason in two or three lines. */
 .pdf-table .pdf-col-status {
-  width: 200px;
+  width: 160px;
 }
 
 .pdf-table .pdf-col-actions {
@@ -357,7 +360,36 @@
 }
 
 .pdf-status-action {
-  margin-top: 6px;
+  margin-top: 2px;
+}
+
+/* Underlined text as on the organize tab's chips, not a button: a row is one
+   item of a list, and a button would make the locked row taller than the
+   rest. The negative margin lines the words up with the status above while
+   the hover ground still reaches past them. */
+.pdf-status-password {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  height: 22px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--color-warning);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.pdf-status-password:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.pdf-status-password:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .pdf-single-grid:focus,

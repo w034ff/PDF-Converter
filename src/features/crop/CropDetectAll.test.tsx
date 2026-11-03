@@ -385,7 +385,7 @@ describe("the result of the search", () => {
     fireEvent.click(screen.getByTestId("crop-area"));
     expect(screen.getByRole("status")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "p.2 のグラフを消す" }));
+    fireEvent.click(screen.getByRole("button", { name: "p.2 のグラフを削除" }));
     expect(screen.queryByRole("status")).toBeNull();
   });
 

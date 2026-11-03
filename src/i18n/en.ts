@@ -123,7 +123,8 @@ export const en: Translations = {
       renderDimension: "1 page of {size} → {width} × {height} px",
     },
     single: {
-      meta: "{pages} pages · {size} · {fileSize}",
+      metaSingle: "{pages} page · {size} · {fileSize}",
+      metaMultiple: "{pages} pages · {size} · {fileSize}",
       convertPage: "{page}  ✓ Convert",
       donePage: "{page}  ✓ Done",
       pageWithStatus: "{page}  {status}",
@@ -210,16 +211,17 @@ export const en: Translations = {
       conditionMet: "Met",
       conditionNotMet: "Not met",
       tooLong: "Use {max} characters or fewer",
-      forgetWarningMerge:
+      forgetWarningSingle:
         "If you forget the password, no one can open the PDF.",
-      forgetWarningEach:
+      forgetWarningMultiple:
         "If you forget the password, no one can open these PDFs.",
       cancel: "Cancel",
       confirmMerge: "Choose where to save…",
     },
     outputDirHint:
       "If a PDF with the same name exists, it will be saved with a number like 'name (1).pdf'",
-    imageCount: "{count} image(s)",
+    imageCountSingle: "{count} image",
+    imageCountMultiple: "{count} images",
     pageCount: "{count} pages",
     addImages: "Add images",
     addFolder: "Add folder",
@@ -278,7 +280,7 @@ export const en: Translations = {
             },
             {
               keys: [["Delete"], ["Backspace"]],
-              action: "Remove the area (hide a suggestion)",
+              action: "Delete the area (hide a suggestion)",
             },
             {
               keys: [["Right-click"], ["Shift", "F10"]],
@@ -377,7 +379,7 @@ export const en: Translations = {
       exported: "✓ Exported",
       checkAria: "Export {kind} on p.{page}",
       showAria: "Show {kind} on p.{page}",
-      removeAria: "Remove {kind} on p.{page}",
+      removeAria: "Delete {kind} on p.{page}",
       remove: "×",
       size: {
         dpi: "{dpi} dpi · {width} × {height}",
@@ -500,10 +502,8 @@ export const en: Translations = {
       noPages: "No pages to save",
       tooManyPages:
         "One PDF has at most {max} pages (now {count}). Split it before saving",
-      willSplitSingle:
-        "Split {pages} page into {parts} PDF (about {size} MB in total)",
-      willSplitOnePart:
-        "Split {pages} pages into {parts} PDF (about {size} MB in total)",
+      willSplitSingle: "Save {pages} page as one PDF (about {size} MB)",
+      willSplitOnePart: "Save {pages} pages as one PDF (about {size} MB)",
       willSplitMultiple:
         "Split {pages} pages into {parts} PDFs (about {size} MB in total)",
       splitTooManyPages:

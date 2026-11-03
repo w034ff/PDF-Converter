@@ -164,7 +164,7 @@ describe("adding PDFs", () => {
     ).toBeInTheDocument();
     // The note under the settings tells that the passwords are not kept.
     expect(
-      screen.getByText("元の PDF のパスワードは引き継がれません。"),
+      screen.getByText("元の PDF のパスワードは引き継がれません"),
     ).toBeInTheDocument();
   });
 
@@ -219,7 +219,7 @@ describe("adding PDFs", () => {
 
     expect(
       screen.getByText(
-        "追加されなかったファイル: 非対応 2 件、フォルダ 1 件、重複 3 件",
+        "追加されなかったファイル：非対応 2 件、フォルダ 1 件、重複 3 件",
       ),
     ).toBeInTheDocument();
   });
@@ -498,7 +498,7 @@ describe("dropping PDFs", () => {
     });
 
     expect(
-      screen.getByText("追加されなかったファイル: 重複 2 件"),
+      screen.getByText("追加されなかったファイル：重複 2 件"),
     ).toBeInTheDocument();
   });
 

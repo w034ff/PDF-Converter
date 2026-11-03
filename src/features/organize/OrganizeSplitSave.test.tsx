@@ -192,7 +192,7 @@ describe("starting the save in parts", () => {
     expect(callsOf(calls, "start_organize_split")).toHaveLength(0);
     const dialog = screen.getByRole("dialog", { name: "パスワードを付ける" });
     expect(dialog).toHaveTextContent(
-      "保存する 2 個の PDF すべてに、同じパスワードを付けます。",
+      "保存する 2 個の PDF すべてに、同じパスワードを付けます",
     );
     fireEvent.change(within(dialog).getByLabelText("パスワード"), {
       target: { value: "s3cret" },
@@ -274,9 +274,7 @@ describe("what the bottom bar says before saving in parts", () => {
     // 4 pages of 4,000,000 bytes and 2 pages of 2,000,000.
     await openSplit();
     expect(
-      screen.getByText(
-        "6 ページを 1 個の PDF に分割して保存します（合計 約 6 MB）",
-      ),
+      screen.getByText("6 ページを 1 つの PDF に保存します（約 6 MB）"),
     ).toBeInTheDocument();
 
     fireEvent.click(breakButton(2, 3));
@@ -293,9 +291,7 @@ describe("what the bottom bar says before saving in parts", () => {
     const odd = organizePdf(1, "odd.pdf", 3, { fileBytes: 1_048_576 });
     await openSplit([odd]);
     expect(
-      screen.getByText(
-        "3 ページを 1 個の PDF に分割して保存します（合計 約 1 MB）",
-      ),
+      screen.getByText("3 ページを 1 つの PDF に保存します（約 1 MB）"),
     ).toBeInTheDocument();
 
     fireEvent.click(settingsButton("1 ページごと"));
@@ -309,13 +305,13 @@ describe("what the bottom bar says before saving in parts", () => {
   it("says one page as one PDF in English, and the plural otherwise", async () => {
     await openSplit([organizePdf(1, "one.pdf", 1)], { language: "en" });
     expect(
-      screen.getByText("Split 1 page into 1 PDF (about 1 MB in total)"),
+      screen.getByText("Save 1 page as one PDF (about 1 MB)"),
     ).toBeInTheDocument();
     cleanup();
 
     await openSplit([REPORT], { language: "en" });
     expect(
-      screen.getByText("Split 4 pages into 1 PDF (about 4 MB in total)"),
+      screen.getByText("Save 4 pages as one PDF (about 4 MB)"),
     ).toBeInTheDocument();
     fireEvent.click(breakButton(2, 3, "en"));
     expect(
@@ -357,7 +353,7 @@ describe("what the bottom bar says before saving in parts", () => {
 
     expect(
       screen.getByText(
-        "4 ページを 1 個の PDF に分割して保存します（合計 約 4 MB）。1 個の PDF は含まれません",
+        "4 ページを 1 つの PDF に保存します（約 4 MB）。1 個の PDF は含まれません",
       ),
     ).toBeInTheDocument();
   });
@@ -436,7 +432,7 @@ describe("what the bottom bar says after saving in parts", () => {
 
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent(
-      `変換が終わりました：成功 1 件 · 失敗 2 件（2 番目の PDF: report.pdf: ${formatErrorMessage(error.code, error.detail, "ja")}）`,
+      `変換が終わりました：成功 1 件 · 失敗 2 件（2 番目の PDF：report.pdf：${formatErrorMessage(error.code, error.detail, "ja")}）`,
     );
     expect(status).toHaveClass("error-text");
   });
@@ -450,7 +446,7 @@ describe("what the bottom bar says after saving in parts", () => {
     await flush();
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      `成功 2 件 · 失敗 1 件（1 番目の PDF: ${formatErrorMessage(error.code, error.detail, "ja")}）`,
+      `成功 2 件 · 失敗 1 件（1 番目の PDF：${formatErrorMessage(error.code, error.detail, "ja")}）`,
     );
   });
 

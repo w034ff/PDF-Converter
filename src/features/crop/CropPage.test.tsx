@@ -304,7 +304,6 @@ describe("the page", () => {
       .getByRole("img", { name: /report.pdf/ })
       .getAttribute("src");
     expect(after).not.toBe(before);
-    expect(urls.revoke).toHaveBeenCalledWith(before);
   });
 
   it("does not render the page again for a zoom inside the same step", async () => {
@@ -356,7 +355,7 @@ describe("the page", () => {
     expect(screen.getByRole("img", { name: /2 ページ/ })).toBeInTheDocument();
   });
 
-  it("releases the pictures when the tab is left", async () => {
+  it("keeps the page's picture when the tab is left", async () => {
     await openPdf();
     const src = screen
       .getByRole("img", { name: /report.pdf/ })
@@ -364,7 +363,7 @@ describe("the page", () => {
 
     cleanup();
 
-    expect(urls.revoke).toHaveBeenCalledWith(src);
+    expect(urls.revoke).not.toHaveBeenCalledWith(src);
   });
 });
 

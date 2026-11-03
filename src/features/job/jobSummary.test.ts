@@ -387,7 +387,7 @@ describe("the summary of the organize tab's save in parts", () => {
       firstFailure: { part: 2, name: null },
     });
     expect(formatJobSummary(ja, finished, shape)).toMatch(
-      /^変換が終わりました：成功 1 件 · 失敗 2 件（2 番目の PDF: .+）$/,
+      /^変換が終わりました：成功 1 件 · 失敗 2 件（2 番目の PDF：.+）$/,
     );
     expect(
       formatJobSummary(
@@ -410,7 +410,7 @@ describe("the summary of the organize tab's save in parts", () => {
           "ja",
         ),
       ),
-    ).toMatch(/（3 番目の PDF: book\.pdf: .+）$/);
+    ).toMatch(/（3 番目の PDF：book\.pdf：.+）$/);
     expect(formatJobSummary(en, finished, shape)).toMatch(
       /^Conversion finished: 1 succeeded · 2 failed \(PDF 2: .+\)$/,
     );

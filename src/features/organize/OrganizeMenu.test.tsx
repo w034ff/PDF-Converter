@@ -30,8 +30,8 @@ afterEach(() => {
 });
 
 const BOOK = organizePdf(1, "book.pdf", 8);
-const ADD_BREAK = "このページの前で区切る";
-const REMOVE_BREAK = "このページの前の区切りを外す";
+const ADD_BREAK = "前に区切りを追加";
+const REMOVE_BREAK = "前の区切りを解除";
 
 function click(cell: HTMLElement, init: { ctrlKey?: boolean } = {}) {
   pressCell(cell, init);
