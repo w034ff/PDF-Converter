@@ -81,11 +81,11 @@ describe("the organize tab: opening it", () => {
     expect(
       screen.getByRole("checkbox", { name: "パスワードを付ける" }),
     ).not.toBeChecked();
-    expect(screen.getByText("保存した PDF について")).toBeInTheDocument();
+    expect(screen.getByText("出力ファイルについて")).toBeInTheDocument();
     expect(
       screen.getByRole("group", { name: "保存の方法" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/並んだ順に/)).toBeInTheDocument();
+    expect(screen.getByText(/並び順に/)).toBeInTheDocument();
     expect(screen.queryByText("区切り")).not.toBeInTheDocument();
     expect(screen.queryByText("保存先フォルダ")).not.toBeInTheDocument();
     expect(screen.getByText("PDF を追加してください")).toBeInTheDocument();
@@ -166,9 +166,7 @@ describe("adding PDFs", () => {
     ).toBeInTheDocument();
     // The note under the settings tells that the passwords are not kept.
     expect(
-      screen.getByText(
-        "パスワード付きの PDF があります。元の PDF のパスワードは引き継ぎません。",
-      ),
+      screen.getByText("元の PDF のパスワードは引き継がれません。"),
     ).toBeInTheDocument();
   });
 
@@ -176,7 +174,7 @@ describe("adding PDFs", () => {
     await openOrganizeTab({ pdfs: [REPORT] });
 
     expect(
-      screen.queryByText(/元の PDF のパスワードは引き継ぎません/),
+      screen.queryByText(/元の PDF のパスワードは引き継がれません/),
     ).not.toBeInTheDocument();
   });
 
@@ -331,7 +329,7 @@ describe("a PDF that waits for a password", () => {
     expect(drawnKeys()).toEqual(["1:1", "1:2", "1:3"]);
     expect(
       screen.getByText(
-        "3 ページを 1 つの PDF に保存します（約 3 MB）（1 個の PDF は保存に入りません）",
+        "3 ページを 1 つの PDF に結合します（約 3 MB）。1 個の PDF は含まれません",
       ),
     ).toBeInTheDocument();
   });
@@ -446,7 +444,7 @@ describe("a PDF that cannot be read", () => {
 
     expect(
       screen.getByText(
-        /3 ページを 1 つの PDF に保存します.*（2 個の PDF は保存に入りません）/,
+        /3 ページを 1 つの PDF に結合します.*。2 個の PDF は含まれません/,
       ),
     ).toBeInTheDocument();
   });

@@ -232,7 +232,7 @@ describe("the footer's line", () => {
       </AppStateProvider>,
     );
     fireEvent.click(encryptButton());
-    expect(screen.getByText("画像が選ばれていません")).toBeInTheDocument();
+    expect(screen.getByText("画像を追加してください")).toBeInTheDocument();
     expect(screen.queryByText("パスワード付き")).not.toBeInTheDocument();
   });
 

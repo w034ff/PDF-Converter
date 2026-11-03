@@ -79,10 +79,10 @@ describe("the choice of how to save", () => {
 
     const choice = screen.getByRole("group", { name: "保存の方法" });
     expect(
-      within(choice).getByRole("button", { name: "1 つの PDF" }),
+      within(choice).getByRole("button", { name: "結合" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.getByText("並んだ順に、1 つの PDF にまとめます。"),
+      screen.getByText("並び順に 1 つの PDF に結合します。"),
     ).toBeInTheDocument();
     expect(screen.queryByText("区切り")).not.toBeInTheDocument();
     expect(screen.queryByText("保存先フォルダ")).not.toBeInTheDocument();
@@ -96,16 +96,14 @@ describe("the choice of how to save", () => {
   it("changes the settings and the button when saving in parts is chosen, and back", async () => {
     await openOrganizeTab({ pdfs: [BOOK] });
 
-    fireEvent.click(screen.getByRole("button", { name: "分けて保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "分割" }));
 
     expect(
-      screen.getByText("区切りごとに、別の PDF として保存します。"),
+      screen.getByText("区切りごとに複数の PDF に分割します。"),
     ).toBeInTheDocument();
     expect(screen.getByText("区切り")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "ページの間を押すと、区切りを入れたり外したりできます。",
-      ),
+      screen.getByText("ページの間を押して区切りを追加・解除できます。"),
     ).toBeInTheDocument();
     for (const name of ["1 ページずつ", "元の PDF ごと"]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();
@@ -119,7 +117,7 @@ describe("the choice of how to save", () => {
       screen.queryByRole("button", { name: "PDF を保存" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "1 つの PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "結合" }));
     expect(screen.queryByText("保存先フォルダ")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "PDF を保存" }),
@@ -132,12 +130,12 @@ describe("the choice of how to save", () => {
     expect(breakLines()).toHaveLength(1);
     expect(badges().map((badge) => badge.textContent)).toEqual(["1", "2"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "1 つの PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "結合" }));
     expect(breakLines()).toEqual([]);
     expect(badges()).toEqual([]);
     expect(breakButtons()).toEqual([]);
 
-    fireEvent.click(screen.getByRole("button", { name: "分けて保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "分割" }));
     expect(breakLines()).toHaveLength(1);
     expect(badges().map((badge) => badge.textContent)).toEqual(["1", "2"]);
     expect(breakButton(2, 3)).toHaveAttribute("aria-pressed", "true");
@@ -146,8 +144,8 @@ describe("the choice of how to save", () => {
   it("forgets no break while the setting is one PDF", async () => {
     await openSplit();
     fireEvent.click(settingsButton("1 ページずつ"));
-    fireEvent.click(settingsButton("1 つの PDF"));
-    fireEvent.click(settingsButton("分けて保存"));
+    fireEvent.click(settingsButton("結合"));
+    fireEvent.click(settingsButton("分割"));
 
     expect(badges()).toHaveLength(8);
   });
@@ -240,7 +238,7 @@ describe("pressing between the pages", () => {
     expect(badgeOf(cellOf(1, 4))).toBe("2");
     expect(
       screen.getByText(
-        "8 ページを 2 個の PDF に分けて保存します（合計 約 8 MB）",
+        "8 ページを 2 個の PDF に分割して保存します（合計 約 8 MB）",
       ),
     ).toBeInTheDocument();
 
@@ -354,7 +352,7 @@ describe("the B key", () => {
     click(cellOf(1, 4));
 
     key(cellOf(1, 4), "b");
-    fireEvent.click(screen.getByRole("button", { name: "分けて保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "分割" }));
 
     expect(breakLines()).toEqual([]);
   });
@@ -365,7 +363,7 @@ describe("the B key", () => {
 
     expect(
       screen.getByText(
-        "フォーカスのページの前に区切りを入れる・外す（分けて保存のとき）",
+        "フォーカスのページの前に区切りを入れる・外す（分割のとき）",
       ),
     ).toBeInTheDocument();
   });

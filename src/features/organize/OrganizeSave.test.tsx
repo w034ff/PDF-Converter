@@ -207,7 +207,7 @@ describe("saving the pages as one PDF", () => {
 
     expect(saveButton()).toBeEnabled();
     expect(
-      screen.getByText(/5 ページを 1 つの PDF に保存します/),
+      screen.getByText(/5 ページを 1 つの PDF に結合します/),
     ).toBeInTheDocument();
   });
 
@@ -267,7 +267,7 @@ describe("the pages of one PDF", () => {
 
     expect(saveButton()).toBeDisabled();
     const reason = screen.getByText(
-      "1 つの PDF は 10,000 ページまでです（今は 10001 ページ）。区切りを入れて分けて保存してください",
+      "1 つの PDF は 10,000 ページまでです（今は 10001 ページ）。分割して保存してください",
     );
     expect(reason).toHaveClass("error-text");
   });
@@ -295,7 +295,7 @@ describe("the pages of one PDF", () => {
 
     expect(
       screen.getByText(
-        "One PDF has at most 10,000 pages (now 10005). Add breaks and save in parts",
+        "One PDF has at most 10,000 pages (now 10005). Split it before saving",
       ),
     ).toBeInTheDocument();
   });
@@ -307,7 +307,7 @@ describe("what the bottom bar says before saving", () => {
 
     // 3 MB × 3 pages of 3 and 2 MB × 2 pages of 2: the whole of both, 5 MB.
     expect(
-      screen.getByText("5 ページを 1 つの PDF に保存します（約 5 MB）"),
+      screen.getByText("5 ページを 1 つの PDF に結合します（約 5 MB）"),
     ).toBeInTheDocument();
 
     click(cellOf(1, 1));
@@ -316,7 +316,7 @@ describe("what the bottom bar says before saving", () => {
 
     // A third of the first PDF's 3,000,000 bytes is gone: 2,000,000 + 2,000,000.
     expect(
-      screen.getByText("4 ページを 1 つの PDF に保存します（約 4 MB）"),
+      screen.getByText("4 ページを 1 つの PDF に結合します（約 4 MB）"),
     ).toBeInTheDocument();
   });
 
@@ -351,7 +351,7 @@ describe("what the bottom bar says after saving", () => {
     await finishSaving(answer, { savedName: "out.pdf", replacedId: null }, 5);
 
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("5 ページを 1 つの PDF に保存しました");
+    expect(status).toHaveTextContent("5 ページを 1 つの PDF に結合しました");
     expect(status).toHaveClass("success-text");
     expect(status).not.toHaveTextContent("置き換えた");
   });
@@ -368,7 +368,7 @@ describe("what the bottom bar says after saving", () => {
     );
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "5 ページを 1 つの PDF に保存しました · 置き換えた annual-report.pdf を一覧から外しました",
+      "5 ページを 1 つの PDF に結合しました · 置き換えた annual-report.pdf を一覧から外しました",
     );
     expect(callsOf(calls, "remove_organize_pdfs")).toHaveLength(0);
     expect(
@@ -398,7 +398,7 @@ describe("what the bottom bar says after saving", () => {
     );
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Saved 3 pages as one PDF · Removed the replaced annual-report.pdf from the list",
+      "Merged 3 pages into one PDF · Removed the replaced annual-report.pdf from the list",
     );
   });
 
@@ -485,7 +485,7 @@ describe("what the bottom bar says after saving", () => {
 
     click(cellOf(2, 1));
     expect(screen.getByRole("status")).toHaveTextContent(
-      "5 ページを 1 つの PDF に保存しました",
+      "5 ページを 1 つの PDF に結合しました",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "右に回す" }));
@@ -493,7 +493,7 @@ describe("what the bottom bar says after saving", () => {
 
     expect(screen.queryByText(/に保存しました/)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/5 ページを 1 つの PDF に保存します/),
+      screen.getByText(/5 ページを 1 つの PDF に結合します/),
     ).toBeInTheDocument();
   });
 

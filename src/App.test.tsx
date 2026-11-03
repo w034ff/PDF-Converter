@@ -676,23 +676,27 @@ describe("App", () => {
       render(<App initialNavLang="ja" initialSettings={null} />);
 
       // On Images tab initially
-      expect(screen.getByText("画像が選ばれていません")).toBeInTheDocument();
+      expect(screen.getByText("画像を追加してください")).toBeInTheDocument();
 
       // Switch to PDF to Images tab
       fireEvent.click(screen.getByRole("tab", { name: "PDF → 画像" }));
-      expect(screen.getByText("PDF が選ばれていません")).toBeInTheDocument();
+      expect(screen.getByText("PDF を追加してください")).toBeInTheDocument();
       expect(
-        screen.queryByText("画像が選ばれていません"),
+        screen.queryByText("画像を追加してください"),
       ).not.toBeInTheDocument();
 
       // Switch language to English
       const select = screen.getByRole("combobox", { name: "言語" });
       fireEvent.change(select, { target: { value: "en" } });
-      expect(screen.getByText("No PDFs selected")).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("contentinfo")).getByText("Add PDFs"),
+      ).toBeInTheDocument();
 
       // Switch back to Images tab in English
       fireEvent.click(screen.getByRole("tab", { name: "Images → PDF" }));
-      expect(screen.getByText("No images selected")).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("contentinfo")).getByText("Add images"),
+      ).toBeInTheDocument();
     });
 
     it("prioritizes job progress and finished state over idle status", async () => {

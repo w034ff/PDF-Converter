@@ -35,8 +35,8 @@ export const en: Translations = {
     notChosen: "Not chosen",
   },
   footer: {
-    noImagesSelected: "No images selected",
-    noPdfsSelected: "No PDFs selected",
+    noImages: "Add images",
+    noPdfs: "Add PDFs",
     noReadableImages:
       "No images can be converted. Remove the ones that couldn't be loaded.",
     noReadablePdfs:
@@ -410,7 +410,7 @@ export const en: Translations = {
       summarySeparator: " · ",
     },
     footer: {
-      noPdf: "No PDF is open",
+      noPdf: "Open a PDF",
       noRanges: "No areas selected",
       willExportSingle: "Export {count} area as {format}",
       willExportMultiple: "Export {count} areas as {format}",
@@ -422,7 +422,7 @@ export const en: Translations = {
     dropZone: {
       title: "Drop PDFs here, or press “Add PDFs”",
       description:
-        "Reorder, delete and rotate pages, then save them as one PDF or in parts.",
+        "Reorder, delete and rotate pages, then merge or split them and save.",
       addPdfs: "Add PDFs",
       addFolder: "Add folder",
     },
@@ -480,43 +480,42 @@ export const en: Translations = {
     },
     settings: {
       outputTitle: "How to save",
-      outputSingle: "One PDF",
-      outputSplit: "Save in parts",
-      outputSingleHint: "Combines the pages into one PDF, in the order shown.",
-      outputSplitHint: "Saves each part between breaks as a separate PDF.",
+      outputSingle: "Merge",
+      outputSplit: "Split",
+      outputSingleHint: "Merges the pages into one PDF, in the order shown.",
+      outputSplitHint: "Splits into multiple PDFs at each break.",
       breaksTitle: "Breaks",
       breaksHint: "Press between pages to add or remove a break.",
       breaksEachPage: "One page each",
       breaksEachPdf: "By source PDF",
       breaksClear: "Remove all",
       password: "Add a password",
-      encryptedNotice:
-        "Some PDFs are password-protected. The passwords of the original PDFs are not carried over.",
-      aboutTitle: "About the saved PDF",
+      encryptedNotice: "Original PDF passwords are not carried over.",
+      aboutTitle: "About output files",
       about:
-        "Annotations and forms are flattened onto the page as they look. Bookmarks and links are re-attached. Document information such as the author is not included.",
+        "Annotations and form fields are visually fixed to the page. Bookmarks and links are preserved, while document information such as the author is omitted.",
     },
     footer: {
       noPdfs: "Add PDFs",
       noPages: "No pages to save",
       tooManyPages:
-        "One PDF has at most {max} pages (now {count}). Add breaks and save in parts",
+        "One PDF has at most {max} pages (now {count}). Split it before saving",
       willSplitSingle:
-        "Save {pages} page as {parts} PDF (about {size} MB in total)",
+        "Split {pages} page into {parts} PDF (about {size} MB in total)",
       willSplitOnePart:
-        "Save {pages} pages as {parts} PDF (about {size} MB in total)",
+        "Split {pages} pages into {parts} PDF (about {size} MB in total)",
       willSplitMultiple:
-        "Save {pages} pages as {parts} PDFs (about {size} MB in total)",
+        "Split {pages} pages into {parts} PDFs (about {size} MB in total)",
       splitTooManyPages:
         "PDF {part} has {count} pages. One PDF has at most {max} pages",
       willSaveSingle: "Save {count} page as one PDF (about {size} MB)",
-      willSaveMultiple: "Save {count} pages as one PDF (about {size} MB)",
-      leftOutSingle: " ({count} PDF is not included)",
-      leftOutMultiple: " ({count} PDFs are not included)",
+      willSaveMultiple: "Merge {count} pages into one PDF (about {size} MB)",
+      leftOutSingle: ". {count} PDF is not included",
+      leftOutMultiple: ". {count} PDFs are not included",
     },
     result: {
       savedSingle: "Saved {count} page as one PDF",
-      savedMultiple: "Saved {count} pages as one PDF",
+      savedMultiple: "Merged {count} pages into one PDF",
       replaced: "Removed the replaced {name} from the list",
       failed: "The PDF was not saved ({name}: {message})",
       failedWithoutName: "The PDF was not saved ({message})",
@@ -561,7 +560,7 @@ export const en: Translations = {
             {
               keys: [["B"]],
               action:
-                "Add or remove the break before the focused page (when saving in parts)",
+                "Add or remove the break before the focused page (when splitting)",
             },
             {
               keys: [["Right-click"], ["Shift", "F10"]],

@@ -470,7 +470,7 @@ describe("during a conversion", () => {
 
     expect(screen.getByText(ja.job.running)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "キャンセル" })).toBeEnabled();
-    expect(screen.queryByText("PDF が開かれていません")).toBeNull();
+    expect(screen.queryByText("PDF を開いてください")).toBeNull();
     expect(screen.queryByRole("button", { name: "書き出す" })).toBeNull();
   });
 });

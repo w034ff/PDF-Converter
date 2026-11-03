@@ -60,7 +60,7 @@ describe("ImagesToPdfStatus", () => {
   });
 
   describe("getImagesToPdfStatusText (pure function)", () => {
-    it("returns 'no images selected' when list is empty", () => {
+    it("returns 'add images' when list is empty", () => {
       const state: ImagesToPdfState = {
         items: [],
         output: "merge",
@@ -71,9 +71,9 @@ describe("ImagesToPdfStatus", () => {
         outputDir: null,
       };
       expect(getImagesToPdfStatusText(state, ja)).toBe(
-        "画像が選ばれていません",
+        "画像を追加してください",
       );
-      expect(getImagesToPdfStatusText(state, en)).toBe("No images selected");
+      expect(getImagesToPdfStatusText(state, en)).toBe("Add images");
     });
 
     it("asks to remove unreadable images when all items have errors", () => {
@@ -262,7 +262,7 @@ describe("ImagesToPdfStatus", () => {
         </AppStateProvider>,
       );
 
-      expect(screen.getByText("画像が選ばれていません")).toHaveClass("hint");
+      expect(screen.getByText("画像を追加してください")).toHaveClass("hint");
     });
   });
 });

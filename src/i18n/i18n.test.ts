@@ -114,7 +114,7 @@ describe("i18n", () => {
       expect(
         formatErrorMessage("OutputTooLarge", "613 MB / 512 MB", "ja"),
       ).toBe(
-        "出力する PDF が大きすぎます（見積もり / 上限: 613 MB / 512 MB）。区切りを入れて、分けて保存してください。",
+        "出力サイズが上限を超えています（613 MB / 512 MB）。分割して保存してください。",
       );
       expect(formatErrorMessage("MergeTooLarge", "613 MB / 512 MB", "ja")).toBe(
         "結合する PDF が大きすぎます（見積もり / この PC の上限: 613 MB / 512 MB）。「1 枚ずつ」で保存するか、画像を減らしてください。",
@@ -182,7 +182,7 @@ describe("i18n", () => {
       expect(
         formatErrorMessage("OutputTooLarge", "613 MB / 512 MB", "en"),
       ).toBe(
-        "The output PDF is too large (estimate / limit: 613 MB / 512 MB). Add breaks and save it in parts.",
+        "The output size exceeds the limit (613 MB / 512 MB). Split it before saving.",
       );
       expect(formatErrorMessage("MergeTooLarge", "613 MB / 512 MB", "en")).toBe(
         'The merged PDF is too large (estimate / limit on this PC: 613 MB / 512 MB). Save with "Each image" or use fewer images.',
