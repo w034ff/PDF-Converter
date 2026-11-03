@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use pdfconv_core::naming::{PdfToImageInput, resolve_pdf_to_image_names};
-use pdfconv_core::{PageSet, parse_page_range};
+use pdfconv_core::{ErrorCode, PageSet, parse_page_range};
 use pdfconv_worker::is_render_dpi_in_range;
 use pdfconv_worker::protocol::{Request, Response};
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,7 @@ use super::{
     begin_conversion, spawn_conversion,
 };
 use crate::AppState;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{ItemKind, file_name};
 use crate::settings::OutputKind;
 use crate::worker_pool::WorkerPoolError;
@@ -252,7 +252,7 @@ where
                 }
                 Err(WorkerPoolError::Remote { code, detail }) => {
                     failed_pages.push(page);
-                    last_error = Some(IpcError::from_worker(&code, detail.as_deref()));
+                    last_error = Some(IpcError::from_worker(code, detail.as_deref()));
                     let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
                     on_progress(JobProgressPayload {
                         done: cur,

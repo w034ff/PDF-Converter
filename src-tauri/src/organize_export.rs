@@ -18,7 +18,7 @@ use tempfile::NamedTempFile;
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{file_name, unexpected_response};
 use crate::jobs::{self, JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload};
 use crate::organize::{
@@ -26,6 +26,7 @@ use crate::organize::{
 };
 use crate::settings::OutputKind;
 use crate::worker_pool::WorkerPoolError;
+use pdfconv_core::ErrorCode;
 
 /// Result returned once a single PDF has been made (design organize §4, design §7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -203,7 +204,7 @@ fn write_output(
             detail,
             source,
         }) => Err(OutputStop::Failed {
-            error: IpcError::from_worker(&code, detail.as_deref()),
+            error: IpcError::from_worker(code, detail.as_deref()),
             source_id: usize::try_from(source)
                 .ok()
                 .and_then(|index| plan.source_ids.get(index))

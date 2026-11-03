@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 
 use image::{GenericImageView, RgbaImage};
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::PAGE_VIEW_MAX_SIDE;
 use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::{
@@ -45,11 +46,11 @@ fn crop_align() -> WorkerProcess {
     started_with("crop_align.pdf")
 }
 
-fn expect_error(result: Result<(Response, Vec<u8>), WorkerError>, expected_code: &str) {
+fn expect_error(result: Result<(Response, Vec<u8>), WorkerError>, expected_code: ErrorCode) {
     let Err(WorkerError::Remote { code, .. }) = &result else {
         unreachable!("expected {expected_code}, got {result:?}");
     };
-    assert_eq!(code, expected_code);
+    assert_eq!(*code, expected_code.into());
 }
 
 fn page_images(worker: &mut WorkerProcess, page: u32) -> Vec<EmbeddedImage> {
@@ -175,7 +176,7 @@ fn render(worker: &mut WorkerProcess, region: &Region) -> Rendered {
     try_render(worker, region).expect("RenderRegion should succeed")
 }
 
-fn expect_region_error(worker: &mut WorkerProcess, region: &Region, expected_code: &str) {
+fn expect_region_error(worker: &mut WorkerProcess, region: &Region, expected_code: ErrorCode) {
     expect_error(
         worker.request(&region.request(), RENDER_TIMEOUT),
         expected_code,
@@ -927,7 +928,7 @@ fn a_region_over_the_pixel_limit_is_too_large() {
     expect_region_error(
         &mut worker,
         &Region::rectangle(2, whole, 300),
-        "RenderTooLarge",
+        ErrorCode::RenderTooLarge,
     );
     // A part of it that fits is drawn.
     let part = RectPt {
@@ -966,7 +967,7 @@ fn bad_regions_are_invalid_params() {
                 rect: bad_rect,
                 ..ok.clone()
             },
-            "InvalidParams",
+            ErrorCode::InvalidParams,
         );
     }
     // Half a point outside is allowed.
@@ -983,10 +984,18 @@ fn bad_regions_are_invalid_params() {
     );
 
     for page in [0, 4] {
-        expect_region_error(&mut worker, &Region { page, ..ok.clone() }, "InvalidParams");
+        expect_region_error(
+            &mut worker,
+            &Region { page, ..ok.clone() },
+            ErrorCode::InvalidParams,
+        );
     }
     for dpi in [0, 35, 1001] {
-        expect_region_error(&mut worker, &Region { dpi, ..ok.clone() }, "InvalidParams");
+        expect_region_error(
+            &mut worker,
+            &Region { dpi, ..ok.clone() },
+            ErrorCode::InvalidParams,
+        );
     }
 }
 
@@ -1004,7 +1013,7 @@ fn bad_image_indices_are_invalid_params() {
                 image_index: Some(image_index),
                 ..photo.clone()
             },
-            "InvalidParams",
+            ErrorCode::InvalidParams,
         );
         expect_error(
             worker.request(
@@ -1014,7 +1023,7 @@ fn bad_image_indices_are_invalid_params() {
                 },
                 RENDER_TIMEOUT,
             ),
-            "InvalidParams",
+            ErrorCode::InvalidParams,
         );
     }
 }
@@ -1033,7 +1042,7 @@ fn the_dpi_range_does_not_apply_to_a_photo_in_its_own_pixels() {
         photo_native: false,
         ..native.clone()
     };
-    expect_region_error(&mut worker, &by_choice, "InvalidParams");
+    expect_region_error(&mut worker, &by_choice, ErrorCode::InvalidParams);
     let sheared = images.iter().find(|i| i.native_size.is_none()).unwrap();
     expect_region_error(
         &mut worker,
@@ -1041,7 +1050,7 @@ fn the_dpi_range_does_not_apply_to_a_photo_in_its_own_pixels() {
             dpi: 0,
             ..Region::photo(1, sheared)
         },
-        "InvalidParams",
+        ErrorCode::InvalidParams,
     );
 }
 
@@ -1056,7 +1065,7 @@ fn crop_requests_need_an_open_pdf_and_a_page() {
     };
     expect_error(
         worker.request(&Request::PageImages { page: 1 }, RENDER_TIMEOUT),
-        "InvalidParams",
+        ErrorCode::InvalidParams,
     );
     expect_error(
         worker.request(
@@ -1066,19 +1075,19 @@ fn crop_requests_need_an_open_pdf_and_a_page() {
             },
             RENDER_TIMEOUT,
         ),
-        "InvalidParams",
+        ErrorCode::InvalidParams,
     );
     expect_region_error(
         &mut worker,
         &Region::rectangle(1, rect, 72),
-        "InvalidParams",
+        ErrorCode::InvalidParams,
     );
 
     let mut worker = crop_align();
     for page in [0, 4] {
         expect_error(
             worker.request(&Request::PageImages { page }, RENDER_TIMEOUT),
-            "InvalidParams",
+            ErrorCode::InvalidParams,
         );
         expect_error(
             worker.request(
@@ -1088,7 +1097,7 @@ fn crop_requests_need_an_open_pdf_and_a_page() {
                 },
                 RENDER_TIMEOUT,
             ),
-            "InvalidParams",
+            ErrorCode::InvalidParams,
         );
     }
 }
@@ -1103,7 +1112,7 @@ fn thumbnails_are_limited_to_the_page_view_size() {
     assert_eq!(response, Response::Thumbnail);
     expect_error(
         worker.request(&at(PAGE_VIEW_MAX_SIDE + 1), RENDER_TIMEOUT),
-        "InvalidParams",
+        ErrorCode::InvalidParams,
     );
 }
 

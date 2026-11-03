@@ -9,7 +9,7 @@ use pdf_converter_lib::crop::{
     PageImage,
 };
 use pdf_converter_lib::crop_export::CropRegionInput;
-use pdf_converter_lib::error::{ErrorCode, IpcError};
+use pdf_converter_lib::error::IpcError;
 use pdf_converter_lib::items::{
     AddResult, ImageFormatName, ImageItem, ItemsDropped, PageSizePt, PdfItem, Skipped, UnlockResult,
 };
@@ -27,6 +27,7 @@ use pdf_converter_lib::settings::{
     OrganizeSettings, OutputDirLabel, OutputKind, OutputMode, PdfToImagesOptions,
     PdfToImagesSettings, Settings, SettingsInput,
 };
+use pdfconv_core::ErrorCode;
 use ts_rs::{Config, TS};
 
 #[test]

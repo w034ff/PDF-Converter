@@ -9,8 +9,9 @@ use std::time::Duration;
 #[path = "support/worker_paths.rs"]
 mod worker_paths;
 
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::client::{RENDER_TIMEOUT, StreamPart, WorkerError, WorkerProcess};
-use pdfconv_worker::protocol::{Request, Response};
+use pdfconv_worker::protocol::{Request, Response, WorkerCode};
 use pdfconv_worker::server::WORKER_MEMORY_LIMIT;
 #[cfg(feature = "test-hooks")]
 use pdfconv_worker::server::{CRASH_ON_IMAGE_FILE_NAME, HANG_ON_IMAGE_FILE_NAME};
@@ -52,14 +53,14 @@ fn check(worker: &mut WorkerProcess, path: PathBuf) -> (Vec<u32>, Result<Respons
 }
 
 /// The code and detail of a remote error; anything else fails the test.
-fn remote_code(result: Result<impl std::fmt::Debug, WorkerError>) -> (String, Option<String>) {
+fn remote_code(result: Result<impl std::fmt::Debug, WorkerError>) -> (WorkerCode, Option<String>) {
     assert!(
         matches!(result, Err(WorkerError::Remote { .. })),
         "expected a remote error, got {result:?}"
     );
     match result {
         Err(WorkerError::Remote { code, detail }) => (code, detail),
-        _ => (String::new(), None),
+        _ => unreachable!("checked above"),
     }
 }
 
@@ -97,15 +98,15 @@ fn a_thumbnail_that_fails_answers_the_code_of_the_probe_error() {
     let mut worker = start();
     assert_eq!(
         remote_code(thumbnail(&mut worker, fixture("corrupt.png"))).0,
-        "DecodeFailed"
+        ErrorCode::DecodeFailed.into()
     );
     assert_eq!(
         remote_code(thumbnail(&mut worker, fixture("corrupt.pdf"))).0,
-        "UnsupportedFormat"
+        ErrorCode::UnsupportedFormat.into()
     );
     assert_eq!(
         remote_code(thumbnail(&mut worker, fixture("no-such-file.png"))).0,
-        "ReadFailed"
+        ErrorCode::ReadFailed.into()
     );
     // The worker still answers.
     thumbnail(&mut worker, fixture("photo.jpg")).expect("the next thumbnail");
@@ -161,25 +162,25 @@ fn a_check_that_fails_answers_the_code_and_detail_of_the_probe_error() {
     let mut worker = start();
     assert_eq!(
         remote_code(check(&mut worker, fixture("corrupt.png")).1),
-        ("DecodeFailed".to_owned(), None)
+        (ErrorCode::DecodeFailed.into(), None)
     );
 
     // The first page is read and reported before the second fails.
     let (pages, result) = check(&mut worker, fixture("corrupt_page2.tif"));
-    assert_eq!(remote_code(result), ("DecodeFailed".to_owned(), None));
+    assert_eq!(remote_code(result), (ErrorCode::DecodeFailed.into(), None));
     assert!(pages.len() < 2, "{pages:?}");
 
     assert_eq!(
         remote_code(check(&mut worker, fixture("too_many_pages.tif")).1),
-        ("TooManyPages".to_owned(), Some("1,000".to_owned()))
+        (ErrorCode::TooManyPages.into(), Some("1,000".to_owned()))
     );
     assert_eq!(
         remote_code(check(&mut worker, fixture("no-such-file.png")).1),
-        ("ReadFailed".to_owned(), None)
+        (ErrorCode::ReadFailed.into(), None)
     );
     assert_eq!(
         remote_code(check(&mut worker, fixture("corrupt.pdf")).1).0,
-        "UnsupportedFormat"
+        ErrorCode::UnsupportedFormat.into()
     );
 
     // The worker still answers.

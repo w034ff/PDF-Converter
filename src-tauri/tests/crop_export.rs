@@ -14,7 +14,7 @@ use pdf_converter_lib::crop::{
     CropPdf, activate_crop_pdf, detect_layout, list_page_images, open_pdf,
 };
 use pdf_converter_lib::crop_export::{CropRegionInput, start_crop_export_internal};
-use pdf_converter_lib::error::{ErrorCode, IpcError};
+use pdf_converter_lib::error::IpcError;
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
     RenderColorChoice, RenderFormatChoice,
@@ -23,6 +23,7 @@ use pdf_converter_lib::settings::{
     CropOptions, OutputKind, apply_picked_dir, load_settings, restore_settings,
 };
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::WORKER_FLAG;
 use tempfile::TempDir;
 

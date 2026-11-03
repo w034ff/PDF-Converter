@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
 use pdfconv_core::naming::{CropRegion, resolve_crop_names};
-use pdfconv_core::{PageRect, position_order};
+use pdfconv_core::{ErrorCode, PageRect, position_order};
 use pdfconv_worker::is_render_dpi_in_range;
 use pdfconv_worker::protocol::{RectPt, Request, Response};
 use serde::Deserialize;
@@ -18,7 +18,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::crop::ExportTarget;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{PageSizePt, close_pdf, send_open, unexpected_response};
 use crate::jobs::{
     self, FinishJob, JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload,

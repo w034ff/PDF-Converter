@@ -9,14 +9,14 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
-use pdfconv_core::PdfConformance;
+use pdfconv_core::{ErrorCode, PdfConformance};
 use pdfconv_worker::MAX_PDF_PAGES;
 use pdfconv_worker::protocol::{Password, Request};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::error::{ErrorCode, IpcError};
+use crate::error::IpcError;
 use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
     kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, scan_folder,

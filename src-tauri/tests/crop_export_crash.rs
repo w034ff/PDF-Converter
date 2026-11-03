@@ -17,13 +17,13 @@ use std::time::{Duration, Instant};
 use pdf_converter_lib::AppState;
 use pdf_converter_lib::crop::{activate_crop_pdf, open_pdf};
 use pdf_converter_lib::crop_export::{CropRegionInput, start_crop_export_internal};
-use pdf_converter_lib::error::ErrorCode;
 use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, RenderColorChoice,
     RenderFormatChoice,
 };
 use pdf_converter_lib::settings::{CropOptions, OutputKind};
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
+use pdfconv_core::ErrorCode;
 use pdfconv_worker::WORKER_FLAG;
 use tempfile::TempDir;
 

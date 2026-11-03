@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use pdfconv_worker::client::{
     DETECT_TIMEOUT, OPEN_TIMEOUT, ORGANIZE_STEP_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess,
 };
-use pdfconv_worker::protocol::{Request, Response};
+use pdfconv_worker::protocol::{Request, Response, WorkerCode};
 
 /// Maximum number of concurrent worker processes (design §5.2).
 pub const MAX_WORKERS: usize = 4;
@@ -34,21 +34,12 @@ pub enum WorkerPoolError {
     WorkerTimeout,
     /// Worker answered with an error code and optional detail.
     Remote {
-        code: String,
+        code: WorkerCode,
         detail: Option<String>,
     },
 }
 
 impl WorkerPoolError {
-    /// The error code string matching design §6.6.
-    pub fn code(&self) -> &str {
-        match self {
-            Self::WorkerCrashed => "WorkerCrashed",
-            Self::WorkerTimeout => "WorkerTimeout",
-            Self::Remote { code, .. } => code.as_str(),
-        }
-    }
-
     /// Additional details about the error, if any.
     pub fn detail(&self) -> Option<&str> {
         match self {
@@ -534,6 +525,7 @@ fn close_idle_pdfs(pool: &Weak<PoolInner>) {
 mod tests {
     use std::path::PathBuf;
 
+    use pdfconv_core::ErrorCode;
     use pdfconv_worker::protocol::{RectPt, RenderColor, RenderFormat};
 
     use super::*;
@@ -669,26 +661,23 @@ mod tests {
     fn maps_worker_errors_to_pool_errors() {
         let crashed = WorkerPoolError::from(WorkerError::Crashed);
         assert_eq!(crashed, WorkerPoolError::WorkerCrashed);
-        assert_eq!(crashed.code(), "WorkerCrashed");
         assert_eq!(crashed.detail(), None);
 
         let timeout = WorkerPoolError::from(WorkerError::Timeout);
         assert_eq!(timeout, WorkerPoolError::WorkerTimeout);
-        assert_eq!(timeout.code(), "WorkerTimeout");
         assert_eq!(timeout.detail(), None);
 
         let remote = WorkerPoolError::from(WorkerError::Remote {
-            code: "PasswordProtected".into(),
+            code: ErrorCode::PasswordProtected.into(),
             detail: Some("secret".into()),
         });
         assert_eq!(
             remote,
             WorkerPoolError::Remote {
-                code: "PasswordProtected".into(),
+                code: ErrorCode::PasswordProtected.into(),
                 detail: Some("secret".into()),
             }
         );
-        assert_eq!(remote.code(), "PasswordProtected");
         assert_eq!(remote.detail(), Some("secret"));
     }
 }

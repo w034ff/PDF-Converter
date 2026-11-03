@@ -59,7 +59,7 @@
 | レイアウトの解析（切り出しの候補） | PP-DocLayout_plus-L（PaddlePaddle、Apache-2.0）を int8 に量子化したもの（§8.5）を、onnxruntime 1.26.0（Microsoft の公式のビルド、MIT）で動かす。Rust からは `ort`（`=2.0.0-rc.15`、`load-dynamic`、`api-26`） | 埋め込み画像の下調べ（2026-10-16）で、図・グラフ・表の 87 % の範囲が合い（論文・白書は 99 %）、int8 でも元のモデルとの一致が 99.7 %、ファイルは 130 MB から 34 MB になった。より小さい PP-DocLayout-M・S は 4 割前後を取りこぼした。`ort` は ocr-bench（OCR の検証）と同じ版で、同じ入力で Python の onnxruntime と同じ箱を出した |
 | 並列処理 | `std::thread` とチャネル | ワーカーはプロセスなので、スレッドプールのライブラリは要らない |
 | 一時ファイル | `tempfile` | 原子的な保存（§6.5） |
-| IPC 型共有 | `ts-rs` | SVG Tracer と同じ |
+| IPC 型共有 | `ts-rs` | SVG Tracer と同じ。エラーコードの列挙（`ErrorCode`）はワーカーも使うため `crates/core` に置き、`crates/core` は `serde` と、機能 `ts` の先の任意の依存として `ts-rs` を持つ（`src-tauri` だけが `ts` を有効にする） |
 | フロントエンド | React + TypeScript + Vite、素の CSS + CSS カスタムプロパティ | SVG Tracer と同じ。部品と仕組みを流用する |
 | フロントエンドのテスト | Vitest + Testing Library + jsdom、`@tauri-apps/api/mocks` | SVG Tracer と同じ |
 | ライセンス | `cargo-about`、`cargo-deny`、`license-checker-rseidelsohn`、pdfium の同梱ライセンス（§8.3） | NFR-05 |
@@ -87,7 +87,7 @@
 │   │   ├── naming.rs         出力名の決定（§6.4）
 │   │   ├── region.rs         切り出しの範囲の幾何（座標、行の判定と番号、写真の範囲との一致。§4.6、§6.4）。crates/worker の layout.rs も写真との一致に使う
 │   │   ├── thumbnail.rs      画像の一覧のサムネイル（§6.1）
-│   │   └── error.rs
+│   │   └── error.rs          エラーコード（`ErrorCode`。§6.6）と、画像の読み込み・PDF の書き出しのエラー
 │   ├── examples/
 │   │   ├── gen_fixtures.rs   フィクスチャの生成（§11.1）
 │   │   └── write_pdfa_samples.rs / write_encrypted_samples.rs   手で確かめる PDF/A・パスワード付きの見本（§11.2）
@@ -95,7 +95,7 @@
 ├── crates/worker/            ワーカー（pdfium を使う唯一の crate）。パッケージ名は pdfconv-worker
 │   ├── src/
 │   │   ├── lib.rs            ワーカーとして起動する印（`WORKER_FLAG`）と、ページの数・描画の上限などの定数
-│   │   ├── protocol.rs       メッセージの型と読み書き（メインプロセスと共有）
+│   │   ├── protocol.rs       メッセージの型と読み書き（メインプロセスと共有）。失敗の応答のコードの型（`WorkerCode`）もここ
 │   │   ├── server.rs         ワーカーの本体（§5）
 │   │   ├── image.rs          画像の確かめとサムネイル（§5.1、§6.1、§6.2）
 │   │   ├── crop.rs           切り出しの範囲の描画、埋め込み画像の一覧、重なりの判定（§4.6）
@@ -110,7 +110,7 @@
 │   │   ├── main.rs           `--pdf-worker` なら worker を実行、それ以外はアプリ
 │   │   ├── lib.rs            アプリの起動、共有の状態、D&D の振り分け（§7.2）
 │   │   ├── commands.rs       IPC コマンド（§7）
-│   │   ├── error.rs          エラーコードと、IPC での形（§6.6）
+│   │   ├── error.rs          エラーコードの IPC での形（`IpcError`。§6.6）
 │   │   ├── items.rs          ファイルの ID の表と一覧の項目
 │   │   ├── worker_pool.rs    ワーカーの数の管理と貸し出し（§5.2）。1 つのワーカーの扱いは crates/worker の client.rs
 │   │   ├── decode_budget.rs  画像のデコードのメモリの予算（§5.3）
@@ -218,7 +218,7 @@
   - 外すもの: APP1（EXIF、XMP）、APP13（IPTC、Photoshop）、COM、ICC 以外の APP2（MPF など）、Adobe 以外の APP14、そのほかの APPn、JFIF 以外の APP0（JFXX）、EOI より後ろのデータ（モーションフォトの動画、MPF の 2 枚目以降の画像など）。JFIF（APP0）は残し、埋め込みの縮小画像は寸法を 0 にして除く。
   - 残すもの: JFIF の密度、ICC（APP2 の `ICC_PROFILE`）、Adobe（APP14。CMYK と YCCK の色の変換に要る）、メタデータでない区切りすべて。
   - EXIF は向きも含めて全部外す。向きと解像度は §4.1 の `probe` が元のバイト列から読み、向きはページの変換行列で表すので、画像の中に残す必要がない。外すのは `probe` のあと。
-  - 区切りの処理は、Metadata Cleaner（同じ作者の別のアプリ、MIT）の `crates/core/src/jpeg.rs` の `parse` と `strip` を `crates/core` に写して使う（向きと解像度だけの EXIF を作り直す部分は要らないので、`strip` には残す EXIF を渡さない）。依存にしないのは、git の依存を `deny.toml` の `[sources]` で禁じていることと、Metadata Cleaner の core が PDF Converter に要らない crate（`kamadak-exif`、`serde`、`ts-rs`）を持つため。
+  - 区切りの処理は、Metadata Cleaner（同じ作者の別のアプリ、MIT）の `crates/core/src/jpeg.rs` の `parse` と `strip` を `crates/core` に写して使う（向きと解像度だけの EXIF を作り直す部分は要らないので、`strip` には残す EXIF を渡さない）。依存にしないのは、git の依存を `deny.toml` の `[sources]` で禁じていることと、Metadata Cleaner の core が PDF Converter に要らない crate（`kamadak-exif`）を持つため。
   - 区切りを読めない JPEG（SOI がない、長さが壊れている、EOI に届かないなど）は、`image` で画素が読めても `DecodeFailed` とし、その画像をページに加えない。外せないまま元のバイト列を入れることはしない。
 - PNG と WebP は、画素を変えずに可逆の圧縮で入れ、透過を保つ。16 ビットの PNG は 16 ビットのまま入れる。
 - BMP は §4.1 の RGBA を入れる。
@@ -486,7 +486,7 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 
 - 「対象のページなし」はエラーではなく、`job-item` の状態 `noPages` で表す（FR-04）。
 - 書き出す PDF のパスワードの誤り（使えない文字、長すぎる、2 回の入力が違う）は、画面がダイアログの中で示す（§10.1）。IPC のエラーコードは足さない。画面と同じ規則を Rust も確かめ（§4.3.1 の `OutputPassword`）、届いたら `InvalidParams` で拒む。
-- ワーカーが同梱の pdfium を読み込めないとき（ワーカー内のコード `PdfiumUnavailable`）は、IPC では `WorkerCrashed` として返す。配布物が壊れている場合にしか起きず、利用者に見せる文言は同じでよいため。
+- ワーカーが同梱の pdfium を読み込めないとき（ワーカー内のコード `PdfiumUnavailable`）は、IPC では `WorkerCrashed` として返す。配布物が壊れている場合にしか起きず、利用者に見せる文言は同じでよいため。このコードはこの表のコードではないので、`ErrorCode`（TypeScript の型にもなる）には入れず、ワーカーの応答のコードの型（`WorkerCode`）にだけ持つ。表にないコードの応答は読み込めず、クライアントは異常終了として扱う。
 - `TooLarge`、`TooManyPages` の `detail` には、Rust が上限の定数を 3 桁区切りの文字列にして入れる（上限の数値をフロントエンドに書き写さないため）。`TooManyPages` は、PDF では `MAX_PDF_PAGES`、TIFF では `MAX_TIFF_PAGES`。
 
 ### 6.7 設定の保存（FR-07、FR-10）

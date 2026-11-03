@@ -433,6 +433,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::error::ErrorCode;
 
     const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
@@ -699,7 +700,7 @@ mod tests {
 
         let err = probe_reader(Cursor::new(header)).unwrap_err();
         assert_eq!(err, ProbeError::TooLarge);
-        assert_eq!(err.code(), "TooLarge");
+        assert_eq!(err.code(), ErrorCode::TooLarge);
         assert_eq!(err.detail().as_deref(), Some("80,000,000"));
     }
 
@@ -708,7 +709,7 @@ mod tests {
         let path = Path::new(FIXTURES_DIR).join("does_not_exist.png");
         let err = probe(&path).unwrap_err();
         assert_eq!(err, ProbeError::ReadFailed);
-        assert_eq!(err.code(), "ReadFailed");
+        assert_eq!(err.code(), ErrorCode::ReadFailed);
         assert_eq!(err.detail(), None);
     }
 

@@ -15,7 +15,7 @@ pub mod thumbnail;
 pub mod tiff;
 mod utc_time;
 
-pub use error::{MAX_TIFF_PAGES, PdfWriteError, ProbeError};
+pub use error::{ErrorCode, MAX_TIFF_PAGES, PdfWriteError, ProbeError};
 pub use jpeg_strip::strip_jpeg_metadata;
 pub use layout::{
     MAX_PAGE_SIDE_PT, MM_PER_INCH, PAGE_MARGIN_MM, POINTS_PER_INCH, PageLayout, PageOrientation,

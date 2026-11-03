@@ -11,15 +11,13 @@ use image::imageops::FilterType;
 use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Tensor;
-use pdfconv_core::{PHOTO_MATCH_IOU, PageRect, iou};
+use pdfconv_core::{ErrorCode, PHOTO_MATCH_IOU, PageRect, iou};
 use pdfium_render::prelude::PdfDocument;
 
 use crate::protocol::{
     CandidateKind, EmbeddedImage, LayoutCandidate, RectPt, RenderColor, Response,
 };
-use crate::server::{
-    CODE_PDF_OPEN_FAILED, error_response, load_page, render_page_pixels, size_for_long_side,
-};
+use crate::server::{error_response, load_page, render_page_pixels, size_for_long_side};
 use crate::{MAX_RENDER_PIXELS, crop};
 
 /// The longer side of the page as rendered for the model, in pixels; the
@@ -82,9 +80,6 @@ const LAYOUT_LABELS: [&str; 20] = [
 /// Values per row of the model's first output: class, score, then the box's
 /// corners `x0, y0, x1, y1`. Rows may carry more values after these.
 const ROW_MIN_VALUES: usize = 6;
-
-/// Error code when onnxruntime or the model cannot be loaded or run (design §6.6).
-const CODE_LAYOUT_UNAVAILABLE: &str = "LayoutUnavailable";
 
 /// One box of the model's output, in pixels of the rendered page.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -174,7 +169,7 @@ impl Detector {
 }
 
 fn unavailable(detail: String) -> Response {
-    error_response(CODE_LAYOUT_UNAVAILABLE, Some(detail))
+    error_response(ErrorCode::LayoutUnavailable, Some(detail))
 }
 
 /// Loads onnxruntime from its full path, which keeps another copy on the
@@ -207,7 +202,7 @@ fn intra_threads(logical_cpus: usize) -> usize {
 fn model_input(pixels: Vec<u8>, width: u32, height: u32) -> Result<Vec<f32>, Response> {
     let rendered = image::RgbImage::from_raw(width, height, pixels).ok_or_else(|| {
         error_response(
-            CODE_PDF_OPEN_FAILED,
+            ErrorCode::PdfOpenFailed,
             Some(format!("the rendering is not {width}×{height} RGB pixels")),
         )
     })?;

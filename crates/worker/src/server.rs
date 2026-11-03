@@ -9,7 +9,7 @@ use image::ImageEncoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
 use image::codecs::webp::WebPEncoder;
-use pdfconv_core::POINTS_PER_INCH;
+use pdfconv_core::{ErrorCode, POINTS_PER_INCH};
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfPage, PdfRenderConfig, Pdfium, PdfiumError, PdfiumInternalError,
 };
@@ -18,7 +18,8 @@ use crate::crop::{self, RegionRequest};
 use crate::layout::Detector;
 use crate::organize::{self, OrganizeArgs};
 use crate::protocol::{
-    PageDimensions, RenderColor, RenderFormat, Request, Response, read_message, write_message,
+    PageDimensions, RenderColor, RenderFormat, Request, Response, WorkerCode, read_message,
+    write_message,
 };
 use crate::{
     JPEG_QUALITY, MAX_PDF_PAGES, MAX_RENDER_PIXELS, PAGE_VIEW_MAX_SIDE, is_render_dpi_in_range,
@@ -51,27 +52,6 @@ pub const CRASH_ON_IMAGE_FILE_NAME: &str = "crash-on-image-for-test.png";
 /// for testing, as `HangForTest` does (design §11.3).
 #[cfg(feature = "test-hooks")]
 pub const HANG_ON_IMAGE_FILE_NAME: &str = "hang-on-image-for-test.png";
-
-/// Error code for a pdfium library that cannot be loaded or used.
-pub(crate) const CODE_PDFIUM_UNAVAILABLE: &str = "PdfiumUnavailable";
-
-/// Error code when opening or decoding a PDF fails.
-pub(crate) const CODE_PDF_OPEN_FAILED: &str = "PdfOpenFailed";
-
-/// Error code when a PDF requires a password to open.
-const CODE_PASSWORD_PROTECTED: &str = "PasswordProtected";
-
-/// Error code when reading a file fails at the I/O level.
-const CODE_READ_FAILED: &str = "ReadFailed";
-
-/// Error code when a PDF exceeds the maximum supported page count.
-const CODE_TOO_MANY_PAGES: &str = "TooManyPages";
-
-/// Error code when rendered page dimensions exceed the maximum pixel limit.
-pub(crate) const CODE_RENDER_TOO_LARGE: &str = "RenderTooLarge";
-
-/// Error code when arguments are out of range or no document is open.
-pub(crate) const CODE_INVALID_PARAMS: &str = "InvalidParams";
 
 /// Runs the worker loop (design §5.4 for the arguments). `library_dir` is
 /// the folder holding the bundled pdfium library, loaded on the first request
@@ -148,10 +128,10 @@ fn fail_organize_for_test(args: &OrganizeArgs) {
 pub(crate) fn check_page_count(count: u32) -> Result<(), Response> {
     // Every screen assumes an open PDF has a first page to show.
     if count == 0 {
-        Err(error_response(CODE_PDF_OPEN_FAILED, None))
+        Err(error_response(ErrorCode::PdfOpenFailed, None))
     } else if count > MAX_PDF_PAGES {
         Err(error_response(
-            CODE_TOO_MANY_PAGES,
+            ErrorCode::TooManyPages,
             Some(format_number_with_commas(MAX_PDF_PAGES)),
         ))
     } else {
@@ -211,7 +191,7 @@ impl State {
                 let pages = doc
                     .pages()
                     .page_sizes()
-                    .map_err(|_| error_response(CODE_PDF_OPEN_FAILED, None))?
+                    .map_err(|_| error_response(ErrorCode::PdfOpenFailed, None))?
                     .into_iter()
                     .map(|rect| PageDimensions {
                         width_pt: rect.width().value,
@@ -228,7 +208,7 @@ impl State {
                 color,
             } => {
                 if !is_render_dpi_in_range(dpi) {
-                    return Err(error_response(CODE_INVALID_PARAMS, None));
+                    return Err(error_response(ErrorCode::InvalidParams, None));
                 }
                 let pdf_page = self.page_for_rendering(page)?;
                 let width_pt = f64::from(pdf_page.width().value);
@@ -239,7 +219,7 @@ impl State {
 
                 let total_pixels = width_px.saturating_mul(height_px);
                 if total_pixels > MAX_RENDER_PIXELS {
-                    return Err(error_response(CODE_RENDER_TOO_LARGE, None));
+                    return Err(error_response(ErrorCode::RenderTooLarge, None));
                 }
 
                 let target_width = (width_px as u32).max(1);
@@ -253,7 +233,7 @@ impl State {
             }
             Request::Thumbnail { page, max_side } => {
                 if max_side == 0 || max_side > PAGE_VIEW_MAX_SIDE {
-                    return Err(error_response(CODE_INVALID_PARAMS, None));
+                    return Err(error_response(ErrorCode::InvalidParams, None));
                 }
                 let pdf_page = self.page_for_rendering(page)?;
                 let (target_w, target_h) = size_for_long_side(
@@ -264,7 +244,7 @@ impl State {
 
                 let total_pixels = (target_w as u64).saturating_mul(target_h as u64);
                 if total_pixels > MAX_RENDER_PIXELS {
-                    return Err(error_response(CODE_RENDER_TOO_LARGE, None));
+                    return Err(error_response(ErrorCode::RenderTooLarge, None));
                 }
 
                 let (pixels, color_type) =
@@ -290,7 +270,7 @@ impl State {
                 let doc = self
                     .document
                     .as_ref()
-                    .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))?;
+                    .ok_or_else(|| error_response(ErrorCode::InvalidParams, None))?;
                 let candidates = self.detector.detect(doc, page)?;
                 Ok((Response::Detect { candidates }, Vec::new()))
             }
@@ -324,7 +304,7 @@ impl State {
             // `run` sends `Organize` to `organize::run` and `CheckImage` to `image::check`,
             // which answer with several messages.
             Request::Organize { .. } | Request::CheckImage { .. } => {
-                Err(error_response(CODE_INVALID_PARAMS, None))
+                Err(error_response(ErrorCode::InvalidParams, None))
             }
             Request::Close => {
                 self.document = None;
@@ -357,7 +337,7 @@ impl State {
     fn document(&self) -> Result<&PdfDocument<'static>, Response> {
         self.document
             .as_ref()
-            .ok_or_else(|| error_response(CODE_INVALID_PARAMS, None))
+            .ok_or_else(|| error_response(ErrorCode::InvalidParams, None))
     }
 
     fn page_for_rendering(&self, page: u32) -> Result<PdfPage<'_>, Response> {
@@ -378,7 +358,7 @@ impl State {
 }
 
 /// An error response with `code` (design §6.6).
-pub(crate) fn error_response(code: &str, detail: Option<String>) -> Response {
+pub(crate) fn error_response(code: impl Into<WorkerCode>, detail: Option<String>) -> Response {
     Response::Error {
         code: code.into(),
         detail,
@@ -390,11 +370,11 @@ pub(crate) fn error_response(code: &str, detail: Option<String>) -> Response {
 pub(crate) fn load_page<'a>(doc: &'a PdfDocument<'_>, page: u32) -> Result<PdfPage<'a>, Response> {
     let page_count = doc.pages().len() as u32;
     if page == 0 || page > page_count {
-        return Err(error_response(CODE_INVALID_PARAMS, None));
+        return Err(error_response(ErrorCode::InvalidParams, None));
     }
     doc.pages()
         .get((page - 1) as i32)
-        .map_err(|_| error_response(CODE_INVALID_PARAMS, None))
+        .map_err(|_| error_response(ErrorCode::InvalidParams, None))
 }
 
 /// Encodes `pixels` (`width` × `height`, laid out as `color_type`) in `format`
@@ -419,7 +399,7 @@ pub(crate) fn encode_pixels(
     };
     result
         .map(|()| encoded)
-        .map_err(|e| error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}"))))
+        .map_err(|e| error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}"))))
 }
 
 /// Turns pdfium's RGBA bytes into the pixels to encode: RGB, or one gray
@@ -450,10 +430,10 @@ pub(crate) fn pixels_from_rgba(
 pub(crate) fn map_pdfium_open_error(error: &PdfiumError) -> Response {
     match error {
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::PasswordError) => {
-            error_response(CODE_PASSWORD_PROTECTED, None)
+            error_response(ErrorCode::PasswordProtected, None)
         }
-        PdfiumError::IoError(_) => error_response(CODE_READ_FAILED, None),
-        _ => error_response(CODE_PDF_OPEN_FAILED, None),
+        PdfiumError::IoError(_) => error_response(ErrorCode::ReadFailed, None),
+        _ => error_response(ErrorCode::PdfOpenFailed, None),
     }
 }
 
@@ -491,13 +471,13 @@ pub(crate) fn render_page_pixels(
 
     let bitmap = page
         .render_with_config(&config)
-        .map_err(|e| error_response(CODE_PDF_OPEN_FAILED, Some(format!("{e:?}"))))?;
+        .map_err(|e| error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}"))))?;
 
     Ok(pixels_from_rgba(bitmap.as_rgba_bytes(), color, false))
 }
 
 fn unavailable(error: &dyn std::fmt::Debug) -> Response {
-    error_response(CODE_PDFIUM_UNAVAILABLE, Some(format!("{error:?}")))
+    error_response(WorkerCode::PDFIUM_UNAVAILABLE, Some(format!("{error:?}")))
 }
 
 #[cfg(target_os = "linux")]
@@ -527,7 +507,7 @@ mod tests {
         assert_eq!(
             check_page_count(0).unwrap_err(),
             Response::Error {
-                code: CODE_PDF_OPEN_FAILED.into(),
+                code: ErrorCode::PdfOpenFailed.into(),
                 detail: None,
             }
         );
@@ -537,7 +517,7 @@ mod tests {
         assert_eq!(
             err,
             Response::Error {
-                code: CODE_TOO_MANY_PAGES.into(),
+                code: ErrorCode::TooManyPages.into(),
                 detail: Some("10,000".into()),
             }
         );
