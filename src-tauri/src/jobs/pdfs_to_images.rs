@@ -2,8 +2,8 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
 
 use pdfconv_core::naming::{PdfToImageInput, resolve_pdf_to_image_names};
 use pdfconv_core::{PageSet, parse_page_range};
@@ -16,6 +16,7 @@ use super::options::{RenderColorChoice, RenderFormatChoice};
 use super::output::{
     chosen_output_dir, list_existing_files, save_atomic, stop_after_write_failure,
 };
+use super::queue::{TaskOutcome, run_queue};
 use super::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
     begin_conversion, spawn_conversion,
@@ -24,7 +25,7 @@ use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{ItemKind, file_name};
 use crate::settings::OutputKind;
-use crate::worker_pool::{WorkerPoolError, default_worker_limit};
+use crate::worker_pool::WorkerPoolError;
 
 /// Result of checking a page range across candidate PDFs (design §7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -98,8 +99,8 @@ where
         return Err(IpcError::from_code(ErrorCode::InvalidParams));
     }
 
-    let on_progress = Arc::new(callbacks.on_progress);
-    let on_item = Arc::new(callbacks.on_item);
+    let on_progress = callbacks.on_progress;
+    let on_item = callbacks.on_item;
     let on_finished = callbacks.on_finished;
 
     let existing = list_existing_files(output_dir)?;
@@ -142,7 +143,7 @@ where
             initial_used.insert(name.to_lowercase());
         }
     }
-    let used_names_lower = Arc::new(Mutex::new(initial_used));
+    let used_names_lower = Mutex::new(initial_used);
 
     let mut total_pages_all = 0u32;
     let mut tasks = VecDeque::new();
@@ -167,251 +168,174 @@ where
         current: None,
     });
 
-    if tasks.is_empty() {
-        on_finished(JobFinishedPayload {
-            succeeded: 0,
-            failed: 0,
-            no_pages: 0,
-            unprocessed: 0,
-            cancelled: state.cancel_flag.load(Ordering::SeqCst),
-        });
-        return Ok(());
-    }
+    let write_failed = AtomicBool::new(false);
+    let done_pages = AtomicU32::new(0);
+    let cancel_flag = &*state.cancel_flag;
 
-    let total_items = tasks.len() as u32;
-    let queue = Arc::new(Mutex::new(tasks));
-    let done_pages = Arc::new(AtomicU32::new(0));
-    let succeeded_count = Arc::new(AtomicU32::new(0));
-    let failed_count = Arc::new(AtomicU32::new(0));
-    let no_pages_count = Arc::new(AtomicU32::new(0));
-    let unprocessed_count = Arc::new(AtomicU32::new(0));
-    let write_failed = Arc::new(AtomicBool::new(false));
+    let tally = run_queue(cancel_flag, &write_failed, tasks, |task| {
+        // If entry already failed probe / initial open
+        if let Some(err) = task.initial_error {
+            on_item(JobItemPayload::failed(task.id, err));
+            return TaskOutcome::Failed;
+        }
 
-    let num_threads = default_worker_limit().min(total_items as usize).max(1);
-    let mut handles = Vec::with_capacity(num_threads);
-    let output_dir_buf = output_dir.to_path_buf();
+        // If no pages match the page range for this PDF (design §4.5, §6.6)
+        if task.pages.is_empty() {
+            on_item(JobItemPayload::no_pages(task.id));
+            return TaskOutcome::NoPages;
+        }
 
-    for _ in 0..num_threads {
-        let queue = Arc::clone(&queue);
-        let done_pages = Arc::clone(&done_pages);
-        let succeeded_count = Arc::clone(&succeeded_count);
-        let failed_count = Arc::clone(&failed_count);
-        let no_pages_count = Arc::clone(&no_pages_count);
-        let unprocessed_count = Arc::clone(&unprocessed_count);
-        let cancel_flag = Arc::clone(&state.cancel_flag);
-        let write_failed = Arc::clone(&write_failed);
-        let used_names = Arc::clone(&used_names_lower);
-        let pool = state.pool.clone();
-        let output_dir = output_dir_buf.clone();
-        let on_progress = Arc::clone(&on_progress);
-        let on_item = Arc::clone(&on_item);
+        let mut worker = match state.pool.acquire() {
+            Ok(w) => w,
+            Err(err) => {
+                on_item(JobItemPayload::failed(task.id, IpcError::from(&err)));
+                return TaskOutcome::Failed;
+            }
+        };
 
-        handles.push(std::thread::spawn(move || {
-            loop {
-                if cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst) {
-                    let mut q = match queue.lock() {
-                        Ok(g) => g,
-                        Err(p) => p.into_inner(),
-                    };
-                    unprocessed_count.fetch_add(q.len() as u32, Ordering::SeqCst);
-                    q.clear();
-                    break;
-                }
+        let open_result = worker.send(&task.open_request);
 
-                let task = {
-                    let mut q = match queue.lock() {
-                        Ok(g) => g,
-                        Err(p) => p.into_inner(),
-                    };
-                    q.pop_front()
-                };
+        if let Err(err) = open_result {
+            on_item(JobItemPayload::failed(task.id, IpcError::from(&err)));
+            return TaskOutcome::Failed;
+        }
 
-                let Some(task) = task else {
-                    break;
-                };
+        let mut outputs = Vec::new();
+        let mut failed_pages = Vec::new();
+        let mut last_error = None;
+        let mut was_cancelled = false;
 
-                // If entry already failed probe / initial open
-                if let Some(err) = task.initial_error {
-                    failed_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload::failed(task.id, err));
-                    continue;
-                }
+        for (&page, planned_name) in task.pages.iter().zip(&task.planned_names) {
+            // Check cancellation before starting next page per design §6.5
+            if cancel_flag.load(Ordering::SeqCst) {
+                was_cancelled = true;
+                break;
+            }
 
-                // If no pages match the page range for this PDF (design §4.5, §6.6)
-                if task.pages.is_empty() {
-                    no_pages_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload::no_pages(task.id));
-                    continue;
-                }
+            on_progress(JobProgressPayload {
+                done: done_pages.load(Ordering::SeqCst),
+                total: total_pages_all,
+                current: Some(task.filename.clone()),
+            });
 
-                let mut worker = match pool.acquire() {
-                    Ok(w) => w,
-                    Err(err) => {
-                        failed_count.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload::failed(task.id, IpcError::from(&err)));
-                        continue;
+            let render_result = worker.send(&Request::Render {
+                page,
+                dpi,
+                format: format.into(),
+                color: color_mode.into(),
+            });
+
+            match render_result {
+                Ok((Response::Render, image_bytes)) => {
+                    let mut stop = false;
+                    match save_atomic(output_dir, planned_name, &image_bytes, &used_names_lower) {
+                        Ok(saved_name) => {
+                            outputs.push(saved_name);
+                        }
+                        Err(err) => {
+                            stop = stop_after_write_failure(&err, &write_failed);
+                            failed_pages.push(page);
+                            last_error = Some(err);
+                        }
                     }
-                };
-
-                let open_result = worker.send(&task.open_request);
-
-                if let Err(err) = open_result {
-                    failed_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload::failed(task.id, IpcError::from(&err)));
-                    continue;
-                }
-
-                let mut outputs = Vec::new();
-                let mut failed_pages = Vec::new();
-                let mut last_error = None;
-                let mut was_cancelled = false;
-
-                for (&page, planned_name) in task.pages.iter().zip(&task.planned_names) {
-                    // Check cancellation before starting next page per design §6.5
-                    if cancel_flag.load(Ordering::SeqCst) {
-                        was_cancelled = true;
+                    let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
+                    on_progress(JobProgressPayload {
+                        done: cur,
+                        total: total_pages_all,
+                        current: None,
+                    });
+                    if stop {
+                        // The folder is the same for every page, so
+                        // the next ones would fail the same way.
                         break;
                     }
-
-                    on_progress(JobProgressPayload {
-                        done: done_pages.load(Ordering::SeqCst),
-                        total: total_pages_all,
-                        current: Some(task.filename.clone()),
-                    });
-
-                    let render_result = worker.send(&Request::Render {
-                        page,
-                        dpi,
-                        format: format.into(),
-                        color: color_mode.into(),
-                    });
-
-                    match render_result {
-                        Ok((Response::Render, image_bytes)) => {
-                            let mut stop = false;
-                            match save_atomic(&output_dir, planned_name, &image_bytes, &used_names)
-                            {
-                                Ok(saved_name) => {
-                                    outputs.push(saved_name);
-                                }
-                                Err(err) => {
-                                    stop = stop_after_write_failure(&err, &write_failed);
-                                    failed_pages.push(page);
-                                    last_error = Some(err);
-                                }
-                            }
-                            let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
-                            on_progress(JobProgressPayload {
-                                done: cur,
-                                total: total_pages_all,
-                                current: None,
-                            });
-                            if stop {
-                                // The folder is the same for every page, so
-                                // the next ones would fail the same way.
-                                break;
-                            }
-                        }
-                        Err(WorkerPoolError::Remote { code, detail }) => {
-                            failed_pages.push(page);
-                            last_error = Some(IpcError::from_worker(&code, detail.as_deref()));
-                            let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
-                            on_progress(JobProgressPayload {
-                                done: cur,
-                                total: total_pages_all,
-                                current: None,
-                            });
-                        }
-                        Err(pool_err) => {
-                            // Worker died or timed out: do not retry this PDF per design §5.2
-                            failed_pages.push(page);
-                            last_error = Some(IpcError::from(&pool_err));
-                            let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
-                            on_progress(JobProgressPayload {
-                                done: cur,
-                                total: total_pages_all,
-                                current: None,
-                            });
-                            break;
-                        }
-                        _ => {
-                            failed_pages.push(page);
-                            last_error = Some(IpcError::new(
-                                ErrorCode::WorkerCrashed,
-                                "unexpected worker response",
-                            ));
-                            let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
-                            on_progress(JobProgressPayload {
-                                done: cur,
-                                total: total_pages_all,
-                                current: None,
-                            });
-                            break;
-                        }
-                    }
                 }
-
-                let _ = worker.send(&Request::Close);
-
-                if was_cancelled {
-                    unprocessed_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::Cancelled,
-                        outputs,
-                        error: None,
-                        // Pages that failed before the cancel still count as
-                        // reached, so the screen must be told of them.
-                        failed_pages: (!failed_pages.is_empty()).then_some(failed_pages),
-                        source_id: None,
+                Err(WorkerPoolError::Remote { code, detail }) => {
+                    failed_pages.push(page);
+                    last_error = Some(IpcError::from_worker(&code, detail.as_deref()));
+                    let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
+                    on_progress(JobProgressPayload {
+                        done: cur,
+                        total: total_pages_all,
+                        current: None,
                     });
-                } else if failed_pages.is_empty() && outputs.len() == task.pages.len() {
-                    succeeded_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload::ok(task.id, outputs));
-                } else if !outputs.is_empty() {
-                    // Partial failure: at least one page succeeded, some failed
-                    failed_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::Partial,
-                        outputs,
-                        error: last_error,
-                        failed_pages: Some(failed_pages),
-                        source_id: None,
+                }
+                Err(pool_err) => {
+                    // Worker died or timed out: do not retry this PDF per design §5.2
+                    failed_pages.push(page);
+                    last_error = Some(IpcError::from(&pool_err));
+                    let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
+                    on_progress(JobProgressPayload {
+                        done: cur,
+                        total: total_pages_all,
+                        current: None,
                     });
-                } else {
-                    failed_count.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload {
-                        id: task.id,
-                        status: JobItemStatus::Failed,
-                        outputs: Vec::new(),
-                        error: last_error,
-                        failed_pages: Some(failed_pages),
-                        source_id: None,
+                    break;
+                }
+                _ => {
+                    failed_pages.push(page);
+                    last_error = Some(IpcError::new(
+                        ErrorCode::WorkerCrashed,
+                        "unexpected worker response",
+                    ));
+                    let cur = done_pages.fetch_add(1, Ordering::SeqCst) + 1;
+                    on_progress(JobProgressPayload {
+                        done: cur,
+                        total: total_pages_all,
+                        current: None,
                     });
+                    break;
                 }
             }
-        }));
-    }
+        }
 
-    for handle in handles {
-        let _ = handle.join();
-    }
+        let _ = worker.send(&Request::Close);
 
-    let accounted = succeeded_count.load(Ordering::SeqCst)
-        + failed_count.load(Ordering::SeqCst)
-        + no_pages_count.load(Ordering::SeqCst)
-        + unprocessed_count.load(Ordering::SeqCst);
-    if accounted < total_items {
-        failed_count.fetch_add(total_items - accounted, Ordering::SeqCst);
-    }
+        if was_cancelled {
+            on_item(JobItemPayload {
+                id: task.id,
+                status: JobItemStatus::Cancelled,
+                outputs,
+                error: None,
+                // Pages that failed before the cancel still count as
+                // reached, so the screen must be told of them.
+                failed_pages: (!failed_pages.is_empty()).then_some(failed_pages),
+                source_id: None,
+            });
+            TaskOutcome::Unprocessed
+        } else if failed_pages.is_empty() && outputs.len() == task.pages.len() {
+            on_item(JobItemPayload::ok(task.id, outputs));
+            TaskOutcome::Succeeded
+        } else if !outputs.is_empty() {
+            // Partial failure: at least one page succeeded, some failed
+            on_item(JobItemPayload {
+                id: task.id,
+                status: JobItemStatus::Partial,
+                outputs,
+                error: last_error,
+                failed_pages: Some(failed_pages),
+                source_id: None,
+            });
+            TaskOutcome::Failed
+        } else {
+            on_item(JobItemPayload {
+                id: task.id,
+                status: JobItemStatus::Failed,
+                outputs: Vec::new(),
+                error: last_error,
+                failed_pages: Some(failed_pages),
+                source_id: None,
+            });
+            TaskOutcome::Failed
+        }
+    });
 
     on_finished(JobFinishedPayload {
-        succeeded: succeeded_count.load(Ordering::SeqCst),
-        failed: failed_count.load(Ordering::SeqCst),
-        no_pages: no_pages_count.load(Ordering::SeqCst),
-        unprocessed: unprocessed_count.load(Ordering::SeqCst),
-        cancelled: state.cancel_flag.load(Ordering::SeqCst),
+        succeeded: tally.succeeded,
+        failed: tally.failed,
+        no_pages: tally.no_pages,
+        unprocessed: tally.unprocessed,
+        cancelled: cancel_flag.load(Ordering::SeqCst),
     });
 
     Ok(())

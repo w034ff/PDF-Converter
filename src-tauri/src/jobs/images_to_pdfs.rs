@@ -2,8 +2,8 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
 
 use pdfconv_core::naming::resolve_image_to_pdf_names;
 use pdfconv_core::{AddImageResult, PdfConformance, PdfWriter};
@@ -15,6 +15,7 @@ use super::options::{
 use super::output::{
     chosen_output_dir, list_existing_files, save_atomic, stop_after_write_failure,
 };
+use super::queue::{TaskOutcome, run_queue};
 use super::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload, begin_conversion,
     spawn_conversion,
@@ -24,7 +25,6 @@ use crate::decode_budget::pdf_write_estimate;
 use crate::error::{ErrorCode, IpcError};
 use crate::items::{ItemKind, file_name};
 use crate::settings::OutputKind;
-use crate::worker_pool::default_worker_limit;
 
 /// Executes individual conversion of multiple images into separate PDF documents (design §6.2).
 pub fn run_images_to_pdfs<FProg, FItem, FFin>(
@@ -41,8 +41,8 @@ where
     FItem: Fn(JobItemPayload) + Send + Sync + 'static,
     FFin: FnOnce(JobFinishedPayload) + Send + Sync + 'static,
 {
-    let on_progress = Arc::new(callbacks.on_progress);
-    let on_item = Arc::new(callbacks.on_item);
+    let on_progress = callbacks.on_progress;
+    let on_item = callbacks.on_item;
     let on_finished = callbacks.on_finished;
 
     let existing = list_existing_files(output_dir)?;
@@ -90,7 +90,7 @@ where
     for name in &resolved_names {
         initial_used.insert(name.to_lowercase());
     }
-    let used_names_lower = Arc::new(Mutex::new(initial_used));
+    let used_names_lower = Mutex::new(initial_used);
 
     let mut resolved_iter = resolved_names.into_iter();
     let tasks: VecDeque<ImageTask> = initial_tasks
@@ -115,7 +115,6 @@ where
         )
         .collect();
 
-    let total_items = tasks.len() as u32;
     let total = total_pages;
     on_progress(JobProgressPayload {
         done: 0,
@@ -123,253 +122,148 @@ where
         current: None,
     });
 
-    if total_items == 0 {
-        on_finished(JobFinishedPayload {
-            succeeded: 0,
-            failed: 0,
-            no_pages: 0,
-            unprocessed: 0,
-            cancelled: state.cancel_flag.load(Ordering::SeqCst),
-        });
-        return Ok(());
-    }
-
-    let queue = Arc::new(Mutex::new(tasks));
-    let done = Arc::new(AtomicU32::new(0));
-    let succeeded = Arc::new(AtomicU32::new(0));
-    let failed = Arc::new(AtomicU32::new(0));
-    let unprocessed = Arc::new(AtomicU32::new(0));
-    let write_failed = Arc::new(AtomicBool::new(false));
-
-    let num_threads = default_worker_limit().min(total_items as usize).max(1);
-    let mut handles = Vec::with_capacity(num_threads);
-
+    let done = AtomicU32::new(0);
+    let write_failed = AtomicBool::new(false);
+    let cancel_flag = &*state.cancel_flag;
     let creator = creator();
-    let output_dir_buf = output_dir.to_path_buf();
+    let should_stop = || cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst);
 
-    for _ in 0..num_threads {
-        let queue = Arc::clone(&queue);
-        let done = Arc::clone(&done);
-        let succeeded = Arc::clone(&succeeded);
-        let failed = Arc::clone(&failed);
-        let unprocessed = Arc::clone(&unprocessed);
-        let cancel_flag = Arc::clone(&state.cancel_flag);
-        let decode_budget = Arc::clone(&state.decode_budget);
-        let write_failed = Arc::clone(&write_failed);
-        let pool = state.pool.clone();
-        let used_names = Arc::clone(&used_names_lower);
-        let output_dir = output_dir_buf.clone();
-        let creator = creator.clone();
-        let output = output.clone();
-        let on_progress = Arc::clone(&on_progress);
-        let on_item = Arc::clone(&on_item);
+    let tally = run_queue(cancel_flag, &write_failed, tasks, |task| {
+        if let Some(err) = task.initial_error {
+            on_item(JobItemPayload::failed(task.id, err));
+            return TaskOutcome::Failed;
+        }
 
-        handles.push(std::thread::spawn(move || {
-            let should_stop =
-                || cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst);
-            loop {
-                if cancel_flag.load(Ordering::SeqCst) || write_failed.load(Ordering::SeqCst) {
-                    let mut q = match queue.lock() {
-                        Ok(g) => g,
-                        Err(p) => p.into_inner(),
-                    };
-                    unprocessed.fetch_add(q.len() as u32, Ordering::SeqCst);
-                    q.clear();
-                    break;
-                }
+        let output_name = task.initial_output_name.as_deref().unwrap_or_default();
 
-                let task = {
-                    let mut q = match queue.lock() {
-                        Ok(g) => g,
-                        Err(p) => p.into_inner(),
-                    };
-                    q.pop_front()
-                };
+        on_progress(JobProgressPayload {
+            done: done.load(Ordering::SeqCst),
+            total,
+            current: Some(task.filename.clone()),
+        });
 
-                let Some(task) = task else {
-                    break;
-                };
-
-                if let Some(err) = task.initial_error {
-                    failed.fetch_add(1, Ordering::SeqCst);
-                    on_item(JobItemPayload::failed(task.id, err));
-                    continue;
-                }
-
-                let output_name = task.initial_output_name.as_deref().unwrap_or_default();
-
+        // The pixels are read in a worker first, so that a decoder that stops or
+        // crashes is contained there (design §6.2). A failure is this image's, as an
+        // unreadable file is; a cancel leaves the image unstarted, like the ones still
+        // in the queue.
+        match check_image(&state.pool, &task.path, &should_stop) {
+            Ok(()) => {}
+            Err(ImageCheckStop::Failed(error)) => {
+                let cur_done = done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
+                on_item(JobItemPayload::failed(task.id, error));
                 on_progress(JobProgressPayload {
-                    done: done.load(Ordering::SeqCst),
+                    done: cur_done,
+                    total,
+                    current: None,
+                });
+                return TaskOutcome::Failed;
+            }
+            Err(ImageCheckStop::Cancelled) => return TaskOutcome::Unprocessed,
+        }
+
+        // Borrowed before the file is read and held until this image's PDF is written
+        // and its bytes are let go (design §5.3). A wait that is cancelled leaves the
+        // image unstarted, like the ones still in the queue.
+        let Some(_permit) = state.decode_budget.acquire(
+            pdf_write_estimate(&task.path, task.decoded_bytes),
+            &should_stop,
+        ) else {
+            return TaskOutcome::Unprocessed;
+        };
+
+        let bytes = match std::fs::read(&task.path) {
+            Ok(b) => b,
+            Err(_) => {
+                let cur_done = done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
+                on_item(JobItemPayload::failed(
+                    task.id,
+                    IpcError::from_code(ErrorCode::ReadFailed),
+                ));
+                on_progress(JobProgressPayload {
+                    done: cur_done,
+                    total,
+                    current: None,
+                });
+                return TaskOutcome::Failed;
+            }
+        };
+
+        let mut writer = PdfWriter::new(&creator, output.conformance);
+        let mut item_pages_done = 0u32;
+        let add_res = writer.add_checked_image(
+            bytes,
+            page_size.to_core(orientation),
+            |_page_idx, _total_in_item| {
+                item_pages_done += 1;
+                let cur = done.fetch_add(1, Ordering::SeqCst) + 1;
+                on_progress(JobProgressPayload {
+                    done: cur,
                     total,
                     current: Some(task.filename.clone()),
                 });
+            },
+            should_stop,
+        );
 
-                // The pixels are read in a worker first, so that a decoder that stops or
-                // crashes is contained there (design §6.2). A failure is this image's, as an
-                // unreadable file is; a cancel leaves the image unstarted, like the ones still
-                // in the queue.
-                match check_image(&pool, &task.path, &should_stop) {
-                    Ok(()) => {}
-                    Err(ImageCheckStop::Failed(error)) => {
-                        let cur_done =
-                            done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
-                        failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload::failed(task.id, error));
-                        on_progress(JobProgressPayload {
-                            done: cur_done,
-                            total,
-                            current: None,
-                        });
-                        continue;
-                    }
-                    Err(ImageCheckStop::Cancelled) => {
-                        let mut q = match queue.lock() {
-                            Ok(g) => g,
-                            Err(p) => p.into_inner(),
-                        };
-                        unprocessed.fetch_add(1 + q.len() as u32, Ordering::SeqCst);
-                        q.clear();
-                        break;
-                    }
+        match add_res {
+            Ok(AddImageResult::Cancelled) => {
+                // Only the user's cancel is the image's own. One stopped by another
+                // thread's write failure is unprocessed, as the images still in the
+                // queue are; which of the images in flight it catches depends on how
+                // far each thread has got, so it must not show as an item.
+                if cancel_flag.load(Ordering::SeqCst) {
+                    on_item(JobItemPayload::cancelled(task.id));
                 }
-
-                // Borrowed before the file is read and held until this image's PDF is written
-                // and its bytes are let go (design §5.3). A wait that is cancelled leaves the
-                // image unstarted, like the ones still in the queue.
-                let Some(_permit) = decode_budget.acquire(
-                    pdf_write_estimate(&task.path, task.decoded_bytes),
-                    &should_stop,
-                ) else {
-                    let mut q = match queue.lock() {
-                        Ok(g) => g,
-                        Err(p) => p.into_inner(),
-                    };
-                    unprocessed.fetch_add(1 + q.len() as u32, Ordering::SeqCst);
-                    q.clear();
-                    break;
-                };
-
-                let bytes = match std::fs::read(&task.path) {
-                    Ok(b) => b,
-                    Err(_) => {
-                        let cur_done =
-                            done.fetch_add(task.page_count, Ordering::SeqCst) + task.page_count;
-                        failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload::failed(
-                            task.id,
-                            IpcError::from_code(ErrorCode::ReadFailed),
-                        ));
-                        on_progress(JobProgressPayload {
-                            done: cur_done,
-                            total,
-                            current: None,
-                        });
-                        continue;
-                    }
-                };
-
-                let mut writer = PdfWriter::new(&creator, output.conformance);
-                let mut item_pages_done = 0u32;
-                let add_res = writer.add_checked_image(
-                    bytes,
-                    page_size.to_core(orientation),
-                    |_page_idx, _total_in_item| {
-                        item_pages_done += 1;
-                        let cur = done.fetch_add(1, Ordering::SeqCst) + 1;
-                        on_progress(JobProgressPayload {
-                            done: cur,
-                            total,
-                            current: Some(task.filename.clone()),
-                        });
-                    },
-                    should_stop,
-                );
-
-                match add_res {
-                    Ok(AddImageResult::Cancelled) => {
-                        unprocessed.fetch_add(1, Ordering::SeqCst);
-                        // Only the user's cancel is the image's own. One stopped by another
-                        // thread's write failure is unprocessed, as the images still in the
-                        // queue are; which of the images in flight it catches depends on how
-                        // far each thread has got, so it must not show as an item.
-                        if cancel_flag.load(Ordering::SeqCst) {
-                            on_item(JobItemPayload::cancelled(task.id));
-                        }
-                        let mut q = match queue.lock() {
-                            Ok(g) => g,
-                            Err(p) => p.into_inner(),
-                        };
-                        unprocessed.fetch_add(q.len() as u32, Ordering::SeqCst);
-                        q.clear();
-                        break;
-                    }
-                    Err(probe_err) => {
-                        let remaining = task.page_count.saturating_sub(item_pages_done);
-                        let cur_done = done.fetch_add(remaining, Ordering::SeqCst) + remaining;
-                        failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload::failed(task.id, IpcError::from(probe_err)));
-                        on_progress(JobProgressPayload {
-                            done: cur_done,
-                            total,
-                            current: None,
-                        });
-                        continue;
-                    }
-                    Ok(AddImageResult::Ok { .. }) => {}
-                }
-
-                let pdf_bytes = writer
-                    .finish()
-                    .map_err(IpcError::write_failed)
-                    .and_then(|bytes| protect_pdf(bytes, output.password.as_ref()));
-                let process_result = pdf_bytes.and_then(|bytes| {
-                    save_atomic(&output_dir, output_name, &bytes, &used_names).inspect_err(|err| {
-                        stop_after_write_failure(err, &write_failed);
-                    })
-                });
-
-                match process_result {
-                    Ok(saved_name) => {
-                        succeeded.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload::ok(task.id, vec![saved_name]));
-                        on_progress(JobProgressPayload {
-                            done: done.load(Ordering::SeqCst),
-                            total,
-                            current: None,
-                        });
-                    }
-                    Err(err) => {
-                        failed.fetch_add(1, Ordering::SeqCst);
-                        on_item(JobItemPayload::failed(task.id, err));
-                        on_progress(JobProgressPayload {
-                            done: done.load(Ordering::SeqCst),
-                            total,
-                            current: None,
-                        });
-                    }
-                }
+                return TaskOutcome::Unprocessed;
             }
-        }));
-    }
+            Err(probe_err) => {
+                let remaining = task.page_count.saturating_sub(item_pages_done);
+                let cur_done = done.fetch_add(remaining, Ordering::SeqCst) + remaining;
+                on_item(JobItemPayload::failed(task.id, IpcError::from(probe_err)));
+                on_progress(JobProgressPayload {
+                    done: cur_done,
+                    total,
+                    current: None,
+                });
+                return TaskOutcome::Failed;
+            }
+            Ok(AddImageResult::Ok { .. }) => {}
+        }
 
-    for handle in handles {
-        let _ = handle.join();
-    }
+        let pdf_bytes = writer
+            .finish()
+            .map_err(IpcError::write_failed)
+            .and_then(|bytes| protect_pdf(bytes, output.password.as_ref()));
+        let process_result = pdf_bytes.and_then(|bytes| {
+            save_atomic(output_dir, output_name, &bytes, &used_names_lower).inspect_err(|err| {
+                stop_after_write_failure(err, &write_failed);
+            })
+        });
 
-    let cur_succeeded = succeeded.load(Ordering::SeqCst);
-    let cur_failed = failed.load(Ordering::SeqCst);
-    let cur_unprocessed = unprocessed.load(Ordering::SeqCst);
-    let accounted = cur_succeeded + cur_failed + cur_unprocessed;
-    if accounted < total_items {
-        failed.fetch_add(total_items - accounted, Ordering::SeqCst);
-    }
+        let outcome = match process_result {
+            Ok(saved_name) => {
+                on_item(JobItemPayload::ok(task.id, vec![saved_name]));
+                TaskOutcome::Succeeded
+            }
+            Err(err) => {
+                on_item(JobItemPayload::failed(task.id, err));
+                TaskOutcome::Failed
+            }
+        };
+        on_progress(JobProgressPayload {
+            done: done.load(Ordering::SeqCst),
+            total,
+            current: None,
+        });
+        outcome
+    });
 
     on_finished(JobFinishedPayload {
-        succeeded: succeeded.load(Ordering::SeqCst),
-        failed: failed.load(Ordering::SeqCst),
-        no_pages: 0,
-        unprocessed: unprocessed.load(Ordering::SeqCst),
-        cancelled: state.cancel_flag.load(Ordering::SeqCst),
+        succeeded: tally.succeeded,
+        failed: tally.failed,
+        no_pages: tally.no_pages,
+        unprocessed: tally.unprocessed,
+        cancelled: cancel_flag.load(Ordering::SeqCst),
     });
 
     Ok(())

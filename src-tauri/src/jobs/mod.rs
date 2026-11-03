@@ -7,6 +7,7 @@ mod merged;
 mod options;
 mod output;
 mod pdfs_to_images;
+mod queue;
 
 pub use images_to_pdfs::{run_images_to_pdfs, start_images_to_pdfs_internal};
 pub use merged::{SaveMergedPdfResult, check_merge_size, merge_output_limit, run_save_merged_pdf};
