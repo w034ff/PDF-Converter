@@ -413,7 +413,7 @@ describe("what a running conversion locks", () => {
       screen.getByRole("checkbox", { name: "p.1 の手で選んだ範囲を書き出す" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
+      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を削除" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "範囲を追加" })).toBeDisabled();
   });

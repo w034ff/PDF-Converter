@@ -631,7 +631,7 @@ describe("the list of areas", () => {
     expect(selectedAreas().map((a) => a.dataset.key)).toEqual(["2"]);
     // Page 1 is shown: its area is the selected one.
     fireEvent.click(
-      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
+      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を削除" }),
     );
     expect(areaRows()).toHaveLength(1);
     expect(selectedAreas()).toHaveLength(0);
@@ -641,7 +641,7 @@ describe("the list of areas", () => {
   it("keeps the selection when another area is removed", async () => {
     await twoPages();
     fireEvent.click(
-      screen.getByRole("button", { name: "p.3 の手で選んだ範囲を消す" }),
+      screen.getByRole("button", { name: "p.3 の手で選んだ範囲を削除" }),
     );
     expect(selectedAreas().map((a) => a.dataset.key)).toEqual(["2"]);
   });
@@ -662,7 +662,7 @@ describe("the list of areas", () => {
     expect(src).toMatch(/^blob:/);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
+      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を削除" }),
     );
     await flush();
     expect(urls.revoke).toHaveBeenCalledWith(src);
@@ -755,7 +755,7 @@ describe("the page thumbnails", () => {
       screen.getByRole("button", { name: "ページ 1、範囲 1 個" }),
     ).toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
+      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を削除" }),
     );
     expect(
       screen.getByRole("button", { name: "ページ 1" }),

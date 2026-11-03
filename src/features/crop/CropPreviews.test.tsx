@@ -78,13 +78,13 @@ describe("the previews of the list of areas", () => {
     const src = rowImage(0)?.getAttribute("src") ?? "";
 
     fireEvent.click(
-      screen.getAllByRole("button", { name: "p.1 の手で選んだ範囲を消す" })[0],
+      screen.getAllByRole("button", { name: "p.1 の手で選んだ範囲を削除" })[0],
     );
     await flush();
     expect(urls.revoke).not.toHaveBeenCalledWith(src);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を消す" }),
+      screen.getByRole("button", { name: "p.1 の手で選んだ範囲を削除" }),
     );
     await flush();
     expect(urls.revoke).toHaveBeenCalledWith(src);

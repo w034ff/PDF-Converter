@@ -278,7 +278,7 @@ export const ja = {
             { keys: [["Esc"]], action: "選択を解除・操作を取り消す" },
             {
               keys: [["Delete"], ["Backspace"]],
-              action: "範囲を削除（候補なら非表示にする）",
+              action: "範囲を削除（候補なら隠す）",
             },
             {
               keys: [["右クリック"], ["Shift", "F10"]],
@@ -374,7 +374,7 @@ export const ja = {
       exported: "✓ 書き出し済み",
       checkAria: "p.{page} の{kind}を書き出す",
       showAria: "p.{page} の{kind}を表示",
-      removeAria: "p.{page} の{kind}を消す",
+      removeAria: "p.{page} の{kind}を削除",
       remove: "×",
       size: {
         dpi: "{dpi} dpi · {width} × {height}",

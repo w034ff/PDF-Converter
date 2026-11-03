@@ -280,7 +280,7 @@ export const en: Translations = {
             },
             {
               keys: [["Delete"], ["Backspace"]],
-              action: "Remove the area (hide a suggestion)",
+              action: "Delete the area (hide a suggestion)",
             },
             {
               keys: [["Right-click"], ["Shift", "F10"]],
@@ -379,7 +379,7 @@ export const en: Translations = {
       exported: "✓ Exported",
       checkAria: "Export {kind} on p.{page}",
       showAria: "Show {kind} on p.{page}",
-      removeAria: "Remove {kind} on p.{page}",
+      removeAria: "Delete {kind} on p.{page}",
       remove: "×",
       size: {
         dpi: "{dpi} dpi · {width} × {height}",
