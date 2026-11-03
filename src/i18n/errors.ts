@@ -39,7 +39,7 @@ export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {
   PdfOpenFailed: "Couldn't read the PDF. The file may be damaged.",
   PasswordProtected: "This PDF is password-protected",
   TooLarge: "Image is too large (limit: {detail} pixels)",
-  TooManyPages: "Too many pages (limit: {detail})",
+  TooManyPages: "Too many pages (limit: {detail} pages)",
   RenderTooLarge: "Too large at this resolution. Choose a lower resolution.",
   WorkerCrashed:
     "Something went wrong during processing. The file may be damaged.",

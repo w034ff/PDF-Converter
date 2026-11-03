@@ -574,7 +574,7 @@ export const ja = {
         {
           title: "画面操作・ヘルプ",
           rows: [
-            { keys: [["Tab"]], action: "格子に入る・出る" },
+            { keys: [["Tab"]], action: "ページの一覧に入る・出る" },
             { keys: [["?"]], action: "この一覧を開く" },
           ],
         },

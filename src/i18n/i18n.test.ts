@@ -138,7 +138,7 @@ describe("i18n", () => {
         "Image is too large (limit: 80,000,000 pixels)",
       );
       expect(formatErrorMessage("TooManyPages", "10,000", "en")).toBe(
-        "Too many pages (limit: 10,000)",
+        "Too many pages (limit: 10,000 pages)",
       );
       expect(formatErrorMessage("RenderTooLarge", null, "en")).toBe(
         "Too large at this resolution. Choose a lower resolution.",
