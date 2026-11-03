@@ -8,6 +8,7 @@ import {
 } from "../../components";
 import { PasswordDialog } from "./PasswordDialog";
 import {
+  formatByteSize,
   formatIpcError,
   formatMessage,
   getTranslations,
@@ -42,7 +43,6 @@ import {
 import { formatSkippedSummary } from "../shared/skipped";
 import {
   countPagesInIntervals,
-  formatFileSize,
   formatPaperSize,
   failedAsAWhole,
   intervalsToRangeText,
@@ -673,7 +673,7 @@ export function PdfToImagesView() {
                   {
                     pages: singleItem.pageCount,
                     size: formatPaperSize(singleItem.firstPageSizePt),
-                    fileSize: formatFileSize(singleItem.bytes),
+                    fileSize: formatByteSize(singleItem.bytes),
                   },
                 )}
               </span>

@@ -7,6 +7,7 @@ import {
 } from "../../components";
 import { OutputDirError } from "../output";
 import {
+  formatByteSize,
   formatIpcError,
   formatMessage,
   pluralize,
@@ -29,22 +30,6 @@ import { rowDropClass, rowIndexOf, useRowDrag } from "./useRowDrag";
 import { formatSkippedSummary } from "../shared/skipped";
 import "./ImagesToPdf.css";
 
-function formatBytes(bytes: number): string {
-  const oneKb = 1024;
-  const oneMb = 1024 * 1024;
-  if (bytes >= oneMb) {
-    return `${(bytes / oneMb).toFixed(1)} MB`;
-  }
-  if (bytes >= 100 * oneKb) {
-    return `${Math.round(bytes / oneKb)} KB`;
-  }
-  if (bytes >= oneKb) {
-    const kb = bytes / oneKb;
-    return `${kb >= 10 ? Math.round(kb) : kb.toFixed(1)} KB`;
-  }
-  return `${bytes} B`;
-}
-
 function formatMeta(item: ImageItem, t: Translations): string | undefined {
   if (item.error !== null || item.format === null) {
     return undefined;
@@ -63,7 +48,7 @@ function formatMeta(item: ImageItem, t: Translations): string | undefined {
       formatMessage(t.imagesToPdf.pageCount, { count: item.pageCount }),
     );
   }
-  parts.push(formatBytes(item.bytes));
+  parts.push(formatByteSize(item.bytes));
   return parts.join(" · ");
 }
 

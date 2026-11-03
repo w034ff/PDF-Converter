@@ -10,8 +10,6 @@ const LETTER_SHORT_PT = 612;
 const LETTER_LONG_PT = 792;
 const PT_TOLERANCE = 2.0;
 
-const BYTES_PER_KB = 1024;
-const BYTES_PER_MB = 1024 * 1024;
 const POINTS_PER_INCH = 72;
 
 /**
@@ -50,19 +48,6 @@ export function calculateRenderDimensions(
     width: Math.round((sizePt.widthPt / POINTS_PER_INCH) * dpi),
     height: Math.round((sizePt.heightPt / POINTS_PER_INCH) * dpi),
   };
-}
-
-/**
- * Formats a file size in bytes to a human-readable string (B, KB, MB).
- */
-export function formatFileSize(bytes: number): string {
-  if (bytes < BYTES_PER_KB) {
-    return `${bytes} B`;
-  }
-  if (bytes < BYTES_PER_MB) {
-    return `${(bytes / BYTES_PER_KB).toFixed(1)} KB`;
-  }
-  return `${(bytes / BYTES_PER_MB).toFixed(1)} MB`;
 }
 
 /**
