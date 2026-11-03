@@ -68,7 +68,11 @@ function Harness({ tab = "imagesToPdf" }: { tab?: ActiveTab }) {
       <button
         type="button"
         onClick={() =>
-          void runner.startImagesToPdfs(targets, "fit", "auto", true, null)
+          void runner.startImagesToPdfs(
+            targets,
+            { pageSize: "fit", orientation: "auto", pdfA: true },
+            null,
+          )
         }
       >
         start each
@@ -76,7 +80,11 @@ function Harness({ tab = "imagesToPdf" }: { tab?: ActiveTab }) {
       <button
         type="button"
         onClick={() =>
-          void runner.saveMergedPdf(targets, "a4", "portrait", false, null)
+          void runner.saveMergedPdf(
+            targets,
+            { pageSize: "a4", orientation: "portrait", pdfA: false },
+            null,
+          )
         }
       >
         save merged
@@ -84,13 +92,11 @@ function Harness({ tab = "imagesToPdf" }: { tab?: ActiveTab }) {
       <button
         type="button"
         onClick={() =>
-          void runner.startPdfsToImages(
-            [{ id: 7, name: "doc.pdf" }],
-            "1-2",
-            "jpeg",
-            "color",
-            300,
-          )
+          void runner.startPdfsToImages([{ id: 7, name: "doc.pdf" }], "1-2", {
+            format: "jpeg",
+            colorMode: "color",
+            dpi: 300,
+          })
         }
       >
         start pdfs

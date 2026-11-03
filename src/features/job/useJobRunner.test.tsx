@@ -59,11 +59,13 @@ function Harness() {
               { id: 2, name: "doc.pdf" },
             ],
             REGIONS,
-            "webp",
-            "gray",
-            300,
-            false,
-            true,
+            {
+              format: "webp",
+              colorMode: "gray",
+              dpi: 300,
+              photoNative: false,
+              photoOnly: true,
+            },
           )
         }
       >

@@ -2,9 +2,6 @@ import { useMemo } from "react";
 import {
   cancelJob,
   normalizeIpcError,
-  type CropRegionInput,
-  type IpcError,
-  type PageOrientationChoice,
   saveMergedPdf,
   saveOrganizedPdf,
   startCropExport,
@@ -12,11 +9,13 @@ import {
   startImagesToPdfs,
   startOrganizeSplit,
   startPdfsToImages,
+  type CropOptions,
+  type CropRegionInput,
+  type ImagesPdfLayout,
+  type IpcError,
   type OrganizeOutput,
   type OrganizePageInput,
-  type PageSizeChoice,
-  type RenderColorChoice,
-  type RenderFormatChoice,
+  type PdfToImagesOptions,
 } from "../../ipc";
 import {
   useAppDispatch,
@@ -41,9 +40,7 @@ export interface JobRunner {
   /** Starts "1 つの PDF": opens the save dialog, then merges `targets` in order. */
   saveMergedPdf(
     targets: JobTarget[],
-    pageSize: PageSizeChoice,
-    orientation: PageOrientationChoice,
-    pdfA: boolean,
+    layout: ImagesPdfLayout,
     password: string | null,
   ): Promise<void>;
   /**
@@ -67,18 +64,14 @@ export interface JobRunner {
   /** Starts "1 枚ずつ" for `targets` (design §6.2). */
   startImagesToPdfs(
     targets: JobTarget[],
-    pageSize: PageSizeChoice,
-    orientation: PageOrientationChoice,
-    pdfA: boolean,
+    layout: ImagesPdfLayout,
     password: string | null,
   ): Promise<void>;
   /** Starts PDF → images for `targets` (design §6.3). */
   startPdfsToImages(
     targets: JobTarget[],
     range: string,
-    format: RenderFormatChoice,
-    colorMode: RenderColorChoice,
-    dpi: number,
+    options: PdfToImagesOptions,
   ): Promise<void>;
   /**
    * Starts writing `regions` of the crop PDF `id` (design §6.10). `targets`
@@ -88,11 +81,7 @@ export interface JobRunner {
     id: number,
     targets: JobTarget[],
     regions: CropRegionInput[],
-    format: RenderFormatChoice,
-    colorMode: RenderColorChoice,
-    dpi: number,
-    photoNative: boolean,
-    photoOnly: boolean,
+    options: CropOptions,
   ): Promise<void>;
   /** Starts the layout analysis of every page of the crop PDF `id` (design §6.10). */
   startDetectAll(id: number): Promise<void>;
@@ -139,11 +128,11 @@ export function useJobRunner(): JobRunner {
     }
 
     return {
-      async saveMergedPdf(targets, pageSize, orientation, pdfA, password) {
+      async saveMergedPdf(targets, layout, password) {
         const outcome = await run(
           "imagesToPdf",
           targets,
-          (ids) => saveMergedPdf(ids, pageSize, orientation, pdfA, password),
+          (ids) => saveMergedPdf(ids, layout, password),
           { choosesDestination: true },
         );
         if ("error" in outcome) {
@@ -186,38 +175,19 @@ export function useJobRunner(): JobRunner {
           organizeOutput: "split",
         });
       },
-      async startImagesToPdfs(targets, pageSize, orientation, pdfA, password) {
+      async startImagesToPdfs(targets, layout, password) {
         await run("imagesToPdf", targets, (ids) =>
-          startImagesToPdfs(ids, pageSize, orientation, pdfA, password),
+          startImagesToPdfs(ids, layout, password),
         );
       },
-      async startPdfsToImages(targets, range, format, colorMode, dpi) {
+      async startPdfsToImages(targets, range, options) {
         await run("pdfToImages", targets, (ids) =>
-          startPdfsToImages(ids, range, format, colorMode, dpi),
+          startPdfsToImages(ids, range, options),
         );
       },
-      async startCropExport(
-        id,
-        targets,
-        regions,
-        format,
-        colorMode,
-        dpi,
-        photoNative,
-        photoOnly,
-      ) {
+      async startCropExport(id, targets, regions, options) {
         dispatch({ type: "CROP_EXPORT_STARTED" });
-        await run("crop", targets, () =>
-          startCropExport(
-            id,
-            regions,
-            format,
-            colorMode,
-            dpi,
-            photoNative,
-            photoOnly,
-          ),
-        );
+        await run("crop", targets, () => startCropExport(id, regions, options));
       },
       async startDetectAll(id) {
         // The areas of the pages already analyzed are added before Rust

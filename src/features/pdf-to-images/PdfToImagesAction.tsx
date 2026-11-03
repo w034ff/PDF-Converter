@@ -51,13 +51,7 @@ export function PdfToImagesAction() {
           ? `1-${maxPageCount(pdfToImages)}`
           : pdfToImages.rangeText;
 
-      await runner.startPdfsToImages(
-        targets,
-        range,
-        pdfToImages.format,
-        pdfToImages.colorMode,
-        pdfToImages.dpi,
-      );
+      await runner.startPdfsToImages(targets, range, pdfToImages);
     });
   }
 

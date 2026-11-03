@@ -5,11 +5,13 @@ import type { AddSource } from "./generated/AddSource";
 import type { Candidate } from "./generated/Candidate";
 import type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
 import type { CropDropped } from "./generated/CropDropped";
+import type { CropOptions } from "./generated/CropOptions";
 import type { CropPdf } from "./generated/CropPdf";
 import type { CropRegionInput } from "./generated/CropRegionInput";
 import type { DropTarget } from "./generated/DropTarget";
 import type { ErrorCode } from "./generated/ErrorCode";
 import type { ImageItem } from "./generated/ImageItem";
+import type { ImagesToPdfOptions } from "./generated/ImagesToPdfOptions";
 import type { IpcError } from "./generated/IpcError";
 import type { ItemsDropped } from "./generated/ItemsDropped";
 import type { JobFinishedPayload } from "./generated/JobFinishedPayload";
@@ -27,6 +29,7 @@ import type { PageOrientationChoice } from "./generated/PageOrientationChoice";
 import type { PageSizeChoice } from "./generated/PageSizeChoice";
 import type { PageSizePt } from "./generated/PageSizePt";
 import type { PdfItem } from "./generated/PdfItem";
+import type { PdfToImagesOptions } from "./generated/PdfToImagesOptions";
 import type { RenderColorChoice } from "./generated/RenderColorChoice";
 import type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
@@ -86,6 +89,12 @@ export type { SettingsInput } from "./generated/SettingsInput";
 export type { Skipped } from "./generated/Skipped";
 export type { UnlockResult } from "./generated/UnlockResult";
 export type { UnlistenFn };
+
+/** How the images are put on the pages of a PDF (design §6.2). */
+export type ImagesPdfLayout = Pick<
+  ImagesToPdfOptions,
+  "pageSize" | "orientation" | "pdfA"
+>;
 
 /** Name of the event Rust emits after a drop (design §7.2). */
 export const ITEMS_DROPPED_EVENT = "items-dropped";
@@ -502,11 +511,7 @@ export async function startDetectAll(id: number): Promise<void> {
 export async function startCropExport(
   id: number,
   regions: CropRegionInput[],
-  format: RenderFormatChoice,
-  colorMode: RenderColorChoice,
-  dpi: number,
-  photoNative: boolean,
-  photoOnly: boolean,
+  { format, colorMode, dpi, photoNative, photoOnly }: CropOptions,
 ): Promise<void> {
   return invokeWrapped<void>("start_crop_export", {
     id,
@@ -630,9 +635,7 @@ export async function cancelJob(): Promise<void> {
  */
 export async function saveMergedPdf(
   ids: number[],
-  pageSize: PageSizeChoice,
-  orientation: PageOrientationChoice,
-  pdfA: boolean,
+  { pageSize, orientation, pdfA }: ImagesPdfLayout,
   password: string | null,
 ): Promise<SaveMergedPdfResult | null> {
   return invokeWrapped<SaveMergedPdfResult | null>("save_merged_pdf", {
@@ -647,9 +650,7 @@ export async function saveMergedPdf(
 /** Starts batch conversion of images to individual PDF files in the background (design §6.2, §7.1). */
 export async function startImagesToPdfs(
   ids: number[],
-  pageSize: PageSizeChoice,
-  orientation: PageOrientationChoice,
-  pdfA: boolean,
+  { pageSize, orientation, pdfA }: ImagesPdfLayout,
   password: string | null,
 ): Promise<void> {
   return invokeWrapped<void>("start_images_to_pdfs", {
@@ -665,9 +666,7 @@ export async function startImagesToPdfs(
 export async function startPdfsToImages(
   ids: number[],
   range: string,
-  format: RenderFormatChoice,
-  colorMode: RenderColorChoice,
-  dpi: number,
+  { format, colorMode, dpi }: PdfToImagesOptions,
 ): Promise<void> {
   return invokeWrapped<void>("start_pdfs_to_images", {
     ids,
