@@ -178,6 +178,14 @@ export function normalizeIpcError(error: unknown): IpcError {
   return { code: "InvalidParams", detail };
 }
 
+/** A function that subscribes `handler` to the payloads of `event` (design §7.2). */
+function subscriber<T>(event: string) {
+  return (handler: (payload: T) => void): Promise<UnlistenFn> =>
+    listen<T>(event, (e) => {
+      handler(e.payload);
+    });
+}
+
 async function invokeWrapped<T>(
   cmd: string,
   args?: Record<string, unknown>,
@@ -590,31 +598,15 @@ export async function getThumbnail(
 }
 
 /** Subscribes to what a drop added to the lists (design §7.2). */
-export async function onItemsDropped(
-  handler: (payload: ItemsDropped) => void,
-): Promise<UnlistenFn> {
-  return listen<ItemsDropped>(ITEMS_DROPPED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onItemsDropped = subscriber<ItemsDropped>(ITEMS_DROPPED_EVENT);
 
 /** Subscribes to what a drop in the organize tab added (design §7.2). */
-export async function onOrganizeDropped(
-  handler: (payload: OrganizeDropped) => void,
-): Promise<UnlistenFn> {
-  return listen<OrganizeDropped>(ORGANIZE_DROPPED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onOrganizeDropped = subscriber<OrganizeDropped>(
+  ORGANIZE_DROPPED_EVENT,
+);
 
 /** Subscribes to what a drop in the crop tab opened (design §7.2). */
-export async function onCropDropped(
-  handler: (payload: CropDropped) => void,
-): Promise<UnlistenFn> {
-  return listen<CropDropped>(CROP_DROPPED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onCropDropped = subscriber<CropDropped>(CROP_DROPPED_EVENT);
 
 /**
  * Validates a page range string and counts matching pages across the specified PDF items (design §7.1).
@@ -687,37 +679,13 @@ export async function startPdfsToImages(
 }
 
 /** Subscribes to job progress updates (design §7.2). */
-export async function onJobProgress(
-  handler: (payload: JobProgressPayload) => void,
-): Promise<UnlistenFn> {
-  return listen<JobProgressPayload>(JOB_PROGRESS_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onJobProgress = subscriber<JobProgressPayload>(JOB_PROGRESS_EVENT);
 
 /** Subscribes to individual item completion events (design §7.2). */
-export async function onJobItem(
-  handler: (payload: JobItemPayload) => void,
-): Promise<UnlistenFn> {
-  return listen<JobItemPayload>(JOB_ITEM_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onJobItem = subscriber<JobItemPayload>(JOB_ITEM_EVENT);
 
 /** Subscribes to job finished events (design §7.2). */
-export async function onJobFinished(
-  handler: (payload: JobFinishedPayload) => void,
-): Promise<UnlistenFn> {
-  return listen<JobFinishedPayload>(JOB_FINISHED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onJobFinished = subscriber<JobFinishedPayload>(JOB_FINISHED_EVENT);
 
 /** Subscribes to the answer for each page of `startDetectAll` (design §7.2). */
-export async function onLayoutPage(
-  handler: (payload: LayoutPagePayload) => void,
-): Promise<UnlistenFn> {
-  return listen<LayoutPagePayload>(LAYOUT_PAGE_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onLayoutPage = subscriber<LayoutPagePayload>(LAYOUT_PAGE_EVENT);
