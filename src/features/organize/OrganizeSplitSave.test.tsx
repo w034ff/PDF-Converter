@@ -298,7 +298,7 @@ describe("what the bottom bar says before saving in parts", () => {
       ),
     ).toBeInTheDocument();
 
-    fireEvent.click(settingsButton("1 ページずつ"));
+    fireEvent.click(settingsButton("1 ページごと"));
     expect(
       screen.getByText(
         "3 ページを 3 個の PDF に分割して保存します（合計 約 2 MB）",
@@ -336,7 +336,7 @@ describe("what the bottom bar says before saving in parts", () => {
     expect(reason).toHaveClass("error-text");
     expect(startButton()).toBeDisabled();
 
-    fireEvent.click(settingsButton("1 ページずつ"));
+    fireEvent.click(settingsButton("1 ページごと"));
     expect(startButton()).toBeEnabled();
   });
 

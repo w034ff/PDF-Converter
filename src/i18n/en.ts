@@ -420,7 +420,7 @@ export const en: Translations = {
   },
   organize: {
     dropZone: {
-      title: "Drop PDFs here, or press “Add PDFs”",
+      title: "Drop PDFs here",
       description:
         "Reorder, delete and rotate pages, then merge or split them and save.",
       addPdfs: "Add PDFs",
@@ -443,7 +443,7 @@ export const en: Translations = {
     },
     clearDialog: {
       title: "Remove all PDFs?",
-      body: "The order, rotations and deletions of the pages will be lost and cannot be undone.",
+      body: "Page order, rotations and deletions will be lost and cannot be undone.",
       cancel: "Cancel",
       confirm: "Remove all",
     },
@@ -470,7 +470,7 @@ export const en: Translations = {
         "Break between p.{before} of {beforeName} and p.{after} of {afterName}",
       rotation: "{degrees}°",
       empty: "No pages",
-      emptyHint: "Press Ctrl+Z to bring them back",
+      emptyHint: "If you deleted them, press Ctrl+Z to undo",
     },
     skippedNotice: "Not added: {details}",
     pageMenu: {
@@ -517,8 +517,8 @@ export const en: Translations = {
       savedSingle: "Saved {count} page as one PDF",
       savedMultiple: "Merged {count} pages into one PDF",
       replaced: "Removed the replaced {name} from the list",
-      failed: "The PDF was not saved ({name}: {message})",
-      failedWithoutName: "The PDF was not saved ({message})",
+      failed: "Failed to save the PDF ({name}: {message})",
+      failedWithoutName: "Failed to save the PDF ({message})",
       savedPartsSingle: "Saved {count} PDF",
       savedPartsMultiple: "Saved {count} PDFs",
       failedPart: " (PDF {part}: {name}: {message})",

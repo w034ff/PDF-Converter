@@ -63,9 +63,7 @@ describe("the organize tab: opening it", () => {
     await openOrganizeTab({ language: "en" });
 
     expect(screen.getByRole("tab", { name: "Organize" })).toBeInTheDocument();
-    expect(
-      screen.getByText("Drop PDFs here, or press “Add PDFs”"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Drop PDFs here")).toBeInTheDocument();
   });
 
   it("shows the drop zone with its two buttons, and the settings of one PDF without the breaks", async () => {
@@ -221,7 +219,7 @@ describe("adding PDFs", () => {
 
     expect(
       screen.getByText(
-        "加えなかったファイル: 非対応 2 件、フォルダ 1 件、重複 3 件",
+        "追加されなかったファイル: 非対応 2 件、フォルダ 1 件、重複 3 件",
       ),
     ).toBeInTheDocument();
   });
@@ -259,11 +257,11 @@ describe("adding PDFs", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "PDF を追加" }));
     await flush();
-    expect(screen.getByText(/加えなかった/)).toBeInTheDocument();
+    expect(screen.getByText(/追加されなかった/)).toBeInTheDocument();
 
     await addThroughMenu();
 
-    expect(screen.queryByText(/加えなかった/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/追加されなかった/)).not.toBeInTheDocument();
   });
 });
 
@@ -500,7 +498,7 @@ describe("dropping PDFs", () => {
     });
 
     expect(
-      screen.getByText("加えなかったファイル: 重複 2 件"),
+      screen.getByText("追加されなかったファイル: 重複 2 件"),
     ).toBeInTheDocument();
   });
 

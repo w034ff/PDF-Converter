@@ -228,7 +228,9 @@ describe("the band", () => {
     await flush();
 
     expect(screen.getByText("ページがありません")).toBeInTheDocument();
-    expect(screen.getByText("Ctrl+Z で戻せます")).toBeInTheDocument();
+    expect(
+      screen.getByText("削除した場合は Ctrl+Z で元に戻せます"),
+    ).toBeInTheDocument();
     expect(screen.getByText("保存するページがありません")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PDF を保存" })).toBeDisabled();
 

@@ -53,7 +53,7 @@ function openSplit(pdfs = [BOOK], width = ROOM_WIDTH) {
   return openOrganizeTab({ pdfs, settings: SPLIT_SETTINGS });
 }
 
-/** A button of the settings panel; "すべて外す" is on the toolbar of the PDFs as well. */
+/** A button of the settings panel. */
 function settingsButton(name: string): HTMLElement {
   return within(screen.getByRole("complementary")).getByRole("button", {
     name,
@@ -105,7 +105,7 @@ describe("the choice of how to save", () => {
     expect(
       screen.getByText("ページの間を押して区切りを追加・解除できます。"),
     ).toBeInTheDocument();
-    for (const name of ["1 ページずつ", "元の PDF ごと"]) {
+    for (const name of ["1 ページごと", "元の PDF ごと"]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();
     }
     expect(screen.getByText("保存先フォルダ")).toBeInTheDocument();
@@ -143,7 +143,7 @@ describe("the choice of how to save", () => {
 
   it("forgets no break while the setting is one PDF", async () => {
     await openSplit();
-    fireEvent.click(settingsButton("1 ページずつ"));
+    fireEvent.click(settingsButton("1 ページごと"));
     fireEvent.click(settingsButton("結合"));
     fireEvent.click(settingsButton("分割"));
 
@@ -344,7 +344,7 @@ describe("the B key", () => {
     key(cellOf(1, 1), "b");
 
     expect(breakLines()).toEqual([]);
-    expect(settingsButton("すべて外す")).toBeDisabled();
+    expect(settingsButton("すべて解除")).toBeDisabled();
   });
 
   it("does nothing when the pages are saved as one PDF", async () => {
@@ -373,7 +373,7 @@ describe("the shortcuts", () => {
   it("put a break before each page, before each PDF's first page, and take them all off", async () => {
     const second = organizePdf(2, "second.pdf", 3);
     await openSplit([organizePdf(1, "first.pdf", 3), second]);
-    const clear = settingsButton("すべて外す");
+    const clear = settingsButton("すべて解除");
     expect(clear).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "元の PDF ごと" }));
@@ -381,7 +381,7 @@ describe("the shortcuts", () => {
     expect(badgeOf(cellOf(2, 1))).toBe("2");
     expect(clear).toBeEnabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "1 ページずつ" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 ページごと" }));
     expect(badges()).toHaveLength(6);
 
     fireEvent.click(clear);
@@ -393,7 +393,7 @@ describe("the shortcuts", () => {
     await openOrganizeTab({ settings: SPLIT_SETTINGS });
     await flush();
 
-    for (const name of ["1 ページずつ", "元の PDF ごと", "すべて外す"]) {
+    for (const name of ["1 ページごと", "元の PDF ごと", "すべて解除"]) {
       expect(screen.getByRole("button", { name })).toBeDisabled();
     }
   });
@@ -404,7 +404,7 @@ describe("a grid of ten thousand pages", () => {
 
   it("draws the badges, lines and places that press only for the cells in view", async () => {
     await openSplit([BIG]);
-    fireEvent.click(screen.getByRole("button", { name: "1 ページずつ" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 ページごと" }));
 
     const drawn = COLUMNS * (ROWS_IN_VIEW + ORGANIZE_OVERSCAN_ROWS);
     expect(drawnCells()).toHaveLength(drawn);
@@ -439,7 +439,7 @@ describe("while a save runs", () => {
     click(cellOf(1, 5));
     key(cellOf(1, 5), "b");
     expect(breakLines()).toHaveLength(1);
-    expect(settingsButton("1 ページずつ")).toBeDisabled();
-    expect(settingsButton("すべて外す")).toBeDisabled();
+    expect(settingsButton("1 ページごと")).toBeDisabled();
+    expect(settingsButton("すべて解除")).toBeDisabled();
   });
 });

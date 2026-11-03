@@ -62,7 +62,7 @@ describe("removing all the PDFs", () => {
     const dialog = screen.getByRole("dialog", {
       name: "すべての PDF を外しますか？",
     });
-    expect(within(dialog).getByText(/取り消せません/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/元に戻せません/)).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "キャンセル" }),
     ).toHaveFocus();

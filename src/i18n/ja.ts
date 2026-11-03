@@ -415,7 +415,7 @@ export const ja = {
   },
   organize: {
     dropZone: {
-      title: "PDF をドロップするか、「PDF を追加」を押してください",
+      title: "PDF をドロップ",
       description:
         "ページを並べ替え・削除・回転して、結合または分割して保存します。",
       addPdfs: "PDF を追加",
@@ -438,7 +438,7 @@ export const ja = {
     },
     clearDialog: {
       title: "すべての PDF を外しますか？",
-      body: "並べ替え・回転・削除をした並びは失われ、取り消せません。",
+      body: "ページの並び順や回転・削除は失われ、元に戻せません。",
       cancel: "キャンセル",
       confirm: "すべて外す",
     },
@@ -465,9 +465,9 @@ export const ja = {
         "{beforeName} の p.{before} と {afterName} の p.{after} の間の区切り",
       rotation: "{degrees}°",
       empty: "ページがありません",
-      emptyHint: "Ctrl+Z で戻せます",
+      emptyHint: "削除した場合は Ctrl+Z で元に戻せます",
     },
-    skippedNotice: "加えなかったファイル: {details}",
+    skippedNotice: "追加されなかったファイル: {details}",
     pageMenu: {
       label: "ページの操作",
       addBreak: "このページの前で区切る",
@@ -481,9 +481,9 @@ export const ja = {
       outputSplitHint: "区切りごとに複数の PDF に分割します。",
       breaksTitle: "区切り",
       breaksHint: "ページの間を押して区切りを追加・解除できます。",
-      breaksEachPage: "1 ページずつ",
+      breaksEachPage: "1 ページごと",
       breaksEachPdf: "元の PDF ごと",
-      breaksClear: "すべて外す",
+      breaksClear: "すべて解除",
       password: "パスワードを付ける",
       encryptedNotice: "元の PDF のパスワードは引き継がれません。",
       aboutTitle: "出力ファイルについて",
@@ -514,8 +514,8 @@ export const ja = {
       savedSingle: "{count} ページを 1 つの PDF に保存しました",
       savedMultiple: "{count} ページを 1 つの PDF に結合しました",
       replaced: "置き換えた {name} を一覧から外しました",
-      failed: "PDF を保存しませんでした（{name}: {message}）",
-      failedWithoutName: "PDF を保存しませんでした（{message}）",
+      failed: "PDF の保存に失敗しました（{name}: {message}）",
+      failedWithoutName: "PDF の保存に失敗しました（{message}）",
       savedPartsSingle: "{count} 個の PDF を保存しました",
       savedPartsMultiple: "{count} 個の PDF を保存しました",
       failedPart: "（{part} 番目の PDF: {name}: {message}）",

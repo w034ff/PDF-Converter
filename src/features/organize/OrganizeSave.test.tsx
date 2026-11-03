@@ -437,7 +437,7 @@ describe("what the bottom bar says after saving", () => {
 
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent(
-      `PDF を保存しませんでした（contract.pdf: ${formatErrorMessage(error.code, error.detail, "ja")}）`,
+      `PDF の保存に失敗しました（contract.pdf: ${formatErrorMessage(error.code, error.detail, "ja")}）`,
     );
     expect(status).toHaveClass("error-text");
   });
@@ -453,7 +453,7 @@ describe("what the bottom bar says after saving", () => {
     await flush();
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      `PDF を保存しませんでした（${formatErrorMessage(error.code, error.detail, "ja")}）`,
+      `PDF の保存に失敗しました（${formatErrorMessage(error.code, error.detail, "ja")}）`,
     );
   });
 
