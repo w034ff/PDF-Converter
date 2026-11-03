@@ -5,7 +5,7 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use pdfconv_worker::{DEFAULT_RENDER_DPI, is_render_dpi_in_range};
 use serde::de::DeserializeOwned;
@@ -579,27 +579,51 @@ fn write(config_dir: Option<&Path>, file: &SettingsFile) -> Result<(), IpcError>
 /// is shared (design §6.7).
 pub fn restore_settings(state: &AppState, config_dir: &Path) {
     let file = load_settings(config_dir);
-    *output_dir_slot(state, OutputKind::ImagesToPdf)
-        .lock()
-        .expect("output_dir lock") = file.images_to_pdf.output_dir.clone();
-    *output_dir_slot(state, OutputKind::PdfToImages)
-        .lock()
-        .expect("output_dir lock") = file.pdf_to_images.output_dir.clone();
-    *output_dir_slot(state, OutputKind::Crop)
-        .lock()
-        .expect("output_dir lock") = file.crop.output_dir.clone();
-    *output_dir_slot(state, OutputKind::Organize)
-        .lock()
-        .expect("output_dir lock") = file.organize.output_dir.clone();
+    let dirs = &state.output_dirs;
+    dirs.set(
+        OutputKind::ImagesToPdf,
+        file.images_to_pdf.output_dir.clone(),
+    );
+    dirs.set(
+        OutputKind::PdfToImages,
+        file.pdf_to_images.output_dir.clone(),
+    );
+    dirs.set(OutputKind::Crop, file.crop.output_dir.clone());
+    dirs.set(OutputKind::Organize, file.organize.output_dir.clone());
     state.settings.restore(config_dir.to_path_buf(), file);
 }
 
-fn output_dir_slot(state: &AppState, kind: OutputKind) -> &Arc<Mutex<Option<PathBuf>>> {
-    match kind {
-        OutputKind::ImagesToPdf => &state.images_output_dir,
-        OutputKind::PdfToImages => &state.pdfs_output_dir,
-        OutputKind::Crop => &state.crop_output_dir,
-        OutputKind::Organize => &state.organize_output_dir,
+/// The output folder of each conversion, as conversions use it (design §6.5). The settings
+/// file keeps its own copy; a folder that could not be written there still applies here
+/// (design §6.7).
+#[derive(Debug, Default)]
+pub struct OutputDirs {
+    images_to_pdf: Mutex<Option<PathBuf>>,
+    pdf_to_images: Mutex<Option<PathBuf>>,
+    crop: Mutex<Option<PathBuf>>,
+    organize: Mutex<Option<PathBuf>>,
+}
+
+impl OutputDirs {
+    /// The output folder of `kind`, or `None` while none is chosen.
+    pub fn get(&self, kind: OutputKind) -> Option<PathBuf> {
+        self.lock(kind).clone()
+    }
+
+    /// Makes `dir` the output folder of `kind`, or "not chosen" for `None`. The settings file
+    /// is left alone.
+    pub fn set(&self, kind: OutputKind, dir: Option<PathBuf>) {
+        *self.lock(kind) = dir;
+    }
+
+    fn lock(&self, kind: OutputKind) -> MutexGuard<'_, Option<PathBuf>> {
+        let slot = match kind {
+            OutputKind::ImagesToPdf => &self.images_to_pdf,
+            OutputKind::PdfToImages => &self.pdf_to_images,
+            OutputKind::Crop => &self.crop,
+            OutputKind::Organize => &self.organize,
+        };
+        slot.lock().expect("output_dir lock")
     }
 }
 
@@ -612,13 +636,10 @@ pub fn dir_label(dir: &Path) -> String {
     )
 }
 
-fn label_of(slot: &Mutex<Option<PathBuf>>) -> Option<OutputDirLabel> {
-    slot.lock()
-        .expect("output_dir lock")
-        .as_deref()
-        .map(|dir| OutputDirLabel {
-            dir_label: dir_label(dir),
-        })
+fn label_of(state: &AppState, kind: OutputKind) -> Option<OutputDirLabel> {
+    state.output_dirs.get(kind).map(|dir| OutputDirLabel {
+        dir_label: dir_label(&dir),
+    })
 }
 
 /// The settings as `get_settings` returns them. The folders are the ones
@@ -633,13 +654,13 @@ pub fn get_settings_internal(state: &AppState) -> Settings {
             orientation: file.images_to_pdf.options.orientation,
             pdf_a: file.images_to_pdf.options.pdf_a,
             encrypt: file.images_to_pdf.options.encrypt,
-            output_dir: label_of(&state.images_output_dir),
+            output_dir: label_of(state, OutputKind::ImagesToPdf),
         },
         pdf_to_images: PdfToImagesSettings {
             format: file.pdf_to_images.options.format,
             color_mode: file.pdf_to_images.options.color_mode,
             dpi: file.pdf_to_images.options.dpi,
-            output_dir: label_of(&state.pdfs_output_dir),
+            output_dir: label_of(state, OutputKind::PdfToImages),
         },
         crop: CropSettings {
             format: file.crop.options.format,
@@ -647,12 +668,12 @@ pub fn get_settings_internal(state: &AppState) -> Settings {
             dpi: file.crop.options.dpi,
             photo_native: file.crop.options.photo_native,
             photo_only: file.crop.options.photo_only,
-            output_dir: label_of(&state.crop_output_dir),
+            output_dir: label_of(state, OutputKind::Crop),
         },
         organize: OrganizeSettings {
             output: file.organize.options.output,
             encrypt: file.organize.options.encrypt,
-            output_dir: label_of(&state.organize_output_dir),
+            output_dir: label_of(state, OutputKind::Organize),
         },
     }
 }
@@ -672,9 +693,7 @@ pub fn apply_picked_dir(
         dir_label: dir_label(&dir),
     };
     let persisted = state.settings.record_output_dir(kind, &dir);
-    *output_dir_slot(state, kind)
-        .lock()
-        .expect("output_dir lock") = Some(dir);
+    state.output_dirs.set(kind, Some(dir));
     (label, persisted)
 }
 
@@ -688,8 +707,6 @@ pub fn apply_picked_dir(
 /// `WriteFailed` if the settings file cannot be written.
 pub fn clear_output_dir(state: &AppState, kind: OutputKind) -> Result<(), IpcError> {
     let persisted = state.settings.clear_output_dir(kind);
-    *output_dir_slot(state, kind)
-        .lock()
-        .expect("output_dir lock") = None;
+    state.output_dirs.set(kind, None);
     persisted
 }

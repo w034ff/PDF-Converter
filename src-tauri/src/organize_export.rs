@@ -442,13 +442,7 @@ where
     let slices: Vec<&[OrganizePageInput]> = parts.iter().map(Vec::as_slice).collect();
     let (password, sources) = check(state, &slices, password)?;
 
-    let output_dir = state
-        .organize_output_dir
-        .lock()
-        .expect("output_dir lock")
-        .clone()
-        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
-    jobs::check_output_dir(state, OutputKind::Organize, &output_dir)?;
+    let output_dir = jobs::chosen_output_dir(state, OutputKind::Organize)?;
     let existing = jobs::list_existing_files(&output_dir)?;
 
     let stems: Vec<String> = slices

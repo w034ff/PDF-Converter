@@ -27,6 +27,7 @@ use pdf_converter_lib::organize_export::{
     OutputStop, SaveOrganizedResult, begin_single, run_save_organized_pdf,
     start_organize_split_internal,
 };
+use pdf_converter_lib::settings::OutputKind;
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_worker::WORKER_FLAG;
 use pdfconv_worker::protocol::{Password, Request, Response};
@@ -357,10 +358,9 @@ fn save_split_with(
     out: &Path,
     on_progress: impl Fn(&JobProgressPayload) + Send + Sync + 'static,
 ) -> (Recorder, JobFinishedPayload) {
-    *state
-        .organize_output_dir
-        .lock()
-        .expect("the folder is not poisoned") = Some(out.to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::Organize, Some(out.to_path_buf()));
     let recorder = Recorder::default();
     start_organize_split_internal(state, parts, None, recorder.callbacks(state, on_progress))
         .expect("the parts should be accepted");
@@ -840,7 +840,9 @@ fn the_commands_of_the_lists_and_of_crop_treat_an_organize_id_as_unknown() {
     let range = jobs::check_page_range_internal(&state, "1-3", &[id]).expect("checking");
     assert_eq!(range.total_pages, 0);
     // The output folder is looked at before the IDs, so one has to be chosen.
-    *state.pdfs_output_dir.lock().unwrap() = Some(dir.path().to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::PdfToImages, Some(dir.path().to_path_buf()));
     let callbacks = Recorder::default();
     assert_eq!(
         code_of(jobs::start_pdfs_to_images_internal(
@@ -1009,7 +1011,9 @@ fn what_cannot_be_made_is_refused_in_parts_with_nothing_written_and_nothing_left
     let state = state();
     let f = fixtures(&state);
     let out = TempDir::new().unwrap();
-    *state.organize_output_dir.lock().unwrap() = Some(out.path().to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::Organize, Some(out.path().to_path_buf()));
 
     for (what, parts, expected) in refused_parts(&f) {
         let recorder = Recorder::default();
@@ -1037,7 +1041,9 @@ fn what_cannot_be_made_is_refused_in_parts_with_nothing_written_and_nothing_left
 fn a_conversion_that_is_running_refuses_to_start_another_and_stays_running() {
     let state = state();
     let f = fixtures(&state);
-    *state.organize_output_dir.lock().unwrap() = Some(f._dir.path().to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::Organize, Some(f._dir.path().to_path_buf()));
     state.is_running.store(true, Ordering::SeqCst);
     let pages = [page(&f.shapes, 1, 0)];
 
@@ -1082,7 +1088,7 @@ fn the_folder_to_save_in_is_checked_after_the_pages_and_before_any_name() {
 
     // Chosen but gone: it goes back to "not chosen".
     let gone = f._dir.path().join("gone");
-    *state.organize_output_dir.lock().unwrap() = Some(gone);
+    state.output_dirs.set(OutputKind::Organize, Some(gone));
     assert_eq!(
         code_of(start_organize_split_internal(
             &state,
@@ -1092,11 +1098,13 @@ fn the_folder_to_save_in_is_checked_after_the_pages_and_before_any_name() {
         )),
         ErrorCode::OutputDirMissing
     );
-    assert_eq!(*state.organize_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::Organize), None);
     assert!(!state.is_running.load(Ordering::SeqCst));
 
     // A file in place of a folder.
-    *state.organize_output_dir.lock().unwrap() = Some(f._dir.path().join("shapes.pdf"));
+    state
+        .output_dirs
+        .set(OutputKind::Organize, Some(f._dir.path().join("shapes.pdf")));
     assert_eq!(
         code_of(start_organize_split_internal(
             &state,
@@ -1106,7 +1114,7 @@ fn the_folder_to_save_in_is_checked_after_the_pages_and_before_any_name() {
         )),
         ErrorCode::OutputDirMissing
     );
-    assert_eq!(*state.organize_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::Organize), None);
 }
 
 #[cfg(unix)]
@@ -1124,7 +1132,9 @@ fn a_folder_that_cannot_be_written_to_is_refused_and_stays_chosen() {
         eprintln!("skipped: the folder is writable although its mode forbids it");
         return;
     }
-    *state.organize_output_dir.lock().unwrap() = Some(out.path().to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::Organize, Some(out.path().to_path_buf()));
     let recorder = Recorder::default();
 
     let refused = start_organize_split_internal(
@@ -1136,7 +1146,7 @@ fn a_folder_that_cannot_be_written_to_is_refused_and_stays_chosen() {
 
     fs::set_permissions(out.path(), fs::Permissions::from_mode(0o755)).unwrap();
     assert_eq!(code_of(refused), ErrorCode::OutputDirNotWritable);
-    assert!(state.organize_output_dir.lock().unwrap().is_some());
+    assert!(state.output_dirs.get(OutputKind::Organize).is_some());
     assert!(!state.is_running.load(Ordering::SeqCst));
 }
 
@@ -2062,10 +2072,9 @@ fn a_cancel_is_taken_before_waiting_for_a_worker_for_the_next_output() {
     let f = parts_fixtures(&state);
     let out = TempDir::new().expect("creating a temporary folder");
     let held = state.pool.acquire().expect("borrowing the only worker");
-    *state
-        .organize_output_dir
-        .lock()
-        .expect("the folder is not poisoned") = Some(out.path().to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::Organize, Some(out.path().to_path_buf()));
     let cancel = Arc::clone(&state.cancel_flag);
     let recorder = Recorder::default();
 

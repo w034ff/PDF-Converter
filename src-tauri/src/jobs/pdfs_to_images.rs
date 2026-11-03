@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::options::{RenderColorChoice, RenderFormatChoice};
-use super::output::{check_output_dir, list_existing_files, save_atomic, stop_after_write_failure};
+use super::output::{
+    chosen_output_dir, list_existing_files, save_atomic, stop_after_write_failure,
+};
 use super::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, JobProgressPayload,
     begin_conversion, spawn_conversion,
@@ -438,13 +440,7 @@ where
     let page_set = parse_page_range(range)
         .map_err(|e| IpcError::new(ErrorCode::InvalidPageRange, e.detail))?;
 
-    let output_dir = state
-        .pdfs_output_dir
-        .lock()
-        .expect("output_dir lock")
-        .clone()
-        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
-    check_output_dir(state, OutputKind::PdfToImages, &output_dir)?;
+    let output_dir = chosen_output_dir(state, OutputKind::PdfToImages)?;
     if ids.iter().any(|&id| state.items.get(id).is_none()) {
         return Err(IpcError::from_code(ErrorCode::UnknownHandle));
     }

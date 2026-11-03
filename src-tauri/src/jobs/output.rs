@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -50,6 +50,21 @@ pub(crate) fn create_output_temp(output_dir: &Path) -> std::io::Result<tempfile:
         builder.permissions(std::fs::Permissions::from_mode(OUTPUT_FILE_MODE));
     }
     builder.tempfile_in(output_dir)
+}
+
+/// The output folder of `kind`, checked with [`check_output_dir`] before a conversion starts
+/// writing to it.
+///
+/// # Errors
+///
+/// `InvalidParams` while no folder is chosen, and the errors of [`check_output_dir`].
+pub(crate) fn chosen_output_dir(state: &AppState, kind: OutputKind) -> Result<PathBuf, IpcError> {
+    let dir = state
+        .output_dirs
+        .get(kind)
+        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
+    check_output_dir(state, kind, &dir)?;
+    Ok(dir)
 }
 
 /// Checks, before a conversion starts, that the output folder of `kind` is

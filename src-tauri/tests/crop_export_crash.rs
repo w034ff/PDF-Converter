@@ -22,7 +22,7 @@ use pdf_converter_lib::jobs::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobItemStatus, RenderColorChoice,
     RenderFormatChoice,
 };
-use pdf_converter_lib::settings::CropOptions;
+use pdf_converter_lib::settings::{CropOptions, OutputKind};
 use pdf_converter_lib::worker_pool::{WorkerPool, WorkerPoolConfig};
 use pdfconv_worker::WORKER_FLAG;
 use tempfile::TempDir;
@@ -98,7 +98,9 @@ fn a_worker_that_dies_fails_the_next_range_and_the_rest_is_not_tried() {
     let pdf = open_pdf(&state, &fixture("shapes.pdf"));
     activate_crop_pdf(&state, pdf.id).expect("activating the pending PDF");
     let out = TempDir::new().expect("creating the output folder");
-    *state.crop_output_dir.lock().expect("output folder lock") = Some(out.path().to_path_buf());
+    state
+        .output_dirs
+        .set(OutputKind::Crop, Some(out.path().to_path_buf()));
 
     // Whole pages, so that a range takes long enough for the kill to land
     // before it is done.

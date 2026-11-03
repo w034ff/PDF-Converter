@@ -15,8 +15,8 @@ pub use options::{
     PageOrientationChoice, PageSizeChoice, PdfOutput, RenderColorChoice, RenderFormatChoice,
     output_password, pdf_conformance,
 };
-pub(crate) use output::create_output_temp;
 pub use output::{check_output_dir, list_existing_files, persist_unique, save_atomic};
+pub(crate) use output::{chosen_output_dir, create_output_temp};
 pub use pdfs_to_images::{
     CheckPageRangeResult, check_page_range_internal, run_pdfs_to_images,
     start_pdfs_to_images_internal,

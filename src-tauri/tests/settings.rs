@@ -753,8 +753,14 @@ fn save_settings_takes_the_input_over_and_keeps_the_folders() {
     assert_eq!(loaded.images_to_pdf.output_dir, Some(images_dir.clone()));
     assert_eq!(loaded.pdf_to_images.output_dir, Some(pdfs_dir.clone()));
     assert_eq!(state.settings.file(), loaded);
-    assert_eq!(*state.images_output_dir.lock().unwrap(), Some(images_dir));
-    assert_eq!(*state.pdfs_output_dir.lock().unwrap(), Some(pdfs_dir));
+    assert_eq!(
+        state.output_dirs.get(OutputKind::ImagesToPdf),
+        Some(images_dir)
+    );
+    assert_eq!(
+        state.output_dirs.get(OutputKind::PdfToImages),
+        Some(pdfs_dir)
+    );
 }
 
 #[test]
@@ -933,8 +939,11 @@ fn the_state_gets_the_folders_that_exist_at_startup() {
 
     restore_settings(&state, &config_dir);
 
-    assert_eq!(*state.images_output_dir.lock().unwrap(), Some(images_dir));
-    assert_eq!(*state.pdfs_output_dir.lock().unwrap(), None);
+    assert_eq!(
+        state.output_dirs.get(OutputKind::ImagesToPdf),
+        Some(images_dir)
+    );
+    assert_eq!(state.output_dirs.get(OutputKind::PdfToImages), None);
     let settings = get_settings_internal(&state);
     assert_eq!(
         settings.images_to_pdf.output_dir.map(|d| d.dir_label),
@@ -951,8 +960,8 @@ fn the_state_gets_nothing_from_a_broken_file() {
 
     restore_settings(&state, temp.path());
 
-    assert_eq!(*state.images_output_dir.lock().unwrap(), None);
-    assert_eq!(*state.pdfs_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::ImagesToPdf), None);
+    assert_eq!(state.output_dirs.get(OutputKind::PdfToImages), None);
     assert_eq!(state.settings.file(), defaults());
 }
 
@@ -1035,10 +1044,10 @@ fn a_picked_folder_goes_to_the_state_and_the_file() {
     assert_eq!(label.dir_label, "for-pdfs");
     assert_eq!(persisted, Ok(()));
     assert_eq!(
-        *state.images_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::ImagesToPdf),
         Some(images_dir.clone())
     );
-    assert_eq!(*state.pdfs_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::PdfToImages), None);
     let loaded = load_settings(&config_dir);
     assert_eq!(loaded.images_to_pdf.output_dir, Some(images_dir.clone()));
     assert_eq!(loaded.pdf_to_images.output_dir, None);
@@ -1048,11 +1057,11 @@ fn a_picked_folder_goes_to_the_state_and_the_file() {
     assert_eq!(label.dir_label, "for-images");
     assert_eq!(persisted, Ok(()));
     assert_eq!(
-        *state.images_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::ImagesToPdf),
         Some(images_dir.clone())
     );
     assert_eq!(
-        *state.pdfs_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::PdfToImages),
         Some(pdfs_dir.clone())
     );
     let loaded = load_settings(&config_dir);
@@ -1086,7 +1095,7 @@ fn a_picked_folder_is_used_when_there_is_no_settings_folder_to_write_to() {
 
     assert_eq!(persisted, Ok(()));
     assert_eq!(
-        *state.images_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::ImagesToPdf),
         Some(temp.path().to_path_buf())
     );
     assert_eq!(
@@ -1122,7 +1131,10 @@ fn a_picked_folder_is_used_even_when_the_file_cannot_be_written() {
         persisted.expect_err("the write must fail").code,
         ErrorCode::WriteFailed
     );
-    assert_eq!(*state.pdfs_output_dir.lock().unwrap(), Some(picked.clone()));
+    assert_eq!(
+        state.output_dirs.get(OutputKind::PdfToImages),
+        Some(picked.clone())
+    );
     assert_eq!(
         get_settings_internal(&state)
             .pdf_to_images
@@ -1162,7 +1174,7 @@ fn a_folder_whose_name_is_not_unicode_is_used_but_not_remembered() {
     let (_, persisted) = apply_picked_dir(&state, OutputKind::ImagesToPdf, odd.clone());
 
     assert_eq!(persisted, Ok(()));
-    assert_eq!(*state.images_output_dir.lock().unwrap(), Some(odd));
+    assert_eq!(state.output_dirs.get(OutputKind::ImagesToPdf), Some(odd));
     assert_eq!(load_settings(&config_dir).images_to_pdf.output_dir, None);
     save(&state, &input()).expect("the file stays writable");
 }
@@ -1507,7 +1519,10 @@ fn the_state_gets_the_crop_folder_if_it_exists_and_nothing_if_it_does_not() {
 
     restore_settings(&with_folder, &config_dir);
 
-    assert_eq!(*with_folder.crop_output_dir.lock().unwrap(), Some(crop_dir));
+    assert_eq!(
+        with_folder.output_dirs.get(OutputKind::Crop),
+        Some(crop_dir)
+    );
     assert_eq!(
         get_settings_internal(&with_folder)
             .crop
@@ -1524,7 +1539,7 @@ fn the_state_gets_the_crop_folder_if_it_exists_and_nothing_if_it_does_not() {
 
     restore_settings(&after_it_is_gone, &config_dir);
 
-    assert_eq!(*after_it_is_gone.crop_output_dir.lock().unwrap(), None);
+    assert_eq!(after_it_is_gone.output_dirs.get(OutputKind::Crop), None);
     assert_eq!(
         get_settings_internal(&after_it_is_gone).crop.output_dir,
         None
@@ -1544,11 +1559,11 @@ fn a_picked_crop_folder_goes_to_the_state_and_the_file_and_leaves_the_others() {
     assert_eq!(label.dir_label, "for-crops");
     assert_eq!(persisted, Ok(()));
     assert_eq!(
-        *state.crop_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::Crop),
         Some(crop_dir.clone())
     );
-    assert_eq!(*state.images_output_dir.lock().unwrap(), None);
-    assert_eq!(*state.pdfs_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::ImagesToPdf), None);
+    assert_eq!(state.output_dirs.get(OutputKind::PdfToImages), None);
     let loaded = load_settings(&config_dir);
     assert_eq!(loaded.crop.output_dir, Some(crop_dir));
     assert_eq!(loaded.images_to_pdf.output_dir, None);
@@ -1575,7 +1590,7 @@ fn save_settings_saves_the_crop_options_and_keeps_the_crop_folder() {
     assert_eq!(loaded.crop.options, crop_options());
     assert_eq!(loaded.crop.output_dir, Some(crop_dir.clone()));
     assert_eq!(state.settings.file(), loaded);
-    assert_eq!(*state.crop_output_dir.lock().unwrap(), Some(crop_dir));
+    assert_eq!(state.output_dirs.get(OutputKind::Crop), Some(crop_dir));
 }
 
 #[test]
@@ -1633,9 +1648,9 @@ fn a_folder_that_is_gone_is_cleared_for_crops_without_touching_the_others() {
 
     pdf_converter_lib::settings::clear_output_dir(&state, OutputKind::Crop).expect("clearing");
 
-    assert_eq!(*state.crop_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::Crop), None);
     assert_eq!(
-        *state.images_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::ImagesToPdf),
         Some(images_dir.clone())
     );
     let loaded = load_settings(&config_dir);
@@ -1768,7 +1783,7 @@ fn the_state_gets_the_organize_folder_if_it_exists_at_startup() {
 
     restore_settings(&state, &config_dir);
 
-    assert_eq!(*state.organize_output_dir.lock().unwrap(), Some(out));
+    assert_eq!(state.output_dirs.get(OutputKind::Organize), Some(out));
     let settings = get_settings_internal(&state);
     assert_eq!(
         settings.organize.output_dir.map(|dir| dir.dir_label),
@@ -1782,7 +1797,7 @@ fn the_state_gets_the_organize_folder_if_it_exists_at_startup() {
     );
     let state = self::state();
     restore_settings(&state, &config_dir);
-    assert_eq!(*state.organize_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::Organize), None);
     assert_eq!(get_settings_internal(&state).organize.output_dir, None);
 }
 
@@ -1820,14 +1835,14 @@ fn a_picked_organize_folder_goes_to_the_state_and_the_file_and_leaves_the_others
     assert_eq!(label.dir_label, "organize-out");
     assert_eq!(persisted, Ok(()));
     assert_eq!(
-        *state.organize_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::Organize),
         Some(out.clone())
     );
     assert_eq!(
-        *state.images_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::ImagesToPdf),
         Some(images_dir.clone())
     );
-    assert_eq!(*state.crop_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::Crop), None);
     let loaded = load_settings(&config_dir);
     assert_eq!(loaded.organize.output_dir, Some(out));
     assert_eq!(loaded.images_to_pdf.output_dir, Some(images_dir));
@@ -1847,9 +1862,9 @@ fn an_organize_folder_that_is_gone_is_cleared_without_touching_the_others() {
 
     pdf_converter_lib::settings::clear_output_dir(&state, OutputKind::Organize).expect("clearing");
 
-    assert_eq!(*state.organize_output_dir.lock().unwrap(), None);
+    assert_eq!(state.output_dirs.get(OutputKind::Organize), None);
     assert_eq!(
-        *state.crop_output_dir.lock().unwrap(),
+        state.output_dirs.get(OutputKind::Crop),
         Some(crop_dir.clone())
     );
     let loaded = load_settings(&config_dir);
@@ -1886,7 +1901,7 @@ fn save_settings_takes_the_organize_options_and_keeps_the_folder() {
     assert_eq!(loaded.organize.options, sent);
     assert_eq!(loaded.organize.output_dir, Some(out.clone()));
     assert_eq!(state.settings.file().organize, loaded.organize);
-    assert_eq!(*state.organize_output_dir.lock().unwrap(), Some(out));
+    assert_eq!(state.output_dirs.get(OutputKind::Organize), Some(out));
     assert_eq!(
         get_settings_internal(&state).organize.output,
         OrganizeOutput::Single

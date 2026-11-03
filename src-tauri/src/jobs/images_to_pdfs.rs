@@ -12,7 +12,9 @@ use super::image_check::{ImageCheckStop, check_image};
 use super::options::{
     PageOrientationChoice, PageSizeChoice, PdfOutput, creator, output_password, protect_pdf,
 };
-use super::output::{check_output_dir, list_existing_files, save_atomic, stop_after_write_failure};
+use super::output::{
+    chosen_output_dir, list_existing_files, save_atomic, stop_after_write_failure,
+};
 use super::{
     JobCallbacks, JobFinishedPayload, JobItemPayload, JobProgressPayload, begin_conversion,
     spawn_conversion,
@@ -393,13 +395,7 @@ where
 
     let guard = begin_conversion(state)?;
 
-    let output_dir = state
-        .images_output_dir
-        .lock()
-        .expect("output_dir lock")
-        .clone()
-        .ok_or_else(|| IpcError::from_code(ErrorCode::InvalidParams))?;
-    check_output_dir(state, OutputKind::ImagesToPdf, &output_dir)?;
+    let output_dir = chosen_output_dir(state, OutputKind::ImagesToPdf)?;
     if ids.iter().any(|&id| state.items.get(id).is_none()) {
         return Err(IpcError::from_code(ErrorCode::UnknownHandle));
     }
