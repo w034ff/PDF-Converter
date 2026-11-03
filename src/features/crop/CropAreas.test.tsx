@@ -120,14 +120,14 @@ describe("pressing a frame", () => {
 
     fireEvent.click(only);
     expect(rowText(areaRows()[0])).not.toContain("重なりあり");
-    expect(within(areaRows()[0]).getByText("重なりを除く")).toHaveAttribute(
+    expect(within(areaRows()[0]).getByText("重なり除去")).toHaveAttribute(
       "title",
       "写真の上に重なった文字・図形・ほかの画像などを除いて書き出します",
     );
 
     fireEvent.click(only);
     expect(rowText(areaRows()[0])).toContain("重なりあり");
-    expect(rowText(areaRows()[0])).not.toContain("重なりを除く");
+    expect(rowText(areaRows()[0])).not.toContain("重なり除去");
   });
 
   it("marks nothing when nothing lies over the photo, or when the question failed", async () => {

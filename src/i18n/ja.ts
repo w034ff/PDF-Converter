@@ -366,7 +366,7 @@ export const ja = {
       overlaid: "重なりあり",
       overlaidHint:
         "写真の上に文字・図形・ほかの画像などが重なっています。「写真だけを書き出す」で除けます",
-      overlaidRemoved: "重なりを除く",
+      overlaidRemoved: "重なり除去",
       overlaidRemovedHint:
         "写真の上に重なった文字・図形・ほかの画像などを除いて書き出します",
       exported: "✓ 書き出し済み",
