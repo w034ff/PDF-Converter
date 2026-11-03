@@ -1,17 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { isPageSizeChoice } from "../state/imagesToPdf";
-import { RENDER_DPI_MAX, RENDER_DPI_MIN } from "../state/pdfToImages";
 import type { AddResult } from "./generated/AddResult";
 import type { AddSource } from "./generated/AddSource";
 import type { Candidate } from "./generated/Candidate";
 import type { CheckPageRangeResult } from "./generated/CheckPageRangeResult";
 import type { CropDropped } from "./generated/CropDropped";
+import type { CropOptions } from "./generated/CropOptions";
 import type { CropPdf } from "./generated/CropPdf";
 import type { CropRegionInput } from "./generated/CropRegionInput";
 import type { DropTarget } from "./generated/DropTarget";
 import type { ErrorCode } from "./generated/ErrorCode";
 import type { ImageItem } from "./generated/ImageItem";
+import type { ImagesToPdfOptions } from "./generated/ImagesToPdfOptions";
 import type { IpcError } from "./generated/IpcError";
 import type { ItemsDropped } from "./generated/ItemsDropped";
 import type { JobFinishedPayload } from "./generated/JobFinishedPayload";
@@ -29,6 +29,7 @@ import type { PageOrientationChoice } from "./generated/PageOrientationChoice";
 import type { PageSizeChoice } from "./generated/PageSizeChoice";
 import type { PageSizePt } from "./generated/PageSizePt";
 import type { PdfItem } from "./generated/PdfItem";
+import type { PdfToImagesOptions } from "./generated/PdfToImagesOptions";
 import type { RenderColorChoice } from "./generated/RenderColorChoice";
 import type { RenderFormatChoice } from "./generated/RenderFormatChoice";
 import type { SaveMergedPdfResult } from "./generated/SaveMergedPdfResult";
@@ -88,6 +89,12 @@ export type { SettingsInput } from "./generated/SettingsInput";
 export type { Skipped } from "./generated/Skipped";
 export type { UnlockResult } from "./generated/UnlockResult";
 export type { UnlistenFn };
+
+/** How the images are put on the pages of a PDF (design §6.2). */
+export type ImagesPdfLayout = Pick<
+  ImagesToPdfOptions,
+  "pageSize" | "orientation" | "pdfA"
+>;
 
 /** Name of the event Rust emits after a drop (design §7.2). */
 export const ITEMS_DROPPED_EVENT = "items-dropped";
@@ -180,6 +187,14 @@ export function normalizeIpcError(error: unknown): IpcError {
   return { code: "InvalidParams", detail };
 }
 
+/** A function that subscribes `handler` to the payloads of `event` (design §7.2). */
+function subscriber<T>(event: string) {
+  return (handler: (payload: T) => void): Promise<UnlistenFn> =>
+    listen<T>(event, (e) => {
+      handler(e.payload);
+    });
+}
+
 async function invokeWrapped<T>(
   cmd: string,
   args?: Record<string, unknown>,
@@ -243,6 +258,38 @@ export function isUnlockResult(value: unknown): value is UnlockResult {
   }
   const { items } = value;
   return Array.isArray(items) && items.every(isPdfItem);
+}
+
+/**
+ * Minimum render resolution in dpi.
+ * Matches `RENDER_DPI_MIN` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`).
+ */
+export const RENDER_DPI_MIN = 36;
+
+/**
+ * Maximum render resolution in dpi.
+ * Matches `RENDER_DPI_MAX` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`).
+ */
+export const RENDER_DPI_MAX = 1000;
+
+const PAGE_SIZE_CHOICES = {
+  fit: true,
+  a3: true,
+  a4: true,
+  a5: true,
+  jisB4: true,
+  jisB5: true,
+  letter: true,
+  legal: true,
+} satisfies Record<PageSizeChoice, true>;
+
+export function isPageSizeChoice(value: unknown): value is PageSizeChoice {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(PAGE_SIZE_CHOICES, value)
+  );
 }
 
 function isRenderFormatChoice(value: unknown): value is RenderFormatChoice {
@@ -464,11 +511,7 @@ export async function startDetectAll(id: number): Promise<void> {
 export async function startCropExport(
   id: number,
   regions: CropRegionInput[],
-  format: RenderFormatChoice,
-  colorMode: RenderColorChoice,
-  dpi: number,
-  photoNative: boolean,
-  photoOnly: boolean,
+  { format, colorMode, dpi, photoNative, photoOnly }: CropOptions,
 ): Promise<void> {
   return invokeWrapped<void>("start_crop_export", {
     id,
@@ -560,31 +603,15 @@ export async function getThumbnail(
 }
 
 /** Subscribes to what a drop added to the lists (design §7.2). */
-export async function onItemsDropped(
-  handler: (payload: ItemsDropped) => void,
-): Promise<UnlistenFn> {
-  return listen<ItemsDropped>(ITEMS_DROPPED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onItemsDropped = subscriber<ItemsDropped>(ITEMS_DROPPED_EVENT);
 
 /** Subscribes to what a drop in the organize tab added (design §7.2). */
-export async function onOrganizeDropped(
-  handler: (payload: OrganizeDropped) => void,
-): Promise<UnlistenFn> {
-  return listen<OrganizeDropped>(ORGANIZE_DROPPED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onOrganizeDropped = subscriber<OrganizeDropped>(
+  ORGANIZE_DROPPED_EVENT,
+);
 
 /** Subscribes to what a drop in the crop tab opened (design §7.2). */
-export async function onCropDropped(
-  handler: (payload: CropDropped) => void,
-): Promise<UnlistenFn> {
-  return listen<CropDropped>(CROP_DROPPED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onCropDropped = subscriber<CropDropped>(CROP_DROPPED_EVENT);
 
 /**
  * Validates a page range string and counts matching pages across the specified PDF items (design §7.1).
@@ -608,9 +635,7 @@ export async function cancelJob(): Promise<void> {
  */
 export async function saveMergedPdf(
   ids: number[],
-  pageSize: PageSizeChoice,
-  orientation: PageOrientationChoice,
-  pdfA: boolean,
+  { pageSize, orientation, pdfA }: ImagesPdfLayout,
   password: string | null,
 ): Promise<SaveMergedPdfResult | null> {
   return invokeWrapped<SaveMergedPdfResult | null>("save_merged_pdf", {
@@ -625,9 +650,7 @@ export async function saveMergedPdf(
 /** Starts batch conversion of images to individual PDF files in the background (design §6.2, §7.1). */
 export async function startImagesToPdfs(
   ids: number[],
-  pageSize: PageSizeChoice,
-  orientation: PageOrientationChoice,
-  pdfA: boolean,
+  { pageSize, orientation, pdfA }: ImagesPdfLayout,
   password: string | null,
 ): Promise<void> {
   return invokeWrapped<void>("start_images_to_pdfs", {
@@ -643,9 +666,7 @@ export async function startImagesToPdfs(
 export async function startPdfsToImages(
   ids: number[],
   range: string,
-  format: RenderFormatChoice,
-  colorMode: RenderColorChoice,
-  dpi: number,
+  { format, colorMode, dpi }: PdfToImagesOptions,
 ): Promise<void> {
   return invokeWrapped<void>("start_pdfs_to_images", {
     ids,
@@ -657,37 +678,13 @@ export async function startPdfsToImages(
 }
 
 /** Subscribes to job progress updates (design §7.2). */
-export async function onJobProgress(
-  handler: (payload: JobProgressPayload) => void,
-): Promise<UnlistenFn> {
-  return listen<JobProgressPayload>(JOB_PROGRESS_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onJobProgress = subscriber<JobProgressPayload>(JOB_PROGRESS_EVENT);
 
 /** Subscribes to individual item completion events (design §7.2). */
-export async function onJobItem(
-  handler: (payload: JobItemPayload) => void,
-): Promise<UnlistenFn> {
-  return listen<JobItemPayload>(JOB_ITEM_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onJobItem = subscriber<JobItemPayload>(JOB_ITEM_EVENT);
 
 /** Subscribes to job finished events (design §7.2). */
-export async function onJobFinished(
-  handler: (payload: JobFinishedPayload) => void,
-): Promise<UnlistenFn> {
-  return listen<JobFinishedPayload>(JOB_FINISHED_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onJobFinished = subscriber<JobFinishedPayload>(JOB_FINISHED_EVENT);
 
 /** Subscribes to the answer for each page of `startDetectAll` (design §7.2). */
-export async function onLayoutPage(
-  handler: (payload: LayoutPagePayload) => void,
-): Promise<UnlistenFn> {
-  return listen<LayoutPagePayload>(LAYOUT_PAGE_EVENT, (event) => {
-    handler(event.payload);
-  });
-}
+export const onLayoutPage = subscriber<LayoutPagePayload>(LAYOUT_PAGE_EVENT);

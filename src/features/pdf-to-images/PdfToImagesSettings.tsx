@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 import { SegmentedControl, type SegmentedOption } from "../../components";
-import { formatErrorMessage, formatMessage, getTranslations } from "../../i18n";
+import { formatIpcError, formatMessage, getTranslations } from "../../i18n";
 import { checkPageRange, normalizeIpcError } from "../../ipc";
 import {
   hasInvalidCustomDpi,
   isJobActive,
+  maxPageCount,
+  readablePdfs,
   useAppDispatch,
   useAppState,
   type PageSelection,
@@ -50,9 +52,9 @@ export function PdfToImagesSettings() {
       return;
     }
 
-    const ids = pdfToImages.items
-      .filter((item) => item.error === null)
-      .map((item) => item.id);
+    const ids = readablePdfs({ items: pdfToImages.items }).map(
+      (item) => item.id,
+    );
 
     const seq = ++seqRef.current;
     dispatch({ type: "CHECK_RANGE_STARTED" });
@@ -91,12 +93,7 @@ export function PdfToImagesSettings() {
     if (selection !== "range" || pdfToImages.rangeText.trim().length > 0) {
       return;
     }
-    const maxPages = Math.max(
-      0,
-      ...pdfToImages.items
-        .filter((item) => item.error === null)
-        .map((item) => item.pageCount),
-    );
+    const maxPages = maxPageCount(pdfToImages);
     if (maxPages > 0) {
       dispatch({ type: "SET_RANGE_TEXT", rangeText: `1-${maxPages}` });
     }
@@ -167,11 +164,7 @@ export function PdfToImagesSettings() {
             {/* How many pages this converts is in the footer (design §10.1). */}
             {isRangeErrorShown && pdfToImages.rangeError !== null && (
               <span className="error-text" role="alert">
-                {formatErrorMessage(
-                  pdfToImages.rangeError.code,
-                  pdfToImages.rangeError.detail,
-                  language.language,
-                )}
+                {formatIpcError(pdfToImages.rangeError, language.language)}
               </span>
             )}
             {pdfToImages.items.length > 1 && (

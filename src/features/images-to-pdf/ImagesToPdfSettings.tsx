@@ -6,11 +6,14 @@ import {
 } from "../../components";
 import { OutputDirField } from "../output/OutputDirField";
 import { getTranslations } from "../../i18n";
-import type { OutputMode, PageOrientationChoice } from "../../ipc";
+import {
+  isPageSizeChoice,
+  type OutputMode,
+  type PageOrientationChoice,
+} from "../../ipc";
 import {
   imagesPdfFormat,
   isJobActive,
-  isPageSizeChoice,
   PAPER_SIZE_OPTIONS,
   type ImagesPdfFormat,
   useAppDispatch,

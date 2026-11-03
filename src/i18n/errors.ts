@@ -1,4 +1,4 @@
-import type { ErrorCode } from "../ipc";
+import type { ErrorCode, IpcError } from "../ipc";
 import type { Language } from "./types";
 
 export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
@@ -83,4 +83,9 @@ export function formatErrorMessage(
     return template.replaceAll("{detail}", detail);
   }
   return template;
+}
+
+/** `formatErrorMessage` for an error that came back from IPC. */
+export function formatIpcError(error: IpcError, lang: Language): string {
+  return formatErrorMessage(error.code, error.detail, lang);
 }

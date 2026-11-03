@@ -1,5 +1,4 @@
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -9,6 +8,7 @@ import {
   type FocusEvent as ReactFocusEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type Ref,
 } from "react";
 import { contextMenuPoint } from "../../components";
 import { getTranslations } from "../../i18n";
@@ -61,7 +61,7 @@ export interface PageGridHandle {
  * a hundred. It is a listbox that holds several selected pages, with one tab
  * stop that moves with the focus.
  */
-export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
+export function PageGrid({ ref }: { ref?: Ref<PageGridHandle> }) {
   const { organize, job, language } = useAppState();
   const dispatch = useAppDispatch();
   const t = getTranslations(language.language).organize;
@@ -360,4 +360,4 @@ export const PageGrid = forwardRef<PageGridHandle>(function PageGrid(_, ref) {
       )}
     </div>
   );
-});
+}

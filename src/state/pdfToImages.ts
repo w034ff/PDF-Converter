@@ -1,24 +1,16 @@
-import type { PdfItem, RenderColorChoice, RenderFormatChoice } from "../ipc";
+import {
+  RENDER_DPI_MAX,
+  RENDER_DPI_MIN,
+  type PdfItem,
+  type RenderColorChoice,
+  type RenderFormatChoice,
+} from "../ipc";
 import type { PdfToImagesAction, PdfToImagesState } from "./types";
 
 /**
  * Resolution choices matching the presets offered in the resolution dropdown (design §4.4).
  */
 export const DPI_CHOICES: readonly number[] = [72, 150, 300];
-
-/**
- * Minimum render resolution in dpi.
- * Matches `RENDER_DPI_MIN` in `crates/worker/src/lib.rs` (checked by
- * `src/ipc/rustConstants.test.ts`).
- */
-export const RENDER_DPI_MIN = 36;
-
-/**
- * Maximum render resolution in dpi.
- * Matches `RENDER_DPI_MAX` in `crates/worker/src/lib.rs` (checked by
- * `src/ipc/rustConstants.test.ts`).
- */
-export const RENDER_DPI_MAX = 1000;
 
 /** Default render resolution (150 dpi, design §4.4). */
 export const DEFAULT_RENDER_DPI = 150;
@@ -65,6 +57,27 @@ export function hasInvalidCustomDpi(
   state: Pick<PdfToImagesState, "isCustomDpi" | "customDpiText">,
 ): boolean {
   return state.isCustomDpi && parseCustomDpi(state.customDpiText) === null;
+}
+
+/**
+ * The PDFs that could be read, in list order: the ones a conversion and a
+ * range check take (design §6.1, §6.3).
+ */
+export function readablePdfs(
+  state: Pick<PdfToImagesState, "items">,
+): PdfItem[] {
+  return state.items.filter((item) => item.error === null);
+}
+
+/**
+ * The page count of the longest readable PDF, so `1-{it}` selects every
+ * page of every PDF (design §6.3); 0 when none could be read.
+ */
+export function maxPageCount(state: Pick<PdfToImagesState, "items">): number {
+  return readablePdfs(state).reduce(
+    (max, item) => Math.max(max, item.pageCount),
+    0,
+  );
 }
 
 /** The resolution fields that "PDF to images" and the crop tab share. */

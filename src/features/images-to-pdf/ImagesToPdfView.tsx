@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 import {
   DropZone,
   ErrorDisplay,
@@ -7,23 +7,15 @@ import {
 } from "../../components";
 import { OutputDirError } from "../output";
 import {
-  formatErrorMessage,
+  formatByteSize,
+  formatIpcError,
   formatMessage,
   pluralize,
   getTranslations,
   type Language,
   type Translations,
 } from "../../i18n";
-import {
-  addImages,
-  normalizeIpcError,
-  removeItems,
-  type AddSource,
-  type ImageItem,
-  type IpcError,
-  type JobItemPayload,
-  type Skipped,
-} from "../../ipc";
+import { addImages, type ImageItem, type JobItemPayload } from "../../ipc";
 import {
   isJobActive,
   jobRowStatus,
@@ -32,25 +24,11 @@ import {
   type JobRowStatus,
   type JobState,
 } from "../../state";
+import { useItemList } from "../items/useItemList";
 import { useThumbnail } from "../items/useThumbnail";
+import { rowDropClass, rowIndexOf, useRowDrag } from "./useRowDrag";
 import { formatSkippedSummary } from "../shared/skipped";
 import "./ImagesToPdf.css";
-
-function formatBytes(bytes: number): string {
-  const oneKb = 1024;
-  const oneMb = 1024 * 1024;
-  if (bytes >= oneMb) {
-    return `${(bytes / oneMb).toFixed(1)} MB`;
-  }
-  if (bytes >= 100 * oneKb) {
-    return `${Math.round(bytes / oneKb)} KB`;
-  }
-  if (bytes >= oneKb) {
-    const kb = bytes / oneKb;
-    return `${kb >= 10 ? Math.round(kb) : kb.toFixed(1)} KB`;
-  }
-  return `${bytes} B`;
-}
 
 function formatMeta(item: ImageItem, t: Translations): string | undefined {
   if (item.error !== null || item.format === null) {
@@ -70,7 +48,7 @@ function formatMeta(item: ImageItem, t: Translations): string | undefined {
       formatMessage(t.imagesToPdf.pageCount, { count: item.pageCount }),
     );
   }
-  parts.push(formatBytes(item.bytes));
+  parts.push(formatByteSize(item.bytes));
   return parts.join(" · ");
 }
 
@@ -105,9 +83,7 @@ function failureReason(
   language: Language,
 ): string | null {
   const error = item.error ?? result?.error ?? null;
-  return error === null
-    ? null
-    : formatErrorMessage(error.code, error.detail, language);
+  return error === null ? null : formatIpcError(error, language);
 }
 
 /**
@@ -134,43 +110,6 @@ function imageRowStatus(
   return item.error !== null
     ? { text: t.job.loadFailed, kind: "failed" }
     : null;
-}
-
-function findRowElement(target: EventTarget | null): HTMLElement | null {
-  if (target instanceof Element) {
-    const row = target.closest(".list-row");
-    if (row instanceof HTMLElement) {
-      return row;
-    }
-  }
-  return null;
-}
-
-function findRowFromPoint(x: number, y: number): HTMLElement | null {
-  const el = document.elementFromPoint?.(x, y);
-  return findRowElement(el);
-}
-
-function getRowDropClass(
-  index: number,
-  dragIdx: number | null,
-  overIdx: number | null,
-): string | undefined {
-  if (dragIdx === null) {
-    return undefined;
-  }
-  if (index === dragIdx) {
-    return "is-dragging";
-  }
-  if (overIdx !== null && index === overIdx) {
-    if (dragIdx < overIdx) {
-      return "is-drop-after";
-    }
-    if (dragIdx > overIdx) {
-      return "is-drop-before";
-    }
-  }
-  return undefined;
 }
 
 function ImageThumbnail({ id, name }: { id: number; name: string }) {
@@ -223,54 +162,27 @@ export function ImagesToPdfView() {
   const disabled = isJobActive(job);
   const headingId = useId();
 
-  const [skipped, setSkipped] = useState<Skipped | null>(null);
-  const [error, setError] = useState<IpcError | null>(null);
+  const list = useItemList({
+    items: imagesToPdf.items,
+    add: addImages,
+    onAdded: (items) => dispatch({ type: "ADD_IMAGE_ITEMS", items }),
+    onRemoved: (id) => dispatch({ type: "REMOVE_IMAGE_ITEM", id }),
+    onCleared: () => dispatch({ type: "CLEAR_IMAGE_ITEMS" }),
+  });
 
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
-
-  const dragIndexRef = useRef<number | null>(null);
-  const overIndexRef = useRef<number | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
   const focusedItemIdRef = useRef<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map());
-
-  async function handleAdd(source: AddSource) {
-    setError(null);
-    try {
-      const result = await addImages(source);
-      if (result !== null) {
-        if (result.added.length > 0) {
-          dispatch({ type: "ADD_IMAGE_ITEMS", items: result.added });
-        }
-        setSkipped(result.skipped);
-      }
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleRemove(id: number) {
-    setError(null);
-    try {
-      await removeItems([id]);
-      dispatch({ type: "REMOVE_IMAGE_ITEM", id });
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
-
-  async function handleClearAll() {
-    setError(null);
-    const ids = imagesToPdf.items.map((item) => item.id);
-    try {
-      await removeItems(ids);
-      dispatch({ type: "CLEAR_IMAGE_ITEMS" });
-      setSkipped(null);
-    } catch (err: unknown) {
-      setError(normalizeIpcError(err));
-    }
-  }
+  const moveItem = useCallback(
+    (fromIndex: number, toIndex: number) =>
+      dispatch({ type: "MOVE_IMAGE_ITEM", fromIndex, toIndex }),
+    [dispatch],
+  );
+  const { dragIndex, overIndex, handlers } = useRowDrag(
+    listRef,
+    disabled,
+    moveItem,
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLOListElement>) => {
     if (
@@ -280,167 +192,21 @@ export function ImagesToPdfView() {
     ) {
       return;
     }
-    const row = findRowElement(e.target);
-    if (!row || !listRef.current) {
-      return;
-    }
-    const i = Array.from(listRef.current.children).indexOf(row);
-    if (i < 0) {
+    const i = rowIndexOf(listRef.current, e.target);
+    if (i === null) {
       return;
     }
 
     if (e.key === "ArrowUp" && i > 0) {
       e.preventDefault();
       focusedItemIdRef.current = imagesToPdf.items[i].id;
-      dispatch({ type: "MOVE_IMAGE_ITEM", fromIndex: i, toIndex: i - 1 });
+      moveItem(i, i - 1);
     } else if (e.key === "ArrowDown" && i < imagesToPdf.items.length - 1) {
       e.preventDefault();
       focusedItemIdRef.current = imagesToPdf.items[i].id;
-      dispatch({ type: "MOVE_IMAGE_ITEM", fromIndex: i, toIndex: i + 1 });
+      moveItem(i, i + 1);
     }
   };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLOListElement>) => {
-    if (disabled || e.button !== 0) {
-      return;
-    }
-    if (e.target instanceof Element && e.target.closest("button")) {
-      return;
-    }
-    const row = findRowElement(e.target);
-    if (!row || !listRef.current) {
-      return;
-    }
-    const i = Array.from(listRef.current.children).indexOf(row);
-    if (i < 0) {
-      return;
-    }
-
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignored if pointer capture is unsupported in test environments
-    }
-
-    dragIndexRef.current = i;
-    overIndexRef.current = i;
-    setDragIndex(i);
-    setOverIndex(i);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLOListElement>) => {
-    if (dragIndexRef.current === null || !listRef.current) {
-      return;
-    }
-    const row = findRowElement(e.target);
-    if (row) {
-      const i = Array.from(listRef.current.children).indexOf(row);
-      if (i >= 0 && i !== overIndexRef.current) {
-        overIndexRef.current = i;
-        setOverIndex(i);
-      }
-    }
-  };
-
-  const handlePointerUp = (e: React.PointerEvent<HTMLOListElement>) => {
-    try {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-      // Ignored
-    }
-    const fromIdx = dragIndexRef.current;
-    if (fromIdx === null || !listRef.current) {
-      return;
-    }
-    const row = findRowElement(e.target);
-    const toIdx = row
-      ? Array.from(listRef.current.children).indexOf(row)
-      : overIndexRef.current;
-    if (toIdx !== null && toIdx >= 0 && toIdx !== fromIdx) {
-      dispatch({
-        type: "MOVE_IMAGE_ITEM",
-        fromIndex: fromIdx,
-        toIndex: toIdx,
-      });
-    }
-    dragIndexRef.current = null;
-    overIndexRef.current = null;
-    setDragIndex(null);
-    setOverIndex(null);
-  };
-
-  const handlePointerCancel = (e: React.PointerEvent<HTMLOListElement>) => {
-    try {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-      // Ignored
-    }
-    dragIndexRef.current = null;
-    overIndexRef.current = null;
-    setDragIndex(null);
-    setOverIndex(null);
-  };
-
-  // Window pointer handlers to track drag even if cursor leaves row bounds
-  useEffect(() => {
-    if (dragIndex === null) {
-      return;
-    }
-
-    const onWindowPointerMove = (e: PointerEvent) => {
-      const row = findRowFromPoint(e.clientX, e.clientY);
-      if (row && listRef.current) {
-        const i = Array.from(listRef.current.children).indexOf(row);
-        if (i >= 0 && i !== overIndexRef.current) {
-          overIndexRef.current = i;
-          setOverIndex(i);
-        }
-      }
-    };
-
-    const onWindowPointerUp = (e: PointerEvent) => {
-      const fromIdx = dragIndexRef.current;
-      let toIdx = overIndexRef.current;
-      const row = findRowFromPoint(e.clientX, e.clientY);
-      if (row && listRef.current) {
-        const i = Array.from(listRef.current.children).indexOf(row);
-        if (i >= 0) {
-          toIdx = i;
-        }
-      }
-      if (fromIdx !== null && toIdx !== null && toIdx !== fromIdx) {
-        dispatch({
-          type: "MOVE_IMAGE_ITEM",
-          fromIndex: fromIdx,
-          toIndex: toIdx,
-        });
-      }
-      dragIndexRef.current = null;
-      overIndexRef.current = null;
-      setDragIndex(null);
-      setOverIndex(null);
-    };
-
-    const onWindowPointerCancel = () => {
-      dragIndexRef.current = null;
-      overIndexRef.current = null;
-      setDragIndex(null);
-      setOverIndex(null);
-    };
-
-    window.addEventListener("pointermove", onWindowPointerMove);
-    window.addEventListener("pointerup", onWindowPointerUp);
-    window.addEventListener("pointercancel", onWindowPointerCancel);
-    return () => {
-      window.removeEventListener("pointermove", onWindowPointerMove);
-      window.removeEventListener("pointerup", onWindowPointerUp);
-      window.removeEventListener("pointercancel", onWindowPointerCancel);
-    };
-  }, [dragIndex, dispatch]);
 
   // Restore focus to moved row using refs after keyboard reordering
   useEffect(() => {
@@ -453,10 +219,10 @@ export function ImagesToPdfView() {
     }
   });
 
-  const errorDisplay = error !== null && (
+  const errorDisplay = list.error !== null && (
     <ErrorDisplay
-      message={formatErrorMessage(error.code, error.detail, language.language)}
-      onDismiss={() => setError(null)}
+      message={formatIpcError(list.error, language.language)}
+      onDismiss={list.dismissError}
       dismissLabel={t.errors.dismiss}
     />
   );
@@ -470,15 +236,15 @@ export function ImagesToPdfView() {
           description={t.dropZone.descriptionImages}
           addFilesLabel={t.dropZone.addImages}
           addFolderLabel={t.dropZone.addFolder}
-          onAddFiles={() => void handleAdd("files")}
-          onAddFolder={() => void handleAdd("folder")}
+          onAddFiles={() => void list.add("files")}
+          onAddFolder={() => void list.add("folder")}
         />
       </div>
     );
   }
 
   const isMerge = imagesToPdf.output === "merge";
-  const skippedText = formatSkippedSummary(t, skipped);
+  const skippedText = formatSkippedSummary(t, list.skipped);
 
   return (
     <div className="images-view">
@@ -501,7 +267,7 @@ export function ImagesToPdfView() {
             type="button"
             className="btn btn-ghost"
             disabled={disabled}
-            onClick={() => void handleAdd("files")}
+            onClick={() => void list.add("files")}
           >
             {t.imagesToPdf.addImages}
           </button>
@@ -509,7 +275,7 @@ export function ImagesToPdfView() {
             type="button"
             className="btn btn-ghost"
             disabled={disabled}
-            onClick={() => void handleAdd("folder")}
+            onClick={() => void list.add("folder")}
           >
             {t.imagesToPdf.addFolder}
           </button>
@@ -517,7 +283,7 @@ export function ImagesToPdfView() {
             type="button"
             className="btn btn-ghost"
             disabled={disabled}
-            onClick={() => void handleClearAll()}
+            onClick={() => void list.clearAll()}
           >
             {t.imagesToPdf.clearAll}
           </button>
@@ -530,10 +296,7 @@ export function ImagesToPdfView() {
             ref={listRef}
             className={`images-list ${disabled ? "is-disabled" : ""} ${dragIndex !== null ? "is-dragging-active" : ""}`}
             aria-labelledby={headingId}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerCancel}
+            {...handlers}
             onKeyDown={handleKeyDown}
           >
             {imagesToPdf.items.map((item, index) => {
@@ -562,31 +325,17 @@ export function ImagesToPdfView() {
                   }
                   error={reason}
                   status={status}
-                  className={getRowDropClass(index, dragIndex, overIndex)}
+                  className={rowDropClass(index, dragIndex, overIndex)}
                   data-row-index={index}
                   tabIndex={disabled ? undefined : 0}
                   onMoveUp={
-                    disabled
-                      ? undefined
-                      : () =>
-                          dispatch({
-                            type: "MOVE_IMAGE_ITEM",
-                            fromIndex: index,
-                            toIndex: index - 1,
-                          })
+                    disabled ? undefined : () => moveItem(index, index - 1)
                   }
                   onMoveDown={
-                    disabled
-                      ? undefined
-                      : () =>
-                          dispatch({
-                            type: "MOVE_IMAGE_ITEM",
-                            fromIndex: index,
-                            toIndex: index + 1,
-                          })
+                    disabled ? undefined : () => moveItem(index, index + 1)
                   }
                   onRemove={
-                    disabled ? undefined : () => void handleRemove(item.id)
+                    disabled ? undefined : () => void list.remove(item.id)
                   }
                   canMoveUp={!disabled && index > 0}
                   canMoveDown={
@@ -658,7 +407,7 @@ export function ImagesToPdfView() {
                         type="button"
                         className="btn btn-ghost"
                         disabled={disabled}
-                        onClick={() => void handleRemove(item.id)}
+                        onClick={() => void list.remove(item.id)}
                       >
                         {t.imagesToPdf.remove}
                       </button>

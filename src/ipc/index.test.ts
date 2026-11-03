@@ -15,6 +15,7 @@ import {
   getThumbnail,
   isErrorCode,
   isIpcError,
+  isPageSizeChoice,
   isPageSizePt,
   isPdfItem,
   isSettings,
@@ -69,6 +70,7 @@ import {
   type PageImage,
   type PageSizeChoice,
   type PdfItem,
+  type PdfToImagesOptions,
   type Settings,
   type SettingsInput,
   type UnlockResult,
@@ -589,7 +591,11 @@ describe("ipc", () => {
         return { savedName: "out.pdf" };
       });
 
-      const res = await saveMergedPdf([1, 2], "fit", "auto", true, null);
+      const res = await saveMergedPdf(
+        [1, 2],
+        { pageSize: "fit", orientation: "auto", pdfA: true },
+        null,
+      );
       expect(res).toEqual({ savedName: "out.pdf" });
       expect(calls).toEqual([
         [
@@ -607,11 +613,23 @@ describe("ipc", () => {
 
     it("tells a cancelled dialog from a merge that wrote no PDF", async () => {
       mockIPC(() => null);
-      expect(await saveMergedPdf([1], "fit", "auto", false, null)).toBeNull();
+      expect(
+        await saveMergedPdf(
+          [1],
+          { pageSize: "fit", orientation: "auto", pdfA: false },
+          null,
+        ),
+      ).toBeNull();
 
       clearMocks();
       mockIPC(() => ({ savedName: null }));
-      expect(await saveMergedPdf([1], "fit", "auto", false, null)).toEqual({
+      expect(
+        await saveMergedPdf(
+          [1],
+          { pageSize: "fit", orientation: "auto", pdfA: false },
+          null,
+        ),
+      ).toEqual({
         savedName: null,
       });
     });
@@ -623,7 +641,11 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await startImagesToPdfs([1, 2], "a4", "portrait", true, null);
+      await startImagesToPdfs(
+        [1, 2],
+        { pageSize: "a4", orientation: "portrait", pdfA: true },
+        null,
+      );
       expect(calls).toEqual([
         [
           "start_images_to_pdfs",
@@ -645,7 +667,11 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await startPdfsToImages([1, 2], "1-3", "png", "color", 150);
+      await startPdfsToImages([1, 2], "1-3", {
+        format: "png",
+        colorMode: "color",
+        dpi: 150,
+      });
       expect(calls).toEqual([
         [
           "start_pdfs_to_images",
@@ -656,6 +682,28 @@ describe("ipc", () => {
             colorMode: "color",
             dpi: 150,
           },
+        ],
+      ]);
+    });
+
+    it("sends only the options a command takes, from a larger object", async () => {
+      const calls: unknown[] = [];
+      mockIPC((cmd, args) => {
+        calls.push([cmd, args]);
+        return undefined;
+      });
+      const options: PdfToImagesOptions = {
+        format: "webp",
+        colorMode: "gray",
+        dpi: 72,
+      };
+      const state = { ...options, rangeText: "2-", outputDir: "out" };
+
+      await startPdfsToImages([4], "2-", state);
+      expect(calls).toEqual([
+        [
+          "start_pdfs_to_images",
+          { ids: [4], range: "2-", format: "webp", colorMode: "gray", dpi: 72 },
         ],
       ]);
     });
@@ -695,7 +743,13 @@ describe("ipc", () => {
         return undefined;
       });
 
-      await startCropExport(3, regions, "webp", "gray", 300, false, true);
+      await startCropExport(3, regions, {
+        format: "webp",
+        colorMode: "gray",
+        dpi: 300,
+        photoNative: false,
+        photoOnly: true,
+      });
       expect(calls).toEqual([
         [
           "start_crop_export",
@@ -718,7 +772,13 @@ describe("ipc", () => {
       });
 
       await expect(
-        startCropExport(3, [], "png", "color", 150, true, false),
+        startCropExport(3, [], {
+          format: "png",
+          colorMode: "color",
+          dpi: 150,
+          photoNative: true,
+          photoOnly: false,
+        }),
       ).rejects.toEqual({ code: "InvalidParams", detail: null });
     });
   });
@@ -1140,6 +1200,17 @@ describe("ipc", () => {
       expect(isSettings(withOrganize({ output: "merge" }))).toBe(false);
       expect(isSettings(withOrganize({ encrypt: "true" }))).toBe(false);
       expect(isSettings(withOrganize({ outputDir: "out" }))).toBe(false);
+    });
+
+    describe("isPageSizeChoice", () => {
+      it("accepts the page sizes of PageSizeChoice and nothing else", () => {
+        for (const size of ["fit", "a4", "jisB5", "legal"]) {
+          expect(isPageSizeChoice(size)).toBe(true);
+        }
+        expect(isPageSizeChoice("b5")).toBe(false);
+        expect(isPageSizeChoice("toString")).toBe(false);
+        expect(isPageSizeChoice(null)).toBe(false);
+      });
     });
 
     describe("isPageSizePt", () => {

@@ -20,16 +20,6 @@ export const PAPER_SIZE_OPTIONS = [
   { value: "legal", label: "Legal (8.5 × 14 in)" },
 ] satisfies readonly PaperSizeOption[];
 
-export function isPaperSize(
-  value: unknown,
-): value is Exclude<PageSizeChoice, "fit"> {
-  return PAPER_SIZE_OPTIONS.some((option) => option.value === value);
-}
-
-export function isPageSizeChoice(value: unknown): value is PageSizeChoice {
-  return value === "fit" || isPaperSize(value);
-}
-
 export function imagesPdfFormat(
   state: Pick<ImagesToPdfState, "pdfA" | "encrypt">,
 ): ImagesPdfFormat {
