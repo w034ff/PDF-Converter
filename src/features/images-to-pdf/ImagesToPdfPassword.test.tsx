@@ -293,7 +293,7 @@ describe("starting with a password", () => {
     await screen.findByRole("dialog", { name: "パスワードを付ける" });
     expect(
       screen.getByText(
-        "保存する 2 個の PDF すべてに、同じパスワードを付けます。",
+        "保存する 2 個の PDF すべてに、同じパスワードを付けます",
       ),
     ).toBeInTheDocument();
     // No folder is chosen yet, and the dialog comes before that question.

@@ -14,11 +14,11 @@ describe("formatSkippedSummary", () => {
   it("formats non-zero skip counts", () => {
     expect(
       formatSkippedSummary(ja, { unsupported: 2, folders: 0, duplicates: 0 }),
-    ).toBe("（対象外: 非対応 2 件）");
+    ).toBe("（対象外：非対応 2 件）");
 
     expect(
       formatSkippedSummary(ja, { unsupported: 1, folders: 2, duplicates: 3 }),
-    ).toBe("（対象外: 非対応 1 件、フォルダ 2 件、重複 3 件）");
+    ).toBe("（対象外：非対応 1 件、フォルダ 2 件、重複 3 件）");
   });
 });
 

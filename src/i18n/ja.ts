@@ -131,7 +131,7 @@ export const ja = {
     },
     batch: {
       pdfCount: "PDF {count} 件",
-      skippedSummary: "（対象外: {details}）",
+      skippedSummary: "（対象外：{details}）",
       skippedUnsupported: "非対応 {count} 件",
       skippedFolderSingle: "フォルダ {count} 件",
       skippedFolders: "フォルダ {count} 件",
@@ -197,9 +197,9 @@ export const ja = {
     passwordProtected: "パスワード付き",
     passwordDialog: {
       title: "パスワードを付ける",
-      eachNoticeSingle: "保存する PDF にパスワードを付けます。",
+      eachNoticeSingle: "保存する PDF にパスワードを付けます",
       eachNoticeMultiple:
-        "保存する {count} 個の PDF すべてに、同じパスワードを付けます。",
+        "保存する {count} 個の PDF すべてに、同じパスワードを付けます",
       passwordLabel: "パスワード",
       confirmLabel: "もう一度入力",
       showPassword: "表示",
@@ -210,9 +210,9 @@ export const ja = {
       conditionNotMet: "満たしていません",
       tooLong: "{max} 文字までです",
       forgetWarningSingle:
-        "パスワードを忘れると、この PDF はだれも開けなくなります。",
+        "パスワードを忘れると、この PDF はだれも開けなくなります",
       forgetWarningMultiple:
-        "パスワードを忘れると、これらの PDF はだれも開けなくなります。",
+        "パスワードを忘れると、これらの PDF はだれも開けなくなります",
       cancel: "キャンセル",
       confirmMerge: "保存先を選ぶ…",
     },
@@ -238,7 +238,7 @@ export const ja = {
     empty: {
       title: "PDF をドロップ",
       description:
-        "ページの図・グラフ・表・写真を自動で検出し、画像として書き出せます。写真は元の画質のまま保存できます。",
+        "ページの図・グラフ・表・写真を自動で検出し、画像として書き出せます。写真は元の画質のまま保存できます",
       open: "PDF を開く",
     },
     openAnother: "別の PDF を開く",
@@ -361,7 +361,7 @@ export const ja = {
       sectionAria: "範囲と書き出しの設定",
       empty: "範囲はまだありません",
       emptyHint:
-        "ページの候補や写真を押すと、範囲になります。候補にないものは「範囲を描く」で描けます。",
+        "ページの候補や写真を押すと、範囲になります。候補にないものは「範囲を描く」で描けます",
       detectAll: "全ページの候補を追加",
       pageHeadSingle: "p.{page} · {count} 個",
       pageHeadMultiple: "p.{page} · {count} 個",
@@ -418,7 +418,7 @@ export const ja = {
     dropZone: {
       title: "PDF をドロップ",
       description:
-        "ページを並べ替え・削除・回転して、結合または分割して保存します。",
+        "ページを並べ替え・削除・回転して、結合または分割して保存します",
       addPdfs: "PDF を追加",
       addFolder: "フォルダを追加",
     },
@@ -439,7 +439,7 @@ export const ja = {
     },
     clearDialog: {
       title: "すべての PDF を外しますか？",
-      body: "ページの並び順や回転・削除は失われ、元に戻せません。",
+      body: "ページの並び順や回転・削除は失われ、元に戻せません",
       cancel: "キャンセル",
       confirm: "すべて外す",
     },
@@ -468,7 +468,7 @@ export const ja = {
       empty: "ページがありません",
       emptyHint: "削除した場合は Ctrl+Z で元に戻せます",
     },
-    skippedNotice: "追加されなかったファイル: {details}",
+    skippedNotice: "追加されなかったファイル：{details}",
     pageMenu: {
       label: "ページの操作",
       addBreak: "前に区切りを追加",
@@ -478,18 +478,18 @@ export const ja = {
       outputTitle: "保存の方法",
       outputSingle: "結合",
       outputSplit: "分割",
-      outputSingleHint: "並び順に 1 つの PDF に結合します。",
-      outputSplitHint: "区切りごとに複数の PDF に分割します。",
+      outputSingleHint: "並び順に 1 つの PDF に結合します",
+      outputSplitHint: "区切りごとに複数の PDF に分割します",
       breaksTitle: "区切り",
-      breaksHint: "ページの間を押して区切りを追加・解除できます。",
+      breaksHint: "ページの間を押して区切りを追加・解除できます",
       breaksEachPage: "1 ページごと",
       breaksEachPdf: "元の PDF ごと",
       breaksClear: "すべて解除",
       password: "パスワードを付ける",
-      encryptedNotice: "元の PDF のパスワードは引き継がれません。",
+      encryptedNotice: "元の PDF のパスワードは引き継がれません",
       aboutTitle: "出力ファイルについて",
       about:
-        "注釈や入力内容は見た目のまま固定されます。しおりとリンクは維持され、作成者などの文書情報は引き継がれません。",
+        "注釈や入力内容は見た目のまま固定されます。しおりとリンクは維持され、作成者などの文書情報は引き継がれません",
     },
     footer: {
       noPdfs: "PDF を追加してください",
@@ -515,12 +515,12 @@ export const ja = {
       savedSingle: "{count} ページを 1 つの PDF に保存しました",
       savedMultiple: "{count} ページを 1 つの PDF に結合しました",
       replaced: "置き換えた {name} を一覧から外しました",
-      failed: "PDF の保存に失敗しました（{name}: {message}）",
+      failed: "PDF の保存に失敗しました（{name}：{message}）",
       failedWithoutName: "PDF の保存に失敗しました（{message}）",
       savedPartsSingle: "{count} 個の PDF を保存しました",
       savedPartsMultiple: "{count} 個の PDF を保存しました",
-      failedPart: "（{part} 番目の PDF: {name}: {message}）",
-      failedPartWithoutName: "（{part} 番目の PDF: {message}）",
+      failedPart: "（{part} 番目の PDF：{name}：{message}）",
+      failedPartWithoutName: "（{part} 番目の PDF：{message}）",
     },
     keyHints: {
       title: "キー操作",
@@ -584,7 +584,7 @@ export const ja = {
   about: {
     title: "このアプリについて",
     version: "バージョン {version}",
-    pdfiumUnavailable: "pdfium を読み込めません: {error}",
+    pdfiumUnavailable: "pdfium を読み込めません：{error}",
     loadFailed: "バージョンを取得できませんでした",
     appLicense: "このアプリのライセンス（MIT）",
     showThirdPartyLicenses: "第三者ライセンスを表示",

@@ -596,7 +596,7 @@ describe("App", () => {
       const dialog = openAbout();
 
       expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-        "pdfium を読み込めません: PdfiumUnavailable: library not found",
+        "pdfium を読み込めません：PdfiumUnavailable: library not found",
       );
     });
 

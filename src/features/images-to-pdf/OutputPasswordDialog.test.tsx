@@ -100,7 +100,7 @@ describe("OutputPasswordDialog", () => {
     expect(heading.nextSibling).toBeNull();
     expect(
       screen.getByText(
-        "パスワードを忘れると、この PDF はだれも開けなくなります。",
+        "パスワードを忘れると、この PDF はだれも開けなくなります",
       ),
     ).toBeInTheDocument();
   });
@@ -109,12 +109,12 @@ describe("OutputPasswordDialog", () => {
     renderDialog({ mode: "each", count: 3 });
     expect(
       screen.getByText(
-        "保存する 3 個の PDF すべてに、同じパスワードを付けます。",
+        "保存する 3 個の PDF すべてに、同じパスワードを付けます",
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "パスワードを忘れると、これらの PDF はだれも開けなくなります。",
+        "パスワードを忘れると、これらの PDF はだれも開けなくなります",
       ),
     ).toBeInTheDocument();
     expect(primaryButton("始める")).toBeDisabled();
@@ -123,11 +123,11 @@ describe("OutputPasswordDialog", () => {
   it("speaks of one PDF for one at a time with a single PDF", () => {
     renderDialog({ mode: "each", count: 1 });
     expect(
-      screen.getByText("保存する PDF にパスワードを付けます。"),
+      screen.getByText("保存する PDF にパスワードを付けます"),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "パスワードを忘れると、この PDF はだれも開けなくなります。",
+        "パスワードを忘れると、この PDF はだれも開けなくなります",
       ),
     ).toBeInTheDocument();
   });

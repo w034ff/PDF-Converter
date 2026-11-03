@@ -82,7 +82,7 @@ describe("the choice of how to save", () => {
       within(choice).getByRole("button", { name: "結合" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.getByText("並び順に 1 つの PDF に結合します。"),
+      screen.getByText("並び順に 1 つの PDF に結合します"),
     ).toBeInTheDocument();
     expect(screen.queryByText("区切り")).not.toBeInTheDocument();
     expect(screen.queryByText("保存先フォルダ")).not.toBeInTheDocument();
@@ -99,11 +99,11 @@ describe("the choice of how to save", () => {
     fireEvent.click(screen.getByRole("button", { name: "分割" }));
 
     expect(
-      screen.getByText("区切りごとに複数の PDF に分割します。"),
+      screen.getByText("区切りごとに複数の PDF に分割します"),
     ).toBeInTheDocument();
     expect(screen.getByText("区切り")).toBeInTheDocument();
     expect(
-      screen.getByText("ページの間を押して区切りを追加・解除できます。"),
+      screen.getByText("ページの間を押して区切りを追加・解除できます"),
     ).toBeInTheDocument();
     for (const name of ["1 ページごと", "元の PDF ごと"]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();

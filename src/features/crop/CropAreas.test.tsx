@@ -561,7 +561,7 @@ describe("the list of areas", () => {
     expect(screen.getByText("範囲はまだありません")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "ページの候補や写真を押すと、範囲になります。候補にないものは「範囲を描く」で描けます。",
+        "ページの候補や写真を押すと、範囲になります。候補にないものは「範囲を描く」で描けます",
       ),
     ).toBeInTheDocument();
   });

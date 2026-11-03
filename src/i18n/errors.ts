@@ -28,9 +28,9 @@ export const ERROR_MESSAGES_JA: Record<ErrorCode, string> = {
   LayoutUnavailable:
     "候補を表示できません（レイアウトの解析を使えません）。範囲は手で選べます",
   OutputTooLarge:
-    "出力サイズが上限を超えています（{detail}）。分割して保存してください。",
+    "出力サイズが上限を超えています（{detail}）。分割して保存してください",
   MergeTooLarge:
-    "結合する PDF が大きすぎます（見積もり / この PC の上限: {detail}）。「1 枚ずつ」で保存するか、画像を減らしてください。",
+    "結合する PDF が大きすぎます（見積もり / この PC の上限：{detail}）。「1 枚ずつ」で保存するか、画像を減らしてください",
 };
 
 export const ERROR_MESSAGES_EN: Record<ErrorCode, string> = {

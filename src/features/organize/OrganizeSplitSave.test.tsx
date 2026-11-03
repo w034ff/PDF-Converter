@@ -192,7 +192,7 @@ describe("starting the save in parts", () => {
     expect(callsOf(calls, "start_organize_split")).toHaveLength(0);
     const dialog = screen.getByRole("dialog", { name: "パスワードを付ける" });
     expect(dialog).toHaveTextContent(
-      "保存する 2 個の PDF すべてに、同じパスワードを付けます。",
+      "保存する 2 個の PDF すべてに、同じパスワードを付けます",
     );
     fireEvent.change(within(dialog).getByLabelText("パスワード"), {
       target: { value: "s3cret" },
@@ -432,7 +432,7 @@ describe("what the bottom bar says after saving in parts", () => {
 
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent(
-      `変換が終わりました：成功 1 件 · 失敗 2 件（2 番目の PDF: report.pdf: ${formatErrorMessage(error.code, error.detail, "ja")}）`,
+      `変換が終わりました：成功 1 件 · 失敗 2 件（2 番目の PDF：report.pdf：${formatErrorMessage(error.code, error.detail, "ja")}）`,
     );
     expect(status).toHaveClass("error-text");
   });
@@ -446,7 +446,7 @@ describe("what the bottom bar says after saving in parts", () => {
     await flush();
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      `成功 2 件 · 失敗 1 件（1 番目の PDF: ${formatErrorMessage(error.code, error.detail, "ja")}）`,
+      `成功 2 件 · 失敗 1 件（1 番目の PDF：${formatErrorMessage(error.code, error.detail, "ja")}）`,
     );
   });
 

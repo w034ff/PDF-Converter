@@ -329,7 +329,7 @@ describe("ImagesToPdf (T11)", () => {
 
     // Skipped message is displayed in header
     expect(
-      screen.getByText("（対象外: 非対応 1 件、フォルダ 1 件）"),
+      screen.getByText("（対象外：非対応 1 件、フォルダ 1 件）"),
     ).toBeInTheDocument();
 
     // Footer shows page count, and summary is no longer below the list
@@ -1519,7 +1519,7 @@ describe("ImagesToPdf (T11)", () => {
       expect(screen.getByText("photo.jpg")).toBeInTheDocument();
       expect(screen.getByText("diagram.png")).toBeInTheDocument();
     });
-    expect(screen.getByText("（対象外: 非対応 1 件）")).toBeInTheDocument();
+    expect(screen.getByText("（対象外：非対応 1 件）")).toBeInTheDocument();
 
     // 1. Try removing first item (photo.jpg)
     const removeButtons = screen.getAllByRole("button", {
@@ -1558,7 +1558,7 @@ describe("ImagesToPdf (T11)", () => {
     expect(screen.getByText("photo.jpg")).toBeInTheDocument();
     expect(screen.getByText("diagram.png")).toBeInTheDocument();
     expect(screen.queryByTestId("drop-zone")).not.toBeInTheDocument();
-    expect(screen.getByText("（対象外: 非対応 1 件）")).toBeInTheDocument();
+    expect(screen.getByText("（対象外：非対応 1 件）")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
