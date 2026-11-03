@@ -15,6 +15,7 @@ import {
   getThumbnail,
   isErrorCode,
   isIpcError,
+  isPageSizeChoice,
   isPageSizePt,
   isPdfItem,
   isSettings,
@@ -1140,6 +1141,17 @@ describe("ipc", () => {
       expect(isSettings(withOrganize({ output: "merge" }))).toBe(false);
       expect(isSettings(withOrganize({ encrypt: "true" }))).toBe(false);
       expect(isSettings(withOrganize({ outputDir: "out" }))).toBe(false);
+    });
+
+    describe("isPageSizeChoice", () => {
+      it("accepts the page sizes of PageSizeChoice and nothing else", () => {
+        for (const size of ["fit", "a4", "jisB5", "legal"]) {
+          expect(isPageSizeChoice(size)).toBe(true);
+        }
+        expect(isPageSizeChoice("b5")).toBe(false);
+        expect(isPageSizeChoice("toString")).toBe(false);
+        expect(isPageSizeChoice(null)).toBe(false);
+      });
     });
 
     describe("isPageSizePt", () => {

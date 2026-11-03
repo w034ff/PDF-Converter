@@ -2,12 +2,8 @@ import { describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { OUTPUT_PASSWORD_MAX_LENGTH } from "../features/images-to-pdf/outputPassword";
-import {
-  MAX_PDF_PAGES,
-  PAGE_VIEW_MAX_SIDE,
-  RENDER_DPI_MAX,
-  RENDER_DPI_MIN,
-} from "../state";
+import { MAX_PDF_PAGES, PAGE_VIEW_MAX_SIDE } from "../state";
+import { RENDER_DPI_MAX, RENDER_DPI_MIN } from "./index";
 
 /**
  * Constants of the front end that copy a Rust constant, because the screen

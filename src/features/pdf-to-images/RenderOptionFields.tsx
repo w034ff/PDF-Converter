@@ -5,14 +5,13 @@ import {
   type SegmentedOption,
 } from "../../components";
 import { formatMessage, getTranslations, type Translations } from "../../i18n";
-import type { RenderColorChoice, RenderFormatChoice } from "../../ipc";
 import {
-  DPI_CHOICES,
   RENDER_DPI_MAX,
   RENDER_DPI_MIN,
-  parseCustomDpi,
-  useAppState,
-} from "../../state";
+  type RenderColorChoice,
+  type RenderFormatChoice,
+} from "../../ipc";
+import { DPI_CHOICES, parseCustomDpi, useAppState } from "../../state";
 import { useDelayedReveal } from "./useDelayedReveal";
 import "./pdfToImages.css";
 

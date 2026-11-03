@@ -1,7 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { isPageSizeChoice } from "../state/imagesToPdf";
-import { RENDER_DPI_MAX, RENDER_DPI_MIN } from "../state/pdfToImages";
 import type { AddResult } from "./generated/AddResult";
 import type { AddSource } from "./generated/AddSource";
 import type { Candidate } from "./generated/Candidate";
@@ -243,6 +241,38 @@ export function isUnlockResult(value: unknown): value is UnlockResult {
   }
   const { items } = value;
   return Array.isArray(items) && items.every(isPdfItem);
+}
+
+/**
+ * Minimum render resolution in dpi.
+ * Matches `RENDER_DPI_MIN` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`).
+ */
+export const RENDER_DPI_MIN = 36;
+
+/**
+ * Maximum render resolution in dpi.
+ * Matches `RENDER_DPI_MAX` in `crates/worker/src/lib.rs` (checked by
+ * `src/ipc/rustConstants.test.ts`).
+ */
+export const RENDER_DPI_MAX = 1000;
+
+const PAGE_SIZE_CHOICES = {
+  fit: true,
+  a3: true,
+  a4: true,
+  a5: true,
+  jisB4: true,
+  jisB5: true,
+  letter: true,
+  legal: true,
+} satisfies Record<PageSizeChoice, true>;
+
+export function isPageSizeChoice(value: unknown): value is PageSizeChoice {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(PAGE_SIZE_CHOICES, value)
+  );
 }
 
 function isRenderFormatChoice(value: unknown): value is RenderFormatChoice {

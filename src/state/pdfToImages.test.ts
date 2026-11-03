@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { CheckPageRangeResult, IpcError, PdfItem } from "../ipc";
+import {
+  RENDER_DPI_MAX,
+  RENDER_DPI_MIN,
+  type CheckPageRangeResult,
+  type IpcError,
+  type PdfItem,
+} from "../ipc";
 import {
   DEFAULT_RENDER_COLOR_MODE,
   DEFAULT_RENDER_DPI,
   DEFAULT_RENDER_FORMAT,
   DPI_CHOICES,
-  RENDER_DPI_MAX,
-  RENDER_DPI_MIN,
   hasInvalidCustomDpi,
   initialPdfToImagesState,
   maxPageCount,

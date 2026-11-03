@@ -1,24 +1,16 @@
-import type { PdfItem, RenderColorChoice, RenderFormatChoice } from "../ipc";
+import {
+  RENDER_DPI_MAX,
+  RENDER_DPI_MIN,
+  type PdfItem,
+  type RenderColorChoice,
+  type RenderFormatChoice,
+} from "../ipc";
 import type { PdfToImagesAction, PdfToImagesState } from "./types";
 
 /**
  * Resolution choices matching the presets offered in the resolution dropdown (design §4.4).
  */
 export const DPI_CHOICES: readonly number[] = [72, 150, 300];
-
-/**
- * Minimum render resolution in dpi.
- * Matches `RENDER_DPI_MIN` in `crates/worker/src/lib.rs` (checked by
- * `src/ipc/rustConstants.test.ts`).
- */
-export const RENDER_DPI_MIN = 36;
-
-/**
- * Maximum render resolution in dpi.
- * Matches `RENDER_DPI_MAX` in `crates/worker/src/lib.rs` (checked by
- * `src/ipc/rustConstants.test.ts`).
- */
-export const RENDER_DPI_MAX = 1000;
 
 /** Default render resolution (150 dpi, design §4.4). */
 export const DEFAULT_RENDER_DPI = 150;
