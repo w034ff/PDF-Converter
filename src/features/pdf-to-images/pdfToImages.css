@@ -254,14 +254,17 @@
 }
 
 /* Right-aligned so the page counts line up digit by digit; the header
-   follows its column. */
+   follows its column. As narrow as its one-line header, so that at the
+   window's minimum width the file names keep the room. */
 .pdf-table .pdf-col-pages {
-  width: 120px;
+  width: 1%;
+  white-space: nowrap;
   text-align: right;
 }
 
+/* Wide enough for the "enter password" button on one line. */
 .pdf-table .pdf-col-status {
-  width: 200px;
+  width: 160px;
 }
 
 .pdf-table .pdf-col-actions {
