@@ -406,10 +406,6 @@ pub fn load_settings(config_dir: &Path) -> SettingsFile {
     file
 }
 
-fn write_failed(error: impl std::fmt::Display) -> IpcError {
-    IpcError::new(ErrorCode::WriteFailed, error.to_string())
-}
-
 /// Writes `file` as `settings.json` in `config_dir`, creating the folder if
 /// needed.
 ///
@@ -421,13 +417,13 @@ fn write_failed(error: impl std::fmt::Display) -> IpcError {
 ///
 /// `WriteFailed` if the folder or the file cannot be written.
 pub fn save_settings_to_dir(config_dir: &Path, file: &SettingsFile) -> Result<(), IpcError> {
-    std::fs::create_dir_all(config_dir).map_err(write_failed)?;
-    let json = serde_json::to_vec_pretty(file).map_err(write_failed)?;
-    let mut temp = tempfile::NamedTempFile::new_in(config_dir).map_err(write_failed)?;
-    temp.write_all(&json).map_err(write_failed)?;
-    temp.as_file().sync_all().map_err(write_failed)?;
+    std::fs::create_dir_all(config_dir).map_err(IpcError::write_failed)?;
+    let json = serde_json::to_vec_pretty(file).map_err(IpcError::write_failed)?;
+    let mut temp = tempfile::NamedTempFile::new_in(config_dir).map_err(IpcError::write_failed)?;
+    temp.write_all(&json).map_err(IpcError::write_failed)?;
+    temp.as_file().sync_all().map_err(IpcError::write_failed)?;
     temp.persist(config_dir.join(SETTINGS_FILE_NAME))
-        .map_err(|e| write_failed(e.error))?;
+        .map_err(|e| IpcError::write_failed(e.error))?;
     Ok(())
 }
 

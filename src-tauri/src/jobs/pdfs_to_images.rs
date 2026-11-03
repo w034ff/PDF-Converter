@@ -20,7 +20,7 @@ use super::{
 };
 use crate::AppState;
 use crate::error::{ErrorCode, IpcError};
-use crate::items::ItemKind;
+use crate::items::{ItemKind, file_name};
 use crate::settings::OutputKind;
 use crate::worker_pool::{WorkerPoolError, default_worker_limit};
 
@@ -114,11 +114,7 @@ where
             continue;
         }
 
-        let filename = entry
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let filename = file_name(&entry.path);
 
         let pages = if entry.error.is_none() {
             page_set.pages_within(entry.page_count)

@@ -10,7 +10,7 @@ use pdfconv_core::{AddImageResult, PdfConformance, PdfWriter};
 
 use super::image_check::{ImageCheckStop, check_image};
 use super::options::{
-    PageOrientationChoice, PageSizeChoice, PdfOutput, output_password, protect_pdf,
+    PageOrientationChoice, PageSizeChoice, PdfOutput, creator, output_password, protect_pdf,
 };
 use super::output::{check_output_dir, list_existing_files, save_atomic, stop_after_write_failure};
 use super::{
@@ -20,7 +20,7 @@ use super::{
 use crate::AppState;
 use crate::decode_budget::pdf_write_estimate;
 use crate::error::{ErrorCode, IpcError};
-use crate::items::ItemKind;
+use crate::items::{ItemKind, file_name};
 use crate::settings::OutputKind;
 use crate::worker_pool::default_worker_limit;
 
@@ -67,11 +67,7 @@ where
         if entry.kind != ItemKind::Image {
             continue;
         }
-        let filename = entry
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let filename = file_name(&entry.path);
         if entry.error.is_none() {
             target_names.push(filename.clone());
             total_pages = total_pages.saturating_add(entry.page_count);
@@ -146,7 +142,7 @@ where
     let num_threads = default_worker_limit().min(total_items as usize).max(1);
     let mut handles = Vec::with_capacity(num_threads);
 
-    let creator = format!("PDF Converter {}", env!("CARGO_PKG_VERSION"));
+    let creator = creator();
     let output_dir_buf = output_dir.to_path_buf();
 
     for _ in 0..num_threads {
@@ -354,7 +350,7 @@ where
 
                 let pdf_bytes = writer
                     .finish()
-                    .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))
+                    .map_err(IpcError::write_failed)
                     .and_then(|bytes| protect_pdf(bytes, output.password.as_ref()));
                 let process_result = pdf_bytes.and_then(|bytes| {
                     save_atomic(&output_dir, output_name, &bytes, &used_names).inspect_err(|err| {

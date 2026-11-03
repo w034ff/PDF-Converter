@@ -99,13 +99,10 @@ pub fn save_atomic(
     bytes: &[u8],
     used_names_lower: &Mutex<HashSet<String>>,
 ) -> Result<String, IpcError> {
-    let mut temp = create_output_temp(output_dir)
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    let mut temp = create_output_temp(output_dir).map_err(IpcError::write_failed)?;
 
-    temp.write_all(bytes)
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
-    temp.flush()
-        .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string()))?;
+    temp.write_all(bytes).map_err(IpcError::write_failed)?;
+    temp.flush().map_err(IpcError::write_failed)?;
 
     persist_unique(temp, output_dir, initial_output_name, used_names_lower)
 }

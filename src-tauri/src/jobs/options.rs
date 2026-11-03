@@ -66,6 +66,11 @@ pub fn output_password(
         .map_err(|_| IpcError::from_code(ErrorCode::InvalidParams))
 }
 
+/// The producer written into the document information of every PDF the app makes.
+pub(crate) fn creator() -> String {
+    format!("PDF Converter {}", env!("CARGO_PKG_VERSION"))
+}
+
 /// Encrypts a written PDF when the job has a password. Encryption is neither counted in the
 /// progress nor interrupted by a cancel: a PDF takes about a second even when it is large
 /// (design §6.2).
@@ -74,8 +79,7 @@ pub(super) fn protect_pdf(
     password: Option<&OutputPassword>,
 ) -> Result<Vec<u8>, IpcError> {
     match password {
-        Some(password) => encrypt_pdf(pdf, password)
-            .map_err(|e| IpcError::new(ErrorCode::WriteFailed, e.to_string())),
+        Some(password) => encrypt_pdf(pdf, password).map_err(IpcError::write_failed),
         None => Ok(pdf),
     }
 }

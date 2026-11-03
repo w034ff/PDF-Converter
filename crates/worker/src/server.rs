@@ -9,6 +9,7 @@ use image::ImageEncoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
 use image::codecs::webp::WebPEncoder;
+use pdfconv_core::POINTS_PER_INCH;
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfPage, PdfRenderConfig, Pdfium, PdfiumError, PdfiumInternalError,
 };
@@ -254,8 +255,9 @@ impl State {
                 };
                 let width_pt = f64::from(pdf_page.width().value);
                 let height_pt = f64::from(pdf_page.height().value);
-                let width_px = (width_pt / 72.0 * (dpi as f64)).round() as u64;
-                let height_px = (height_pt / 72.0 * (dpi as f64)).round() as u64;
+                let points_per_inch = f64::from(POINTS_PER_INCH);
+                let width_px = (width_pt / points_per_inch * (dpi as f64)).round() as u64;
+                let height_px = (height_pt / points_per_inch * (dpi as f64)).round() as u64;
 
                 let total_pixels = width_px.saturating_mul(height_px);
                 if total_pixels > MAX_RENDER_PIXELS {

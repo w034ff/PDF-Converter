@@ -113,6 +113,11 @@ impl IpcError {
         Self { code, detail: None }
     }
 
+    /// A `WriteFailed` with `error` as its detail.
+    pub fn write_failed(error: impl std::fmt::Display) -> Self {
+        Self::new(ErrorCode::WriteFailed, error.to_string())
+    }
+
     /// Turns the `{ code, detail }` a worker answered with into an IPC error.
     ///
     /// The worker's `PdfiumUnavailable` becomes `WorkerCrashed` (design §6.6).

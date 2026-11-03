@@ -136,15 +136,6 @@ impl OutputStop {
     }
 }
 
-fn write_failure(error: &std::io::Error) -> IpcError {
-    IpcError::new(ErrorCode::WriteFailed, error.to_string())
-}
-
-/// The producer written into the document information of every output.
-fn creator() -> String {
-    format!("PDF Converter {}", env!("CARGO_PKG_VERSION"))
-}
-
 /// Builds the output `plan` in a pooled worker and writes what it sends to `sink` as it arrives
 /// (design organize §3, §6). `on_pages_done` gets the number of pages done in this output.
 ///
@@ -170,7 +161,7 @@ fn write_output(
     let request = Request::Organize {
         sources: plan.sources.clone(),
         pages: plan.pages.clone(),
-        creator: creator(),
+        creator: jobs::creator(),
         output_password: output_password.cloned(),
     };
     let step_timeout = state.pool.timeout_for(&request);
@@ -187,7 +178,7 @@ fn write_output(
             }
             match sink.write_all(&bytes) {
                 Ok(()) => written += u64::try_from(bytes.len()).unwrap_or(u64::MAX),
-                Err(error) => *write_error.borrow_mut() = Some(write_failure(&error)),
+                Err(error) => *write_error.borrow_mut() = Some(IpcError::write_failed(&error)),
             }
         }
     };
@@ -199,7 +190,7 @@ fn write_output(
     match answer {
         Ok(Response::Organized { bytes }) if bytes == written => sink
             .flush()
-            .map_err(|error| OutputStop::writing(write_failure(&error))),
+            .map_err(|error| OutputStop::writing(IpcError::write_failed(&error))),
         Ok(Response::Organized { bytes }) => Err(OutputStop::failed(IpcError::new(
             ErrorCode::WorkerCrashed,
             format!("the worker announced {bytes} bytes and {written} were written"),
@@ -236,7 +227,7 @@ fn make_output_file(
     on_pages_done: &dyn Fn(u32),
 ) -> Result<NamedTempFile, OutputStop> {
     let mut temp = jobs::create_output_temp(output_dir)
-        .map_err(|error| OutputStop::writing(write_failure(&error)))?;
+        .map_err(|error| OutputStop::writing(IpcError::write_failed(&error)))?;
     write_output(state, plan, output_password, &mut temp, on_pages_done)?;
     Ok(temp)
 }
@@ -367,7 +358,7 @@ where
         .and_then(|temp| {
             temp.persist(dest_path)
                 .map(drop)
-                .map_err(|error| OutputStop::writing(write_failure(&error.error)))
+                .map_err(|error| OutputStop::writing(IpcError::write_failed(&error.error)))
         })
     };
     match made {
