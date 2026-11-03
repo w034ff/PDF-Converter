@@ -10,7 +10,7 @@ export function ImagesToPdfStatus() {
   const { language, imagesToPdf } = useAppState();
   const t = getTranslations(language.language);
   const status = describeImagesToPdfStatus(imagesToPdf, t);
-  // Only the line that says what a start would do carries the mark, not "no images selected".
+  // Only the line that says what a start would do carries the mark, not "add images".
   const isPreview = !status.isWarning && imagesToPdf.items.length > 0;
   if (!imagesToPdf.encrypt || !isPreview) {
     return (

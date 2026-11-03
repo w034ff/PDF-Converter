@@ -193,12 +193,18 @@
   font-size: 12px;
   font-weight: 500;
   height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--color-warning);
+  padding: 0 6px;
+  border: 0;
   border-radius: 11px;
   background: transparent;
   color: var(--color-warning);
+  text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
+}
+
+.organize-chip-password:hover:not(:disabled) {
+  background: var(--color-bg-hover);
 }
 
 .organize-chip-password:disabled {

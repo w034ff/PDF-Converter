@@ -10,8 +10,8 @@ export interface ImagesToPdfStatusLine {
 /**
  * Describes what starting would do, for the footer while idle (design
  * §10.1). Counts only items without errors. A list holding only items that
- * could not be loaded is a warning: the start button is disabled, and "no
- * images selected" would contradict the rows on screen.
+ * could not be loaded is a warning: the start button is disabled, and "add
+ * images" would contradict the rows on screen.
  */
 export function describeImagesToPdfStatus(
   state: ImagesToPdfState,
@@ -19,7 +19,7 @@ export function describeImagesToPdfStatus(
 ): ImagesToPdfStatusLine {
   const plain = (text: string) => ({ text, isWarning: false });
   if (state.items.length === 0) {
-    return plain(t.footer.noImagesSelected);
+    return plain(t.footer.noImages);
   }
   const validItems = state.items.filter((item) => item.error === null);
   if (validItems.length === 0) {

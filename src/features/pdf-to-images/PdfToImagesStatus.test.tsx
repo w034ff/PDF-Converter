@@ -81,12 +81,12 @@ describe("PdfToImagesStatus", () => {
   });
 
   describe("getPdfToImagesStatusText (pure function)", () => {
-    it("returns 'no PDFs selected' when list is empty", () => {
+    it("returns 'add PDFs' when list is empty", () => {
       const state = createBaseState({ items: [] });
       expect(getPdfToImagesStatusText(state, ja)).toBe(
-        "PDF が選ばれていません",
+        "PDF を追加してください",
       );
-      expect(getPdfToImagesStatusText(state, en)).toBe("No PDFs selected");
+      expect(getPdfToImagesStatusText(state, en)).toBe("Add PDFs");
     });
 
     it("asks to remove unreadable PDFs when all PDFs have errors", () => {
@@ -484,7 +484,7 @@ describe("PdfToImagesStatus", () => {
         </AppStateProvider>,
       );
 
-      expect(screen.getByText("PDF が選ばれていません")).toHaveClass("hint");
+      expect(screen.getByText("PDF を追加してください")).toHaveClass("hint");
     });
   });
 });

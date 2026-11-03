@@ -200,7 +200,7 @@ describe("the crop tab: opening a PDF", () => {
       openCropTab();
       await flush();
 
-      expect(screen.getByText("PDF が開かれていません")).toBeInTheDocument();
+      expect(screen.getByText("PDF を開いてください")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "書き出す" })).toBeDisabled();
     });
 
@@ -214,7 +214,7 @@ describe("the crop tab: opening a PDF", () => {
       expect(
         screen.getByRole("button", { name: "Open PDF" }),
       ).toBeInTheDocument();
-      expect(screen.getByText("No PDF is open")).toBeInTheDocument();
+      expect(screen.getByText("Open a PDF")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
     });
   });

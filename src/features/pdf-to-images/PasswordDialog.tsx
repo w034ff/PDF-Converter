@@ -1,4 +1,10 @@
-import { useRef, useState, type FormEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from "react";
 import { ModalDialog } from "../../components";
 import { formatErrorMessage, getTranslations } from "../../i18n";
 import { normalizeIpcError } from "../../ipc";
@@ -41,6 +47,15 @@ export function PasswordDialog<T>({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // An effect, because the input stays disabled, and so unfocusable, until the
+  // render that clears `busy`.
+  useEffect(() => {
+    if (errorText !== null && !busy) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [errorText, busy]);
+
   function handleClose() {
     if (busy) {
       return;
@@ -76,8 +91,6 @@ export function PasswordDialog<T>({
           formatErrorMessage(ipcErr.code, ipcErr.detail, language.language),
         );
       }
-      inputRef.current?.select();
-      inputRef.current?.focus();
     }
   }
 

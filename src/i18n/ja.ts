@@ -33,8 +33,8 @@ export const ja = {
     notChosen: "未選択",
   },
   footer: {
-    noImagesSelected: "画像が選ばれていません",
-    noPdfsSelected: "PDF が選ばれていません",
+    noImages: "画像を追加してください",
+    noPdfs: "PDF を追加してください",
     noReadableImages:
       "変換できる画像がありません。読み込めない画像を外してください",
     noReadablePdfs:
@@ -405,7 +405,7 @@ export const ja = {
       summarySeparator: " · ",
     },
     footer: {
-      noPdf: "PDF が開かれていません",
+      noPdf: "PDF を開いてください",
       noRanges: "範囲が選ばれていません",
       willExportSingle: "{count} 個の範囲を {format} で書き出します",
       willExportMultiple: "{count} 個の範囲を {format} で書き出します",
@@ -415,9 +415,9 @@ export const ja = {
   },
   organize: {
     dropZone: {
-      title: "PDF をドロップするか、「PDF を追加」を押してください",
+      title: "PDF をドロップ",
       description:
-        "ページを並べ替え・削除・回転して、1 つの PDF にまとめたり、分けて保存したりします。",
+        "ページを並べ替え・削除・回転して、結合または分割して保存します。",
       addPdfs: "PDF を追加",
       addFolder: "フォルダを追加",
     },
@@ -438,7 +438,7 @@ export const ja = {
     },
     clearDialog: {
       title: "すべての PDF を外しますか？",
-      body: "並べ替え・回転・削除をした並びは失われ、取り消せません。",
+      body: "ページの並び順や回転・削除は失われ、元に戻せません。",
       cancel: "キャンセル",
       confirm: "すべて外す",
     },
@@ -465,9 +465,9 @@ export const ja = {
         "{beforeName} の p.{before} と {afterName} の p.{after} の間の区切り",
       rotation: "{degrees}°",
       empty: "ページがありません",
-      emptyHint: "Ctrl+Z で戻せます",
+      emptyHint: "削除した場合は Ctrl+Z で元に戻せます",
     },
-    skippedNotice: "加えなかったファイル: {details}",
+    skippedNotice: "追加されなかったファイル: {details}",
     pageMenu: {
       label: "ページの操作",
       addBreak: "このページの前で区切る",
@@ -475,48 +475,47 @@ export const ja = {
     },
     settings: {
       outputTitle: "保存の方法",
-      outputSingle: "1 つの PDF",
-      outputSplit: "分けて保存",
-      outputSingleHint: "並んだ順に、1 つの PDF にまとめます。",
-      outputSplitHint: "区切りごとに、別の PDF として保存します。",
+      outputSingle: "結合",
+      outputSplit: "分割",
+      outputSingleHint: "並び順に 1 つの PDF に結合します。",
+      outputSplitHint: "区切りごとに複数の PDF に分割します。",
       breaksTitle: "区切り",
-      breaksHint: "ページの間を押すと、区切りを入れたり外したりできます。",
-      breaksEachPage: "1 ページずつ",
+      breaksHint: "ページの間を押して区切りを追加・解除できます。",
+      breaksEachPage: "1 ページごと",
       breaksEachPdf: "元の PDF ごと",
-      breaksClear: "すべて外す",
+      breaksClear: "すべて解除",
       password: "パスワードを付ける",
-      encryptedNotice:
-        "パスワード付きの PDF があります。元の PDF のパスワードは引き継ぎません。",
-      aboutTitle: "保存した PDF について",
+      encryptedNotice: "元の PDF のパスワードは引き継がれません。",
+      aboutTitle: "出力ファイルについて",
       about:
-        "注釈とフォームは、見た目どおりページに固めます。しおりとリンクは付け直します。作成者などの文書情報は入れません。",
+        "注釈や入力内容は見た目のまま固定されます。しおりとリンクは維持され、作成者などの文書情報は引き継がれません。",
     },
     footer: {
       noPdfs: "PDF を追加してください",
       noPages: "保存するページがありません",
       tooManyPages:
-        "1 つの PDF は {max} ページまでです（今は {count} ページ）。区切りを入れて分けて保存してください",
+        "1 つの PDF は {max} ページまでです（今は {count} ページ）。分割して保存してください",
       willSplitSingle:
-        "{pages} ページを {parts} 個の PDF に分けて保存します（合計 約 {size} MB）",
+        "{pages} ページを {parts} 個の PDF に分割して保存します（合計 約 {size} MB）",
       willSplitOnePart:
-        "{pages} ページを {parts} 個の PDF に分けて保存します（合計 約 {size} MB）",
+        "{pages} ページを {parts} 個の PDF に分割して保存します（合計 約 {size} MB）",
       willSplitMultiple:
-        "{pages} ページを {parts} 個の PDF に分けて保存します（合計 約 {size} MB）",
+        "{pages} ページを {parts} 個の PDF に分割して保存します（合計 約 {size} MB）",
       splitTooManyPages:
         "{part} 番目の PDF は {count} ページあります。1 つの PDF は {max} ページまでです",
       willSaveSingle:
         "{count} ページを 1 つの PDF に保存します（約 {size} MB）",
       willSaveMultiple:
-        "{count} ページを 1 つの PDF に保存します（約 {size} MB）",
-      leftOutSingle: "（{count} 個の PDF は保存に入りません）",
-      leftOutMultiple: "（{count} 個の PDF は保存に入りません）",
+        "{count} ページを 1 つの PDF に結合します（約 {size} MB）",
+      leftOutSingle: "。{count} 個の PDF は含まれません",
+      leftOutMultiple: "。{count} 個の PDF は含まれません",
     },
     result: {
       savedSingle: "{count} ページを 1 つの PDF に保存しました",
-      savedMultiple: "{count} ページを 1 つの PDF に保存しました",
+      savedMultiple: "{count} ページを 1 つの PDF に結合しました",
       replaced: "置き換えた {name} を一覧から外しました",
-      failed: "PDF を保存しませんでした（{name}: {message}）",
-      failedWithoutName: "PDF を保存しませんでした（{message}）",
+      failed: "PDF の保存に失敗しました（{name}: {message}）",
+      failedWithoutName: "PDF の保存に失敗しました（{message}）",
       savedPartsSingle: "{count} 個の PDF を保存しました",
       savedPartsMultiple: "{count} 個の PDF を保存しました",
       failedPart: "（{part} 番目の PDF: {name}: {message}）",
@@ -555,7 +554,7 @@ export const ja = {
             {
               keys: [["B"]],
               action:
-                "フォーカスのページの前に区切りを入れる・外す（分けて保存のとき）",
+                "フォーカスのページの前に区切りを入れる・外す（分割のとき）",
             },
             {
               keys: [["右クリック"], ["Shift", "F10"]],

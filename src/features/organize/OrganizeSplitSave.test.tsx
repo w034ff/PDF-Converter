@@ -275,14 +275,14 @@ describe("what the bottom bar says before saving in parts", () => {
     await openSplit();
     expect(
       screen.getByText(
-        "6 ページを 1 個の PDF に分けて保存します（合計 約 6 MB）",
+        "6 ページを 1 個の PDF に分割して保存します（合計 約 6 MB）",
       ),
     ).toBeInTheDocument();
 
     fireEvent.click(breakButton(2, 3));
     expect(
       screen.getByText(
-        "6 ページを 2 個の PDF に分けて保存します（合計 約 6 MB）",
+        "6 ページを 2 個の PDF に分割して保存します（合計 約 6 MB）",
       ),
     ).toBeInTheDocument();
   });
@@ -294,14 +294,14 @@ describe("what the bottom bar says before saving in parts", () => {
     await openSplit([odd]);
     expect(
       screen.getByText(
-        "3 ページを 1 個の PDF に分けて保存します（合計 約 1 MB）",
+        "3 ページを 1 個の PDF に分割して保存します（合計 約 1 MB）",
       ),
     ).toBeInTheDocument();
 
-    fireEvent.click(settingsButton("1 ページずつ"));
+    fireEvent.click(settingsButton("1 ページごと"));
     expect(
       screen.getByText(
-        "3 ページを 3 個の PDF に分けて保存します（合計 約 2 MB）",
+        "3 ページを 3 個の PDF に分割して保存します（合計 約 2 MB）",
       ),
     ).toBeInTheDocument();
   });
@@ -309,17 +309,17 @@ describe("what the bottom bar says before saving in parts", () => {
   it("says one page as one PDF in English, and the plural otherwise", async () => {
     await openSplit([organizePdf(1, "one.pdf", 1)], { language: "en" });
     expect(
-      screen.getByText("Save 1 page as 1 PDF (about 1 MB in total)"),
+      screen.getByText("Split 1 page into 1 PDF (about 1 MB in total)"),
     ).toBeInTheDocument();
     cleanup();
 
     await openSplit([REPORT], { language: "en" });
     expect(
-      screen.getByText("Save 4 pages as 1 PDF (about 4 MB in total)"),
+      screen.getByText("Split 4 pages into 1 PDF (about 4 MB in total)"),
     ).toBeInTheDocument();
     fireEvent.click(breakButton(2, 3, "en"));
     expect(
-      screen.getByText("Save 4 pages as 2 PDFs (about 4 MB in total)"),
+      screen.getByText("Split 4 pages into 2 PDFs (about 4 MB in total)"),
     ).toBeInTheDocument();
   });
 
@@ -336,7 +336,7 @@ describe("what the bottom bar says before saving in parts", () => {
     expect(reason).toHaveClass("error-text");
     expect(startButton()).toBeDisabled();
 
-    fireEvent.click(settingsButton("1 ページずつ"));
+    fireEvent.click(settingsButton("1 ページごと"));
     expect(startButton()).toBeEnabled();
   });
 
@@ -357,7 +357,7 @@ describe("what the bottom bar says before saving in parts", () => {
 
     expect(
       screen.getByText(
-        "4 ページを 1 個の PDF に分けて保存します（合計 約 4 MB）（1 個の PDF は保存に入りません）",
+        "4 ページを 1 個の PDF に分割して保存します（合計 約 4 MB）。1 個の PDF は含まれません",
       ),
     ).toBeInTheDocument();
   });
@@ -367,9 +367,9 @@ describe("what the bottom bar says before saving in parts", () => {
       pdfs: [organizePdf(1, "big.pdf", MAX_PDF_PAGES + 1)],
     });
 
-    expect(
-      screen.getByText(/区切りを入れて分けて保存してください/),
-    ).toHaveClass("error-text");
+    expect(screen.getByText(/分割して保存してください/)).toHaveClass(
+      "error-text",
+    );
   });
 });
 
@@ -484,7 +484,7 @@ describe("what the bottom bar says after saving in parts", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "3 個の PDF を保存しました",
     );
-    fireEvent.click(settingsButton("1 つの PDF"));
+    fireEvent.click(settingsButton("結合"));
     expect(
       screen.queryByText(/個の PDF を保存しました/),
     ).not.toBeInTheDocument();
@@ -562,12 +562,12 @@ describe("the settings of the save in parts", () => {
     expect(
       within(screen.getByRole("group", { name: "保存の方法" })).getByRole(
         "button",
-        { name: "分けて保存" },
+        { name: "分割" },
       ),
     ).toHaveAttribute("aria-pressed", "true");
     expect(outputDirText()).toBe("parts");
 
-    fireEvent.click(settingsButton("1 つの PDF"));
+    fireEvent.click(settingsButton("結合"));
     await flush();
 
     expect(

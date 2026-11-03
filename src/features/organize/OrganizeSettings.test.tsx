@@ -81,12 +81,12 @@ describe("the settings of the organize tab", () => {
     const calls = await openOrganizeTab({ settings: SAVED });
     const choice = screen.getByRole("group", { name: "保存の方法" });
     expect(
-      within(choice).getByRole("button", { name: "分けて保存" }),
+      within(choice).getByRole("button", { name: "分割" }),
     ).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(within(choice).getByRole("button", { name: "1 つの PDF" }));
+    fireEvent.click(within(choice).getByRole("button", { name: "結合" }));
     await flush();
-    fireEvent.click(within(choice).getByRole("button", { name: "分けて保存" }));
+    fireEvent.click(within(choice).getByRole("button", { name: "分割" }));
     await flush();
 
     expect(savedSettings(calls).map((call) => call.settings)).toMatchObject([

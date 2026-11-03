@@ -37,7 +37,7 @@ export interface PdfToImagesStatusLine {
  * shown: the range has an error, which the settings panel shows, or has not
  * been checked yet. A range that matches no page, and a list holding only
  * PDFs that could not be loaded, are warnings: both leave the start button
- * disabled, and "no PDFs selected" would contradict the rows on screen. A
+ * disabled, and "add PDFs" would contradict the rows on screen. A
  * list whose unreadable PDFs all wait for a password is a notice instead,
  * since entering the password fixes it.
  */
@@ -54,7 +54,7 @@ export function describePdfToImagesStatus(
     tone: "hint",
   });
   if (state.items.length === 0) {
-    return plain(t.footer.noPdfsSelected);
+    return plain(t.footer.noPdfs);
   }
   const validPdfs = state.items.filter((item) => item.error === null);
   const count = validPdfs.length;
