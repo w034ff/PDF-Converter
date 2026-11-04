@@ -1,9 +1,17 @@
 @import "./tokens.css";
+@import "./fonts.css";
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Thin scroll bars leave the narrow panes more room. Only the width is set:
+   WebView2 still draws them, so they follow the theme (color-scheme) and the
+   OS settings. */
+* {
+  scrollbar-width: thin;
 }
 
 body {
@@ -462,7 +470,7 @@ a:hover {
 .about-section-title {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .about-toggle-btn {
@@ -503,7 +511,7 @@ a:hover {
 
 .license-item-header {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .license-packages {

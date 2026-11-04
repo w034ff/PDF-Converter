@@ -126,7 +126,6 @@
   overflow-x: auto;
   overflow-y: hidden;
   padding: 4px 2px 0;
-  scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   --organize-chips-bar: 10px;
 }

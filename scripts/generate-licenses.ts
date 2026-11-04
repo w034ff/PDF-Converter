@@ -73,6 +73,11 @@ const MAX_TOOL_OUTPUT_BYTES = 64 * 1024 * 1024;
 // For a dual-licensed npm package ("Apache-2.0 OR MIT"), the first match in
 // this list is the license whose text is shipped.
 const PREFERRED_LICENSES = ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC"];
+// npm entries take their display name from cargo-about, which only knows the
+// licenses of crates; these are the ones only npm packages use.
+const NPM_ONLY_LICENSE_NAMES: ReadonlyArray<readonly [string, string]> = [
+  ["OFL-1.1", "SIL Open Font License 1.1"],
+];
 const LICENSE_FILE_PATTERN = /^(licen[cs]e|copying)/i;
 
 type Ecosystem = "cargo" | "npm" | "native";
@@ -383,7 +388,7 @@ function mergeByText(entries: readonly LicenseEntry[]): LicenseEntry[] {
 }
 
 function main(): void {
-  const names = new Map<string, string>();
+  const names = new Map<string, string>(NPM_ONLY_LICENSE_NAMES);
   const cargo = collectCargoLicenses(names);
   const npm = collectNpmLicenses(names);
   const pdfium = collectPdfiumLicenses();

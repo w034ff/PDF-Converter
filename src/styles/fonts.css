@@ -1,0 +1,46 @@
+/* The app's fonts are bundled so that every PC shows the same letters and the
+   app needs no network (design §10.3). The hinted files keep the 11–13 px text
+   sharp on Windows. Only the weights the CSS uses are listed; Vite copies just
+   these files into the build. */
+
+@font-face {
+  font-family: "IBM Plex Sans JP";
+  font-weight: 400;
+  src: url("@ibm/plex-sans-jp/fonts/complete/woff2/hinted/IBMPlexSansJP-Regular.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans JP";
+  font-weight: 500;
+  src: url("@ibm/plex-sans-jp/fonts/complete/woff2/hinted/IBMPlexSansJP-Medium.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans JP";
+  font-weight: 700;
+  src: url("@ibm/plex-sans-jp/fonts/complete/woff2/hinted/IBMPlexSansJP-Bold.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-weight: 400;
+  src: url("@ibm/plex-mono/fonts/complete/woff2/IBMPlexMono-Regular.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-weight: 500;
+  src: url("@ibm/plex-mono/fonts/complete/woff2/IBMPlexMono-Medium.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-weight: 700;
+  src: url("@ibm/plex-mono/fonts/complete/woff2/IBMPlexMono-Bold.woff2")
+    format("woff2");
+}

@@ -74,8 +74,10 @@
   --organize-notice-border: #e6d9b8;
 
   /* Typography */
-  --font-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  /* Bundled in fonts.css. Plex Mono has no Japanese, so Japanese in a file
+     name shown in mono falls back to Plex Sans JP, of the same family. */
+  --font-sans: "IBM Plex Sans JP", sans-serif;
+  --font-mono: "IBM Plex Mono", "IBM Plex Sans JP", monospace;
 
   /* Radii */
   --radius-sm: 4px;
