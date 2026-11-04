@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | `crates/core/src/tiff.rs` `read_page` | `ICCProfile` タグに、先頭 16 バイトが何でもよくて、その後に `RGB `（または `GRAY`）があるだけのでたらめな中身を持つ TIFF | 黙って間違った結果（メインプロセス） | `repro/make_tiff.py` で作る `repro/tiff_junk_icc.tif`・`tiff_short_icc.tif`。試験は `tiff::tests::icc_profile_fits_needs_a_profile_header_of_the_page_colour_space` | b3f854b |
 | 2 | `crates/core/src/probe.rs` `find_png_phys_dpi` | `IDAT` より前に空のチャンクを大量に並べた、正しい PNG（12 MB に 100 万個） | 遅い（メインプロセス。止まらないわけではない） | `repro/make_png_many_chunks.py OUT 1000000`。試験は `probe::tests::png_phys_search_reads_small_chunks_from_the_buffer` | 046f403 |
-| 3 | `crates/core/src/probe.rs` `probe` | 名前が `x.png` の名前付きパイプ（FIFO）をダイアログで選ぶか、ドロップする | 止まらない（メインプロセスのブロッキングスレッド） | `mkfifo x.png`。試験は `probe::tests::read_failed_on_a_named_pipe_without_blocking` | 9ac42a5 |
+| 3 | `crates/core/src/probe.rs` `probe` | 名前が `x.png` の名前付きパイプ（FIFO）をダイアログで選ぶか、ドロップする | 止まらない（メインプロセスのブロッキングスレッド） | `mkfifo x.png`。試験は `probe::tests::read_failed_on_a_named_pipe_without_blocking` | b53c197 |
 | 4 | `crates/core/src/layout.rs` `calculate_layout`（`PageSize::Fit`）と `pdf_write.rs` `commit_page` | 極端に細長い画像。96 dpi の 70,000,000×1 画素（`MAX_IMAGE_PIXELS` 以内） | 誤ったエラー（`DecodeFailed`） | `repro/make_png_strip.py OUT 70000000 1` | していない（下に案） |
 | 5 | 同上 | 縦横比がおよそ 4,800:1 を超える画像を「画像と同じ大きさ」で書き出す | 黙って間違った結果（規格の推奨より小さいページ） | `repro/make_png_strip.py OUT 1000000 1` → ページは 14400 × 0.0144 pt | していない（下に案） |
 | 6 | `crates/core/src/naming.rs`（出力名の決定） | 名前の長い PDF（拡張子を除いた名前が UTF-8 で 247 バイト以上。日本語ならおよそ 83 文字以上） | 誤ったエラー（`WriteFailed`） | 読んで確かめた（実行はしていない）。`<名前>_p001.png` が 255 バイトを超える | していない（下に案） |
