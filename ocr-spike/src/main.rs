@@ -239,6 +239,7 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
     let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("ja.val.json")).unwrap()).unwrap();
     let limit: usize = arg(args, "--pages").map_or(usize::MAX, |n| n.parse().unwrap());
     let mut total = cer::Score::default();
+    let mut total_chars = cer::Score::default();
     let mut dump = Vec::new();
     let mut det_ms = Vec::new();
     let mut rec_ms = Vec::new();
@@ -264,14 +265,30 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
         let pred: Vec<cer::Boxed> =
             lines.iter().map(|l| cer::Boxed { text: l.text.clone(), bbox: geom::quad_bounds(&l.quad) }).collect();
         let s = cer::matched(&gt, &pred);
-        println!("{fname}: CER {:.2} % ({} / {}), lines {}, unassigned {}", s.cer() * 100.0, s.edits, s.chars, lines.len(), s.unassigned);
+        // Characters with their cells, in reading order (lines as PaddleOCR sorts them).
+        let pchars: Vec<cer::Boxed> = lines
+            .iter()
+            .flat_map(|l| {
+                let cells = types::char_cells(l);
+                l.rec.char_cols.iter().zip(cells).map(move |(c, (u0, u1))| cer::Boxed {
+                    text: c.0.to_string(),
+                    bbox: geom::quad_bounds(&types::span_quad(&l.quad, l.vertical, u0, u1)),
+                })
+            })
+            .collect();
+        let sc = cer::matched_chars(&gt, &pchars);
+        println!(
+            "{fname}: CER line-matched {:.2} % ({} / {}), char-matched {:.2} %, lines {}, unassigned lines {}",
+            s.cer() * 100.0, s.edits, s.chars, sc.cer() * 100.0, lines.len(), s.unassigned
+        );
         total.add(s);
+        total_chars.add(sc);
         dump.push(serde_json::json!({"fname": fname, "lines": lines.iter().map(|l| serde_json::json!({
             "quad": l.quad, "text": l.text, "score": l.score, "vertical": l.vertical})).collect::<Vec<_>>()}));
     }
     println!(
-        "TOTAL pages {}: CER {:.2} % ({} / {}), unassigned lines {}, median det {:.0} ms rec {:.0} ms, peak RSS {:.0} MiB",
-        dump.len(), total.cer() * 100.0, total.edits, total.chars, total.unassigned,
+        "TOTAL pages {}: CER line-matched {:.2} % ({} / {}), char-matched {:.2} % ({} / {}), unassigned lines {}, median det {:.0} ms rec {:.0} ms, peak RSS {:.0} MiB",
+        dump.len(), total.cer() * 100.0, total.edits, total.chars, total_chars.cer() * 100.0, total_chars.edits, total_chars.chars, total.unassigned,
         median(det_ms), median(rec_ms), engine::peak_rss_mib()
     );
     let model = arg(args, "--model").unwrap_or("small");

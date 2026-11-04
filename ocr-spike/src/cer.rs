@@ -104,6 +104,40 @@ pub fn matched(gt: &[Boxed], pred: &[Boxed]) -> Score {
     score
 }
 
+/// Like [`matched`], but each predicted *character* goes to the ground-truth
+/// box that contains its centre (its cell from the CTC steps, item 6), so a
+/// line that runs across two boxes (a key and its value read as one line) is
+/// split between them instead of being counted wrong twice. `pred` is in
+/// reading order; characters outside every box count as insertions.
+pub fn matched_chars(gt: &[Boxed], pred: &[Boxed]) -> Score {
+    let mut per_box: Vec<String> = vec![String::new(); gt.len()];
+    let mut score = Score::default();
+    for p in pred {
+        let (cx, cy) = ((p.bbox[0] + p.bbox[2]) / 2.0, (p.bbox[1] + p.bbox[3]) / 2.0);
+        let hit = gt
+            .iter()
+            .enumerate()
+            .filter(|(_, g)| cx >= g.bbox[0] && cx <= g.bbox[2] && cy >= g.bbox[1] && cy <= g.bbox[3])
+            .min_by(|a, b| {
+                let area = |g: &Boxed| (g.bbox[2] - g.bbox[0]) * (g.bbox[3] - g.bbox[1]);
+                area(a.1).total_cmp(&area(b.1))
+            });
+        match hit {
+            Some((i, _)) => per_box[i].push_str(&p.text),
+            None => {
+                score.edits += normalize(&p.text).len();
+                score.unassigned += 1;
+            }
+        }
+    }
+    for (g, text) in gt.iter().zip(per_box) {
+        let (g, p) = (normalize(&g.text), normalize(&text));
+        score.edits += levenshtein(&g, &p);
+        score.chars += g.len();
+    }
+    score
+}
+
 /// ページ全文 CER: the whole page's text in reading order on both sides.
 pub fn full_text(gt: &str, pred: &str) -> Score {
     let (g, p) = (normalize(gt), normalize(pred));

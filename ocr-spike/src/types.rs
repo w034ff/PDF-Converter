@@ -136,6 +136,16 @@ pub fn char_cells(line: &Line) -> Vec<(f64, f64)> {
         .collect()
 }
 
+/// The part of a line's quad between `u0` and `u1` along the text, in image pixels.
+pub fn span_quad(q: &Quad, vertical: bool, u0: f64, u1: f64) -> Quad {
+    [
+        crop_to_page(q, vertical, u0, 0.0),
+        crop_to_page(q, vertical, u1, 0.0),
+        crop_to_page(q, vertical, u1, 1.0),
+        crop_to_page(q, vertical, u0, 1.0),
+    ]
+}
+
 fn bbox_of(q: &QuadPt) -> RectPt {
     let xs = q.iter().map(|p| p[0]);
     let ys = q.iter().map(|p| p[1]);
