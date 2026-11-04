@@ -19,6 +19,9 @@ tiff = { version = "0.11.3", default-features = false, features = ["deflate", "f
 # Encrypts a written PDF, which krilla cannot (design §2, §4.3.1). Its defaults
 # add a clock and rayon, which the app does not use.
 lopdf = { version = "0.46.0", default-features = false }
+# Not called directly: the feature switches the deflate backend of krilla,
+# lopdf, png and tiff to zlib-rs through feature unification (design §2).
+flate2 = { version = "1.1.10", features = ["zlib-rs"] }
 # The file encryption key lopdf takes from the caller comes from the OS.
 getrandom = "0.4.3"
 # `ErrorCode` crosses the worker pipe and the IPC as its variant name (design §6.6).
