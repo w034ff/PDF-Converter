@@ -1,6 +1,6 @@
 # エッジケースの洗い出し 報告
 
-ブランチ `spike/edge-cases`（main の 97309b3 から）。直しは 1 つの問題につき 1 つのコミットで、試験も同じコミットに入れた。どの直しのコミットでも `cargo fmt --check`、`cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` は通る。`cargo test -p pdfconv-core` も全部通る。`cargo test --workspace --all-features --locked` は 1 件だけ落ちる（下の「環境のせいで落ちる試験」）。依存と `Cargo.lock` は変えていない（`edge-spike/` の外では）。
+ブランチ `spike/edge-cases`（main の 97309b3 から）。直しは 1 つの問題につき 1 つのコミットで、試験も同じコミットに入れた。どの直しのコミットでも `cargo fmt --check`、`cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` は通る。`cargo test -p pdfconv-core` も全部通る。`cargo test --workspace --all-features --locked --no-fail-fast` は 3 件だけ落ちる（下の「環境のせいで落ちる試験」）。依存と `Cargo.lock` は変えていない（`edge-spike/` の外では）。
 
 ## 見つけたもの
 
@@ -12,10 +12,12 @@
 | 4 | `crates/core/src/layout.rs` `calculate_layout`（`PageSize::Fit`）と `pdf_write.rs` `commit_page` | 極端に細長い画像。96 dpi の 70,000,000×1 画素（`MAX_IMAGE_PIXELS` 以内） | 誤ったエラー（`DecodeFailed`） | `repro/make_png_strip.py OUT 70000000 1` | していない（下に案） |
 | 5 | 同上 | 縦横比がおよそ 4,800:1 を超える画像を「画像と同じ大きさ」で書き出す | 黙って間違った結果（規格の推奨より小さいページ） | `repro/make_png_strip.py OUT 1000000 1` → ページは 14400 × 0.0144 pt | していない（下に案） |
 | 6 | `crates/core/src/naming.rs`（出力名の決定） | 名前の長い PDF（拡張子を除いた名前が UTF-8 で 247 バイト以上。日本語ならおよそ 83 文字以上） | 誤ったエラー（`WriteFailed`） | 読んで確かめた（実行はしていない）。`<名前>_p001.png` が 255 バイトを超える | していない（下に案） |
+| 7 | `crates/core/src/jpeg_strip.rs` `strip` | APP2 の `ICC_PROFILE` に、1 と同じでたらめな中身を持つ JPEG | 黙って間違った結果（メインプロセス） | `repro/make_jpeg_junk_icc.py` で作る `repro/jpeg_junk_icc.jpg`。試験は `jpeg_strip::tests::strip_drops_an_icc_profile_without_a_profile_header` ほか 2 つと `pdf_write::tests::jpeg_icc_profile_without_a_profile_header_is_not_embedded` | add1dbc |
+| 8 | `crates/core/src/pdf_write.rs`（PNG と WebP は元のバイト列のまま krilla に渡す） | PNG の `iCCP`、WebP の `ICCP` に同じでたらめな中身 | 黙って間違った結果（メインプロセス） | PNG は `repro/make_png_junk_icc.py` で作る `repro/png_junk_icc.png` で確かめた。WebP は krilla を読んで確かめた（実行はしていない） | していない（下に案） |
 
 ### 1. TIFF の壊れた ICC プロファイルが PDF に入る
 
-- 前は、色の空間の 4 バイト（16〜19 バイト目）だけを確かめて、タグのバイト列をそのまま krilla に渡していた。krilla は中身を読まずに `ICCBased` の色として埋め込む。通常の PDF にも PDF/A にも入った。poppler 24.02 は `not an ICC profile, invalid signature` と警告して RGB にフォールバックするので、見た目は変わらない。PDF/A の検証ソフト（veraPDF など）は通さないはず（試してはいない）。
+- 前は、色の空間の 4 バイト（16〜19 バイト目）だけを確かめて、タグのバイト列をそのまま krilla に渡していた。krilla は版（8・9 バイト目）と色の空間（16〜19 バイト目）しか読まずに `ICCBased` の色として埋め込む（`graphics/icc.rs` の `ICCMetadata::from_data`）。通常の PDF にも PDF/A にも入った。poppler 24.02 は `not an ICC profile, invalid signature` と警告して RGB にフォールバックするので、見た目は変わらない。PDF/A の検証ソフト（veraPDF など）は通さないはず（試してはいない）。
 - 直し: ICC の見出しの `acsp` の署名（36〜39 バイト目）があり、宣言された長さ（0〜3 バイト目）が「見出しの 128 バイト + タグの数の 4 バイト」以上で、タグのバイト数以下であることも求める。宣言の長さより後ろの詰め物は許す。`docs/design.md` §4.1.1 に 1 文を足した。
 - 直したあと、PDF/A の出力の `ICCBased` は出力インテントの sRGB の 1 つだけになった（前は 2 つ）。
 
@@ -30,6 +32,22 @@
 - `File::open` は、書き込む側が来るまで戻らない。`add_images` の `run_blocking` のスレッドが戻らないので、追加は終わらない。`/dev/zero` へのシンボリックリンク（`.png` の名前）をドロップした場合も、通常のファイルでないのに読みに行っていた（先頭のバイトで形式の判定が落ちるので、こちらはすぐ終わる）。
 - 直し: `std::fs::metadata` が通常のファイルと答えなければ `ReadFailed`（リンクはたどる）。フォルダの走査（`scan_folder`）は、もとから通常のファイルだけを拾っている。
 - ワーカーは画像を自分で開く（`crates/worker/src/image.rs`）ので、そのままにした。ワーカーで同じことが起きても `WorkerTimeout` で止まり、いまは `probe` が一覧に入る前に止める。
+
+### 7. JPEG の壊れた ICC プロファイルが PDF に入る
+
+- krilla 0.8.2 の `Image::from_jpeg` は、`jpeg_metadata` で zune-jpeg の `icc_profile()` からプロファイルを取り、`get_icc_profile_type` → `ICCProfile::new` → `ICCMetadata::from_data` に掛ける。確かめるのは 1 と同じく版と色の空間のバイトと、色の成分の数が JPEG と合うことだけ。通れば `ICCBased` の色として埋め込む（JPEG のバイト列そのものは `DCTDecode` で入り、その中の APP2 もそのまま残る）。
+- `jpeg_strip.rs` は APP2 の `ICC_PROFILE` をすべて残していたので、TIFF と同じことが起きた。`photo.jpg` に 1 と同じでたらめな 128 バイトの APP2 を足すと、通常の PDF で `ICCBased` が 1 つ（元は 0）、PDF/A で 2 つ（元は出力インテントの 1 つ）になり、poppler は同じ警告を出した。
+- 直し: `strip` が、走査（SOS）より前の APP2 を zune-jpeg と同じ規則（順番の番号で並べる。番号の 0・抜け・重なり、数の食い違いがあればつなげない）でつなげ、1 と同じ見出しの確かめ（`icc.rs` の `has_profile_header` に移して TIFF と共有）を通ったときだけ APP2 を残す。通らなければ ICC の APP2 をすべて外す。つなげられないものは krilla も入れないので、外しても結果の PDF は変わらない。直したあと、同じ入力で通常の PDF は 0、PDF/A は 1 に戻った。`docs/design.md` §4.3 の「残すもの」に書き足した。
+- 選ばなかった直し: krilla の `Image::from_jpeg_with_icc` で、確かめたプロファイルを渡すこと。`#[doc(hidden)]` で、krilla が約束している API ではないため。
+- 既存の試験 `test_drop_com_and_xmp_keep_icc_adobe` は、`ICC_PROFILE\0data`（見出しのないもの）が残ることを確かめていたので、見出しのあるプロファイルに替えた。
+
+### 8. PNG と WebP の壊れた ICC プロファイルも PDF に入る（直していない）
+
+- krilla は PNG の `iCCP`（`png_metadata`）と WebP の `ICCP`（`webp_metadata`）も、同じ `get_icc_profile_type` に掛ける。アプリは PNG と WebP のバイト列を変えずに krilla に渡す（`add_checked_image` は写しもしない）ので、7 と同じことが起きる。`repro/png_junk_icc.png`（2×2 の RGB と、でたらめな `iCCP`）で、通常の PDF で `ICCBased` が 1 つ、PDF/A で 2 つになった。WebP は試していない。
+- 頼まれた範囲（JPEG）の外で、直すには新しい処理が要るので、案だけにする:
+  1. `add_probed_image` で、`image` の PNG・WebP のデコーダーからプロファイルを取り（どちらも `icc_profile()` を持つ）、見出しがなければ、`iCCP`・`ICCP` を外したバイト列を作って krilla に渡す。PNG は `iCCP` のチャンクを丸ごと除けばよく、ほかのチャンクの CRC は変わらない。WebP は `VP8X` の ICC の印も下ろす必要がある。
+  2. または、見出しのないプロファイルを持つ PNG・WebP を `DecodeFailed` にする。簡単だが、画像は読めるのに変換できなくなる。
+  - どちらにするかは設計で決めること。1 なら、見た目は今と同じ（poppler はでたらめなプロファイルを捨てて素の RGB で描いた。ほかのビューアーは試していない）まま、PDF/A が規格に合う。
 
 ### 4・5. 「画像と同じ大きさ」で極端に細長い画像
 
@@ -47,7 +65,10 @@
 
 ## 環境のせいで落ちる試験
 
-- `src-tauri/tests/jobs.rs` の `output_dir_that_cannot_be_listed_rejects_and_resets_is_running` は、この入れ物では落ちる。入れ物は root（uid 0）で動いていて、`0o300` のフォルダでも中身を一覧できてしまうため。直しとは関係がない（直しは `crates/core` の画像の読み込みだけ）。CI（root でない）では通るはず。
+- 次の 3 つは、この入れ物では落ちる。入れ物は root（uid 0）で動いていて、フォルダの権限（`0o300`・`0o500`）が効かないため。
+  - `src-tauri/tests/jobs.rs` の `output_dir_that_cannot_be_listed_rejects_and_resets_is_running`
+  - `src-tauri/tests/settings.rs` の `a_failed_flush_is_tried_again_by_the_next`、`a_picked_folder_is_used_even_when_the_file_cannot_be_written`（`cargo test` は落ちた試験のバイナリで止まるので、最初は見えていなかった。`--no-fail-fast` で見えた）
+  - ほかの 765 件は通る。直しとは関係がない（直しは `crates/core` の画像の読み込みだけ）。CI（root でない）では通るはず。
 
 ## 試したが何も見つからなかった所
 
