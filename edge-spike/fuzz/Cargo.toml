@@ -1,0 +1,60 @@
+[package]
+name = "edge-spike-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Kept out of the root workspace: libFuzzer needs nightly, and the root pins 1.99.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+pdfconv-core = { path = "../../crates/core" }
+pdfconv-worker = { path = "../../crates/worker" }
+serde_json = "1"
+
+[[bin]]
+name = "image_pipeline"
+path = "fuzz_targets/image_pipeline.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jpeg_strip"
+path = "fuzz_targets/jpeg_strip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "page_range"
+path = "fuzz_targets/page_range.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "protocol"
+path = "fuzz_targets/protocol.rs"
+test = false
+doc = false
+bench = false
+
+# Not a fuzz target: writes the PDF of one image, to look at the output.
+[[bin]]
+name = "img2pdf"
+path = "tools/img2pdf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "naming"
+path = "fuzz_targets/naming.rs"
+test = false
+doc = false
+bench = false
