@@ -1,0 +1,7 @@
+# Models, datasets, their images and ground truth, and third-party clones
+# never go into git (XFUND is CC BY-NC-SA 4.0).
+/models/
+/data/
+/third_party/
+/target/
+/out/
