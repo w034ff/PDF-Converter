@@ -17,9 +17,11 @@
 //!    horizontally by half their width), read right to left, each top to
 //!    bottom; horizontal lines form rows read top to bottom, each left to right.
 //! 4. **Between blocks**: blocks whose vertical extents overlap form a band;
-//!    bands are read top to bottom. Inside a band, a band of mostly vertical
-//!    blocks is read right to left (ties on the right edge, as with tiers under
-//!    one tall title, go top first), otherwise left to right.
+//!    bands are read top to bottom. A band of mostly vertical blocks is read
+//!    right to left (ties on the right edge, as with tiers under one tall
+//!    title, go top first). A band of mostly horizontal blocks is read by rows
+//!    across its blocks, and each row becomes a block: on forms, grouping
+//!    stacked lines into blocks put a column of keys before its values.
 
 pub const VERTICAL_RATIO: f64 = 1.5;
 pub const SAME_SIZE_RATIO: f64 = 1.3;
@@ -157,32 +159,49 @@ pub fn reading_order(items: &[Item]) -> Vec<Block> {
         let tb = b.iter().map(|&i| blocks[i].bbox[1]).fold(f64::MAX, f64::min);
         ta.total_cmp(&tb)
     });
-    let mut order = Vec::new();
+    let mut out: Vec<Block> = Vec::new();
+    let mut taken: Vec<Option<Block>> = blocks.drain(..).map(Some).collect();
     for mut band in bands {
-        let nv = band.iter().filter(|&&i| blocks[i].vertical).count();
+        let nv = band.iter().filter(|&&i| taken[i].as_ref().unwrap().vertical).count();
         if nv * 2 > band.len() {
-            // Right to left; right edges within a column width count as equal.
-            let tol = 0.5 * band.iter().map(|&i| w(&blocks[i].bbox)).fold(f64::MAX, f64::min);
+            // Right to left; right edges within half the narrowest block count as equal.
+            let tol = 0.5 * band.iter().map(|&i| w(&taken[i].as_ref().unwrap().bbox)).fold(f64::MAX, f64::min);
             band.sort_by(|&a, &b| {
-                let (ba, bb) = (&blocks[a].bbox, &blocks[b].bbox);
+                let (ba, bb) = (&taken[a].as_ref().unwrap().bbox, &taken[b].as_ref().unwrap().bbox);
                 if (ba[2] - bb[2]).abs() <= tol { ba[1].total_cmp(&bb[1]) } else { bb[2].total_cmp(&ba[2]) }
             });
+            out.extend(band.into_iter().map(|i| taken[i].take().unwrap()));
         } else {
-            band.sort_by(|&a, &b| {
-                let (ba, bb) = (&blocks[a].bbox, &blocks[b].bbox);
-                ba[0].total_cmp(&bb[0])
-            });
+            // Mostly horizontal (forms, tables): read the band by rows across
+            // its blocks, so a column of keys is not read before its values.
+            // Each row becomes a block; vertical blocks keep their place by top.
+            let mut units: Vec<Block> = Vec::new();
+            let mut hlines: Vec<usize> = Vec::new();
+            for i in band {
+                let b = taken[i].take().unwrap();
+                if b.vertical { units.push(b) } else { hlines.extend(b.lines) }
+            }
+            for row in lanes(items, hlines, false) {
+                let mut bbox = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
+                for &i in &row {
+                    let b = items[i].bbox;
+                    bbox = [bbox[0].min(b[0]), bbox[1].min(b[1]), bbox[2].max(b[2]), bbox[3].max(b[3])];
+                }
+                units.push(Block { vertical: false, lines: row, bbox });
+            }
+            units.sort_by(|a, b| a.bbox[1].total_cmp(&b.bbox[1]));
+            out.extend(units);
         }
-        order.extend(band);
     }
-    let mut taken: Vec<Option<Block>> = blocks.drain(..).map(Some).collect();
-    order.into_iter().map(|i| taken[i].take().unwrap()).collect()
+    out
 }
 
-fn order_in_block(items: &[Item], mut g: Vec<usize>, vertical: bool) -> Vec<usize> {
-    // Group into columns (vertical) or rows (horizontal).
+/// Columns (vertical, right to left) or rows (horizontal, top to bottom),
+/// each in reading order.
+fn lanes(items: &[Item], g: Vec<usize>, vertical: bool) -> Vec<Vec<usize>> {
     let (ac, al) = if vertical { ((0, 2), (1, 3)) } else { ((1, 3), (0, 2)) };
     let centre = |i: usize| (items[i].bbox[ac.0] + items[i].bbox[ac.1]) / 2.0;
+    let mut g = g;
     g.sort_by(|&a, &b| centre(a).total_cmp(&centre(b)));
     let mut lanes: Vec<Vec<usize>> = Vec::new();
     for i in g {
@@ -201,13 +220,14 @@ fn order_in_block(items: &[Item], mut g: Vec<usize>, vertical: bool) -> Vec<usiz
         }
     }
     if vertical {
-        lanes.reverse(); // right to left
+        lanes.reverse();
+    }
+    for lane in &mut lanes {
+        lane.sort_by(|&a, &b| items[a].bbox[al.0].total_cmp(&items[b].bbox[al.0]));
     }
     lanes
-        .into_iter()
-        .flat_map(|mut lane| {
-            lane.sort_by(|&a, &b| items[a].bbox[al.0].total_cmp(&items[b].bbox[al.0]));
-            lane
-        })
-        .collect()
+}
+
+fn order_in_block(items: &[Item], g: Vec<usize>, vertical: bool) -> Vec<usize> {
+    lanes(items, g, vertical).into_iter().flatten().collect()
 }
