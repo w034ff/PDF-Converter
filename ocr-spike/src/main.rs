@@ -1,4 +1,4 @@
-use ocr_spike::{engine, geom, imgops};
+use ocr_spike::{cer, engine, geom, imgops, order, types, vertical};
 
 use std::path::{Path, PathBuf};
 
@@ -56,6 +56,18 @@ fn main() {
             eprintln!("det {:?} rec {:?} {:?}", t.det(), t.rec(), t);
         }
         Some("parity") => parity(&env, &args),
+        Some("bench") => bench(&env, &args),
+        Some("xfund") => xfund(&env, &args),
+        Some("vertical") => vertical_pages(&env, &args),
+        Some("chars") => chars(&env, &args),
+        Some("page-json") => {
+            let mut ocr = open_ocr(&env, &args);
+            let img = Bgr::open(Path::new(&args[2])).unwrap();
+            let lines = ocr.run(&img, &mut Timings::default()).unwrap();
+            // As if the image were an A4 page shown upright.
+            let page = types::build_page(&lines, img.w, img.h, (595.0, 842.0), "PP-OCRv6_small");
+            println!("{}", serde_json::to_string_pretty(&page).unwrap());
+        }
         _ => eprintln!("usage: ocr-spike run|parity ..."),
     }
 }
@@ -166,4 +178,237 @@ fn parity(env: &ort::environment::Environment, args: &[String]) {
             println!("{n}");
         }
     }
+}
+
+fn median(mut v: Vec<f64>) -> f64 {
+    v.sort_by(f64::total_cmp);
+    v[v.len() / 2]
+}
+
+/// Item 3: per page, `--warmup` runs then the median of `--runs` runs, Det and Rec apart.
+fn bench(env: &ort::environment::Environment, args: &[String]) {
+    let warmup: usize = arg(args, "--warmup").map_or(3, |v| v.parse().unwrap());
+    let runs: usize = arg(args, "--runs").map_or(5, |v| v.parse().unwrap());
+    let start = std::time::Instant::now();
+    let mut ocr = open_ocr(env, args);
+    let load_s = start.elapsed().as_secs_f64();
+    let images: Vec<&String> = args[2..].iter().filter(|a| a.ends_with(".jpg") || a.ends_with(".png")).collect();
+    let mut pages = Vec::new();
+    for path in images {
+        let img = Bgr::open(Path::new(path)).unwrap();
+        let mut ts = Vec::new();
+        let mut texts = Vec::new();
+        for i in 0..warmup + runs {
+            let mut t = Timings::default();
+            let lines = ocr.run(&img, &mut t).unwrap();
+            if i >= warmup {
+                ts.push(t);
+            }
+            texts = lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>();
+        }
+        let ms = |f: &dyn Fn(&Timings) -> std::time::Duration| median(ts.iter().map(|t| f(t).as_secs_f64() * 1000.0).collect());
+        let row = serde_json::json!({
+            "image": Path::new(path).file_name().unwrap().to_string_lossy(),
+            "lines": texts.len(),
+            "det_ms": ms(&|t| t.det()), "rec_ms": ms(&|t| t.rec()),
+            "det_pre": ms(&|t| t.det_pre), "det_run": ms(&|t| t.det_run), "det_post": ms(&|t| t.det_post),
+            "crop": ms(&|t| t.crop), "rec_pre": ms(&|t| t.rec_pre), "rec_run": ms(&|t| t.rec_run), "rec_post": ms(&|t| t.rec_post),
+            "texts": texts,
+        });
+        eprintln!(
+            "{}: lines {} det {:.0} ms rec {:.0} ms det_pre {:.1} det_run {:.1} det_post {:.1} crop {:.1} rec_pre {:.1} rec_run {:.1} rec_post {:.1}",
+            row["image"].as_str().unwrap(), row["lines"], row["det_ms"].as_f64().unwrap(), row["rec_ms"].as_f64().unwrap(),
+            row["det_pre"].as_f64().unwrap(), row["det_run"].as_f64().unwrap(), row["det_post"].as_f64().unwrap(),
+            row["crop"].as_f64().unwrap(), row["rec_pre"].as_f64().unwrap(), row["rec_run"].as_f64().unwrap(), row["rec_post"].as_f64().unwrap()
+        );
+        pages.push(row);
+    }
+    let peak = engine::peak_rss_mib();
+    eprintln!("load {load_s:.2} s, peak RSS {peak:.0} MiB, peak virtual {:.0} MiB", engine::peak_vm_mib());
+    if let Some(out) = arg(args, "--json") {
+        let v = serde_json::json!({"load_s": load_s, "peak_rss_mib": peak, "pages": pages});
+        std::fs::write(out, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    }
+}
+
+/// Item 4: 対応付け CER over XFUND ja val. Writes only numbers to stdout;
+/// predictions go to `out/` (git-ignored) for inspection.
+fn xfund(env: &ort::environment::Environment, args: &[String]) {
+    let mut ocr = open_ocr(env, args);
+    let dir = root().join("data/xfund");
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("ja.val.json")).unwrap()).unwrap();
+    let limit: usize = arg(args, "--pages").map_or(usize::MAX, |n| n.parse().unwrap());
+    let mut total = cer::Score::default();
+    let mut dump = Vec::new();
+    let mut det_ms = Vec::new();
+    let mut rec_ms = Vec::new();
+    for doc in v["documents"].as_array().unwrap().iter().take(limit) {
+        let fname = doc["img"]["fname"].as_str().unwrap();
+        let img = Bgr::open(&dir.join("val").join(fname)).unwrap();
+        let gt: Vec<cer::Boxed> = doc["document"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| {
+                let b = e["box"].as_array().unwrap();
+                cer::Boxed {
+                    text: e["text"].as_str().unwrap_or("").to_string(),
+                    bbox: std::array::from_fn(|k| b[k].as_f64().unwrap()),
+                }
+            })
+            .collect();
+        let mut t = Timings::default();
+        let lines = ocr.run(&img, &mut t).unwrap();
+        det_ms.push(t.det().as_secs_f64() * 1000.0);
+        rec_ms.push(t.rec().as_secs_f64() * 1000.0);
+        let pred: Vec<cer::Boxed> =
+            lines.iter().map(|l| cer::Boxed { text: l.text.clone(), bbox: geom::quad_bounds(&l.quad) }).collect();
+        let s = cer::matched(&gt, &pred);
+        println!("{fname}: CER {:.2} % ({} / {}), lines {}, unassigned {}", s.cer() * 100.0, s.edits, s.chars, lines.len(), s.unassigned);
+        total.add(s);
+        dump.push(serde_json::json!({"fname": fname, "lines": lines.iter().map(|l| serde_json::json!({
+            "quad": l.quad, "text": l.text, "score": l.score, "vertical": l.vertical})).collect::<Vec<_>>()}));
+    }
+    println!(
+        "TOTAL pages {}: CER {:.2} % ({} / {}), unassigned lines {}, median det {:.0} ms rec {:.0} ms, peak RSS {:.0} MiB",
+        dump.len(), total.cer() * 100.0, total.edits, total.chars, total.unassigned,
+        median(det_ms), median(rec_ms), engine::peak_rss_mib()
+    );
+    let model = arg(args, "--model").unwrap_or("small");
+    std::fs::create_dir_all(root().join("out")).unwrap();
+    std::fs::write(root().join(format!("out/xfund_pred_{model}.json")), serde_json::to_string(&dump).unwrap()).unwrap();
+}
+
+fn ordered_text(lines: &[engine::Line], blocks: &[order::Block]) -> String {
+    blocks.iter().flat_map(|b| b.lines.iter().map(|&i| lines[i].text.as_str())).collect()
+}
+
+fn items(lines: &[engine::Line]) -> Vec<order::Item> {
+    lines.iter().map(|l| order::Item { bbox: geom::quad_bounds(&l.quad) }).collect()
+}
+
+/// Item 5: page full-text CER on synthetic vertical pages before and after
+/// reordering, and the same check on XFUND (horizontal forms).
+fn vertical_pages(env: &ort::environment::Environment, args: &[String]) {
+    let mut ocr = open_ocr(env, args);
+    let font_bytes = std::fs::read(root().join("data/fonts/IBMPlexSansJP-Regular.otf")).unwrap();
+    let ts = vertical::Typesetter::new(&font_bytes, &root().join("data/fonts/plex_vert.json"));
+    let dir = root().join("data/vertical");
+    std::fs::create_dir_all(&dir).unwrap();
+    let (mut before, mut after, mut matched) = (cer::Score::default(), cer::Score::default(), cer::Score::default());
+    for (name, page, gt) in vertical::pages(&ts) {
+        let path = dir.join(format!("{name}.png"));
+        page.save(&path).unwrap();
+        std::fs::write(dir.join(format!("{name}.json")), serde_json::to_string_pretty(&gt).unwrap()).unwrap();
+        let img = Bgr::open(&path).unwrap();
+        let lines = ocr.run(&img, &mut Timings::default()).unwrap();
+        let gt_text: String = gt.iter().flat_map(|b| b.lines.iter().map(String::as_str)).collect();
+        let paddle: String = lines.iter().map(|l| l.text.as_str()).collect();
+        let blocks = order::reading_order(&items(&lines));
+        let ours = ordered_text(&lines, &blocks);
+        let (b, a) = (cer::full_text(&gt_text, &paddle), cer::full_text(&gt_text, &ours));
+        let gt_lines: Vec<cer::Boxed> = gt
+            .iter()
+            .flat_map(|b| b.lines.iter().zip(&b.line_boxes).map(|(t, bb)| cer::Boxed { text: t.clone(), bbox: *bb }))
+            .collect();
+        let pred: Vec<cer::Boxed> =
+            lines.iter().map(|l| cer::Boxed { text: l.text.clone(), bbox: geom::quad_bounds(&l.quad) }).collect();
+        let m = cer::matched(&gt_lines, &pred);
+        let vertical_lines = lines.iter().filter(|l| l.vertical).count();
+        println!(
+            "{name}: lines {} (vertical {}), blocks found {} (truth {}), full-text CER PaddleOCR order {:.2} % -> reordered {:.2} %, matched CER {:.2} %",
+            lines.len(), vertical_lines, blocks.len(), gt.len(), b.cer() * 100.0, a.cer() * 100.0, m.cer() * 100.0
+        );
+        if args.iter().any(|a| a == "--show") {
+            for (k, bl) in blocks.iter().enumerate() {
+                println!("  block {k} {}: {}", if bl.vertical { "V" } else { "H" }, bl.lines.iter().map(|&i| lines[i].text.as_str()).collect::<Vec<_>>().join(" | "));
+            }
+        }
+        before.add(b);
+        after.add(a);
+        matched.add(m);
+    }
+    println!(
+        "TOTAL vertical: full-text CER PaddleOCR order {:.2} % -> reordered {:.2} %, matched CER {:.2} %",
+        before.cer() * 100.0, after.cer() * 100.0, matched.cer() * 100.0
+    );
+
+    // XFUND: the order must not get worse on horizontal forms. The ground
+    // truth order is the annotation order of ja.val.json.
+    let xdir = root().join("data/xfund");
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(xdir.join("ja.val.json")).unwrap()).unwrap();
+    let limit: usize = arg(args, "--pages").map_or(usize::MAX, |n| n.parse().unwrap());
+    let (mut xb, mut xa) = (cer::Score::default(), cer::Score::default());
+    for doc in v["documents"].as_array().unwrap().iter().take(limit) {
+        let img = Bgr::open(&xdir.join("val").join(doc["img"]["fname"].as_str().unwrap())).unwrap();
+        let lines = ocr.run(&img, &mut Timings::default()).unwrap();
+        let gt_text: String = doc["document"].as_array().unwrap().iter().map(|e| e["text"].as_str().unwrap_or("")).collect();
+        let paddle: String = lines.iter().map(|l| l.text.as_str()).collect();
+        let ours = ordered_text(&lines, &order::reading_order(&items(&lines)));
+        xb.add(cer::full_text(&gt_text, &paddle));
+        xa.add(cer::full_text(&gt_text, &ours));
+    }
+    println!(
+        "TOTAL XFUND val: full-text CER PaddleOCR order {:.2} % -> reordered {:.2} %",
+        xb.cer() * 100.0, xa.cer() * 100.0
+    );
+}
+
+fn rect_iou(a: [f64; 4], b: [f64; 4]) -> f64 {
+    geom::iou(&a, &b)
+}
+
+/// Item 6: how well the per-character cells from the CTC steps match
+/// XFUND's per-character boxes, against splitting the line evenly.
+fn chars(env: &ort::environment::Environment, args: &[String]) {
+    let mut ocr = open_ocr(env, args);
+    let dir = root().join("data/xfund");
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("ja.val.json")).unwrap()).unwrap();
+    let limit: usize = arg(args, "--pages").map_or(usize::MAX, |n| n.parse().unwrap());
+    let (mut n, mut lines_used) = (0usize, 0usize);
+    let (mut iou_ctc, mut iou_even, mut hit_ctc, mut hit_even) = (0.0, 0.0, 0usize, 0usize);
+    for doc in v["documents"].as_array().unwrap().iter().take(limit) {
+        let img = Bgr::open(&dir.join("val").join(doc["img"]["fname"].as_str().unwrap())).unwrap();
+        let lines = ocr.run(&img, &mut Timings::default()).unwrap();
+        let page = types::build_page(&lines, img.w, img.h, (img.w as f64, img.h as f64), "x");
+        let ents = doc["document"].as_array().unwrap();
+        for line in page.blocks.iter().flat_map(|b| &b.lines) {
+            if line.orientation != types::Orientation::Horizontal {
+                continue;
+            }
+            let lb = [line.bbox.x0, line.bbox.y0, line.bbox.x1, line.bbox.y1];
+            let pred_chars: Vec<&types::OcrChar> = line.words.iter().flat_map(|w| &w.chars).collect();
+            let pred_text: String = pred_chars.iter().map(|c| c.text.as_str()).collect();
+            // The entity whose text is exactly this line (spaces aside) and that overlaps it.
+            let Some(e) = ents.iter().find(|e| {
+                let b = e["box"].as_array().unwrap();
+                let eb: [f64; 4] = std::array::from_fn(|k| b[k].as_f64().unwrap());
+                let words = e["words"].as_array().unwrap();
+                let gt: String = words.iter().map(|w| w["text"].as_str().unwrap()).collect();
+                rect_iou(eb, lb) > 0.3 && gt == pred_text && words.len() == pred_chars.len()
+            }) else { continue };
+            lines_used += 1;
+            let words = e["words"].as_array().unwrap();
+            let k = pred_chars.len() as f64;
+            for (i, (pc, w)) in pred_chars.iter().zip(words).enumerate() {
+                let b = w["box"].as_array().unwrap();
+                let gb: [f64; 4] = std::array::from_fn(|k| b[k].as_f64().unwrap());
+                let cb = geom::quad_bounds(&pc.quad);
+                let even = [lb[0] + (lb[2] - lb[0]) * i as f64 / k, lb[1], lb[0] + (lb[2] - lb[0]) * (i + 1) as f64 / k, lb[3]];
+                iou_ctc += rect_iou(cb, gb);
+                iou_even += rect_iou(even, gb);
+                let inside = |r: [f64; 4]| {
+                    let (cx, cy) = ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
+                    cx >= gb[0] && cx <= gb[2] && cy >= gb[1] && cy <= gb[3]
+                };
+                hit_ctc += usize::from(inside(cb));
+                hit_even += usize::from(inside(even));
+                n += 1;
+            }
+        }
+    }
+    println!(
+        "lines compared {lines_used}, characters {n}: mean IoU CTC {:.3} vs even split {:.3}; centre inside the true box CTC {:.1} % vs even {:.1} %",
+        iou_ctc / n as f64, iou_even / n as f64, hit_ctc as f64 * 100.0 / n as f64, hit_even as f64 * 100.0 / n as f64
+    );
 }

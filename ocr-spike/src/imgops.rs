@@ -101,7 +101,7 @@ pub fn resize_linear(src: &Bgr, dw: usize, dh: usize) -> Bgr {
     let yt = linear_table(src.h, dh);
     // Horizontal pass on every source row that is needed, as i32 (value × 2048).
     let mut rows: Vec<Option<Vec<i32>>> = vec![None; src.h];
-    let mut horiz = |y: usize, rows: &mut Vec<Option<Vec<i32>>>| {
+    let horiz = |y: usize, rows: &mut Vec<Option<Vec<i32>>>| {
         if rows[y].is_none() {
             let mut r = vec![0i32; dw * 3];
             let line = &src.data[y * src.w * 3..(y + 1) * src.w * 3];
@@ -180,6 +180,20 @@ fn cubic_coeffs(x: f32) -> [f32; 4] {
 /// where `inv` maps destination pixels to source pixels. Sub-pixel positions
 /// are quantised to 1/32 like OpenCV's `INTER_TAB_SIZE`; the weights stay float.
 pub fn warp_perspective_cubic(src: &Bgr, inv: &[f64; 9], w: usize, h: usize) -> Bgr {
+    if let Some((dx, dy)) = integer_translation(inv) {
+        // Every sample falls on a pixel centre, where the cubic weights are
+        // [0, 1, 0, 0]: the warp is a copy with replicated borders.
+        let mut out = Bgr::new(w, h);
+        for y in 0..h {
+            let sy = (y as isize + dy).clamp(0, src.h as isize - 1) as usize;
+            for x in 0..w {
+                let sx = (x as isize + dx).clamp(0, src.w as isize - 1) as usize;
+                let (o, i) = ((y * w + x) * 3, (sy * src.w + sx) * 3);
+                out.data[o..o + 3].copy_from_slice(&src.data[i..i + 3]);
+            }
+        }
+        return out;
+    }
     let tab: Vec<[f32; 4]> = (0..32).map(|i| cubic_coeffs(i as f32 / 32.0)).collect();
     let mut out = Bgr::new(w, h);
     let (sw, sh) = (src.w as isize, src.h as isize);
@@ -210,4 +224,16 @@ pub fn warp_perspective_cubic(src: &Bgr, inv: &[f64; 9], w: usize, h: usize) -> 
         }
     }
     out
+}
+
+/// `(dx, dy)` when `inv` only moves pixels by whole numbers (the usual
+/// axis-aligned text line).
+fn integer_translation(inv: &[f64; 9]) -> Option<(isize, isize)> {
+    const EPS: f64 = 1e-9;
+    let near = |a: f64, b: f64| (a - b).abs() < EPS;
+    let is_int = |v: f64| (v - v.round()).abs() < 1.0 / 64.0 / 4.0;
+    (near(inv[0], 1.0) && near(inv[1], 0.0) && near(inv[3], 0.0) && near(inv[4], 1.0)
+        && near(inv[6], 0.0) && near(inv[7], 0.0) && near(inv[8], 1.0)
+        && is_int(inv[2]) && is_int(inv[5]))
+    .then(|| (inv[2].round() as isize, inv[5].round() as isize))
 }

@@ -280,6 +280,26 @@ pub fn rec_fill(crop: &Bgr, out: &mut [f32], tw: usize) -> usize {
     rw
 }
 
+/// Index and value of the largest element; the first one on ties, like numpy.
+/// The maximum is found with 16 independent lanes so that it vectorises
+/// (`max_by` on an iterator does not), then its first position is looked up.
+#[inline]
+fn argmax(row: &[f32]) -> (usize, f32) {
+    let mut lanes = [f32::NEG_INFINITY; 16];
+    let chunks = row.chunks_exact(16);
+    let rest = chunks.remainder();
+    for c in chunks {
+        for k in 0..16 {
+            lanes[k] = if c[k] > lanes[k] { c[k] } else { lanes[k] };
+        }
+    }
+    let mut m = lanes.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    for &v in rest {
+        m = m.max(v);
+    }
+    (row.iter().position(|&v| v == m).unwrap_or(0), m)
+}
+
 /// Greedy CTC decoding (`CTCLabelDecode`) of one `[T, C]` slice.
 pub fn ctc_decode(probs: &[f32], t: usize, c: usize, dict: &[String]) -> RecText {
     let mut out = RecText { time_steps: t, ..Default::default() };
@@ -287,7 +307,7 @@ pub fn ctc_decode(probs: &[f32], t: usize, c: usize, dict: &[String]) -> RecText
     let mut confs = Vec::new();
     for step in 0..t {
         let row = &probs[step * c..(step + 1) * c];
-        let (best, &p) = row.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).unwrap();
+        let (best, p) = argmax(row);
         if best != 0 && best != prev {
             let s = dict.get(best).map_or("", |s| s.as_str());
             out.text.push_str(s);
@@ -403,11 +423,20 @@ impl Ocr {
 
 /// Peak resident memory of this process (`VmHWM`), in MiB.
 pub fn peak_rss_mib() -> f64 {
+    proc_status_mib("VmHWM:")
+}
+
+/// Peak virtual memory (`VmPeak`), in MiB: what `RLIMIT_AS` limits.
+pub fn peak_vm_mib() -> f64 {
+    proc_status_mib("VmPeak:")
+}
+
+fn proc_status_mib(key: &str) -> f64 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
         .and_then(|s| {
             s.lines()
-                .find(|l| l.starts_with("VmHWM:"))
+                .find(|l| l.starts_with(key))
                 .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<f64>().ok()))
         })
         .map_or(0.0, |kb| kb / 1024.0)
