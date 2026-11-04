@@ -116,7 +116,28 @@ cargo run -- samples/pages-240.pdf
 
 ## 3. OS とのつなぎ
 
-（未記入）
+### ファイルのダイアログ — 判定: そのままできる
+
+- 作り: [`src/main.rs`](src/main.rs) の `on_add_pdfs` / `on_save`（各 15 行ほど）。`rfd` 0.15.4 の `AsyncFileDialog` を `slint::spawn_local` の中で `await` する。`set_parent(&app.window().window_handle())`（slint の `raw-window-handle-06` 機能）で、ダイアログを窓の子にする。
+- 開く: PDF の絞り込みで複数を選ぶ → 選んだ道を Rust がそのまま worker の `Open` に渡す。保存: 初期のファイル名を付けて保存先を選ぶ → 項目 5 の `Organize` で書き出す。
+- 同期の `FileDialog` でも動くが、ダイアログの間イベントループが止まるので非同期の版にした。Windows の `rfd` は IFileDialog を別のスレッドで開く。
+- Linux の `rfd` の既定は XDG デスクトップポータル（D-Bus）。このクラウドにはポータルがなく、ダイアログは出ずに `None` が返った。イベントループは止まらなかった（台本のログ「add-pdfs dialog: event loop still running」）。Linux で GTK のダイアログが要るなら `rfd` の `gtk3` 機能に替える（GTK の開発用ファイルが要る）。
+- 今のアプリの決まり「道はダイアログと D&D からだけ Rust に入る」（design §1, §6.1）は、IPC がなくなるので自然に守られる。
+
+### OS からのファイルの D&D — 判定: 工夫すればできる（2026-10-16 から変わらず）
+
+- **最新の 1.18.1 でも `DropArea` は OS からのファイルを受けない。** 確かめた所:
+  - `DragArea` / `DropArea` は 1.18 で入った（slint-ui/slint#11400 "Implement in-process drag-and-drop using a design that can be extended for cross-application support"）。名前のとおり**同じアプリの中**の D&D で、`DropArea` に届く `MouseEvent::DragMove` / `Drop` は、`DragArea` からのドラッグのときにだけ Slint の中で作られる（`i-slint-core-1.18.1/items/drag_n_drop.rs`）。
+  - 外から入る口もない: 公開の `slint::platform::WindowEvent` にドラッグの種類はなく、内部の `InternalEvent` もマウス・キー・タッチだけ（`i-slint-core-1.18.1/platform.rs`）。winit のバックエンドは `WindowEvent::DroppedFile` / `HoveredFile` を扱っていない（`i-slint-backend-winit-1.18.1` に `DroppedFile` の文字列がない）。
+- そこで前回と同じく、winit の窓のイベントを直接受ける（`slint::winit_030::WinitWindowAccessor::on_winit_window_event`、`unstable-winit-030` 機能）。`HoveredFile` で「PDF をドロップ」の覆いを出し、`HoveredFileCancelled` で消し、`DroppedFile(path)` で、ダイアログと同じ `add_paths` に渡す。[`src/main.rs`](src/main.rs) の 25 行ほど。覆いの見た目は画像 12。
+- 工夫が要る点・危ない点:
+  - `unstable-winit-030` は名前のとおり安定版の約束の外。Slint の版を上げると変わりうる。winit の版も Slint が決める（1.18.1 は winit 0.30.13）。
+  - winit 0.30 の `DroppedFile` には**位置がない**（ファイルごとに道だけが届く）。「格子の、落とした位置に差し込む」はできない。今のアプリも整理では末尾に足す（organize §4）ので困らないが、位置で振り分ける画面を作るなら別の手（OS の API を直接）が要る。
+  - フォルダを落とすと、フォルダの道が 1 つ届く。中の PDF を集めるのは自分で書く（今の `items.rs` と同じ）。試作では `.pdf` 以外を無視しただけ。
+  - 開いたままの issue に slint-ui/slint#12437 "Crash when dragging file onto winit window." がある（題だけ読んだ。中身は確かめていない）。Windows で必ず試してほしい。
+  - 画面なしの Xvfb には D&D の送り手がないので、`DroppedFile` の道筋はここでは動かしていない（`add_paths` から先は台本で通っている）。
+
+![ドロップの覆い](screenshots/12-file-hover.png)
 
 ## 4. アクセシビリティ
 

@@ -310,6 +310,26 @@ pub fn run(ctx: Rc<Ctx>, dir: PathBuf) {
         sleep(200).await;
         d.shot("11-dark");
 
+        // The overlay shown while the OS drags a file over the window
+        // (winit's HoveredFile; set directly since Xvfb has no drag source).
+        app.global::<crate::T>().set_force_dark(false);
+        let _ = slint::select_bundled_translation("ja");
+        app.set_language("ja".into());
+        app.set_file_hover(true);
+        sleep(200).await;
+        d.shot("12-file-hover");
+        app.set_file_hover(false);
+
+        // The file dialog: on this machine there is no XDG desktop portal, so
+        // rfd must give up without blocking the event loop.
+        let t = Instant::now();
+        app.invoke_add_pdfs();
+        sleep(1500).await;
+        println!(
+            "add-pdfs dialog: event loop still running after {} ms",
+            t.elapsed().as_millis()
+        );
+
         // Save the current order and read it back.
         let out = d.dir.join("../target/organized.pdf");
         let expected: Vec<u32> = d.order(usize::MAX);
