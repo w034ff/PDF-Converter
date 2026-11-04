@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use pdfconv_core::naming::split_stem_and_ext;
+use pdfconv_core::naming::{fit_file_name, numbered_tail, split_stem_and_ext};
 
 use crate::AppState;
 use crate::error::IpcError;
@@ -154,11 +154,8 @@ pub fn persist_unique(
                         .expect("used_names_lower mutex poisoned");
                     loop {
                         suffix_num += 1;
-                        let next_candidate = if ext.is_empty() {
-                            format!("{stem} ({suffix_num})")
-                        } else {
-                            format!("{stem} ({suffix_num}).{ext}")
-                        };
+                        let next_candidate =
+                            fit_file_name(stem, &numbered_tail("", suffix_num, ext));
                         let next_lower = next_candidate.to_lowercase();
                         if !used.contains(&next_lower) && !output_dir.join(&next_candidate).exists()
                         {

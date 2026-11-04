@@ -72,6 +72,12 @@ const HEADER_PEEK_BYTES: usize = 64 * 1024;
 /// Returns [`ProbeError::TooLarge`] if total pixels exceed [`MAX_IMAGE_PIXELS`].
 /// Returns [`ProbeError::TooManyPages`] if a multi-page TIFF exceeds [`crate::MAX_TIFF_PAGES`].
 pub fn probe(path: &Path) -> Result<ImageInfo, ProbeError> {
+    // Opening a named pipe blocks until something writes to it, which would hang the thread
+    // that adds the file for good; a device such as /dev/zero never ends. Only regular files
+    // are images (symbolic links are followed).
+    if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) {
+        return Err(ProbeError::ReadFailed);
+    }
     let file = std::fs::File::open(path).map_err(|_| ProbeError::ReadFailed)?;
     let reader = std::io::BufReader::new(file);
     probe_reader(reader)
@@ -182,7 +188,7 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
 }
 
 /// Scans PNG chunks from `reader` by seeking over chunk data to locate `pHYs` before `IDAT`.
-fn find_png_phys_dpi<R: Read + Seek>(reader: &mut R) -> Option<(u32, u32)> {
+fn find_png_phys_dpi<R: BufRead + Seek>(reader: &mut R) -> Option<(u32, u32)> {
     reader.rewind().ok()?;
     let mut magic = [0u8; 8];
     reader.read_exact(&mut magic).ok()?;
@@ -218,10 +224,34 @@ fn find_png_phys_dpi<R: Read + Seek>(reader: &mut R) -> Option<(u32, u32)> {
             break;
         }
 
-        let skip_bytes = i64::from(length).checked_add(4)?;
-        reader.seek(std::io::SeekFrom::Current(skip_bytes)).ok()?;
+        skip_bytes(reader, u64::from(length) + 4).ok()?;
     }
     None
+}
+
+/// Moves `reader` forward by `count` bytes. Bytes already in the buffer are consumed, because
+/// `BufReader::seek` throws its buffer away: with a seek per chunk, a PNG of many small chunks
+/// before `IDAT` costs a fresh read of the buffer for every chunk, in the main process.
+fn skip_bytes<R: BufRead + Seek>(reader: &mut R, count: u64) -> std::io::Result<()> {
+    /// Above this, the rest of a chunk is sought over rather than read.
+    const SEEK_OVER: u64 = 64 * 1024;
+    let mut remaining = count;
+    while remaining > 0 {
+        if remaining > SEEK_OVER {
+            let offset = i64::try_from(remaining).map_err(std::io::Error::other)?;
+            reader.seek(std::io::SeekFrom::Current(offset))?;
+            return Ok(());
+        }
+        let buffered = reader.fill_buf()?.len();
+        if buffered == 0 {
+            // The end of the file: the next header read fails and ends the search.
+            return Ok(());
+        }
+        let step = usize::try_from(remaining).map_or(buffered, |r| r.min(buffered));
+        reader.consume(step);
+        remaining -= step as u64;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -713,6 +743,39 @@ mod tests {
         assert_eq!(err.detail(), None);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn read_failed_on_a_named_pipe_without_blocking() {
+        let dir = std::env::temp_dir().join(format!("pdfconv-probe-fifo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let fifo = dir.join("pipe.png");
+        let _ = std::fs::remove_file(&fifo);
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("run mkfifo");
+        assert!(made.success(), "mkfifo failed");
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let path = fifo.clone();
+        // Opening a pipe blocks until a writer comes, so a probe that opened it would not answer.
+        std::thread::spawn(move || {
+            let _ = sender.send(probe(&path));
+        });
+        let result = receiver.recv_timeout(std::time::Duration::from_secs(10));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            result.expect("probe of a named pipe blocked").unwrap_err(),
+            ProbeError::ReadFailed
+        );
+    }
+
+    #[test]
+    fn read_failed_on_a_folder() {
+        let err = probe(Path::new(FIXTURES_DIR)).unwrap_err();
+        assert_eq!(err, ProbeError::ReadFailed);
+    }
+
     #[test]
     fn parse_png_phys_density() {
         let mut png = make_png_with_phys(11811, 11811, 1);
@@ -779,6 +842,53 @@ mod tests {
         let probed = probe_reader(Cursor::new(png)).expect("probe png with 70 KiB chunk");
         assert_eq!(probed.dpi_x, 300);
         assert_eq!(probed.dpi_y, 300);
+    }
+
+    /// Counts the reads and seeks that reach the underlying reader.
+    struct CountingReader {
+        inner: Cursor<Vec<u8>>,
+        reads: usize,
+        seeks: usize,
+    }
+
+    impl Read for CountingReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.reads += 1;
+            self.inner.read(buf)
+        }
+    }
+
+    impl Seek for CountingReader {
+        fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.seeks += 1;
+            self.inner.seek(pos)
+        }
+    }
+
+    #[test]
+    fn png_phys_search_reads_small_chunks_from_the_buffer() {
+        // pHYs after 10,000 empty chunks: 120 KB, which a BufReader reads in 15 refills.
+        let full = make_png_with_phys(11811, 11811, 1);
+        let ihdr_end = 8 + 25;
+        let mut png = full[..ihdr_end].to_vec();
+        for _ in 0..10_000 {
+            png.extend_from_slice(&0u32.to_be_bytes());
+            png.extend_from_slice(b"zzZz");
+            png.extend_from_slice(&crc32_simple(b"zzZz").to_be_bytes());
+        }
+        png.extend_from_slice(&full[ihdr_end..]);
+
+        let mut reader = std::io::BufReader::new(CountingReader {
+            inner: Cursor::new(png),
+            reads: 0,
+            seeks: 0,
+        });
+        assert_eq!(find_png_phys_dpi(&mut reader), Some((300, 300)));
+        let counts = reader.get_ref();
+        // A seek per chunk would be 10,000 seeks and refills; the one seek is the rewind at
+        // the start.
+        assert!(counts.seeks <= 1, "{} seeks", counts.seeks);
+        assert!(counts.reads <= 20, "{} reads", counts.reads);
     }
 
     #[test]

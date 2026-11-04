@@ -389,6 +389,59 @@ impl PdfWriter {
 mod tests {
     use super::*;
 
+    /// `photo.jpg` with an APP2 `ICC_PROFILE` segment holding `profile` after its SOI.
+    fn photo_with_icc(profile: &[u8]) -> Vec<u8> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/photo.jpg");
+        let photo = std::fs::read(path).expect("read photo.jpg");
+        let mut payload = b"ICC_PROFILE\0\x01\x01".to_vec();
+        payload.extend_from_slice(profile);
+        let length = u16::try_from(payload.len() + 2).expect("segment fits");
+        let mut jpeg = photo[..2].to_vec();
+        jpeg.extend_from_slice(&[0xFF, 0xE2]);
+        jpeg.extend_from_slice(&length.to_be_bytes());
+        jpeg.extend_from_slice(&payload);
+        jpeg.extend_from_slice(&photo[2..]);
+        jpeg
+    }
+
+    fn written_pdf(image: Vec<u8>, conformance: PdfConformance) -> Vec<u8> {
+        let mut writer = PdfWriter::new("test", conformance);
+        writer
+            .add_checked_image(image, PageSize::Fit, |_, _| {}, || false)
+            .expect("add photo");
+        writer.finish().expect("finish")
+    }
+
+    fn icc_based_count(pdf: &[u8]) -> usize {
+        pdf.windows(8).filter(|w| w == b"ICCBased").count()
+    }
+
+    #[test]
+    fn jpeg_icc_profile_without_a_profile_header_is_not_embedded() {
+        let mut junk = vec![0u8; 16];
+        junk.extend_from_slice(b"RGB ");
+        junk.resize(128, 0xff);
+        // Kept, krilla would embed it as an ICCBased colour space: one in an ordinary PDF, and
+        // one beside the sRGB output intent in a PDF/A.
+        let jpeg = photo_with_icc(&junk);
+        assert_eq!(
+            icc_based_count(&written_pdf(jpeg.clone(), PdfConformance::Standard)),
+            0
+        );
+        assert_eq!(
+            icc_based_count(&written_pdf(jpeg, PdfConformance::PdfA2b)),
+            1
+        );
+
+        // A profile with a header still goes in.
+        let profile = crate::icc::test_profile(132, b"RGB ");
+        let jpeg = photo_with_icc(&profile);
+        assert_eq!(
+            icc_based_count(&written_pdf(jpeg, PdfConformance::Standard)),
+            1
+        );
+    }
+
     #[test]
     fn large_16bit_png_within_pixel_limit_exceeds_default_alloc_limit() {
         // 8000x8500 = 68,000,000 pixels (within MAX_IMAGE_PIXELS of 80,000,000).

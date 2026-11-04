@@ -405,26 +405,37 @@ pub(crate) fn encode_pixels(
 /// Turns pdfium's RGBA bytes into the pixels to encode: RGB, or one gray
 /// channel (design §4.4: `FPDF_GRAYSCALE` makes R = G = B). With `keep_alpha`
 /// the alpha channel stays: RGBA, or gray and alpha.
+///
+/// The channels are packed within `rgba`'s own buffer. A second buffer would
+/// add three quarters of the bitmap to the worker's peak, and on a page of a
+/// few hundred dpi, fresh memory costs more time than the copy itself.
 pub(crate) fn pixels_from_rgba(
     rgba: Vec<u8>,
     color: RenderColor,
     keep_alpha: bool,
 ) -> (Vec<u8>, ExtendedColorType) {
-    let pixels = rgba.as_chunks::<4>().0;
     match (color, keep_alpha) {
         (RenderColor::Color, true) => (rgba, ExtendedColorType::Rgba8),
-        (RenderColor::Color, false) => (
-            pixels.iter().flat_map(|p| [p[0], p[1], p[2]]).collect(),
-            ExtendedColorType::Rgb8,
-        ),
-        (RenderColor::Gray, true) => (
-            pixels.iter().flat_map(|p| [p[0], p[3]]).collect(),
-            ExtendedColorType::La8,
-        ),
-        (RenderColor::Gray, false) => {
-            (pixels.iter().map(|p| p[0]).collect(), ExtendedColorType::L8)
+        (RenderColor::Color, false) => (keep_channels(rgba, &[0, 1, 2]), ExtendedColorType::Rgb8),
+        (RenderColor::Gray, true) => (keep_channels(rgba, &[0, 3]), ExtendedColorType::La8),
+        (RenderColor::Gray, false) => (keep_channels(rgba, &[0]), ExtendedColorType::L8),
+    }
+}
+
+/// Keeps the channels `keep` (indices into each 4-byte pixel, in order) of every
+/// pixel of `pixels`, packed from the start of the same buffer.
+fn keep_channels(mut pixels: Vec<u8>, keep: &[usize]) -> Vec<u8> {
+    let count = pixels.len() / 4;
+    let mut write = 0;
+    for read in (0..count).map(|pixel| pixel * 4) {
+        for &channel in keep {
+            // `write` never passes `read`: each pixel writes at most 3 bytes and reads 4.
+            pixels[write] = pixels[read + channel];
+            write += 1;
         }
     }
+    pixels.truncate(write);
+    pixels
 }
 
 pub(crate) fn map_pdfium_open_error(error: &PdfiumError) -> Response {
@@ -473,7 +484,10 @@ pub(crate) fn render_page_pixels(
         .render_with_config(&config)
         .map_err(|e| error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}"))))?;
 
-    Ok(pixels_from_rgba(bitmap.as_rgba_bytes(), color, false))
+    let rgba = bitmap.as_rgba_bytes();
+    // pdfium's own buffer is not needed once it is copied.
+    drop(bitmap);
+    Ok(pixels_from_rgba(rgba, color, false))
 }
 
 fn unavailable(error: &dyn std::fmt::Debug) -> Response {
@@ -521,6 +535,45 @@ mod tests {
                 detail: Some("10,000".into()),
             }
         );
+    }
+
+    #[test]
+    fn pixels_from_rgba_keeps_the_channels_in_order() {
+        let rgba: Vec<u8> = (0..4 * 5).map(|i| i as u8).collect();
+        let pixels = rgba.as_chunks::<4>().0;
+        let cases: [(RenderColor, bool, Vec<u8>, ExtendedColorType); 4] = [
+            (
+                RenderColor::Color,
+                true,
+                rgba.clone(),
+                ExtendedColorType::Rgba8,
+            ),
+            (
+                RenderColor::Color,
+                false,
+                pixels.iter().flat_map(|p| [p[0], p[1], p[2]]).collect(),
+                ExtendedColorType::Rgb8,
+            ),
+            (
+                RenderColor::Gray,
+                true,
+                pixels.iter().flat_map(|p| [p[0], p[3]]).collect(),
+                ExtendedColorType::La8,
+            ),
+            (
+                RenderColor::Gray,
+                false,
+                pixels.iter().map(|p| p[0]).collect(),
+                ExtendedColorType::L8,
+            ),
+        ];
+        for (color, keep_alpha, expected, color_type) in cases {
+            assert_eq!(
+                pixels_from_rgba(rgba.clone(), color, keep_alpha),
+                (expected, color_type),
+                "{color:?}, keep_alpha {keep_alpha}"
+            );
+        }
     }
 
     #[test]
