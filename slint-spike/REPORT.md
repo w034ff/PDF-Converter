@@ -139,9 +139,53 @@ cargo run -- samples/pages-240.pdf
 
 ![ドロップの覆い](screenshots/12-file-hover.png)
 
-## 4. アクセシビリティ
+## 4. アクセシビリティ — 判定: 工夫すればできる
 
-（未記入）
+### Slint が出すもの
+
+- Slint は AccessKit を通して OS に出す（`accessibility` 機能。既定で入っている）。Windows は UI Automation、Linux は AT-SPI、macOS は NSAccessibility。
+- 要素ごとに書ける性質（1.18.1）: `accessible-role`、`-label`、`-description`、`-enabled`、`-checkable` / `-checked`、`-expandable` / `-expanded`、`-value`（`-minimum` / `-maximum` / `-step`）、`-read-only`、`-placeholder-text`、`-orientation`、`-live-region`、`-item-selectable` / `-item-selected` / `-item-index` / `-item-count`、`-delegate-focus`、`-id`、それに `accessible-action-default` などの動作。
+- 役割は 30 ほど（`button`・`checkbox`・`list`・`list-item`・`tab`・`tab-list`・`tab-panel`・`table`・`tree`・`text-input`・`slider`・`radio-button`・ランドマーク（`main`・`navigation`・`region` など）ほか）。`grid` / `gridcell` はない。AccessKit への対応は `i-slint-backend-winit-1.18.1/accesskit.rs`（`list` → ListBox、`list-item` → ListBoxOption）。
+- 標準の部品（`Button`・`LineEdit`・`ScrollView` など）は役割と名前を自分で付ける。この試作は見た目を合わせるために自作の部品（`FlatButton`・`TabButton`）にしたので、役割と名前は自分で書いた。
+
+### 格子の項目に役割と名前を付けられるか — 付けられた
+
+[`scripts/a11y-dump.sh`](scripts/a11y-dump.sh) で、Xvfb と AT-SPI のバスの上で窓を開き、pyatspi で木を読んだ（全文は [`a11y-tree.txt`](a11y-tree.txt)）。2〜4 ページ目を選んだあと → で 5 ページ目に移った状態:
+
+```
+page tab list '変換の種類'
+  page tab '整理' [focusable, selected, selectable]
+panel '言語'
+  toggle button '日本語'
+list item 'pages-240.pdf 240 ページ'
+label '1 ページを選択中'
+push button '左に回す'
+list box 'ページ'
+  list item 'pages-240.pdf 1 ページ' [focusable, selectable] {'posinset': '1'}
+  …
+  list item 'pages-240.pdf 5 ページ' [focused, focusable, selected, selectable] {'posinset': '5'}
+focused: list item 'pages-240.pdf 5 ページ'
+  list selection count: 1
+```
+
+- 格子は `list`（AT-SPI の list box）、升は `list-item`。名前は今のアプリの `cellAria`（「{name} {page} ページ」、回したら「、{degrees}°」）と同じ文言を `@tr` で付けた。
+- 選択: `accessible-item-selectable` / `-item-selected` で、升に selectable / selected が付き、list box の Selection インターフェースで選んだ数（1）が読めた。
+- 位置: `accessible-item-index` が posinset になった（1 から数えた値で出た）。
+- **フォーカス**: 升は一つ一つフォーカスを持たない（キーは格子の `FocusScope` 1 つが受ける）。そのままではスクリーンリーダーには「ページ」の list box にフォーカスがあるとしか伝わらない。`accessible-delegate-focus: <番号>`（フォーカスのある要素の、何番目のアクセシブルな子をフォーカスとして報告するか）に、Rust で「今の升」の番号を渡すと、キーで動かした升（5 ページ目）が focused として出た。今のアプリの roving tabindex に当たるものを、こうして作れる。
+- 仮想化との兼ね合い:
+  - 木に出るのは作られている升（見えている所と上下 2 行）だけ。今のアプリも同じ（`aria-setsize` / `aria-posinset` で全体の数と位置を伝える）。
+  - 使っていない升（使い回しの空き）が空の list item として出ないように、`if cell.index >= 0: PageCell { … }` で包んだ（`accessible-role` は定数でなければならず、式で `none` にできない）。
+  - フォーカスのある升は画面の外でも作り続ける（organize §4 と同じ）。消すと、報告するフォーカスがなくなるため。
+  - `accessible-delegate-focus` の番号は「アクセシブルな子の中での順番」で、升の使い回しの順（ページの順ではない）。Rust で数えて渡す必要がある（`Ctx::refresh` の `delegate`）。
+
+### 直した所・足りない所
+
+- 中の `Text` は、何もしないと label として木に出る（升の中の「p.5」「pages-240.pdf」、ボタンの中の文字が二重に読まれる）。`accessible-role: none;` を付けて消した。HTML ならボタンの中の文字はボタンの名前になるだけなので、ここは Slint の方が手間が多い。
+- タブの「選ばれている」は `accessible-item-selected` だけでは出ず、`accessible-item-selectable: true` も要った。言語のボタンの「押されている」は `accessible-checkable: true` で toggle button になった。
+- **全体の数（setsize）が升に出ていない**: `accessible-item-count: 240` を付けたが、AT-SPI の属性に `setsize` がなかった（最初の版では、升の中の label の方に `setsize:240` が出ていた）。AccessKit か Slint のつなぎの不具合かもしれない。Windows の UI Automation の SizeOfSet に出るかを、ナレーターか NVDA で確かめてほしい（「240 個中 5 個目」と読むか）。
+- 下部バーの文言（保存の進み具合など）に `accessible-live-region: polite` を付けた。読み上げられるかは画面なしでは確かめられない。
+- 大きな list の性能の issue が開いたまま（slint-ui/slint#3867 "`accessibility` feature have big performance impact on big listview"。題だけ読んだ）。この試作は升を 60 個ほどに抑えているので当たりにくい。
+- 並べ替えの結果（「4 ページを 13 番目に移しました」のような知らせ）は出していない。今のアプリが出しているなら、live region の文言で作る。
 
 ## 5. 整理の保存
 

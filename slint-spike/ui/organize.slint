@@ -139,12 +139,14 @@ component PageCell inherits Rectangle {
             background: T.sources[Math.mod(data.source-color, 6)];
         }
         Text {
+            accessible-role: none;
             text: @tr("p.{0}", data.page-number);
             color: T.text-secondary;
             font-size: T.font-sm;
             vertical-alignment: center;
         }
         Text {
+            accessible-role: none;
             max-width: 70px;
             text: data.source-name;
             color: T.text-muted;
@@ -164,7 +166,7 @@ component Chip inherits Rectangle {
     border-width: 1px;
     border-color: T.border;
     accessible-role: list-item;
-    accessible-label: chip.name;
+    accessible-label: chip.name + " " + @tr("{n} page" | "{n} pages" % chip.pages);
     chip-row := HorizontalLayout {
         padding-left: 10px;
         padding-right: 10px;
@@ -177,12 +179,14 @@ component Chip inherits Rectangle {
             background: T.sources[Math.mod(chip.color, 6)];
         }
         Text {
+            accessible-role: none;
             text: chip.name;
             color: T.text-primary;
             font-size: T.font-md;
             vertical-alignment: center;
         }
         Text {
+            accessible-role: none;
             text: @tr("{n} page" | "{n} pages" % chip.pages);
             color: T.text-muted;
             font-size: T.font-sm;
@@ -210,6 +214,7 @@ component FlatButton inherits Rectangle {
     accessible-enabled: enabled;
     accessible-action-default => { if enabled { clicked(); } }
     label := Text {
+        accessible-role: none;
         text: root.text;
         color: primary ? T.text-on-accent : (enabled ? T.text-primary : T.text-muted);
         font-size: T.font-md;
@@ -238,6 +243,9 @@ export component OrganizeView inherits Rectangle {
     in property <length> ghost-y;
     in property <bool> file-hover;
     in property <string> status;
+    // Which accessible child of the grid has the focus (the focused page among
+    // the cells that exist), since only the grid itself takes the keyboard focus.
+    in property <int> focus-delegate: -1;
     out property <length> view-width: sv.visible-width;
     out property <length> view-height: sv.visible-height;
     out property <length> grid-origin-x: sv.absolute-position.x;
@@ -363,6 +371,7 @@ export component OrganizeView inherits Rectangle {
                 scope := FocusScope {
                     accessible-role: list;
                     accessible-label: @tr("Pages");
+                    accessible-delegate-focus: root.focus-delegate;
                     key-pressed(event) => {
                         root.grid-key(event.text, event.modifiers.shift, event.modifiers.control, event.modifiers.alt)
                             ? EventResult.accept : EventResult.reject
@@ -390,10 +399,14 @@ export component OrganizeView inherits Rectangle {
                             }
                             moved => { root.pointer-move(self.mouse-x, self.mouse-y); }
 
-                            for cell in root.cells: PageCell {
-                                data: cell;
-                                total: root.page-count;
-                                grid-focused: scope.has-focus;
+                            // Unused slots of the pool hold no PageCell, so that
+                            // they do not show up as empty list items.
+                            for cell in root.cells: Rectangle {
+                                if cell.index >= 0: PageCell {
+                                    data: cell;
+                                    total: root.page-count;
+                                    grid-focused: scope.has-focus;
+                                }
                             }
 
                             if root.drop-line-visible: Rectangle {
@@ -467,6 +480,7 @@ export component OrganizeView inherits Rectangle {
                 Text {
                     horizontal-stretch: 1;
                     vertical-alignment: center;
+                    accessible-live-region: polite;
                     text: root.status;
                     color: T.text-secondary;
                     font-size: T.font-md;

@@ -1,0 +1,38 @@
+applications: ['slint-spike']
+application 'slint-spike' [] 
+  frame 'PDF Converter (Slint spike)' [enabled] 
+    label 'PDF Converter' [enabled] 
+    page tab list '変換の種類' [enabled] 
+      page tab '画像 → PDF' [focusable, selectable, enabled] 
+      page tab 'PDF → 画像' [focusable, selectable, enabled] 
+      page tab '切り出し' [focusable, selectable, enabled] 
+      page tab '整理' [focusable, selected, selectable, enabled] 
+    panel '言語' [enabled] 
+      toggle button '日本語' [focusable, enabled] 
+      toggle button 'English' [focusable, enabled] 
+    label '保存の方法' [enabled] 
+    label '● 結合' [enabled] 
+    label '並び順に 1 つの PDF に結合します' [enabled] 
+    label '○ 分割' [enabled] 
+    push button 'PDF を追加 ▾' [focusable, enabled] 
+    list item 'pages-240.pdf 240 ページ' [focusable, enabled] 
+    label '1 ページを選択中' [enabled] 
+    push button '左に回す' [focusable, enabled] 
+    push button '右に回す' [focusable, enabled] 
+    push button '削除' [focusable, enabled] 
+    list box 'ページ' [enabled] 
+      list item 'pages-240.pdf 1 ページ' [focusable, selectable, enabled] {'posinset': '1'}
+      list item 'pages-240.pdf 2 ページ' [focusable, selectable, enabled] {'posinset': '2'}
+      list item 'pages-240.pdf 3 ページ' [focusable, selectable, enabled] {'posinset': '3'}
+      list item 'pages-240.pdf 4 ページ' [focusable, selectable, enabled] {'posinset': '4'}
+      list item 'pages-240.pdf 5 ページ' [focused, focusable, selected, selectable, enabled] {'posinset': '5'}
+      list item 'pages-240.pdf 6 ページ' [focusable, selectable, enabled] {'posinset': '6'}
+      list item 'pages-240.pdf 7 ページ' [focusable, selectable, enabled] {'posinset': '7'}
+      list item 'pages-240.pdf 8 ページ' [focusable, selectable, enabled] {'posinset': '8'}
+      ... 15 more ...
+      list item 'pages-240.pdf 24 ページ' [focusable, selectable, enabled] {'posinset': '24'}
+    label '' [enabled] 
+    push button 'PDF を保存' [focusable, enabled] 
+focused: list item 'pages-240.pdf 5 ページ' [focused, focusable, selected, selectable, enabled] {'posinset': '5'}
+  attributes: ['posinset:5']
+  list selection count: 1

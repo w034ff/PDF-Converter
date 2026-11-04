@@ -152,10 +152,18 @@ impl Ctx {
         let cols = st.columns;
         app.set_content_height(content_height(n, cols));
         let range = visible_range(n, cols, scroll, height);
+        // The focused page stays drawn off screen, so that the grid can keep
+        // reporting it as the focused accessible item (organize §4).
+        let focus_index = st.org.focus_index();
+        let mut indices: Vec<usize> = range.clone().collect();
+        if let Some(f) = focus_index.filter(|f| !range.contains(f)) {
+            indices.push(f);
+        }
+        let in_use = |i: &usize| range.contains(i) || Some(*i) == focus_index;
 
         // Free the slots of pages that left the range, then give a slot to
         // each page that entered it.
-        let leaving: Vec<usize> = st.slots.keys().copied().filter(|i| !range.contains(i)).collect();
+        let leaving: Vec<usize> = st.slots.keys().copied().filter(|i| !in_use(i)).collect();
         for i in leaving {
             if let Some(s) = st.slots.remove(&i) {
                 st.free_slots.push(s);
@@ -169,7 +177,7 @@ impl Ctx {
         let focus = st.org.focus;
         let mut visible = HashSet::new();
         let mut missing = Vec::new();
-        for i in range.clone() {
+        for &i in &indices {
             let slot = match st.slots.get(&i) {
                 Some(&s) => s,
                 None => {
@@ -226,6 +234,11 @@ impl Ctx {
             }
         }
         self.thumbs.set_visible(visible, &missing);
+        let delegate = focus_index
+            .and_then(|f| st.slots.get(&f))
+            .map(|&fs| st.slots.values().filter(|&&s| s < fs).count() as i32)
+            .unwrap_or(-1);
+        app.set_focus_delegate(delegate);
 
         app.set_page_count(n as i32);
         app.set_selected_count(st.org.selected.len() as i32);
@@ -694,6 +707,9 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     ctx.add_paths(initial);
+    if let Some(pdf) = std::env::var_os("SPIKE_A11Y") {
+        scenario::hold_for_a11y(ctx.clone(), PathBuf::from(pdf));
+    }
     if let Some(dir) = std::env::var_os("SPIKE_SCREENSHOTS") {
         scenario::run(ctx.clone(), PathBuf::from(dir));
     }

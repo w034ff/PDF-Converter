@@ -182,6 +182,30 @@ impl Driver {
     }
 }
 
+/// Loads the PDF, selects pages 2-4, moves the focus to page 5 with the
+/// keyboard and then stays open, for `scripts/a11y-dump.sh` to read the
+/// accessibility tree over AT-SPI.
+pub fn hold_for_a11y(ctx: Rc<Ctx>, pdf: PathBuf) {
+    let d = Driver { ctx, dir: PathBuf::new() };
+    let _ = slint::spawn_local(async move {
+        d.app().window().set_size(LogicalSize::new(1100.0, 760.0));
+        sleep(300).await;
+        d.ctx.add_paths(vec![pdf]);
+        while d.ctx.st.borrow().org.pages.is_empty() {
+            sleep(10).await;
+        }
+        d.wait_thumbs("a11y").await;
+        d.click(d.cell_center(1), None);
+        d.click(d.cell_center(3), Some(Key::Shift));
+        d.modifier(Key::Control, true);
+        d.key(Key::RightArrow);
+        d.modifier(Key::Control, false);
+        d.key(Key::RightArrow);
+        sleep(300).await;
+        println!("a11y: ready");
+    });
+}
+
 pub fn run(ctx: Rc<Ctx>, dir: PathBuf) {
     std::fs::create_dir_all(&dir).expect("screenshot directory can be created");
     let pdf = std::env::var_os("SPIKE_PDF").map(PathBuf::from);
