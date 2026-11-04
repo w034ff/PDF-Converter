@@ -245,7 +245,14 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
     let mut rec_ms = Vec::new();
     for doc in v["documents"].as_array().unwrap().iter().take(limit) {
         let fname = doc["img"]["fname"].as_str().unwrap();
-        let img = Bgr::open(&dir.join("val").join(fname)).unwrap();
+        let mut img = Bgr::open(&dir.join("val").join(fname)).unwrap();
+        // --prescale N: as if the page had been rendered with a long side of N px.
+        let mut f = 1.0;
+        if let Some(n) = arg(args, "--prescale") {
+            let n: f64 = n.parse().unwrap();
+            f = n / img.w.max(img.h) as f64;
+            img = imgops::resize_linear(&img, (img.w as f64 * f).round() as usize, (img.h as f64 * f).round() as usize);
+        }
         let gt: Vec<cer::Boxed> = doc["document"]
             .as_array()
             .unwrap()
@@ -254,7 +261,7 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
                 let b = e["box"].as_array().unwrap();
                 cer::Boxed {
                     text: e["text"].as_str().unwrap_or("").to_string(),
-                    bbox: std::array::from_fn(|k| b[k].as_f64().unwrap()),
+                    bbox: std::array::from_fn(|k| b[k].as_f64().unwrap() * f),
                 }
             })
             .collect();

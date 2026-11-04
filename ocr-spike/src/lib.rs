@@ -5,3 +5,4 @@ pub mod cer;
 pub mod order;
 pub mod vertical;
 pub mod types;
+pub mod proposal;
