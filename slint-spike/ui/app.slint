@@ -1,0 +1,606 @@
+// The window of the spike: page thumbnails on the left, the page in the
+// middle, the ranges (crop) or the text tools (OCR) on the right.
+
+import { Button, ListView, LineEdit, TextEdit, CheckBox, ScrollView, HorizontalBox, VerticalBox } from "std-widgets.slint";
+import "../fonts/IBMPlexSansJP-Regular.ttf";
+import "../fonts/IBMPlexSansJP-Bold.ttf";
+
+export struct PageItem {
+    page: int,
+    thumb: image,
+    loaded: bool,
+}
+
+export struct CandidateItem {
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    kind: string,
+    adopted: bool,
+}
+
+export struct AreaItem {
+    id: int,
+    page: int,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    kind: string,
+    selected: bool,
+    export: bool,
+    preview: image,
+    caption: string,
+}
+
+export struct OcrLine {
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    text: string,
+    font-size: float,
+}
+
+export struct VGlyphItem {
+    ch: string,
+    col: int,
+    row: int,
+    rotate: bool,
+    shift: bool,
+}
+
+global Palette {
+    out property <color> accent: #1f6feb;
+    out property <color> manual: #d6336c;
+    out property <color> candidate: #2f9e44;
+    out property <color> photo: #e8590c;
+    out property <color> panel: #f6f7f9;
+    out property <color> line: #d0d4da;
+}
+
+// One resize handle of a selected range. Positions are relative to the range.
+component Grip inherits Rectangle {
+    in property <float> fx;
+    in property <float> fy;
+    in property <MouseCursor> cursor;
+    in property <length> aw;
+    in property <length> ah;
+    callback press(length, length);
+    callback drag(length, length);
+    callback release();
+    width: 10px;
+    height: 10px;
+    x: aw * fx - 5px;
+    y: ah * fy - 5px;
+    background: white;
+    border-color: Palette.accent;
+    border-width: 1.5px;
+    TouchArea {
+        mouse-cursor: root.cursor;
+        pointer-event(e) => {
+            if e.button == PointerEventButton.left {
+                if e.kind == PointerEventKind.down {
+                    root.press(root.x + self.mouse-x, root.y + self.mouse-y);
+                } else if e.kind == PointerEventKind.up {
+                    root.release();
+                }
+            }
+        }
+        moved => {
+            root.drag(root.x + self.mouse-x, root.y + self.mouse-y);
+        }
+    }
+}
+
+// Vertical Japanese text laid out by the Rust side (vtext.rs), one Text per glyph.
+component VerticalText inherits Rectangle {
+    in property <[VGlyphItem]> glyphs;
+    in property <length> font-size: 18px;
+    in property <int> columns: 1;
+    in property <float> column-gap: 0.6;
+    for g in root.glyphs: Text {
+        // Columns run from right to left.
+        x: root.width - (g.col + 1) * root.font-size * (1 + root.column-gap) + (g.shift ? root.font-size * 0.12 : 0);
+        y: g.row * root.font-size * 1.05 - (g.shift ? root.font-size * 0.12 : 0);
+        width: root.font-size;
+        height: root.font-size * 1.05;
+        text: g.ch;
+        font-size: root.font-size;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        transform-rotation: g.rotate ? 90deg : 0deg;
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Slint 切り出しの試作";
+    preferred-width: 1280px;
+    preferred-height: 820px;
+    default-font-family: "IBM Plex Sans JP";
+    default-font-size: 13px;
+    background: white;
+
+    in property <string> file-name;
+    in property <[PageItem]> pages;
+    in property <int> current-page: 1;
+    in property <image> page-image;
+    in property <float> page-w: 595;
+    in property <float> page-h: 842;
+    // Logical pixels per page point.
+    in-out property <float> zoom: 1.0;
+    in property <[CandidateItem]> candidates;
+    // The ranges of the current page (drawn on the page) and of all pages (the list).
+    in property <[AreaItem]> page-areas;
+    in property <[AreaItem]> all-areas;
+    in property <string> status;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+    in property <bool> has-selection;
+    in-out property <int> tab: 0;
+    in property <string> ocr-block;
+    in property <float> ocr-block-x;
+    in property <float> ocr-block-y;
+    in property <float> ocr-block-w;
+    in property <float> ocr-block-h;
+    in property <float> ocr-block-size: 10.5;
+    in property <float> ocr-block-pitch: 18;
+    in property <[OcrLine]> ocr-lines;
+    in property <[VGlyphItem]> vglyphs;
+    in property <[VGlyphItem]> page-vglyphs;
+    in-out property <string> ime-line;
+    in-out property <string> ime-text;
+    // Read by the tests and the screenshot runs.
+    out property <length> page-view-width: page-view.visible-width;
+    out property <length> page-abs-x: page.absolute-position.x;
+    out property <length> page-abs-y: page.absolute-position.y;
+    in-out property <length> view-x <=> page-view.content-x;
+    in-out property <length> view-y <=> page-view.content-y;
+
+    callback open-file();
+    callback select-page(int);
+    callback page-press(float, float, int);
+    callback area-press(int, int, float, float);
+    callback pointer-move(float, float);
+    callback pointer-release();
+    callback key(string, bool, bool) -> bool;
+    callback undo();
+    callback redo();
+    callback delete-selected();
+    callback select-area(int);
+    callback toggle-export(int, bool);
+
+    public function fit-width() {
+        root.zoom = max(0.1, (page-view.visible-width - 32px) / 1px / root.page-w);
+    }
+    public function focus-ime-line() {
+        ime-line-edit.focus();
+    }
+    public function focus-page() {
+        keys.focus();
+    }
+
+    VerticalLayout {
+        // Toolbar.
+        Rectangle {
+            height: 44px;
+            background: Palette.panel;
+            HorizontalLayout {
+                padding: 6px;
+                spacing: 6px;
+                Button {
+                    text: "開く…";
+                    clicked => { root.open-file(); }
+                }
+                Text {
+                    text: root.file-name;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    min-width: 80px;
+                }
+                Button {
+                    text: "切り出し";
+                    checkable: true;
+                    checked: root.tab == 0;
+                    clicked => { root.tab = 0; }
+                }
+                Button {
+                    text: "OCR の下ごしらえ";
+                    checkable: true;
+                    checked: root.tab == 1;
+                    clicked => { root.tab = 1; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Button {
+                    text: "−";
+                    clicked => { root.zoom = max(0.1, root.zoom / 1.25); }
+                }
+                Text {
+                    text: round(root.zoom * 100) + " %";
+                    vertical-alignment: center;
+                    min-width: 52px;
+                    horizontal-alignment: center;
+                }
+                Button {
+                    text: "+";
+                    clicked => { root.zoom = min(8, root.zoom * 1.25); }
+                }
+                Button {
+                    text: "幅に合わせる";
+                    clicked => { root.fit-width(); }
+                }
+                Button {
+                    text: "元に戻す";
+                    enabled: root.can-undo;
+                    clicked => { root.undo(); keys.focus(); }
+                }
+                Button {
+                    text: "やり直す";
+                    enabled: root.can-redo;
+                    clicked => { root.redo(); keys.focus(); }
+                }
+                Button {
+                    text: "削除";
+                    enabled: root.has-selection;
+                    clicked => { root.delete-selected(); keys.focus(); }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            // Page list.
+            Rectangle {
+                width: 150px;
+                background: Palette.panel;
+                ListView {
+                    for p in root.pages: Rectangle {
+                        height: 168px;
+                        background: p.page == root.current-page ? #dbe7fd : transparent;
+                        TouchArea {
+                            clicked => { root.select-page(p.page); }
+                        }
+                        VerticalLayout {
+                            padding: 6px;
+                            spacing: 2px;
+                            Rectangle {
+                                background: white;
+                                border-color: Palette.line;
+                                border-width: 1px;
+                                Image {
+                                    source: p.thumb;
+                                    image-fit: contain;
+                                    width: parent.width - 2px;
+                                    height: parent.height - 2px;
+                                }
+                            }
+                            Text {
+                                text: p.page;
+                                horizontal-alignment: center;
+                                height: 16px;
+                                font-size: 11px;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Page view.
+            keys := FocusScope {
+                horizontal-stretch: 1;
+                key-pressed(event) => {
+                    if root.tab == 0 && root.key(event.text, event.modifiers.shift, event.modifiers.control) {
+                        return accept;
+                    }
+                    return reject;
+                }
+                Rectangle {
+                    background: #e9ecef;
+                    page-view := ScrollView {
+                        content-width: max(self.visible-width, root.page-w * root.zoom * 1px + 32px);
+                        content-height: root.page-h * root.zoom * 1px + 32px;
+                        page := Rectangle {
+                            x: max(16px, (page-view.visible-width - self.width) / 2);
+                            y: 16px;
+                            width: root.page-w * root.zoom * 1px;
+                            height: root.page-h * root.zoom * 1px;
+                            background: white;
+                            drop-shadow-blur: 6px;
+                            drop-shadow-color: #00000030;
+                            Image {
+                                source: root.page-image;
+                                width: parent.width;
+                                height: parent.height;
+                            }
+
+                            if root.tab == 0: Rectangle {
+                                // Pressing the empty page starts a new range.
+                                TouchArea {
+                                    mouse-cursor: crosshair;
+                                    pointer-event(e) => {
+                                        if e.button == PointerEventButton.left {
+                                            if e.kind == PointerEventKind.down {
+                                                keys.focus();
+                                                root.page-press(self.mouse-x / 1px / root.zoom, self.mouse-y / 1px / root.zoom, -1);
+                                            } else if e.kind == PointerEventKind.up {
+                                                root.pointer-release();
+                                            }
+                                        }
+                                    }
+                                    moved => {
+                                        root.pointer-move(self.mouse-x / 1px / root.zoom, self.mouse-y / 1px / root.zoom);
+                                    }
+                                }
+
+                                // Candidates sit above the page and below the ranges:
+                                // later siblings get the pointer first.
+                                for c[ci] in root.candidates: Rectangle {
+                                    // An adopted candidate is hidden, and a hidden element gets no pointer events.
+                                    visible: !c.adopted;
+                                    x: c.x * root.zoom * 1px;
+                                    y: c.y * root.zoom * 1px;
+                                    width: c.w * root.zoom * 1px;
+                                    height: c.h * root.zoom * 1px;
+                                    property <color> tone: c.kind == "写真" ? Palette.photo : Palette.candidate;
+                                    background: cta.has-hover ? self.tone.with-alpha(0.18) : self.tone.with-alpha(0.06);
+                                    border-color: self.tone;
+                                    border-width: 1.5px;
+                                    Rectangle {
+                                        x: 0;
+                                        y: -16px;
+                                        width: ctext.preferred-width + 8px;
+                                        height: 16px;
+                                        background: parent.tone;
+                                        ctext := Text {
+                                            text: "候補: " + c.kind;
+                                            color: white;
+                                            font-size: 10px;
+                                        }
+                                    }
+                                    cta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        pointer-event(e) => {
+                                            if e.button == PointerEventButton.left {
+                                                if e.kind == PointerEventKind.down {
+                                                    keys.focus();
+                                                    root.page-press(c.x + self.mouse-x / 1px / root.zoom, c.y + self.mouse-y / 1px / root.zoom, ci);
+                                                } else if e.kind == PointerEventKind.up {
+                                                    root.pointer-release();
+                                                }
+                                            }
+                                        }
+                                        moved => {
+                                            root.pointer-move(c.x + self.mouse-x / 1px / root.zoom, c.y + self.mouse-y / 1px / root.zoom);
+                                        }
+                                    }
+                                }
+
+                                for a in root.page-areas: Rectangle {
+                                    x: a.x * root.zoom * 1px;
+                                    y: a.y * root.zoom * 1px;
+                                    width: a.w * root.zoom * 1px;
+                                    height: a.h * root.zoom * 1px;
+                                    background: Palette.manual.with-alpha(a.selected ? 0.16 : 0.08);
+                                    border-color: a.selected ? Palette.accent : Palette.manual;
+                                    border-width: a.selected ? 2px : 1.5px;
+                                    TouchArea {
+                                        mouse-cursor: move;
+                                        pointer-event(e) => {
+                                            if e.button == PointerEventButton.left {
+                                                if e.kind == PointerEventKind.down {
+                                                    keys.focus();
+                                                    root.area-press(a.id, 8, a.x + self.mouse-x / 1px / root.zoom, a.y + self.mouse-y / 1px / root.zoom);
+                                                } else if e.kind == PointerEventKind.up {
+                                                    root.pointer-release();
+                                                }
+                                            }
+                                        }
+                                        moved => {
+                                            root.pointer-move(a.x + self.mouse-x / 1px / root.zoom, a.y + self.mouse-y / 1px / root.zoom);
+                                        }
+                                    }
+                                    if a.selected: Rectangle {
+                                        for g[gi] in [
+                                            { fx: 0, fy: 0, c: MouseCursor.nwse-resize },
+                                            { fx: 0.5, fy: 0, c: MouseCursor.ns-resize },
+                                            { fx: 1, fy: 0, c: MouseCursor.nesw-resize },
+                                            { fx: 1, fy: 0.5, c: MouseCursor.ew-resize },
+                                            { fx: 1, fy: 1, c: MouseCursor.nwse-resize },
+                                            { fx: 0.5, fy: 1, c: MouseCursor.ns-resize },
+                                            { fx: 0, fy: 1, c: MouseCursor.nesw-resize },
+                                            { fx: 0, fy: 0.5, c: MouseCursor.ew-resize },
+                                        ]: Grip {
+                                            fx: g.fx;
+                                            fy: g.fy;
+                                            cursor: g.c;
+                                            aw: a.w * root.zoom * 1px;
+                                            ah: a.h * root.zoom * 1px;
+                                            press(px, py) => {
+                                                keys.focus();
+                                                root.area-press(a.id, gi, a.x + px / 1px / root.zoom, a.y + py / 1px / root.zoom);
+                                            }
+                                            drag(px, py) => {
+                                                root.pointer-move(a.x + px / 1px / root.zoom, a.y + py / 1px / root.zoom);
+                                            }
+                                            release => { root.pointer-release(); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if root.tab == 1: Rectangle {
+                                // The font metrics come from a separate Text: a TextInput's own
+                                // font-metrics depend on its line-height-factor (binding loop).
+                                ocr-metrics := Text {
+                                    visible: false;
+                                    text: "あ";
+                                    font-size: root.ocr-block-size * root.zoom * 1px;
+                                }
+                                // One read-only TextInput: selection inside it can span lines.
+                                TextInput {
+                                    x: root.ocr-block-x * root.zoom * 1px;
+                                    // The first baseline on the PDF's first baseline, the lines at its pitch.
+                                    y: root.ocr-block-y * root.zoom * 1px - ocr-metrics.font-metrics.ascent;
+                                    line-height-factor: root.ocr-block-pitch * root.zoom * 1px / (ocr-metrics.font-metrics.ascent - ocr-metrics.font-metrics.descent);
+                                    width: root.ocr-block-w * root.zoom * 1px;
+                                    height: root.ocr-block-h * root.zoom * 1px;
+                                    text: root.ocr-block;
+                                    read-only: true;
+                                    single-line: false;
+                                    wrap: no-wrap;
+                                    font-size: root.ocr-block-size * root.zoom * 1px;
+                                    color: #c92a2a;
+                                    selection-background-color: #1f6feb66;
+                                    selection-foreground-color: #000000;
+                                }
+                                // One TextInput per line: selection stops at each one.
+                                for l in root.ocr-lines: TextInput {
+                                    x: l.x * root.zoom * 1px;
+                                    y: l.y * root.zoom * 1px - self.font-metrics.ascent;
+                                    width: l.w * root.zoom * 1px;
+                                    height: l.h * root.zoom * 1px;
+                                    text: l.text;
+                                    read-only: true;
+                                    font-size: l.font-size * root.zoom * 1px;
+                                    color: #1864ab;
+                                    selection-background-color: #1f6feb66;
+                                }
+                                // Vertical text over the page.
+                                Rectangle {
+                                    x: 548 * root.zoom * 1px;
+                                    y: 190 * root.zoom * 1px;
+                                    width: 40 * root.zoom * 1px;
+                                    height: 300 * root.zoom * 1px;
+                                    background: #fff3bfcc;
+                                    VerticalText {
+                                        glyphs: root.page-vglyphs;
+                                        font-size: 11 * root.zoom * 1px;
+                                        column-gap: 0.4;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Side panel.
+            Rectangle {
+                width: 300px;
+                background: Palette.panel;
+                Rectangle {
+                  visible: root.tab == 0;
+                  VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+                    Text {
+                        text: "範囲 (" + root.all-areas.length + ")";
+                        font-weight: 700;
+                    }
+                    ListView {
+                        for a in root.all-areas: Rectangle {
+                            height: 96px;
+                            background: a.selected ? #dbe7fd : transparent;
+                            TouchArea {
+                                clicked => { root.select-area(a.id); keys.focus(); }
+                            }
+                            HorizontalLayout {
+                                padding: 6px;
+                                spacing: 8px;
+                                Rectangle {
+                                    width: 112px;
+                                    background: white;
+                                    border-color: Palette.line;
+                                    border-width: 1px;
+                                    Image {
+                                        source: a.preview;
+                                        image-fit: contain;
+                                        width: parent.width - 4px;
+                                        height: parent.height - 4px;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text {
+                                        text: a.caption;
+                                        wrap: word-wrap;
+                                        font-size: 12px;
+                                    }
+                                    CheckBox {
+                                        text: "書き出す";
+                                        checked: a.export;
+                                        toggled => { root.toggle-export(a.id, self.checked); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        text: "ドラッグで範囲を描く。候補を押すと範囲にする。矢印キーで 1 pt（Shift で 10 pt）動かす。Delete で消す。Ctrl+Z / Ctrl+Y。";
+                        wrap: word-wrap;
+                        font-size: 11px;
+                        color: #555;
+                    }
+                  }
+                }
+                Rectangle {
+                  visible: root.tab == 1;
+                  VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+                    alignment: start;
+                    Text {
+                        text: "日本語の入力（IME）";
+                        font-weight: 700;
+                    }
+                    ime-line-edit := LineEdit {
+                        placeholder-text: "LineEdit: ここに日本語を入力";
+                        text <=> root.ime-line;
+                    }
+                    TextEdit {
+                        height: 110px;
+                        text <=> root.ime-text;
+                    }
+                    Text {
+                        text: "縦書き（自作のレイアウト）";
+                        font-weight: 700;
+                    }
+                    Rectangle {
+                        height: 230px;
+                        background: white;
+                        border-color: Palette.line;
+                        border-width: 1px;
+                        VerticalText {
+                            x: 8px;
+                            y: 8px;
+                            width: parent.width - 16px;
+                            height: parent.height - 16px;
+                            glyphs: root.vglyphs;
+                            font-size: 18px;
+                        }
+                    }
+                    Text {
+                        text: "ページの上の赤い文字は 1 つの TextInput（行をまたいで選べる）、青い文字は行ごとの TextInput（またげない）。選んで Ctrl+C でコピーし、上の欄に貼って確かめる。";
+                        wrap: word-wrap;
+                        font-size: 11px;
+                        color: #555;
+                    }
+                  }
+                }
+            }
+        }
+
+        // Status bar.
+        Rectangle {
+            height: 24px;
+            background: Palette.panel;
+            Text {
+                x: 8px;
+                text: root.status;
+                font-size: 11px;
+                vertical-alignment: center;
+                height: parent.height;
+            }
+        }
+    }
+}

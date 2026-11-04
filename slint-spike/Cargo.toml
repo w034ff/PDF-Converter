@@ -1,0 +1,29 @@
+[package]
+name = "slint-crop-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+# Kept out of the root workspace on purpose: this throwaway spike must not
+# change the root Cargo.lock or the workspace lints.
+[workspace]
+
+[dependencies]
+slint = { version = "=1.18.1", features = ["unstable-winit-030"] }
+pdfconv-core = { path = "../crates/core" }
+pdfconv-worker = { path = "../crates/worker" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rfd = "0.15"
+# Only src/bin/gen_pdf.rs uses it, to write the test PDF.
+krilla = "0.8.2"
+
+[dev-dependencies]
+i-slint-backend-testing = "=1.18.1"
+
+[build-dependencies]
+slint-build = "=1.18.1"
+
+[[bin]]
+name = "gen-pdf"
+path = "src/bin/gen_pdf.rs"
