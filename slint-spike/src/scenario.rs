@@ -357,6 +357,20 @@ pub fn run(ctx: Rc<Ctx>, dir: PathBuf) {
         // Save the current order and read it back.
         let out = d.dir.join("../target/organized.pdf");
         let expected: Vec<u32> = d.order(usize::MAX);
+        // Each output page's size, from the order on screen: a quarter turn
+        // swaps width and height, and the landscape pages moved with the rest.
+        let expected_sizes: Vec<(i32, i32)> = d
+            .ctx
+            .st
+            .borrow()
+            .org
+            .pages
+            .iter()
+            .map(|p| {
+                let (w, h) = (p.width_pt.round() as i32, p.height_pt.round() as i32);
+                if p.rotation % 180 == 90 { (h, w) } else { (w, h) }
+            })
+            .collect();
         let (sources, pages) = d.ctx.organize_request();
         let command = d.ctx.command.clone();
         let out2 = out.clone();
@@ -369,7 +383,18 @@ pub fn run(ctx: Rc<Ctx>, dir: PathBuf) {
             Ok(bytes) => {
                 println!("saved {} pages, {bytes} bytes in {} ms", expected.len(), t.elapsed().as_millis());
                 match thumbs::open_pdf(&d.ctx.command, &out) {
-                    Ok(pages) => println!("reopened: {} pages", pages.len()),
+                    Ok(pages) => {
+                        let got: Vec<(i32, i32)> = pages
+                            .iter()
+                            .map(|p| (p.width_pt.round() as i32, p.height_pt.round() as i32))
+                            .collect();
+                        let turned = expected_sizes.iter().filter(|(w, h)| w > h).count();
+                        println!(
+                            "reopened: {} pages, sizes match the screen order: {} ({turned} landscape after rotation)",
+                            pages.len(),
+                            got == expected_sizes
+                        );
+                    }
                     Err(e) => println!("reopen failed: {e}"),
                 }
             }

@@ -187,14 +187,92 @@ focused: list item 'pages-240.pdf 5 ページ'
 - 大きな list の性能の issue が開いたまま（slint-ui/slint#3867 "`accessibility` feature have big performance impact on big listview"。題だけ読んだ）。この試作は升を 60 個ほどに抑えているので当たりにくい。
 - 並べ替えの結果（「4 ページを 13 番目に移しました」のような知らせ）は出していない。今のアプリが出しているなら、live region の文言で作る。
 
-## 5. 整理の保存
+## 5. 整理の保存 — 判定: そのままできる
 
-（未記入）
+- 作り: [`src/thumbs.rs`](src/thumbs.rs) の `organize`（約 60 行）と、[`src/main.rs`](src/main.rs) の `save_to` / `organize_request`（約 50 行）。
+- 画面の並び（`Organizer::pages` の source・page・rotation）を `OrganizePage` にして、worker の `Organize` を `WorkerProcess::request_stream` で投げる。届いた `OrganizeChunk` を `.pdf.part` に書き、`Organized` が来たら名前を変える。進み具合（`OrganizeProgress`）は `upgrade_in_event_loop` で下部バーに出す。別のスレッドで動かすので、保存の間も画面は止まらない。
+- `crates/worker` の `client.rs` / `protocol.rs` は**そのまま**使えた。Tauri に依存する所はなかった。
+- 確かめたこと（台本のログ）: 並べ替え・回転のあとの 240 ページを保存 → 592,170 バイト、約 100 ms。保存した PDF を worker で開き直し、**ページごとの大きさ（回したページは幅と高さが入れ替わる）が画面の並びと全部一致した**（元の横向き 34 ページ＋回した 4 ページ＝横向き 38 ページ）。
+- 試作に入れていないもの: 一時ファイルの置き場所と置き換えの規則（design §6.5。今は `src-tauri/src/organize_export.rs` にある）、キャンセル、分割、パスワード、見積もりの上限。これらは `organize_export.rs` を流用すれば足りる（下の「まとめ」の 2）。
 
 ## オーナーが確かめること（Windows）
 
-（未記入）
+### 前提
+
+1. Rust（rustup と MSVC の Build Tools）。`slint-spike/` はリポジトリの下にあるので、ルートの `rust-toolchain.toml`（1.99.0）がそのまま効く。
+2. Node 24 で、リポジトリの直下で `npm ci` → `npm run pdfium:fetch`（`src-tauri/pdfium/windows/bin/pdfium.dll` ができる。試作はここを見る。別の場所なら環境変数 `PDFIUM_DIR` にそのフォルダ）。
+3. フォント: Git Bash で `slint-spike/scripts/fetch-font.sh`（`npm ci` 済みなら `node_modules/@ibm/plex-sans-jp` の WOFF を使う。Python 3 が要る）。PowerShell だけなら、`slint-spike` で次を 3 書体（Regular・Medium・SemiBold）分:
+   `python -I scripts\woff2ttf.py ..\node_modules\@ibm\plex-sans-jp\fonts\complete\woff\hinted\IBMPlexSansJP-Regular.woff fonts\IBMPlexSansJP-Regular.ttf`
+4. `cd slint-spike` → `cargo run --bin make_sample` → `cargo run --release -- samples\pages-240.pdf`。
+   - 描き方は既定（Windows では femtovg、OpenGL）。比べるなら PowerShell で `$env:SLINT_BACKEND="winit-software"` を付けてもう一度。
+
+### 手で確かめること
+
+1. **スクロールの手ざわり**: 240 ページをホイール・スクロールバーのつまみで上下する。カクつかないか。サムネイルが描けたものから出て、その間も操作できるか。スクロールバーで大きく飛んだとき、止まった所のサムネイルが先に出るか。
+2. **並べ替え**: クリック、Shift+クリック、Ctrl+クリックで選び、ドラッグで動かす。差し込む線が思った位置に出るか。行の右端の外では、その行の末尾に線が出るか。格子の上下の端で止めると自動でスクロールするか（速さは端に近いほど速い）。窓の外まで出しても切れないか。
+3. **キー**: 矢印・Home・End・Shift+矢印・Space・Esc・Ctrl+A・Alt+矢印・R / L・Delete・Ctrl+Z / Ctrl+Y。Tab で格子に入れるか。
+4. **回転の見た目**: R で回したサムネイルが回って見えるか（femtovg と software の両方で同じか）。
+5. **OS からの D&D**: エクスプローラーから PDF を 1 つ・複数落とす。覆い（「PDF をドロップ」）が出て、離すと札が増えるか。落とさずに窓の外へ戻すと覆いが消えるか。**落としたときに落ちないか**（slint-ui/slint#12437）。
+6. **ダイアログ**: 「PDF を追加」で複数を選べるか、ダイアログが窓の前に出て、その間に窓を触れないか。「PDF を保存」で保存した PDF を別のビューアーで開き、並びと回転が画面どおりか。
+7. **スクリーンリーダー**（ナレーターか NVDA）: 格子に入ると「ページ リスト」と読むか。矢印で動くと「pages-240.pdf 5 ページ、選択」と読むか。**「240 個中 5 個目」のように全体の数を読むか**（Linux では setsize が出ていなかった。項目 4）。タブ（「整理、選択」）と言語のボタン（オン・オフ）を読むか。
+8. **高い DPI**: 表示の拡大を 150%・200% にして、文字とサムネイルがぼけないか（サムネイルは描く大きさの 2 倍で取っている）。
+9. **言語と色**: 右上で日本語 / English を切り替えて全部変わるか。Windows を暗い色にすると、起動の時点で暗い色になるか。
+10. IME: この試作には文字の入力欄がない（2026-10-16 の比較で `LineEdit` の IME は確かめ済み）。
 
 ## まとめ
 
-（未記入）
+### 1. 画面ごとの移行の手間の見積もり
+
+慣れた人が 1 人で作るとして、テストの書き直しを含めた日数のおおよそ。担当 B（切り出し・OCR）の結果で大きく変わるので、切り出しは幅を広く取った。
+
+| 画面・部分 | 今の React（テストを除く行数） | 見積もり | 根拠 |
+| --- | --- | --- | --- |
+| 共通の土台（窓・タブ・色・フォント・文言の移し替え（`ja.ts` の約 460 項目を `.po` に）・ダイアログ（このアプリについて・パスワード・確認・キーの一覧）・通知の帯・進み具合・設定の保存のつなぎ） | components・state・i18n・job ほか 約 8,000 | 8〜12 日 | 文言は「キー → 文言」から「英語の原文 → 訳」に変わり、形の検査がなくなる。`ContextMenuArea`・`PopupWindow` はある |
+| 整理 | 約 3,100 | 6〜10 日 | 格子・選択・並べ替え・キー・保存はこの試作でできた（Rust 約 1,200 行・`.slint` 約 500 行）。残りは札の状態（パスワード・読めない）、分割と区切りの線、右クリックのメニュー、通知、キャンセル |
+| 画像 → PDF | 約 1,200 | 4〜6 日 | 一覧と並べ替えは整理の格子の仕組みを流用できる |
+| PDF → 画像 | 約 1,900 | 3〜5 日 | 一覧と設定。ページの範囲の入力は `LineEdit` |
+| 切り出し（OCR を含む） | 約 4,400 | 10〜25 日 | 担当 B の報告による。範囲の描画は `TouchArea` と矩形で作れる見込みだが、文字の選択と縦書きは試していない |
+| Rust 側のつなぎ（`commands.rs`・`lib.rs` を Slint の callback に置き換え、`ts-rs` の derive を外す） | Rust 約 1,100 | 3〜5 日 | 下の 2 |
+| テスト | React のテスト 約 30,000 行 | 上の各行に含めたが、同じ網羅には届かない | 状態を Rust に寄せれば単体テストにできる。画面の結合テストは `Window::dispatch_event` の台本（この試作の `scenario.rs`）か Slint の testing バックエンドになる |
+| **合計** | | **およそ 35〜65 日** | |
+
+### 2. `src-tauri/src/` のうち Tauri なしでそのまま使えそうなもの
+
+`use tauri` があるのは `commands.rs`（776 行）・`lib.rs`（204 行）・`layout_files.rs`（86 行）・`pdfium.rs`（18 行）の 4 つだけだった。ほかは Tauri の型を使っていない。
+
+| ファイル | 行数 | 移すときにすること |
+| --- | --- | --- |
+| `worker_pool.rs`・`decode_budget.rs` | 683・405 | そのまま |
+| `jobs/`（`mod.rs`・`queue.rs`・`output.rs`・`options.rs`・`images_to_pdfs.rs`・`pdfs_to_images.rs`・`merged.rs`・`image_check.rs`） | 約 1,860 | 進み具合は閉包（`JobCallbacks`・`FinishJob`）で渡す作りなので、閉包の中を `upgrade_in_event_loop` に替えるだけ。`ts-rs` の derive を外す |
+| `items.rs`・`organize.rs`・`organize_export.rs`・`crop.rs`・`crop_export.rs`・`settings.rs`・`error.rs` | 994・858・591・903・479・713・186 | `ts-rs` の derive と、IPC 用の `serde` の名前付け（`camelCase`）は不要になる。`AppState`（`lib.rs` にある素の構造体）を別のファイルに移す。`IpcError` は画面の文言の選び分けに使い続けられる |
+| `layout_files.rs`・`pdfium.rs` | 86・18 | Tauri の resource_dir の代わりに、実行ファイルの隣を見るように書き直す（数行） |
+| `commands.rs`・`lib.rs` | 980 | 消える。代わりに Slint の callback をつなぐ層を書く |
+
+合わせて約 9,600 行（テストを含む）が、ほぼそのまま残せる。セキュリティの決まり（道はダイアログと D&D からだけ、PDF は worker だけが開く）は、IPC がなくなっても同じ形で守れる。
+
+### 3. 移行するかの見立て
+
+- **項目 2 の心配について**: 当たった。折り返す格子・見えている所だけを描く仕組み・並べ替えの当たり判定と差し込む線・端での自動のスクロールは、Slint では部品がなく自作になった。ただし今の React も同じ部分を自作している（`organizeGrid.ts`・`useOrganizeDrag.ts`）ので、**HTML からの上積みの手間は小さい**。性能（240 ページで升 60 個、スクロール 1 回の計算 0.2 ms 以下）と、worker とのつなぎ（`crates/worker` をそのまま、画面を止めずに）は問題がなかった。状態を Rust に寄せた分、テストは書きやすい。
+- 逆に、HTML なら何もしなくてよい所で手間が出た: 破線の枠がない、ソフトウェアの描き方で回転が効かない（#6068）、OS からの D&D は `unstable-` の winit の API 頼み、スクリーンリーダー向けに中の文字を隠す・フォーカスを委ねる番号を自分で数える、setsize が出ない疑い。どれも回避できたが、版を上げるたびに確かめ直す所が増える。
+- 見立て: **整理の画面は、移行を止める理由にはならない**。移行するかは、(1) 担当 B の切り出し・OCR（文字の選択と縦書き）の結果と、(2) 上の 35〜65 日と React のテスト約 3 万行を捨てる重さを、起動の速さとメモリ（2026-10-16 に測り済み）に見合うと見るか、で決まる。整理だけを見た私の判断は「**今すぐの移行は勧めない。B の結果で文字の選択・縦書きが『工夫すればできる』以上なら、移行は現実的**」。決めるなら、Windows の手ざわり（上の 1〜2）とスクリーンリーダー（7）を先に確かめてほしい。ここが悪いと、自作の量がさらに増える。
+
+### Slint のライセンス（Royalty-free 2.0）
+
+`slint-1.18.1/LICENSES/LicenseRef-Slint-Royalty-free-2.0.md` の本文を全部読んだ。Slint の crate は `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0` の 3 つから選ぶ。このアプリ（公開のリポジトリ、MIT、無料で配るデスクトップのアプリ）に効く条件:
+
+- **使ってよい範囲**: デスクトップ・モバイル・Web の「アプリの一部として」なら、無料で、使う・変える・配ることができる（§1）。料金や売り上げの条件はない。公開のリポジトリか、無料かは条件に入っていない。
+- **表示の義務（§2）**: 次のどちらか。
+  - (a) アプリの「このアプリについて」（一番上のメニューから開けるもの）に `AboutSlint` の部品を出す。なければ起動の画面に出す。今のアプリには「このアプリについて」があるので、ここに置ける。
+  - (b) 公開の Web ページ（できれば配布のページ。GitHub のリリースや README）に「Made with Slint」のバッジを、見つけやすく出す。
+- **してはいけないこと（§3）**: Slint をアプリに組み込まずに単体で配ること（それには GPL-3.0 を使う）。組み込み機器での利用。Slint の API を外に出すアプリ（プラグインの仕組みなどで Slint の API を公開する）。ソースの中のライセンスや著作権の表示を消す・変えること。このアプリはどれにも当たらない。
+- **保証と責任（§4）**: 保証なし、責任なし（法律で求められる場合を除く）。
+- このリポジトリの手続きに効くこと:
+  - アプリのコード自体は MIT のまま。ただし配るバイナリには MIT でない Slint が入る。Slint は「オープンソースでないライセンス」を選んで使うことになる（GPL を選ぶとアプリ全体が GPL になる）。
+  - `deny.toml` の `allow` に `LicenseRef-Slint-Royalty-free-2.0` を足す（3 つの OR のうちこれを選ぶ）。`about.toml` の `accepted` にも足し、本文を同梱のライセンスの一覧に入れる。
+  - Slint を入れると、ほかに `BSL-1.0`（`clipboard-win`・`error-code`。Windows の依存）が増え、今の `allow` にない。足すかを決める必要がある（`cargo metadata` で Windows の依存を数えた結果。ほかは MIT / Apache-2.0 / BSD / Zlib / ISC / Unicode-3.0 で、今の一覧に入っている）。
+  - フォークした人も、同じ条件で SixtyFPS から直接ライセンスを受ける（このリポジトリが再許諾するわけではない）。README にその旨を書いておくとよい。
+
+## 途中で分かった、このクラウドでの事情
+
+- `git push` が 403 で断られ、`spike/slint-organize` を GitHub に送れなかった（読み取りはできる）。コミットはこの環境の `spike/slint-organize` にある。
+- Xvfb の上で動かすには `libxkbcommon-x11-0` が要った（`apt-get install` した）。AT-SPI の木を読むのに `at-spi2-core`・`python3-pyatspi`・`dbus-x11`・`xdotool` を入れた。
