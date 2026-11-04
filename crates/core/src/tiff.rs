@@ -414,6 +414,31 @@ pub fn verify_tiff_pages<R: BufRead + Seek>(
     Ok(())
 }
 
+/// Length of the fixed header of an ICC profile, followed by the tag count.
+const ICC_HEADER_LEN: usize = 128;
+
+/// Whether `data` looks like an ICC profile of `color_space` (design §4.1.1): a profile
+/// header whose signature is `acsp`, whose declared size is within `data`, and whose colour
+/// space is grey or RGB to match the page. krilla embeds the bytes without reading them, so a
+/// tag of junk with the right colour space bytes would otherwise go into the PDF (and into a
+/// PDF/A) as a broken `ICCBased` colour space.
+fn icc_profile_fits(data: &[u8], color_space: ImageColorspace) -> bool {
+    let expected: &[u8; 4] = match color_space {
+        ImageColorspace::Luma => b"GRAY",
+        ImageColorspace::Rgb => b"RGB ",
+        _ => return false,
+    };
+    let declared_size = data
+        .get(0..4)
+        .and_then(|b| b.try_into().ok())
+        .map(u32::from_be_bytes)
+        .and_then(|size| usize::try_from(size).ok());
+    data.len() >= ICC_HEADER_LEN + 4
+        && declared_size.is_some_and(|size| (ICC_HEADER_LEN + 4..=data.len()).contains(&size))
+        && data.get(16..20) == Some(expected.as_slice())
+        && data.get(36..40) == Some(b"acsp".as_slice())
+}
+
 /// Decodes the current page IFD into a krilla `Image` and an `ImageInfo`.
 fn decode_single_page<R: Read + Seek>(
     decoder: &mut Decoder<R>,
@@ -449,15 +474,7 @@ fn read_page<R: Read + Seek>(
     let (color_space, bits_per_component, color_channel, alpha_channel) =
         process_decoded_samples(width, height, color_type, extra_sample_0, raw)?;
 
-    let filtered_icc = match (color_space, icc) {
-        (ImageColorspace::Luma, Some(data)) if data.len() >= 20 && &data[16..20] == b"GRAY" => {
-            Some(data)
-        }
-        (ImageColorspace::Rgb, Some(data)) if data.len() >= 20 && &data[16..20] == b"RGB " => {
-            Some(data)
-        }
-        _ => None,
-    };
+    let filtered_icc = icc.filter(|data| icc_profile_fits(data, color_space));
 
     let custom = CustomTiffImage {
         width,
@@ -1079,6 +1096,59 @@ mod tests {
         let bytes = std::fs::read(Path::new(FIXTURES_DIR).join("photo_jpeg.tif")).unwrap();
         let info = probe_tiff(&mut Cursor::new(&bytes)).unwrap();
         assert_eq!(info.decoded_bytes, 160 * 120 * 3);
+    }
+
+    /// A profile header of `len` bytes with the given colour space; the rest is zero.
+    fn icc_header(len: usize, color_space: &[u8; 4]) -> Vec<u8> {
+        let mut data = vec![0u8; len];
+        data[0..4].copy_from_slice(&(len as u32).to_be_bytes());
+        data[16..20].copy_from_slice(color_space);
+        data[36..40].copy_from_slice(b"acsp");
+        data
+    }
+
+    #[test]
+    fn icc_profile_fits_needs_a_profile_header_of_the_page_colour_space() {
+        assert!(icc_profile_fits(
+            &icc_header(132, b"RGB "),
+            ImageColorspace::Rgb
+        ));
+        assert!(icc_profile_fits(
+            &icc_header(500, b"GRAY"),
+            ImageColorspace::Luma
+        ));
+        assert!(!icc_profile_fits(
+            &icc_header(132, b"RGB "),
+            ImageColorspace::Luma
+        ));
+        assert!(!icc_profile_fits(
+            &icc_header(132, b"CMYK"),
+            ImageColorspace::Rgb
+        ));
+
+        // Before, 16 bytes and the colour space were enough to be embedded.
+        let mut junk = vec![0u8; 16];
+        junk.extend_from_slice(b"RGB ");
+        assert!(!icc_profile_fits(&junk, ImageColorspace::Rgb));
+        junk.resize(132, 0xff);
+        assert!(!icc_profile_fits(&junk, ImageColorspace::Rgb));
+
+        let mut no_signature = icc_header(132, b"RGB ");
+        no_signature[36..40].copy_from_slice(b"xxxx");
+        assert!(!icc_profile_fits(&no_signature, ImageColorspace::Rgb));
+
+        // A declared size beyond the tag's bytes, or too small for a header.
+        let mut too_long = icc_header(132, b"RGB ");
+        too_long[0..4].copy_from_slice(&133u32.to_be_bytes());
+        assert!(!icc_profile_fits(&too_long, ImageColorspace::Rgb));
+        let mut too_short = icc_header(132, b"RGB ");
+        too_short[0..4].copy_from_slice(&20u32.to_be_bytes());
+        assert!(!icc_profile_fits(&too_short, ImageColorspace::Rgb));
+
+        // Padding after the declared size is allowed.
+        let mut padded = icc_header(132, b"RGB ");
+        padded.extend_from_slice(&[0; 4]);
+        assert!(icc_profile_fits(&padded, ImageColorspace::Rgb));
     }
 
     struct TestPage {
