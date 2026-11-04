@@ -217,7 +217,7 @@
 - 1 つの画像を 1 ページにする（TIFF はページごとに 1 ページ）。結合では一覧の順にページを並べ、TIFF の中のページはその位置にまとめて順に並べる。
 - JPEG は、メタデータの区切りを外したバイト列を、そのまま画像のデータとして入れる（`DCTDecode`）。画像のデータ（量子化表、ハフマン表、フレーム、スキャン）には触れないので再圧縮はなく、CMYK の JPEG もそのまま入る。ICC を持たない CMYK の JPEG は、色の決まりがないので、PDF のビューアー（印刷の CMYK として直す）と画像のビューアー（素朴な計算で直す）とで違う色に見えることがある。どちらも誤りではなく、ICC を持つものは同じ色になる。krilla はファイル全体を画像のデータとして使うので、外さないと EXIF の位置情報などが PDF に残る（NFR-01）。
   - 外すもの: APP1（EXIF、XMP）、APP13（IPTC、Photoshop）、COM、ICC 以外の APP2（MPF など）、Adobe 以外の APP14、そのほかの APPn、JFIF 以外の APP0（JFXX）、EOI より後ろのデータ（モーションフォトの動画、MPF の 2 枚目以降の画像など）。JFIF（APP0）は残し、埋め込みの縮小画像は寸法を 0 にして除く。
-  - 残すもの: JFIF の密度、ICC（APP2 の `ICC_PROFILE`）、Adobe（APP14。CMYK と YCCK の色の変換に要る）、メタデータでない区切りすべて。
+  - 残すもの: JFIF の密度、ICC（APP2 の `ICC_PROFILE`。つなげたプロファイルが §4.1.1 の TIFF と同じ ICC の見出しを持つときだけ。持たないものは、壊れた `ICCBased` の色として PDF に入るので外す。つなげ方は krilla の JPEG の読み込み（zune-jpeg）と同じで、走査（SOS）より前の区切りを順番の番号で並べ、番号の抜け・重なり・数の食い違いがあれば、つなげられないとして外す）、Adobe（APP14。CMYK と YCCK の色の変換に要る）、メタデータでない区切りすべて。
   - EXIF は向きも含めて全部外す。向きと解像度は §4.1 の `probe` が元のバイト列から読み、向きはページの変換行列で表すので、画像の中に残す必要がない。外すのは `probe` のあと。
   - 区切りの処理は、Metadata Cleaner（同じ作者の別のアプリ、MIT）の `crates/core/src/jpeg.rs` の `parse` と `strip` を `crates/core` に写して使う（向きと解像度だけの EXIF を作り直す部分は要らないので、`strip` には残す EXIF を渡さない）。依存にしないのは、git の依存を `deny.toml` の `[sources]` で禁じていることと、Metadata Cleaner の core が PDF Converter に要らない crate（`kamadak-exif`）を持つため。
   - 区切りを読めない JPEG（SOI がない、長さが壊れている、EOI に届かないなど）は、`image` で画素が読めても `DecodeFailed` とし、その画像をページに加えない。外せないまま元のバイト列を入れることはしない。

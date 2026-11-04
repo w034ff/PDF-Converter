@@ -2,6 +2,7 @@
 //! PDF writing, thumbnails, page ranges, crop regions and output names (design §4, §6.1, §6.4).
 
 pub mod error;
+mod icc;
 mod jpeg_strip;
 pub mod layout;
 pub mod naming;
