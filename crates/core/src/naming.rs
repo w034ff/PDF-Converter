@@ -28,22 +28,58 @@ pub fn page_number_width(total_pages: u32) -> usize {
     total_pages.max(1).to_string().len()
 }
 
+/// Longest output filename, in UTF-8 bytes (design §6.4). ext4 and APFS allow 255 bytes and
+/// NTFS 255 UTF-16 units; counting UTF-8 bytes on every OS keeps one rule, and a name made on
+/// Windows can still be written when the files are moved to Linux or macOS.
+pub const MAX_FILE_NAME_BYTES: usize = 255;
+
+/// `stem` followed by `tail`, with the end of `stem` cut at a character boundary so that the
+/// whole name fits in [`MAX_FILE_NAME_BYTES`]. `tail` is kept whole: it carries the page and
+/// range numbers, the collision number and the extension, which tell the outputs apart.
+#[must_use]
+pub fn fit_file_name(stem: &str, tail: &str) -> String {
+    let room = MAX_FILE_NAME_BYTES.saturating_sub(tail.len());
+    let mut end = stem.len().min(room);
+    while !stem.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{tail}", &stem[..end])
+}
+
+/// The tail that [`fit_file_name`] keeps after the stem: `fixed`, then ` (n)` when `n` is not
+/// 0, then `.ext` when `ext` is not empty.
+#[must_use]
+pub fn numbered_tail(fixed: &str, n: usize, ext: &str) -> String {
+    let ext = ext.trim_start_matches('.');
+    let number = if n == 0 {
+        String::new()
+    } else {
+        format!(" ({n})")
+    };
+    let dot_ext = if ext.is_empty() {
+        String::new()
+    } else {
+        format!(".{ext}")
+    };
+    format!("{fixed}{number}{dot_ext}")
+}
+
 /// Allocates the next available filename using the `name (n).ext` scheme (design §6.4).
 ///
+/// The name is `stem`, then `fixed` (the page or part number, kept whole), then the collision
+/// number and the extension; `stem` is shortened to fit [`MAX_FILE_NAME_BYTES`].
 /// Collision checks against `used_lower` are case-insensitive.
 /// When an available name is found, its lowercase form is inserted into `used_lower`,
-/// and the candidate (preserving the original casing of `base_stem`) is returned.
-fn allocate_unique_name(base_stem: &str, ext: &str, used_lower: &mut HashSet<String>) -> String {
-    let ext_trimmed = ext.trim_start_matches('.');
+/// and the candidate (preserving the original casing of `stem`) is returned.
+fn allocate_unique_name(
+    stem: &str,
+    fixed: &str,
+    ext: &str,
+    used_lower: &mut HashSet<String>,
+) -> String {
     let mut n = 0usize;
     loop {
-        let candidate = match (n, ext_trimmed.is_empty()) {
-            (0, true) => base_stem.to_string(),
-            (0, false) => format!("{base_stem}.{ext_trimmed}"),
-            (_, true) => format!("{base_stem} ({n})"),
-            (_, false) => format!("{base_stem} ({n}).{ext_trimmed}"),
-        };
-
+        let candidate = fit_file_name(stem, &numbered_tail(fixed, n, ext));
         let candidate_lower = candidate.to_lowercase();
         if !used_lower.contains(&candidate_lower) {
             used_lower.insert(candidate_lower);
@@ -81,7 +117,7 @@ pub fn resolve_image_to_pdf_names(inputs: &[String], existing: &HashSet<String>)
 
     for (input, original_index) in indexed_inputs {
         let (stem, _) = split_stem_and_ext(input);
-        resolved[original_index] = allocate_unique_name(stem, "pdf", &mut used_lower);
+        resolved[original_index] = allocate_unique_name(stem, "", "pdf", &mut used_lower);
     }
 
     resolved
@@ -148,9 +184,9 @@ pub fn resolve_pdf_to_image_names(
     for entry in entries {
         let (stem, _) = split_stem_and_ext(entry.filename);
         let width = page_number_width(entry.total_pages);
-        let base_stem = format!("{stem}_p{:0width$}", entry.page, width = width);
+        let page = format!("_p{:0width$}", entry.page, width = width);
         result[entry.input_idx][entry.page_idx] =
-            allocate_unique_name(&base_stem, ext, &mut used_lower);
+            allocate_unique_name(stem, &page, ext, &mut used_lower);
     }
 
     result
@@ -200,11 +236,11 @@ pub fn resolve_crop_names(
         let rects: Vec<PageRect> = indices.iter().map(|&i| regions[i].rect).collect();
         let number_width = page_number_width(rects.len() as u32);
         for (rank, &local) in position_order(&rects).iter().enumerate() {
-            let base_stem = format!(
-                "{stem}_p{page:0page_width$}_{number:0number_width$}",
+            let numbers = format!(
+                "_p{page:0page_width$}_{number:0number_width$}",
                 number = rank + 1
             );
-            result[indices[local]] = allocate_unique_name(&base_stem, ext, &mut used_lower);
+            result[indices[local]] = allocate_unique_name(stem, &numbers, ext, &mut used_lower);
         }
     }
     result
@@ -225,8 +261,8 @@ pub fn resolve_organize_names(stems: &[String], existing: &HashSet<String>) -> V
         .iter()
         .enumerate()
         .map(|(index, stem)| {
-            let base_stem = format!("{stem}_{number:0width$}", number = index + 1);
-            allocate_unique_name(&base_stem, "pdf", &mut used_lower)
+            let number = format!("_{number:0width$}", number = index + 1);
+            allocate_unique_name(stem, &number, "pdf", &mut used_lower)
         })
         .collect()
 }
@@ -234,6 +270,98 @@ pub fn resolve_organize_names(stems: &[String], existing: &HashSet<String>) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A stem of `chars` Japanese characters (3 UTF-8 bytes each).
+    fn japanese_stem(chars: usize) -> String {
+        "報告書".chars().cycle().take(chars).collect()
+    }
+
+    #[test]
+    fn fit_file_name_cuts_the_stem_at_a_character_boundary() {
+        let stem = japanese_stem(100);
+        let name = fit_file_name(&stem, "_p001.png");
+        assert!(name.len() <= MAX_FILE_NAME_BYTES);
+        assert!(name.ends_with("_p001.png"));
+        // 255 - 9 = 246 bytes of room, so 82 whole characters.
+        assert_eq!(name.chars().count(), 82 + "_p001.png".len());
+        // A short name is left as it is.
+        assert_eq!(fit_file_name("report", "_p1.png"), "report_p1.png");
+    }
+
+    #[test]
+    fn long_names_fit_in_every_conversion() {
+        let stem = japanese_stem(83);
+        let existing = HashSet::new();
+
+        let pdfs = resolve_image_to_pdf_names(&[format!("{stem}.png")], &existing);
+        let pages = resolve_pdf_to_image_names(
+            &[PdfToImageInput {
+                filename: format!("{stem}.pdf"),
+                total_pages: 120,
+                pages: vec![1, 2],
+            }],
+            "png",
+            &existing,
+        );
+        let crops = resolve_crop_names(
+            &format!("{stem}.pdf"),
+            12,
+            &[CropRegion {
+                page: 3,
+                rect: PageRect {
+                    x0: 0.0,
+                    y0: 0.0,
+                    x1: 10.0,
+                    y1: 10.0,
+                },
+            }],
+            "png",
+            &existing,
+        );
+        let parts = resolve_organize_names(&[stem.clone(), stem.clone()], &existing);
+
+        let all: Vec<&String> = pdfs
+            .iter()
+            .chain(pages.iter().flatten())
+            .chain(crops.iter())
+            .chain(parts.iter())
+            .collect();
+        for name in &all {
+            assert!(
+                name.len() <= MAX_FILE_NAME_BYTES,
+                "{} bytes: {name}",
+                name.len()
+            );
+        }
+        assert!(pages[0][0].ends_with("_p001.png"));
+        assert!(pages[0][1].ends_with("_p002.png"));
+        assert!(crops[0].ends_with("_p03_1.png"));
+        assert!(parts[0].ends_with("_1.pdf"));
+        assert!(parts[1].ends_with("_2.pdf"));
+
+        // The OS takes every name (ext4 and APFS count 255 bytes).
+        let dir = std::env::temp_dir().join(format!("pdfconv-naming-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let written: Vec<bool> = all
+            .iter()
+            .map(|name| std::fs::write(dir.join(name.as_str()), b"").is_ok())
+            .collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(written.iter().all(|&ok| ok), "{written:?}");
+    }
+
+    #[test]
+    fn names_that_meet_after_cutting_get_numbers() {
+        // Two names that differ only after the part that fits.
+        let stem = japanese_stem(90);
+        let inputs = vec![format!("{stem}あ.png"), format!("{stem}い.png")];
+        let result = resolve_image_to_pdf_names(&inputs, &HashSet::new());
+        assert_ne!(result[0].to_lowercase(), result[1].to_lowercase());
+        assert!(result[1].ends_with(" (1).pdf"), "{}", result[1]);
+        for name in &result {
+            assert!(name.len() <= MAX_FILE_NAME_BYTES);
+        }
+    }
 
     #[test]
     fn no_collision() {
