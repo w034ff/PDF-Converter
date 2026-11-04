@@ -5,3 +5,4 @@
 /third_party/
 /target/
 /out/
+/.venv/

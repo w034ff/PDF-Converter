@@ -1,0 +1,25 @@
+[package]
+name = "ocr-spike"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Own workspace: the spike stays out of the app's workspace and its lints.
+[workspace]
+
+[dependencies]
+# Same version and features as crates/worker (onnxruntime 1.26.0, loaded at run time).
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-26"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Suzuki-Abe contours (cv2.findContours RETR_LIST equivalent) and text drawing for the vertical pages.
+imageproc = { version = "0.25", default-features = false }
+ab_glyph = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Reads the dictionary from the rec model's inference.yml.
+yaml-rust2 = "0.10"
+unicode-normalization = "0.1"
+
+[profile.release]
+debug = 1
