@@ -187,6 +187,12 @@ fn load_session(runtime: &Path, model: &Path) -> Result<Session, String> {
             .with_inter_threads(1)?
             // Idle threads that spin slow inference down (design §4.7, セッション).
             .with_intra_op_spinning(false)?
+            // The arena keeps the largest allocation it has made for the life of the session,
+            // which counts against WORKER_MEMORY_LIMIT while the worker goes on to other
+            // requests; freed memory goes back to the allocator instead (design §4.7, セッション).
+            .with_execution_providers([ort::ep::CPU::default()
+                .with_arena_allocator(false)
+                .build()])?
             .commit_from_file(model)
     };
     build().map_err(|e| e.to_string())
