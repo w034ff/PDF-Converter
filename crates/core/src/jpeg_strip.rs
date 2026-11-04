@@ -127,10 +127,12 @@ fn is_metadata_marker(marker: u8) -> bool {
 
 /// Strips metadata segments and trailing bytes from a parsed JPEG (design §4.3).
 ///
-/// Preserves JFIF APP0 (with thumbnail dimensions cleared to 0), ICC profile APP2,
+/// Preserves JFIF APP0 (with thumbnail dimensions cleared to 0), ICC profile APP2 (only when the
+/// profile has a profile header, see [`assembled_icc_profile`]),
 /// Adobe APP14, and all non-metadata segments. Removes EXIF (APP1), XMP (APP1),
 /// IPTC (APP13), COM (0xFE), other APPn markers, and any bytes after EOI.
 fn strip(jpeg: &Jpeg<'_>) -> Vec<u8> {
+    let keep_icc = assembled_icc_profile(jpeg).is_some_and(|p| crate::icc::has_profile_header(&p));
     let mut out = Vec::new();
     out.extend_from_slice(&[0xFF, 0xD8]); // SOI
 
@@ -156,8 +158,11 @@ fn strip(jpeg: &Jpeg<'_>) -> Vec<u8> {
                 // Other APP0 (JFXX, or JFIF < 14 bytes) are dropped
             }
             0xE2 if p.starts_with(ICC_PREFIX) => {
-                // APP2: keep ICC profile, drop MPF and others
-                out.extend_from_slice(s.bytes);
+                // APP2: keep an ICC profile with a profile header, drop a broken one, MPF
+                // and others
+                if keep_icc {
+                    out.extend_from_slice(s.bytes);
+                }
             }
             0xEE if p.starts_with(ADOBE_PREFIX) => {
                 // APP14: keep Adobe segment
@@ -171,6 +176,47 @@ fn strip(jpeg: &Jpeg<'_>) -> Vec<u8> {
 
     out.extend_from_slice(&[0xFF, 0xD9]); // EOI
     out
+}
+
+/// The ICC profile of the APP2 segments before the first scan, put together the way krilla's
+/// JPEG decoder (zune-jpeg) does: in the order of their sequence numbers, each segment giving the
+/// same count, with no number missing or repeated. `None` if there is none or it cannot be put
+/// together, in which case krilla embeds no profile either.
+///
+/// krilla checks only the version and colour space bytes of what it gets, so the caller also
+/// needs [`crate::icc::has_profile_header`] before it keeps the segments (design §4.3).
+fn assembled_icc_profile(jpeg: &Jpeg<'_>) -> Option<Vec<u8>> {
+    let chunks: Vec<(u8, u8, &[u8])> = jpeg
+        .segments
+        .iter()
+        .take_while(|s| s.marker != 0xDA)
+        .filter(|s| s.marker == 0xE2)
+        .filter_map(|s| {
+            let rest = s.payload().strip_prefix(ICC_PREFIX)?;
+            let (&seq, rest) = rest.split_first()?;
+            let (&count, data) = rest.split_first()?;
+            Some((seq, count, data))
+        })
+        .collect();
+    let count = chunks.len();
+    if count == 0 || count >= 255 {
+        return None;
+    }
+    let mut ordered: Vec<Option<&[u8]>> = vec![None; count];
+    for (seq, declared_count, data) in chunks {
+        if usize::from(declared_count) != count {
+            return None;
+        }
+        let slot = ordered.get_mut(usize::from(seq).checked_sub(1)?)?;
+        if slot.replace(data).is_some() {
+            return None;
+        }
+    }
+    let mut profile = Vec::new();
+    for data in ordered {
+        profile.extend_from_slice(data?);
+    }
+    Some(profile)
 }
 
 /// Whether `marker` starts a frame (SOF0..SOF15), excluding DHT (0xC4), JPG (0xC8) and DAC (0xCC).
@@ -238,6 +284,64 @@ mod tests {
         out.extend_from_slice(&[0xFF, 0xD9]); // EOI
         out.extend_from_slice(trailer);
         out
+    }
+
+    /// An APP2 `ICC_PROFILE` segment carrying part `seq` of `count` of a profile.
+    fn icc_segment(seq: u8, count: u8, data: &[u8]) -> Vec<u8> {
+        let mut payload = ICC_PREFIX.to_vec();
+        payload.extend_from_slice(&[seq, count]);
+        payload.extend_from_slice(data);
+        make_segment(0xE2, &payload)
+    }
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    #[test]
+    fn strip_drops_an_icc_profile_without_a_profile_header() {
+        // 16 bytes of anything and "RGB ": krilla would embed it as an ICCBased colour space.
+        let mut junk = vec![0u8; 16];
+        junk.extend_from_slice(b"RGB ");
+        junk.resize(128, 0xff);
+        let stripped =
+            strip_jpeg_metadata(&minimal_jpeg(&[icc_segment(1, 1, &junk)], &[])).unwrap();
+        assert!(!contains(&stripped, ICC_PREFIX));
+    }
+
+    #[test]
+    fn strip_keeps_an_icc_profile_with_a_profile_header_in_one_or_more_segments() {
+        let profile = crate::icc::test_profile(300, b"RGB ");
+        let single = minimal_jpeg(&[icc_segment(1, 1, &profile)], &[]);
+        let stripped = strip_jpeg_metadata(&single).unwrap();
+        assert!(contains(&stripped, &icc_segment(1, 1, &profile)));
+
+        // Split in two and written out of order, as zune-jpeg puts it together.
+        let (first, second) = profile.split_at(150);
+        let split = minimal_jpeg(&[icc_segment(2, 2, second), icc_segment(1, 2, first)], &[]);
+        let stripped = strip_jpeg_metadata(&split).unwrap();
+        assert!(contains(&stripped, &icc_segment(1, 2, first)));
+        assert!(contains(&stripped, &icc_segment(2, 2, second)));
+    }
+
+    #[test]
+    fn strip_drops_icc_segments_that_cannot_be_put_together() {
+        let profile = crate::icc::test_profile(300, b"RGB ");
+        let (first, second) = profile.split_at(150);
+        let cases: [Vec<Vec<u8>>; 4] = [
+            // The second part is missing.
+            vec![icc_segment(1, 2, first)],
+            // A repeated sequence number.
+            vec![icc_segment(1, 2, first), icc_segment(1, 2, second)],
+            // Sequence number 0.
+            vec![icc_segment(0, 1, &profile)],
+            // Counts that disagree.
+            vec![icc_segment(1, 2, first), icc_segment(2, 3, second)],
+        ];
+        for segments in cases {
+            let stripped = strip_jpeg_metadata(&minimal_jpeg(&segments, &[])).unwrap();
+            assert!(!contains(&stripped, ICC_PREFIX));
+        }
     }
 
     #[test]
@@ -402,7 +506,7 @@ mod tests {
     fn test_drop_com_and_xmp_keep_icc_adobe() {
         let com = make_segment(0xFE, b"comment");
         let xmp = make_segment(0xE1, b"http://ns.adobe.com/xap/1.0/\0xmp-body");
-        let icc = make_segment(0xE2, b"ICC_PROFILE\0data");
+        let icc = icc_segment(1, 1, &crate::icc::test_profile(132, b"RGB "));
         let mpf = make_segment(0xE2, b"MPF\0data");
         let adobe = make_segment(0xEE, b"Adobe\0data");
         let app3 = make_segment(0xE3, b"other app");
