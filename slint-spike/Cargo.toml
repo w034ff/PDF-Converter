@@ -1,0 +1,19 @@
+[package]
+name = "slint-spike"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# A throwaway prototype outside the root workspace (see REPORT.md).
+[workspace]
+
+[dependencies]
+slint = { version = "=1.18.1", features = ["unstable-winit-030", "renderer-software", "raw-window-handle-06"] }
+pdfconv-worker = { path = "../crates/worker" }
+pdfconv-core = { path = "../crates/core" }
+rfd = "0.15"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[build-dependencies]
+slint-build = "=1.18.1"

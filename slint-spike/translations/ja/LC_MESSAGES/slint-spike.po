@@ -1,0 +1,112 @@
+# Japanese strings, copied from src/i18n/ja.ts where the app has them.
+# msgctxt is the Slint component name (Slint's default translation context).
+msgid ""
+msgstr ""
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "AppWindow"
+msgid "Conversion kind"
+msgstr "変換の種類"
+
+msgctxt "AppWindow"
+msgid "Images → PDF"
+msgstr "画像 → PDF"
+
+msgctxt "AppWindow"
+msgid "PDF → Images"
+msgstr "PDF → 画像"
+
+msgctxt "AppWindow"
+msgid "Crop"
+msgstr "切り出し"
+
+msgctxt "AppWindow"
+msgid "Organize"
+msgstr "整理"
+
+msgctxt "AppWindow"
+msgid "Language"
+msgstr "言語"
+
+msgctxt "AppWindow"
+msgid "Not part of this prototype"
+msgstr "この試作には含まれません"
+
+msgctxt "PageCell"
+msgid "{0} page {1}"
+msgstr "{0} {1} ページ"
+
+msgctxt "PageCell"
+msgid "{0} page {1}, {2}°"
+msgstr "{0} {1} ページ、{2}°"
+
+msgctxt "PageCell"
+msgid "p.{0}"
+msgstr "p.{0}"
+
+msgctxt "Chip"
+msgid "{n} page"
+msgid_plural "{n} pages"
+msgstr[0] "{n} ページ"
+
+msgctxt "OrganizeView"
+msgid "Output"
+msgstr "保存の方法"
+
+msgctxt "OrganizeView"
+msgid "Merge"
+msgstr "結合"
+
+msgctxt "OrganizeView"
+msgid "Merges the pages into one PDF, in the order shown."
+msgstr "並び順に 1 つの PDF に結合します"
+
+msgctxt "OrganizeView"
+msgid "Split"
+msgstr "分割"
+
+msgctxt "OrganizeView"
+msgid "Add PDFs"
+msgstr "PDF を追加"
+
+msgctxt "OrganizeView"
+msgid "{n} page selected"
+msgid_plural "{n} pages selected"
+msgstr[0] "{n} ページを選択中"
+
+msgctxt "OrganizeView"
+msgid "{n} page"
+msgid_plural "{n} pages"
+msgstr[0] "{n} ページ"
+
+msgctxt "OrganizeView"
+msgid "Rotate left"
+msgstr "左に回す"
+
+msgctxt "OrganizeView"
+msgid "Rotate right"
+msgstr "右に回す"
+
+msgctxt "OrganizeView"
+msgid "Delete"
+msgstr "削除"
+
+msgctxt "OrganizeView"
+msgid "Pages"
+msgstr "ページ"
+
+msgctxt "OrganizeView"
+msgid "Drop PDFs here"
+msgstr "PDF をドロップ"
+
+msgctxt "OrganizeView"
+msgid "Reorder, delete and rotate pages, then merge or split them and save."
+msgstr "ページを並べ替え・削除・回転して、結合または分割して保存します"
+
+msgctxt "OrganizeView"
+msgid "Save PDF"
+msgstr "PDF を保存"

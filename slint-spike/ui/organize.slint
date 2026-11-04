@@ -1,0 +1,498 @@
+// The organize tab: PDF chips, the selection band, the virtualized page grid
+// and the bottom bar. All state lives in Rust (src/main.rs, src/organize.rs);
+// this file only draws it and reports input.
+
+import { ScrollView, Button } from "std-widgets.slint";
+import { T } from "tokens.slint";
+
+export struct CellData {
+    // Slot of the recycled cell pool; index < 0 means the slot is unused.
+    index: int,
+    x: length,
+    y: length,
+    image: image,
+    has-image: bool,
+    page-number: int,
+    source-name: string,
+    source-color: int,
+    rotation: int,
+    selected: bool,
+    focused: bool,
+    dragging: bool,
+    fit-width: length,
+    fit-height: length,
+}
+
+export struct SourceChip {
+    name: string,
+    pages: int,
+    color: int,
+}
+
+// Must match src/organize.rs.
+export global Grid {
+    out property <length> cell-width: 124px;
+    out property <length> page-box: 124px;
+    out property <length> cell-height: 148px;
+}
+
+component PageCell inherits Rectangle {
+    in property <CellData> data;
+    in property <int> total;
+    in property <bool> grid-focused;
+
+    x: data.x;
+    y: data.y;
+    width: Grid.cell-width;
+    height: Grid.cell-height;
+    visible: data.index >= 0;
+    opacity: data.dragging ? 0.35 : 1;
+
+    accessible-role: list-item;
+    accessible-label: data.rotation == 0
+        ? @tr("{0} page {1}", data.source-name, data.page-number)
+        : @tr("{0} page {1}, {2}°", data.source-name, data.page-number, data.rotation);
+    accessible-item-selectable: true;
+    accessible-item-selected: data.selected;
+    accessible-item-index: data.index;
+    accessible-item-count: total;
+
+    box := Rectangle {
+        y: 0;
+        width: Grid.page-box;
+        height: Grid.page-box;
+        border-radius: T.radius-md;
+        background: data.selected ? T.accent-subtle : transparent;
+        border-width: data.focused && grid-focused ? 2px : data.selected ? 2px : 0;
+        border-color: data.focused && grid-focused ? T.text-primary : T.accent;
+
+        page := Rectangle {
+            width: data.fit-width;
+            height: data.fit-height;
+            background: T.page-bg;
+            drop-shadow-blur: 4px;
+            drop-shadow-offset-y: 1px;
+            drop-shadow-color: T.page-shadow;
+
+            // The pixels are already turned in Rust: the software renderer
+            // ignores transform-rotation (slint-ui/slint#6068).
+            img := Image {
+                source: data.image;
+                width: parent.width;
+                height: parent.height;
+                image-fit: fill;
+                accessible-role: none;
+            }
+
+            if !data.has-image: Rectangle {
+                background: T.bg-muted;
+                Text {
+                    text: "…";
+                    color: T.text-muted;
+                }
+            }
+        }
+
+        if data.rotation != 0: Rectangle {
+            x: parent.width - self.width - 6px;
+            y: parent.height - self.height - 6px;
+            width: rot-text.preferred-width + 10px;
+            height: 18px;
+            border-radius: 9px;
+            background: T.text-primary;
+            rot-text := Text {
+                text: data.rotation + "°";
+                color: T.bg-surface;
+                font-size: 11px;
+            }
+        }
+
+        if data.selected: Rectangle {
+            x: parent.width - 22px;
+            y: 4px;
+            width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            background: T.accent;
+            Path {
+                width: 18px;
+                height: 18px;
+                viewbox-width: 18;
+                viewbox-height: 18;
+                commands: "M 5 9.5 L 8 12.5 L 13 6.5";
+                stroke: T.text-on-accent;
+                stroke-width: 2px;
+            }
+        }
+    }
+
+    HorizontalLayout {
+        y: Grid.page-box + 6px;
+        height: 18px;
+        spacing: 5px;
+        alignment: center;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            y: 5px;
+            border-radius: 4px;
+            background: T.sources[Math.mod(data.source-color, 6)];
+        }
+        Text {
+            text: @tr("p.{0}", data.page-number);
+            color: T.text-secondary;
+            font-size: T.font-sm;
+            vertical-alignment: center;
+        }
+        Text {
+            max-width: 70px;
+            text: data.source-name;
+            color: T.text-muted;
+            font-size: T.font-sm;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Chip inherits Rectangle {
+    in property <SourceChip> chip;
+    height: 30px;
+    width: chip-row.preferred-width + 20px;
+    border-radius: 15px;
+    background: T.bg-surface;
+    border-width: 1px;
+    border-color: T.border;
+    accessible-role: list-item;
+    accessible-label: chip.name;
+    chip-row := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 4px;
+            background: T.sources[Math.mod(chip.color, 6)];
+        }
+        Text {
+            text: chip.name;
+            color: T.text-primary;
+            font-size: T.font-md;
+            vertical-alignment: center;
+        }
+        Text {
+            text: @tr("{n} page" | "{n} pages" % chip.pages);
+            color: T.text-muted;
+            font-size: T.font-sm;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component FlatButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> primary;
+    callback clicked;
+    height: 30px;
+    min-width: label.preferred-width + 24px;
+    preferred-width: self.min-width;
+    border-radius: T.radius-md;
+    background: primary
+        ? (enabled ? (ta.has-hover ? T.accent-hover : T.accent) : T.border)
+        : (ta.has-hover && enabled ? T.bg-hover : T.bg-surface);
+    border-width: primary ? 0 : 1px;
+    border-color: T.border;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-enabled: enabled;
+    accessible-action-default => { if enabled { clicked(); } }
+    label := Text {
+        text: root.text;
+        color: primary ? T.text-on-accent : (enabled ? T.text-primary : T.text-muted);
+        font-size: T.font-md;
+        font-weight: primary ? 600 : 400;
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component OrganizeView inherits Rectangle {
+    in property <[SourceChip]> chips;
+    in property <[CellData]> cells;
+    in property <int> page-count;
+    in property <int> selected-count;
+    in property <length> content-height;
+    in-out property <length> viewport-y;
+    in property <bool> dragging;
+    in property <int> drag-count;
+    in property <bool> drop-line-visible;
+    in property <length> drop-line-x;
+    in property <length> drop-line-y;
+    in property <length> ghost-x;
+    in property <length> ghost-y;
+    in property <bool> file-hover;
+    in property <string> status;
+    out property <length> view-width: sv.visible-width;
+    out property <length> view-height: sv.visible-height;
+    out property <length> grid-origin-x: sv.absolute-position.x;
+    out property <length> grid-origin-y: sv.absolute-position.y;
+
+    callback add-pdfs();
+    callback save();
+    callback rotate(bool);
+    callback delete-selected();
+    callback layout-changed();
+    callback pointer-down(length, length, bool, bool);
+    callback pointer-move(length, length);
+    callback pointer-up(length, length, bool, bool);
+    callback grid-key(string, bool, bool, bool) -> bool;
+
+    public function focus-grid() {
+        scope.focus();
+    }
+
+    background: T.bg-app;
+
+    VerticalLayout {
+        HorizontalLayout {
+            // Settings column (static in this prototype).
+            Rectangle {
+                width: 220px;
+                background: T.bg-subtle;
+                border-width: 0;
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 10px;
+                    alignment: start;
+                    Text {
+                        text: @tr("Output");
+                        color: T.text-secondary;
+                        font-size: T.font-sm;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "● " + @tr("Merge");
+                        color: T.text-primary;
+                        font-size: T.font-md;
+                    }
+                    Text {
+                        text: @tr("Merges the pages into one PDF, in the order shown.");
+                        color: T.text-muted;
+                        font-size: T.font-sm;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: "○ " + @tr("Split");
+                        color: T.text-secondary;
+                        font-size: T.font-md;
+                    }
+                }
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    background: T.border;
+                }
+            }
+
+            VerticalLayout {
+                // PDF chips and the add button.
+                Rectangle {
+                    height: 50px;
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        spacing: 8px;
+                        alignment: start;
+                        FlatButton {
+                            y: 10px;
+                            text: @tr("Add PDFs") + " ▾";
+                            clicked => { root.add-pdfs(); }
+                        }
+                        for chip in root.chips: Chip {
+                            y: 10px;
+                            chip: chip;
+                        }
+                    }
+                }
+                // The selection band.
+                Rectangle {
+                    height: 44px;
+                    background: T.bg-surface;
+                    Rectangle { y: 0; height: 1px; background: T.border; }
+                    Rectangle { y: parent.height - 1px; height: 1px; background: T.border; }
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        spacing: 8px;
+                        Text {
+                            vertical-alignment: center;
+                            color: T.text-primary;
+                            font-size: T.font-md;
+                            text: root.selected-count > 0
+                                ? @tr("{n} page selected" | "{n} pages selected" % root.selected-count)
+                                : @tr("{n} page" | "{n} pages" % root.page-count);
+                        }
+                        Rectangle { }
+                        FlatButton {
+                            y: 7px;
+                            text: @tr("Rotate left");
+                            enabled: root.selected-count > 0;
+                            clicked => { root.rotate(false); scope.focus(); }
+                        }
+                        FlatButton {
+                            y: 7px;
+                            text: @tr("Rotate right");
+                            enabled: root.selected-count > 0;
+                            clicked => { root.rotate(true); scope.focus(); }
+                        }
+                        FlatButton {
+                            y: 7px;
+                            text: @tr("Delete");
+                            enabled: root.selected-count > 0;
+                            clicked => { root.delete-selected(); scope.focus(); }
+                        }
+                    }
+                }
+                // The grid.
+                scope := FocusScope {
+                    accessible-role: list;
+                    accessible-label: @tr("Pages");
+                    key-pressed(event) => {
+                        root.grid-key(event.text, event.modifiers.shift, event.modifiers.control, event.modifiers.alt)
+                            ? EventResult.accept : EventResult.reject
+                    }
+                    sv := ScrollView {
+                        content-width: self.visible-width;
+                        content-height: max(root.content-height, self.visible-height);
+                        content-y <=> root.viewport-y;
+                        changed visible-width => { root.layout-changed(); }
+                        changed visible-height => { root.layout-changed(); }
+                        changed content-y => { root.layout-changed(); }
+
+                        ta := TouchArea {
+                            width: sv.visible-width;
+                            height: max(root.content-height, sv.visible-height);
+                            pointer-event(e) => {
+                                if e.button == PointerEventButton.left {
+                                    if e.kind == PointerEventKind.down {
+                                        scope.focus();
+                                        root.pointer-down(self.mouse-x, self.mouse-y, e.modifiers.shift, e.modifiers.control);
+                                    } else if e.kind == PointerEventKind.up {
+                                        root.pointer-up(self.mouse-x, self.mouse-y, e.modifiers.shift, e.modifiers.control);
+                                    }
+                                }
+                            }
+                            moved => { root.pointer-move(self.mouse-x, self.mouse-y); }
+
+                            for cell in root.cells: PageCell {
+                                data: cell;
+                                total: root.page-count;
+                                grid-focused: scope.has-focus;
+                            }
+
+                            if root.drop-line-visible: Rectangle {
+                                x: root.drop-line-x - 1.5px;
+                                y: root.drop-line-y - 4px;
+                                width: 3px;
+                                height: Grid.page-box + 8px;
+                                border-radius: 1.5px;
+                                background: T.accent;
+                            }
+                        }
+                    }
+
+                    if root.page-count == 0: Rectangle {
+                        x: 24px;
+                        y: 24px;
+                        width: parent.width - 48px;
+                        height: parent.height - 48px;
+                        border-radius: T.radius-lg;
+                        border-width: 2px;
+                        border-color: T.border-dashed;
+                        background: T.bg-subtle;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 8px;
+                            Text {
+                                horizontal-alignment: center;
+                                text: @tr("Drop PDFs here");
+                                color: T.text-primary;
+                                font-size: 18px;
+                                font-weight: 600;
+                            }
+                            Text {
+                                horizontal-alignment: center;
+                                text: @tr("Reorder, delete and rotate pages, then merge or split them and save.");
+                                color: T.text-secondary;
+                                font-size: T.font-md;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    if root.dragging: Rectangle {
+                        x: root.ghost-x + 14px;
+                        y: min(root.ghost-y + root.viewport-y + 14px, parent.height - self.height - 4px);
+                        width: ghost-text.preferred-width + 20px;
+                        height: 26px;
+                        border-radius: 13px;
+                        background: T.accent;
+                        drop-shadow-blur: 6px;
+                        drop-shadow-color: #00000040;
+                        ghost-text := Text {
+                            text: @tr("{n} page" | "{n} pages" % root.drag-count);
+                            color: T.text-on-accent;
+                            font-size: T.font-sm;
+                            font-weight: 600;
+                        }
+                    }
+                }
+            }
+        }
+        // The bottom bar.
+        Rectangle {
+            height: 56px;
+            background: T.bg-surface;
+            Rectangle { y: 0; height: 1px; background: T.border; }
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 12px;
+                Text {
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    text: root.status;
+                    color: T.text-secondary;
+                    font-size: T.font-md;
+                    overflow: elide;
+                }
+                FlatButton {
+                    y: 13px;
+                    horizontal-stretch: 0;
+                    primary: true;
+                    enabled: root.page-count > 0;
+                    text: @tr("Save PDF");
+                    clicked => { root.save(); }
+                }
+            }
+        }
+    }
+
+    if root.file-hover: Rectangle {
+        background: T.accent-subtle.with-alpha(0.85);
+        border-width: 3px;
+        border-color: T.accent;
+        Text {
+            text: @tr("Drop PDFs here");
+            color: T.accent;
+            font-size: 22px;
+            font-weight: 600;
+        }
+    }
+}

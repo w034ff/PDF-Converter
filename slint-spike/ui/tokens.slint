@@ -1,0 +1,45 @@
+// Colors from src/styles/tokens.css (light / dark). `T.dark` follows the
+// OS through Palette.color-scheme and can be forced from Rust.
+
+import { Palette } from "std-widgets.slint";
+
+export global T {
+    in-out property <bool> force-dark: false;
+    out property <bool> dark: force-dark || Palette.color-scheme == ColorScheme.dark;
+
+    out property <color> bg-app: dark ? #1c1b18 : #f4f3f0;
+    out property <color> bg-surface: dark ? #262522 : #ffffff;
+    out property <color> bg-subtle: dark ? #1f1e1b : #faf9f7;
+    out property <color> bg-muted: dark ? #2f2e2a : #f4f3f0;
+    out property <color> bg-hover: dark ? #3a3834 : #e4e1db;
+
+    out property <color> text-primary: dark ? #f2efe9 : #1f1f1f;
+    out property <color> text-secondary: dark ? #a8a49c : #5c5a56;
+    out property <color> text-muted: dark ? #78756e : #8a867e;
+    out property <color> text-on-accent: dark ? #1c1b18 : #ffffff;
+
+    out property <color> border: dark ? #3e3c38 : #dcd9d3;
+    out property <color> border-subtle: dark ? #4a4742 : #cfcbc4;
+    out property <color> border-dashed: dark ? #5c5952 : #b9b5ad;
+
+    out property <color> accent: dark ? #e07353 : #b4492b;
+    out property <color> accent-hover: dark ? #e88a6f : #8a3520;
+    out property <color> accent-subtle: dark ? #3a251e : #faebe6;
+    out property <color> error: dark ? #ff7a8a : #b3163a;
+
+    out property <color> page-bg: #ffffff;
+    out property <color> page-shadow: #0000002e;
+
+    // --organize-source-1..6
+    out property <[color]> sources: dark
+        ? [#8ba3bf, #b88bcb, #8cc088, #f6acc2, #36d5d9, #c4cb5e]
+        : [#4f6d8f, #8a5a9c, #5e8a5a, #a8636f, #078487, #65710f];
+
+    out property <length> radius-sm: 4px;
+    out property <length> radius-md: 6px;
+    out property <length> radius-lg: 8px;
+
+    out property <length> font-sm: 12px;
+    out property <length> font-md: 13px;
+    out property <length> font-lg: 15px;
+}
