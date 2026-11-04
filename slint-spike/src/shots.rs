@@ -134,3 +134,39 @@ pub fn start(app: &AppWindow, dir: PathBuf) {
         }));
     });
 }
+
+/// Times full-frame renders (`take_snapshot`) at several zoom levels and
+/// scroll positions, then quits.
+pub fn bench(app: &AppWindow) {
+    let weak = app.as_weak();
+    let started = Rc::new(RefCell::new(false));
+    app::with(move |c| {
+        c.on_page_ready = Some(Box::new(move || {
+            if std::mem::replace(&mut *started.borrow_mut(), true) {
+                return;
+            }
+            let weak = weak.clone();
+            slint::Timer::single_shot(Duration::from_millis(500), move || {
+                let Some(app) = weak.upgrade() else { return };
+                app.invoke_fit_width();
+                let fit = app.get_zoom();
+                for zoom in [fit, 1.0, 2.0, 4.0] {
+                    app.set_zoom(zoom);
+                    app.set_view_y(0.0);
+                    let _ = app.window().take_snapshot();
+                    let mut times = Vec::new();
+                    for i in 0..10 {
+                        app.set_view_y(-(i as f32) * 90.0 * zoom);
+                        app.set_view_x(-(i as f32) * 20.0 * (zoom - 1.0).max(0.0));
+                        let t = Instant::now();
+                        let _ = app.window().take_snapshot();
+                        times.push(t.elapsed().as_secs_f64() * 1000.0);
+                    }
+                    times.sort_by(f64::total_cmp);
+                    eprintln!("bench zoom {:.0} %: frame median {:.1} ms, min {:.1} ms, max {:.1} ms", zoom * 100.0, times[5], times[0], times[9]);
+                }
+                let _ = slint::quit_event_loop();
+            });
+        }));
+    });
+}

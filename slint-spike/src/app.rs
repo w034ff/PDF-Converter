@@ -252,6 +252,7 @@ impl Controller {
     }
 
     fn status(&self, s: &str) {
+        eprintln!("status: {s}");
         if let Some(app) = self.app() {
             app.set_status(s.into());
         }
@@ -289,7 +290,9 @@ impl Controller {
             return;
         }
         if let Some(app) = self.app() {
+            let t = std::time::Instant::now();
             app.set_page_image(to_image(&img));
+            eprintln!("page image {}×{} handed to Slint in {} ms", img.width, img.height, t.elapsed().as_millis());
         }
         self.page_rgba = Some(img);
         self.refresh();

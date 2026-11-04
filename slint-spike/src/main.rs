@@ -1,5 +1,5 @@
 //! The Slint crop spike. Usage:
-//!   slint-crop-spike [file.pdf] [--dpi N] [--screenshot DIR]
+//!   slint-crop-spike [file.pdf] [--dpi N] [--screenshot DIR | --bench]
 
 use slint::ComponentHandle;
 use slint_crop_spike::{AppWindow, app};
@@ -13,11 +13,13 @@ fn main() {
     let mut pdf = None;
     let mut dpi = 150u32;
     let mut shots_dir = None;
+    let mut bench = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--dpi" => dpi = args.next().and_then(|s| s.parse().ok()).unwrap_or(dpi),
             "--screenshot" => shots_dir = args.next(),
+            "--bench" => bench = true,
             _ => pdf = Some(std::path::PathBuf::from(a)),
         }
     }
@@ -33,6 +35,9 @@ fn main() {
             }
             app::with(|c| c.open(&path));
         });
+    }
+    if bench {
+        shots::bench(&app);
     }
     if let Some(dir) = shots_dir {
         shots::start(&app, std::path::PathBuf::from(dir));

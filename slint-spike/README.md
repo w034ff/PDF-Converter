@@ -46,6 +46,7 @@ cd slint-spike && cargo run --release -- testdata/sample-220.pdf
 
 - `--dpi 300`: ページを 300 dpi で描く（既定は 150）。
 - 描き方は環境変数で選ぶ: `SLINT_BACKEND=winit-femtovg`（OpenGL）、`SLINT_BACKEND=winit-software`（ソフトウェア）。
+- `--bench`: 拡大とスクロールの重さを測って終わる（REPORT.md の 4）。
 - `--screenshot DIR`: 決まった操作を本物のポインターのイベントで流し、画面の画像を `DIR` に保存して終わる（`screenshots/` はこれで作った）。
 
 ## 確かめ方
