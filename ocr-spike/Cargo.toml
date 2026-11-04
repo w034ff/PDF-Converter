@@ -20,6 +20,8 @@ serde_json = "1"
 # Reads the dictionary from the rec model's inference.yml.
 yaml-rust2 = "0.10"
 unicode-normalization = "0.1"
+# Item 7: render a PDF page before OCR. Same version and API level as crates/worker.
+pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
 
 [profile.release]
 debug = 1

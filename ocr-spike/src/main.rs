@@ -1,4 +1,4 @@
-use ocr_spike::{cer, engine, geom, imgops, order, types, vertical};
+use ocr_spike::{cer, engine, geom, imgops, order, pdf, types, vertical};
 
 use std::path::{Path, PathBuf};
 
@@ -60,6 +60,7 @@ fn main() {
         Some("xfund") => xfund(&env, &args),
         Some("vertical") => vertical_pages(&env, &args),
         Some("chars") => chars(&env, &args),
+        Some("pdf") => pdf_page(&env, &args),
         Some("page-json") => {
             let mut ocr = open_ocr(&env, &args);
             let img = Bgr::open(Path::new(&args[2])).unwrap();
@@ -435,4 +436,46 @@ fn chars(env: &ort::environment::Environment, args: &[String]) {
         "lines compared {lines_used}, characters {n}: mean IoU CTC {:.3} vs even split {:.3}; centre inside the true box CTC {:.1} % vs even {:.1} %",
         iou_ctc / n as f64, iou_even / n as f64, hit_ctc as f64 * 100.0 / n as f64, hit_even as f64 * 100.0 / n as f64
     );
+}
+
+/// Item 7: a synthetic vertical page as an image-only A4 PDF, rendered with
+/// pdfium at a 1600 px long side, then OCR; compared with OCR of the PNG.
+fn pdf_page(env: &ort::environment::Environment, args: &[String]) {
+    let mut ocr = open_ocr(env, args);
+    let name = arg(args, "--page").unwrap_or("v3_three_tiers");
+    let dir = root().join("data/vertical");
+    let png = image::open(dir.join(format!("{name}.png"))).unwrap().to_rgb8();
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 90).encode_image(&png).unwrap();
+    let doc = pdf::image_pdf(&jpeg, png.width(), png.height(), (595.28, 841.89));
+    std::fs::write(root().join(format!("out/{name}.pdf")), &doc).unwrap();
+    let lib = root().join("../src-tauri/pdfium/linux/lib/libpdfium.so");
+    let s = std::time::Instant::now();
+    let (img, page_pt) = pdf::render_first_page(&lib, &doc, 1600);
+    let render_ms = s.elapsed().as_secs_f64() * 1000.0;
+    let gt: Vec<vertical::GtBlock> = serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap())
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| vertical::GtBlock {
+            vertical: b["vertical"].as_bool().unwrap(),
+            lines: b["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap().to_string()).collect(),
+            line_boxes: Vec::new(),
+            bbox: [0.0; 4],
+        })
+        .collect();
+    let gt_text: String = gt.iter().flat_map(|b| b.lines.iter().map(String::as_str)).collect();
+    for (label, im) in [("PNG 1654x2339", Bgr::from_rgb(&png)), ("PDF rendered by pdfium", img)] {
+        let mut t = Timings::default();
+        let lines = ocr.run(&im, &mut t).unwrap();
+        let page = types::build_page(&lines, im.w, im.h, page_pt, "PP-OCRv6_small");
+        let text: String = page.blocks.iter().flat_map(|b| b.lines.iter().map(|l| l.text.as_str())).collect();
+        println!(
+            "{name} {label} ({}x{}): lines {}, blocks {}, reordered full-text CER {:.2} %, det {:.0} ms rec {:.0} ms",
+            im.w, im.h, lines.len(), page.blocks.len(), cer::full_text(&gt_text, &text).cer() * 100.0,
+            t.det().as_secs_f64() * 1000.0, t.rec().as_secs_f64() * 1000.0
+        );
+    }
+    println!("render {render_ms:.0} ms (pdfium load included), peak RSS {:.0} MiB", engine::peak_rss_mib());
 }
