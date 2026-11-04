@@ -7,3 +7,4 @@ pub mod vertical;
 pub mod types;
 pub mod proposal;
 pub mod pdf;
+pub mod parseq;

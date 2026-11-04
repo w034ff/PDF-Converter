@@ -31,6 +31,20 @@ pub fn open_ocr(env: &ort::environment::Environment, args: &[String]) -> Ocr {
     if args.iter().any(|a| a == "--paddle-default") {
         ocr.det_params = DetParams::paddle_default();
     }
+    if args.iter().any(|a| a == "--parseq") {
+        let dir = root().join("third_party/ndlocr-lite");
+        let s = std::time::Instant::now();
+        let models = arg(args, "--parseq-models").map_or_else(|| dir.join("src/model"), |d| root().join(d));
+        ocr.parseq = Some(ocr_spike::parseq::Parseq::load(env, &dir, &models, threads).expect("load PARSeq"));
+        eprintln!("PARSeq loaded in {:.2} s", s.elapsed().as_secs_f64());
+    }
+    if let Some(m) = arg(args, "--cells") {
+        ocr.cell_mode = match m {
+            "even" => engine::CellMode::Even,
+            "projection" => engine::CellMode::Projection,
+            _ => engine::CellMode::Aligned,
+        };
+    }
     if let Some(l) = arg(args, "--limit") {
         ocr.det_params.limit_side_len = l.parse().unwrap();
     }
@@ -61,6 +75,7 @@ fn main() {
         Some("vertical") => vertical_pages(&env, &args),
         Some("chars") => chars(&env, &args),
         Some("pdf") => pdf_page(&env, &args),
+        Some("vchars") => vchars(&env, &args),
         Some("page-json") => {
             let mut ocr = open_ocr(&env, &args);
             let img = Bgr::open(Path::new(&args[2])).unwrap();
@@ -213,7 +228,7 @@ fn bench(env: &ort::environment::Environment, args: &[String]) {
             "lines": texts.len(),
             "det_ms": ms(&|t| t.det()), "rec_ms": ms(&|t| t.rec()),
             "det_pre": ms(&|t| t.det_pre), "det_run": ms(&|t| t.det_run), "det_post": ms(&|t| t.det_post),
-            "crop": ms(&|t| t.crop), "rec_pre": ms(&|t| t.rec_pre), "rec_run": ms(&|t| t.rec_run), "rec_post": ms(&|t| t.rec_post),
+            "parseq": ms(&|t| t.parseq), "crop": ms(&|t| t.crop), "rec_pre": ms(&|t| t.rec_pre), "rec_run": ms(&|t| t.rec_run), "rec_post": ms(&|t| t.rec_post),
             "texts": texts,
         });
         eprintln!(
@@ -241,6 +256,7 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
     let limit: usize = arg(args, "--pages").map_or(usize::MAX, |n| n.parse().unwrap());
     let mut total = cer::Score::default();
     let mut total_chars = cer::Score::default();
+    let (mut pq_lines, mut pq_fallbacks) = (0usize, 0usize);
     let mut dump = Vec::new();
     let mut det_ms = Vec::new();
     let mut rec_ms = Vec::new();
@@ -268,6 +284,8 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
             .collect();
         let mut t = Timings::default();
         let lines = ocr.run(&img, &mut t).unwrap();
+        pq_lines += t.parseq_lines;
+        pq_fallbacks += t.parseq_fallbacks;
         det_ms.push(t.det().as_secs_f64() * 1000.0);
         rec_ms.push(t.rec().as_secs_f64() * 1000.0);
         let pred: Vec<cer::Boxed> =
@@ -277,8 +295,8 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
         let pchars: Vec<cer::Boxed> = lines
             .iter()
             .flat_map(|l| {
-                let cells = types::char_cells(l);
-                l.rec.char_cols.iter().zip(cells).map(move |(c, (u0, u1))| cer::Boxed {
+                let (cells, glyphs) = types::line_chars(l);
+                glyphs.into_iter().zip(cells).map(move |(c, (u0, u1))| cer::Boxed {
                     text: c.0.to_string(),
                     bbox: geom::quad_bounds(&types::span_quad(&l.quad, l.vertical, u0, u1)),
                 })
@@ -292,7 +310,7 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
         total.add(s);
         total_chars.add(sc);
         dump.push(serde_json::json!({"fname": fname, "lines": lines.iter().map(|l| serde_json::json!({
-            "quad": l.quad, "text": l.text, "score": l.score, "vertical": l.vertical})).collect::<Vec<_>>()}));
+            "quad": l.quad, "text": l.text, "score": l.score, "vertical": l.vertical, "ctc": l.rec.text})).collect::<Vec<_>>()}));
     }
     println!(
         "TOTAL pages {}: CER line-matched {:.2} % ({} / {}), char-matched {:.2} % ({} / {}), unassigned lines {}, median det {:.0} ms rec {:.0} ms, peak RSS {:.0} MiB",
@@ -301,7 +319,9 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
     );
     let model = arg(args, "--model").unwrap_or("small");
     std::fs::create_dir_all(root().join("out")).unwrap();
-    std::fs::write(root().join(format!("out/xfund_pred_{model}.json")), serde_json::to_string(&dump).unwrap()).unwrap();
+    let tag = if args.iter().any(|a| a == "--parseq") { "_parseq" } else { "" };
+    println!("vertical lines sent to PARSeq {pq_lines}, kept PP-OCR's reading by the guards {pq_fallbacks}");
+    std::fs::write(root().join(format!("out/xfund_pred_{model}{tag}.json")), serde_json::to_string(&dump).unwrap()).unwrap();
 }
 
 fn ordered_text(lines: &[engine::Line], blocks: &[order::Block]) -> String {
@@ -478,4 +498,63 @@ fn pdf_page(env: &ort::environment::Environment, args: &[String]) {
         );
     }
     println!("render {render_ms:.0} ms (pdfium load included), peak RSS {:.0} MiB", engine::peak_rss_mib());
+}
+
+/// Item 8 (4): character positions of PARSeq's vertical lines against the
+/// exact cells of the synthetic pages (each character is a font-size square).
+fn vchars(env: &ort::environment::Environment, args: &[String]) {
+    let mut ocr = open_ocr(env, args);
+    let dir = root().join("data/vertical");
+    let (mut n, mut hit, mut iou_sum) = (0usize, 0usize, 0.0f64);
+    for name in ["v1_title_body", "v2_two_tiers", "v3_three_tiers", "v4_dialogue"] {
+        let gt: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap()).unwrap();
+        // (column text, column box) for the vertical ground truth.
+        let cols: Vec<(Vec<char>, [f64; 4])> = gt
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|b| b["vertical"].as_bool().unwrap())
+            .flat_map(|b| {
+                b["lines"].as_array().unwrap().iter().zip(b["line_boxes"].as_array().unwrap()).map(|(t, bb)| {
+                    let bb = bb.as_array().unwrap();
+                    (t.as_str().unwrap().chars().collect(), std::array::from_fn(|k| bb[k].as_f64().unwrap()))
+                })
+            })
+            .collect();
+        let img = Bgr::open(&dir.join(format!("{name}.png"))).unwrap();
+        let lines = ocr.run(&img, &mut Timings::default()).unwrap();
+        for l in lines.iter().filter(|l| l.parseq.is_some()) {
+            let lb = geom::quad_bounds(&l.quad);
+            let Some((gchars, gb)) = cols.iter().max_by(|a, b| geom::iou(&a.1, &lb).total_cmp(&geom::iou(&b.1, &lb))) else { continue };
+            if geom::iou(gb, &lb) < 0.3 {
+                continue;
+            }
+            let size = gb[2] - gb[0];
+            let (cells, glyphs) = types::line_chars(l);
+            // Pair predicted and true characters along the edit path.
+            let src: Vec<(char, (f64, f64))> = gchars.iter().enumerate().map(|(k, &c)| (c, (k as f64, k as f64 + 1.0))).collect();
+            let text: String = glyphs.iter().map(|g| g.0).collect();
+            let paired = ocr_spike::parseq::aligned_cells(&text, &src);
+            for (k, (g, &(u0, u1))) in glyphs.iter().zip(&cells).enumerate() {
+                let (a, b) = paired[k];
+                // aligned_cells returns the true index range for paired characters.
+                if (b - a - 1.0).abs() > 1e-9 || a.fract() != 0.0 || gchars.get(a as usize) != Some(&g.0) {
+                    continue;
+                }
+                let truth = [gb[0], gb[1] + a * size, gb[2], gb[1] + (a + 1.0) * size];
+                let cb = geom::quad_bounds(&types::span_quad(&l.quad, true, u0, u1));
+                let (cx, cy) = ((cb[0] + cb[2]) / 2.0, (cb[1] + cb[3]) / 2.0);
+                hit += usize::from(cx >= truth[0] && cx <= truth[2] && cy >= truth[1] && cy <= truth[3]);
+                // IoU along the column only (the line box is wider than the glyph cell).
+                let inter = (cb[3].min(truth[3]) - cb[1].max(truth[1])).max(0.0);
+                let uni = (cb[3].max(truth[3]) - cb[1].min(truth[1])).max(1e-9);
+                iou_sum += inter / uni;
+                n += 1;
+            }
+        }
+    }
+    println!(
+        "cells {:?}: characters compared {n}, centre inside the true cell {:.1} %, mean 1-D IoU along the column {:.3}",
+        ocr.cell_mode, hit as f64 * 100.0 / n as f64, iou_sum / n as f64
+    );
 }

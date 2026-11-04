@@ -67,6 +67,10 @@ pub struct Timings {
     pub rec_pre: Duration,
     pub rec_run: Duration,
     pub rec_post: Duration,
+    /// Item 8: PARSeq on the vertical lines.
+    pub parseq: Duration,
+    pub parseq_lines: usize,
+    pub parseq_fallbacks: usize,
 }
 
 impl Timings {
@@ -74,7 +78,7 @@ impl Timings {
         self.det_pre + self.det_run + self.det_post
     }
     pub fn rec(&self) -> Duration {
-        self.crop + self.rec_pre + self.rec_run + self.rec_post
+        self.crop + self.rec_pre + self.rec_run + self.rec_post + self.parseq
     }
 }
 
@@ -91,6 +95,25 @@ pub struct Line {
     /// Width of the crop after resizing to height 48 and the tensor width it was padded to.
     pub crop_px: (usize, usize),
     pub tensor_w: usize,
+    /// Item 8: PARSeq's reading of a vertical line, with character cells
+    /// (fractions along the crop) from the chosen [`CellMode`].
+    pub parseq: Option<(crate::parseq::ParseqText, Vec<(f64, f64)>)>,
+}
+
+/// Lines PP-OCR read as this many characters or fewer stay with PP-OCR.
+pub const PARSEQ_MIN_CTC_CHARS: usize = 1;
+/// PARSeq's text longer than twice PP-OCR's plus this is taken as runaway.
+pub const PARSEQ_RUNAWAY_SLACK: usize = 3;
+
+/// How PARSeq's characters get positions (item 8).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CellMode {
+    /// Split the line evenly by the number of characters.
+    Even,
+    /// Ink projection along the crop.
+    Projection,
+    /// Align with PP-OCR's reading of the same crop and take its CTC cells.
+    Aligned,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -109,7 +132,15 @@ pub fn ort_init(runtime: &Path) -> Result<Environment, String> {
 
 /// Same settings as `crates/worker/src/layout.rs::load_session`.
 pub fn load_session(env: &Environment, model: &Path, threads: usize) -> ort::Result<Session> {
+    load_session_with(env, model, threads, true)
+}
+
+/// `arena: false` turns off onnxruntime's CPU arena, which otherwise keeps
+/// the largest buffers of every run reserved (item 8, memory).
+pub fn load_session_with(env: &Environment, model: &Path, threads: usize, arena: bool) -> ort::Result<Session> {
+    let cpu = ort::ep::CPU::default().with_arena_allocator(arena).build();
     Session::builder(env)?
+        .with_execution_providers([cpu])?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
         .with_intra_threads(threads)?
         .with_inter_threads(1)?
@@ -149,6 +180,8 @@ pub struct Ocr {
     pub dict: Vec<String>,
     pub det_params: DetParams,
     pub rec_batch: usize,
+    pub parseq: Option<crate::parseq::Parseq>,
+    pub cell_mode: CellMode,
 }
 
 /// Size after `DetResizeForTest.resize_image_type0`.
@@ -329,11 +362,13 @@ pub fn ctc_decode(probs: &[f32], t: usize, c: usize, dict: &[String]) -> RecText
 impl Ocr {
     pub fn load(env: &Environment, det_dir: &Path, rec_dir: &Path, threads: usize) -> ort::Result<Self> {
         Ok(Self {
-            det: load_session(env, &det_dir.join("inference.onnx"), threads)?,
-            rec: load_session(env, &rec_dir.join("inference.onnx"), threads)?,
+            det: load_session_with(env, &det_dir.join("inference.onnx"), threads, std::env::var("OCR_PPOCR_ARENA").as_deref() != Ok("0"))?,
+            rec: load_session_with(env, &rec_dir.join("inference.onnx"), threads, std::env::var("OCR_PPOCR_ARENA").as_deref() != Ok("0"))?,
             dict: load_dictionary(&rec_dir.join("inference.yml")),
             det_params: DetParams::chosen(),
             rec_batch: 6,
+            parseq: None,
+            cell_mode: CellMode::Aligned,
         })
     }
 
@@ -405,7 +440,7 @@ impl Ocr {
         }
         t.crop += s.elapsed();
         let recs = self.recognize(&crops, t)?;
-        Ok(kept
+        let mut lines: Vec<Line> = kept
             .into_iter()
             .zip(recs)
             .map(|((quad, vertical), (rec, rw, tw))| Line {
@@ -416,8 +451,47 @@ impl Ocr {
                 rec,
                 crop_px: (rw, REC_HEIGHT),
                 tensor_w: tw,
+                parseq: None,
             })
-            .collect())
+            .collect();
+        if let Some(p) = self.parseq.as_mut() {
+            let s = Instant::now();
+            for (line, crop) in lines.iter_mut().zip(&crops) {
+                if !line.vertical {
+                    continue;
+                }
+                t.parseq_lines += 1;
+                let r = p.read(crop)?;
+                let n = r.text.chars().count();
+                // Guards (XFUND, item 8): PARSeq reads lines, and on a crop that
+                // PP-OCR saw as one character it tends to add one ("2" -> "20");
+                // on vertical leader dots it can run to its length limit.
+                let ctc_n = line.rec.text.chars().count();
+                if ctc_n <= PARSEQ_MIN_CTC_CHARS || n > 2 * ctc_n + PARSEQ_RUNAWAY_SLACK {
+                    t.parseq_fallbacks += 1;
+                    continue;
+                }
+                let cells = match self.cell_mode {
+                    CellMode::Even => (0..n).map(|k| (k as f64 / n as f64, (k + 1) as f64 / n as f64)).collect(),
+                    CellMode::Projection => crate::parseq::projection_cells(crop, n),
+                    CellMode::Aligned => {
+                        let src: Vec<(char, (f64, f64))> = line
+                            .rec
+                            .char_cols
+                            .iter()
+                            .map(|c| c.0)
+                            .zip(crate::types::char_cells(line))
+                            .collect();
+                        crate::parseq::aligned_cells(&r.text, &src)
+                    }
+                };
+                line.text = r.text.clone();
+                line.score = r.score;
+                line.parseq = Some((r, cells));
+            }
+            t.parseq += s.elapsed();
+        }
+        Ok(lines)
     }
 }
 

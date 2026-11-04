@@ -146,6 +146,15 @@ pub fn span_quad(q: &Quad, vertical: bool, u0: f64, u1: f64) -> Quad {
     ]
 }
 
+/// The line's characters and their cells: PARSeq's (item 8) when it read
+/// the line, otherwise PP-OCR's with the CTC cells.
+pub fn line_chars(l: &Line) -> (Vec<(f64, f64)>, Vec<(char, f32)>) {
+    match &l.parseq {
+        Some((r, cells)) => (cells.clone(), r.text.chars().map(|c| (c, r.score)).collect()),
+        None => (char_cells(l), l.rec.char_cols.iter().map(|c| (c.0, c.3)).collect()),
+    }
+}
+
 fn bbox_of(q: &QuadPt) -> RectPt {
     let xs = q.iter().map(|p| p[0]);
     let ys = q.iter().map(|p| p[1]);
@@ -181,14 +190,12 @@ pub fn build_page(lines: &[Line], img_w: usize, img_h: usize, page_pt: (f64, f64
                             to_pt(crop_to_page(&l.quad, vertical, u0, 1.0)),
                         ]
                     };
-                    let cells = char_cells(l);
-                    let chars: Vec<(usize, OcrChar)> = l
-                        .rec
-                        .char_cols
+                    let (cells, glyphs) = line_chars(l);
+                    let chars: Vec<(usize, OcrChar)> = glyphs
                         .iter()
                         .zip(&cells)
                         .enumerate()
-                        .map(|(k, (c, &(u0, u1)))| (k, OcrChar { quad: span(u0, u1), text: c.0.to_string(), confidence: c.3 }))
+                        .map(|(k, (c, &(u0, u1)))| (k, OcrChar { quad: span(u0, u1), text: c.0.to_string(), confidence: c.1 }))
                         .collect();
                     let mut words = Vec::new();
                     let mut cur: Vec<(usize, OcrChar)> = Vec::new();
