@@ -72,6 +72,12 @@ const HEADER_PEEK_BYTES: usize = 64 * 1024;
 /// Returns [`ProbeError::TooLarge`] if total pixels exceed [`MAX_IMAGE_PIXELS`].
 /// Returns [`ProbeError::TooManyPages`] if a multi-page TIFF exceeds [`crate::MAX_TIFF_PAGES`].
 pub fn probe(path: &Path) -> Result<ImageInfo, ProbeError> {
+    // Opening a named pipe blocks until something writes to it, which would hang the thread
+    // that adds the file for good; a device such as /dev/zero never ends. Only regular files
+    // are images (symbolic links are followed).
+    if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) {
+        return Err(ProbeError::ReadFailed);
+    }
     let file = std::fs::File::open(path).map_err(|_| ProbeError::ReadFailed)?;
     let reader = std::io::BufReader::new(file);
     probe_reader(reader)
@@ -735,6 +741,39 @@ mod tests {
         assert_eq!(err, ProbeError::ReadFailed);
         assert_eq!(err.code(), ErrorCode::ReadFailed);
         assert_eq!(err.detail(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_failed_on_a_named_pipe_without_blocking() {
+        let dir = std::env::temp_dir().join(format!("pdfconv-probe-fifo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let fifo = dir.join("pipe.png");
+        let _ = std::fs::remove_file(&fifo);
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("run mkfifo");
+        assert!(made.success(), "mkfifo failed");
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let path = fifo.clone();
+        // Opening a pipe blocks until a writer comes, so a probe that opened it would not answer.
+        std::thread::spawn(move || {
+            let _ = sender.send(probe(&path));
+        });
+        let result = receiver.recv_timeout(std::time::Duration::from_secs(10));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            result.expect("probe of a named pipe blocked").unwrap_err(),
+            ProbeError::ReadFailed
+        );
+    }
+
+    #[test]
+    fn read_failed_on_a_folder() {
+        let err = probe(Path::new(FIXTURES_DIR)).unwrap_err();
+        assert_eq!(err, ProbeError::ReadFailed);
     }
 
     #[test]
