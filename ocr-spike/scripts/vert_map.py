@@ -18,6 +18,10 @@ for fr in gsub.FeatureList.FeatureRecord:
                 if hasattr(st, "mapping"):
                     subst.update(st.mapping)
 out = {"vert": {}, "cmap": {}}
+# The em box: Rust draws with the hhea ascent as the baseline offset; the
+# ideographic em box top is the OS/2 typo ascender above the baseline.
+out["metrics"] = {"upm": font["head"].unitsPerEm, "hhea_ascent": font["hhea"].ascent,
+                  "typo_ascender": font["OS/2"].sTypoAscender}
 for cp, name in cmap.items():
     out["cmap"][cp] = gid[name]
     if name in subst:

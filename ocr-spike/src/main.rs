@@ -76,6 +76,25 @@ fn main() {
         Some("chars") => chars(&env, &args),
         Some("pdf") => pdf_page(&env, &args),
         Some("vchars") => vchars(&env, &args),
+        Some("gen-sets") => ocr_spike::sets::generate(&root()),
+        Some("veval") => {
+            let set = arg(&args, "--set").unwrap_or("dev");
+            let pages = ocr_spike::sets::load(&root(), set);
+            if args.iter().any(|a| a == "--gt-only") {
+                // Ground truth only (no OCR): the validation sets are not scored before item 5.
+                let mut k = ocr_spike::charclass::KindStats::default();
+                for p in &pages {
+                    k.add_texts(&p.gt_text, &p.gt_text);
+                    println!("{}: {}x{}, characters {}, lines {}, lines with character boxes {}", p.name, p.image.w, p.image.h,
+                        ocr_spike::cer::normalize(&p.gt_text).len(), p.gt_lines.len(), p.char_lines.len());
+                }
+                let by: Vec<String> = ocr_spike::charclass::KINDS.iter().map(|x| format!("{} {}", x.label(), k.by[*x as usize].truth)).collect();
+                println!("TOTAL {set}: pages {}, characters by kind: {}", pages.len(), by.join(", "));
+                return;
+            }
+            let mut ocr = open_ocr(&env, &args);
+            ocr_spike::veval::run_set(&mut ocr, &pages, set, args.iter().any(|a| a == "--show"));
+        }
         Some("page-json") => {
             let mut ocr = open_ocr(&env, &args);
             let img = Bgr::open(Path::new(&args[2])).unwrap();
@@ -483,6 +502,7 @@ fn pdf_page(env: &ort::environment::Environment, args: &[String]) {
             lines: b["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap().to_string()).collect(),
             line_boxes: Vec::new(),
             bbox: [0.0; 4],
+            char_boxes: Vec::new(),
         })
         .collect();
     let gt_text: String = gt.iter().flat_map(|b| b.lines.iter().map(String::as_str)).collect();

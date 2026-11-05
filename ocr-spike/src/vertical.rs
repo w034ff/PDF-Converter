@@ -19,7 +19,7 @@ pub const PAGE_W: u32 = 1654;
 pub const PAGE_H: u32 = 2339;
 
 /// One block of the ground truth, in reading order.
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GtBlock {
     pub vertical: bool,
     pub lines: Vec<String>,
@@ -27,12 +27,24 @@ pub struct GtBlock {
     pub line_boxes: Vec<[f64; 4]>,
     /// `[x0, y0, x1, y1]` in page pixels.
     pub bbox: [f64; 4],
+    /// Vertical item 1: each character's em box `[x0, y0, x1, y1]`, per line.
+    /// On the four item-5 pages the glyphs sit lower than `line_boxes` say
+    /// (they were drawn with the hhea ascent); these boxes are where the em
+    /// boxes really are.
+    #[serde(default)]
+    pub char_boxes: Vec<Vec<[f64; 4]>>,
 }
 
 pub struct Typesetter<'a> {
     font: FontRef<'a>,
     cmap: HashMap<u32, u16>,
     vert: HashMap<u32, u16>,
+    /// (hhea ascent − OS/2 typo ascender) / units per em: how far below the
+    /// pen's top the em box starts when drawing with the hhea ascent.
+    em_drop: f32,
+    /// Vertical item 1: draw so that the em box starts at the pen's top.
+    /// Off for the four item-5 pages, which must stay as they were.
+    pub em_align: bool,
 }
 
 impl<'a> Typesetter<'a> {
@@ -45,12 +57,26 @@ impl<'a> Typesetter<'a> {
                 .map(|(cp, g)| (cp.parse().unwrap(), g.as_u64().unwrap() as u16))
                 .collect()
         };
-        Self { font: FontRef::try_from_slice(font_bytes).unwrap(), cmap: read("cmap"), vert: read("vert") }
+        let font = FontRef::try_from_slice(font_bytes).unwrap();
+        let m = &v["metrics"];
+        let em_drop = if m.is_object() {
+            let upm = m["upm"].as_f64().unwrap() as f32;
+            (font.ascent_unscaled() - m["typo_ascender"].as_f64().unwrap() as f32) / upm
+        } else {
+            0.18
+        };
+        Self { font, cmap: read("cmap"), vert: read("vert"), em_drop, em_align: false }
+    }
+
+    /// Top of the em box of a glyph drawn with its pen at `top`.
+    pub fn em_top(&self, top: f32, size: f32) -> f32 {
+        if self.em_align { top } else { top + self.em_drop * size }
     }
 
     fn glyph(&self, img: &mut image::GrayImage, gid: u16, size: f32, left: f32, top: f32) {
         let scale = PxScale::from(size);
         let ascent = self.font.as_scaled(scale).ascent();
+        let ascent = if self.em_align { ascent - self.em_drop * size } else { ascent };
         let g = GlyphId(gid).with_scale_and_position(scale, point(left, top + ascent));
         if let Some(o) = self.font.outline_glyph(g) {
             let b = o.px_bounds();
@@ -75,14 +101,26 @@ impl<'a> Typesetter<'a> {
 
     /// Draws one horizontal line; returns its width.
     pub fn row(&self, img: &mut image::GrayImage, text: &str, size: f32, left: f32, top: f32) -> f32 {
+        let xs = self.row_advances(text, size, left);
+        for (ch, x) in text.chars().zip(&xs) {
+            let gid = self.cmap.get(&(ch as u32)).copied().unwrap_or(0);
+            self.glyph(img, gid, size, x.0, top);
+        }
+        xs.last().map_or(0.0, |x| x.1 - left)
+    }
+
+    /// Each character's horizontal span on a line starting at `left`.
+    pub fn row_advances(&self, text: &str, size: f32, left: f32) -> Vec<(f32, f32)> {
         let scaled = self.font.as_scaled(PxScale::from(size));
         let mut x = left;
-        for ch in text.chars() {
-            let gid = self.cmap.get(&(ch as u32)).copied().unwrap_or(0);
-            self.glyph(img, gid, size, x, top);
-            x += scaled.h_advance(GlyphId(gid));
-        }
-        x - left
+        text.chars()
+            .map(|ch| {
+                let gid = self.cmap.get(&(ch as u32)).copied().unwrap_or(0);
+                let start = x;
+                x += scaled.h_advance(GlyphId(gid));
+                (start, x)
+            })
+            .collect()
     }
 }
 
@@ -93,7 +131,7 @@ fn split(text: &str, per: usize) -> Vec<String> {
 
 /// Lays `text` out as a vertical block whose right edge is at `right`, top at
 /// `top`, `per` characters per column; returns the block.
-fn vblock(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32, pitch: f32, right: f32, top: f32, per: usize) -> GtBlock {
+pub fn vblock(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32, pitch: f32, right: f32, top: f32, per: usize) -> GtBlock {
     let cols = split(text, per);
     for (i, c) in cols.iter().enumerate() {
         ts.column(img, c, size, right - size - i as f32 * pitch, top);
@@ -107,13 +145,34 @@ fn vblock(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32, pi
             [l, top as f64, l + size as f64, (top + c.chars().count() as f32 * size) as f64]
         })
         .collect();
-    GtBlock { vertical: true, lines: cols, line_boxes, bbox: [left as f64, top as f64, right as f64, (top + per as f32 * size) as f64] }
+    let char_boxes = cols
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let l = (right - size - i as f32 * pitch) as f64;
+            (0..c.chars().count())
+                .map(|k| {
+                    let t = ts.em_top(top + k as f32 * size, size) as f64;
+                    [l, t, l + size as f64, t + size as f64]
+                })
+                .collect()
+        })
+        .collect();
+    GtBlock {
+        vertical: true,
+        lines: cols,
+        line_boxes,
+        bbox: [left as f64, top as f64, right as f64, (top + per as f32 * size) as f64],
+        char_boxes,
+    }
 }
 
-fn hline(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32, left: f32, top: f32) -> GtBlock {
+pub fn hline(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32, left: f32, top: f32) -> GtBlock {
     let w = ts.row(img, text, size, left, top);
     let bbox = [left as f64, top as f64, (left + w) as f64, (top + size) as f64];
-    GtBlock { vertical: false, lines: vec![text.into()], line_boxes: vec![bbox], bbox }
+    let t = ts.em_top(top, size) as f64;
+    let char_boxes = vec![ts.row_advances(text, size, left).iter().map(|&(a, b)| [a as f64, t, b as f64, t + size as f64]).collect()];
+    GtBlock { vertical: false, lines: vec![text.into()], line_boxes: vec![bbox], bbox, char_boxes }
 }
 
 /// The four test pages: (name, image, blocks in reading order).

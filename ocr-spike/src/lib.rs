@@ -8,3 +8,7 @@ pub mod types;
 pub mod proposal;
 pub mod pdf;
 pub mod parseq;
+pub mod charclass;
+pub mod sets;
+pub mod valpages;
+pub mod veval;
