@@ -10,7 +10,7 @@ const mode = modeArg.startsWith("native") ? "native" : "custom";
 const fix = modeArg === "native-nofix" ? "0" : "1";
 const PAGES = ["h1_two_columns", "v2_two_tiers", "v4_dialogue", "m1_mixed"];
 const SENTINEL = "<empty>";
-const W = 1700, H = zoom > 1 ? 2500 : 1300;
+const W = zoom > 1 ? 2300 : 1700, H = zoom > 1 ? 2500 : 1300;
 
 async function chromiumDriver() {
   const { chromium } = createRequire(import.meta.url)("playwright");

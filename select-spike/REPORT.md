@@ -166,3 +166,48 @@
 - かかった時間: 約 30 分（中心は項目 2 のときに書いてあった）。
 - **項目 2 との差**: ブラウザーの選択を使う版（約 330 行、うち共用の型と検索を含む）と、ほぼ同じ行数だった。自作の版は、すき間で飛ばない・OCR の字の位置どおりに帯が出る・ブラウザーの差がない、の 3 点で出来が上。失うのは、ブラウザーの選択の作法（ダブルクリックで語、右クリックの「コピー」、選択したままのドラッグ＆ドロップ、スクリーンリーダーが文字を読めること）で、これらは項目 7 で見る。
 - **項目 3 との差**: ページの選択のコード（字の列・当たり判定・帯・コピー・検索）は、TypeScript 約 180 行と Rust 約 175 行でほぼ同じ。差は、縦書きの欄（HTML はブラウザーの組版を測る 80 行、Slint は `vtext.rs` の自作の組版 85 行）と、つなぎの書き方（React の state と Slint のコールバック）だけだった。
+
+## 5. 自動の確かめ
+
+### 台本
+
+- [web/tests/scenarios.js](web/tests/scenarios.js) が、ページの字の列から、ページごとに 8〜10 個の操作の台本を作る（[web/tests/gen-scenarios.mjs](web/tests/gen-scenarios.mjs) が [fixtures/scenarios/](fixtures/scenarios/) に JSON で書く）。座標はページの pt なので、3 つの作りが同じ JSON を流す。
+  - `all`: クリック → Ctrl+A → Ctrl+C。正解は `OcrPage` の塊 → 行 → 語を読み順につないだ文字（行の間は改行、塊の間は空行、語の間は空白）。
+  - `cross-blocks`: 2 つ目の塊の 2 字目から、最後から 2 つ目の塊の中ほどまで、まっすぐドラッグ（途中で塊の間のすき間を通る）。
+  - `end-in-line-gap`・`end-between-blocks`・`end-in-margin`: 字から、行の後ろのすき間・塊と塊の間・ページの左の余白（x = 6 pt）へドラッグして離す。正解は「いちばん近い行の字の境目」の決まり。
+  - `through-margin`: 字から塊の間 → 余白 → 字へと寄り道して、字で離す。
+  - `shift-click`: クリック、Shift+クリック、Ctrl+C。
+  - `search-across-lines`: 行の最後の 2 字と次の行の最初の 2 字を検索し、帯の数と位置（pt、1 pt 以内）を比べる。
+  - `panel-all`・`panel-drag`（縦書きの塊のあるページ）: 縦書きの塊を押して欄に出し、欄の中で Ctrl+A、または 1 列目の 3 字目から 2 列目の終わりまでドラッグして Ctrl+C。
+- 流すもの:
+  - HTML: [web/tests/run-web.mjs](web/tests/run-web.mjs)。Chromium は Playwright（クリップボードは `navigator.clipboard.readText`）。WebKitGTK は `WebKitWebDriver` の W3C Actions（本物のポインターとキーのイベント）で、クリップボードは Xvfb の X11 のクリップボードを `xclip` で読む。
+  - Slint: [slint/src/script.rs](slint/src/script.rs)。`Window::dispatch_event` で本物のポインターとキーのイベントを送り、`arboard` でクリップボードを読む。検索だけは、`LineEdit` に打つ代わりに `search` のコールバックを直接呼んだ。
+
+### 結果（○ 正解、△ 端が 1〜2 字ずれ、× 違う。各 38 個）
+
+| 作り | Chromium 100 % | Chromium 200 % | WebKitGTK 100 % | WebKitGTK 200 % |
+| --- | --- | --- | --- | --- |
+| HTML ブラウザーの選択、工夫なし | 26 ○ 1 △ 11 × | 26 ○ 1 △ 11 × | 27 ○ 11 × | （流していない） |
+| HTML ブラウザーの選択、pdf.js の工夫 | 26 ○ 5 △ 7 × | 26 ○ 5 △ 7 × | 29 ○ 1 △ 8 × | 29 ○ 1 △ 8 × |
+| HTML 自作 | **38 ○** | **38 ○** | 37 ○ 1 △ | **38 ○** |
+| Slint 自作（Xvfb、ソフトウェアの描き方） | **38 ○**（100 %） | **38 ○**（200 %） | | |
+
+- ブラウザーの選択の × と △ は、すべて**すき間で終わるドラッグ**と、**字の位置のずれ**（1 行を 1 つの `span` で伸ばすため）。Ctrl+A・塊をまたぐドラッグ・Shift+クリック・コピーの形・縦書きの欄は、両方のブラウザーで正しかった。
+- 倍率 100 % と 200 % で結果は同じだった（どの作りも、座標を pt で持ち、倍率を掛けて置くだけなので）。
+- 結果の JSON は [results/](results/)。
+
+### 帯の位置の絵（左から ブラウザーの選択（Chromium、pdf.js の工夫）、HTML の自作（Chromium）、Slint の自作）
+
+| | 100 % | 200 % |
+| --- | --- | --- |
+| 横書き 2 段、塊をまたぐ | [bands-h1_two_columns-cross-blocks-100.png](screenshots/bands-h1_two_columns-cross-blocks-100.png) | [200](screenshots/bands-h1_two_columns-cross-blocks-200.png) |
+| 横書き 2 段、行の後ろのすき間で離す | [100](screenshots/bands-h1_two_columns-end-in-line-gap-100.png) | [200](screenshots/bands-h1_two_columns-end-in-line-gap-200.png) |
+| 縦書き 2 段、塊をまたぐ | [100](screenshots/bands-v2_two_tiers-cross-blocks-100.png) | [200](screenshots/bands-v2_two_tiers-cross-blocks-200.png) |
+| 縦書き、列の下のすき間で離す | [100](screenshots/bands-v4_dialogue-end-in-line-gap-100.png) | [200](screenshots/bands-v4_dialogue-end-in-line-gap-200.png) |
+| 混ざったページ、塊をまたぐ | [100](screenshots/bands-m1_mixed-cross-blocks-100.png) | [200](screenshots/bands-m1_mixed-cross-blocks-200.png) |
+
+![200 %、行の後ろのすき間で離したとき](screenshots/bands-h1_two_columns-end-in-line-gap-200.png)
+
+- 上の絵で、ブラウザーの選択は 5 行目の「字の種類|が多い」で止まっている（ポインターは 6 行目の後ろのすき間）。自作の 2 つは 6 行目の終わりまで伸びている。
+- 帯の形: ブラウザーの選択の帯は、`span` の行の箱（字の大きさ × 行の高さ）になり、行の間が詰まった塊では隣の行と重なりかける。自作の帯は OCR の字の 4 点の箱なので、絵の字にぴったり合う。どれも 100 % と 200 % でずれは見られなかった。
+- WebKitGTK の縦書きの欄: [screenshots/webkitgtk-native-panel.png](screenshots/webkitgtk-native-panel.png)（ブラウザーの選択。`vert` を付けたあと、句読点と括弧が正しい）、[screenshots/webkitgtk-custom-panel.png](screenshots/webkitgtk-custom-panel.png)（自作）。
