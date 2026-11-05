@@ -1,0 +1,18 @@
+import { createRequire } from "node:module";
+const { chromium } = createRequire(import.meta.url)("playwright");
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 1400, height: 1000 } });
+await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
+const p = await ctx.newPage();
+await p.goto(`http://localhost:5173/?page=${process.argv[2]}&fix=1`);
+await p.waitForSelector("span.line");
+await p.click("span.line");
+await p.keyboard.press("Control+a");
+await p.keyboard.press("Control+c");
+const got = await p.evaluate(() => navigator.clipboard.readText());
+const want = await p.evaluate(() => window.__spike.pageText);
+console.log(JSON.stringify(got.slice(0, 300)));
+console.log(JSON.stringify(want.slice(0, 300)));
+console.log(got === want);
+await p.screenshot({ path: "/tmp/claude-0/probe.png" });
+await b.close();

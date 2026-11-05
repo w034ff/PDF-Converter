@@ -1,0 +1,254 @@
+[
+ {
+  "page": "h1_two_columns",
+  "name": "all",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "h1_two_columns",
+  "name": "cross-blocks",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "h1_two_columns",
+  "name": "end-in-line-gap",
+  "ok": false,
+  "near": false,
+  "got": "光学文字認識（OCR）は、紙の書類を\n写した画像から文字を読み取り、検索や\nコピーのできる文字に変える技術である\n。近年は深層学習によって精度が大きく\n上がり、日本語のように字の種類",
+  "want": "光学文字認識（OCR）は、紙の書類を\n写した画像から文字を読み取り、検索や\nコピーのできる文字に変える技術である\n。近年は深層学習によって精度が大きく\n上がり、日本語のように字の種類が多い\n言語でも、印刷された文書ならほぼ正"
+ },
+ {
+  "page": "h1_two_columns",
+  "name": "end-between-blocks",
+  "ok": false,
+  "near": true,
+  "got": "表１読",
+  "want": "表１読み"
+ },
+ {
+  "page": "h1_two_columns",
+  "name": "through-margin",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "h1_two_columns",
+  "name": "end-in-margin",
+  "ok": false,
+  "near": false,
+  "got": "文字の選択の試験\n\n",
+  "want": "文字の選択の試験\n\nOCRの結果を画面で選ぶための試作2026\n\n光学文字認識（OCR）は、紙の書類を\n写した画像から文字を読み取り、検索や\nコピーのできる文字に変える技術である\n。近年は深層学習によって精度が大きく\n上がり、日本語のように字の種類が多い"
+ },
+ {
+  "page": "h1_two_columns",
+  "name": "shift-click",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "h1_two_columns",
+  "name": "search-across-lines",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "all",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "cross-blocks",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "end-in-line-gap",
+  "ok": false,
+  "near": true,
+  "got": "吾輩は猫である。名前はまだ無い。どこで生れた\nかとんと見当がつかぬ。何でも薄暗いじめじめし\nた所でニャーニャー泣いていた事だけは記憶して\nいる。吾輩はここで始めて人間というものを",
+  "want": "吾輩は猫である。名前はまだ無い。どこで生れた\nかとんと見当がつかぬ。何でも薄暗いじめじめし\nた所でニャーニャー泣いていた事だけは記憶して\nいる。吾輩はここで始めて人間というものを見た"
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "end-between-blocks",
+  "ok": false,
+  "near": false,
+  "got": "吾輩は猫である。名前はまだ無い。どこで生れた\nかとんと見当がつかぬ。何でも薄暗いじめじめし\nた所でニャーニャー泣いていた事だけは記憶して\nいる。吾輩はここで始めて人間というものを見た\nしかもあとで聞くとそれは書生という人間中で\n一番寧悪な種族であったそうだ。この書生という\n\n",
+  "want": "吾輩は猫である。名前はまだ無い。どこで生れた\nかとんと見当がつかぬ。何でも薄暗いじめじめし\nた所でニャーニャー泣いていた事だけは記憶して\nいる。吾輩はここで始めて人間というものを見た\nしかもあとで聞くとそれは書生という人間中で\n一"
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "through-margin",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "end-in-margin",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "shift-click",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "search-across-lines",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "panel-all",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v2_two_tiers",
+  "name": "panel-drag",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "all",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "cross-blocks",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "end-in-line-gap",
+  "ok": false,
+  "near": false,
+  "got": "二人の若い紳士が、すっかりイギリスの兵隊のかたちをして、ぴかぴかする鉄砲をかついで、\n白熊のような犬を二疋つれて、だいぶ山奥の、木の葉のかさかさしたとこを、こんなことを云\nいながら、あるいておりました。「ぜんたい、ここらの山は怪しからん",
+  "want": "二人の若い紳士が、すっかりイギリスの兵隊のかたちをして、ぴかぴかする鉄砲をかついで、\n白熊のような犬を二疋つれて、だいぶ山奥の、木の葉のかさかさしたとこを、こんなことを云\nいながら、あるいておりました。「ぜんたい、ここらの山は怪しからんね。鳥も獣も一疋も居\nやがらん。なんでも構わないから、早くタンタアーンと、やって見たいもんだなあ。」「鹿の"
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "end-between-blocks",
+  "ok": false,
+  "near": true,
+  "got": "注文",
+  "want": "注文の多"
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "through-margin",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "end-in-margin",
+  "ok": false,
+  "near": false,
+  "got": "注文の多い料理店\n\n二人の若い紳士が、すっかりイギリスの兵隊のかたちをして、ぴかぴかする鉄砲をかついで、\n白熊のような犬を二疋つれて、だいぶ山奥の、木の葉のかさかさしたとこを、こんなことを云\nいながら、あるいておりました。「ぜんたい、ここらの山は怪しからんね。鳥も獣も一疋も居\nやがらん。なんでも構わないから、早くタンタアーンと、やって見たいもんだなあ。」「鹿の\n黄いろな横つ腹なんぞに、二三発お見舞もうしたら、ずいぶん痛快だろうねえ。くるくるまわ\nっ",
+  "want": "注文の多い料理店\n\n二人の若い紳士が、すっかりイギリスの兵隊のかたちをして、ぴかぴかする鉄砲をかついで、\n白熊のような犬を二疋つれて、だいぶ山奥の、木の葉のかさかさしたとこを、こんなことを云\nいながら、あるいておりました。「ぜんたい、ここらの山は怪しからんね。鳥も獣も一疋も居\nやがらん。なんでも構わないから、早くタンタアーンと、やって見たいもんだなあ。」「鹿の\n黄いろな横つ腹なんぞに、二三発お見舞もうしたら、ずいぶん痛快だろうねえ。くるくるまわ\nって、それからどたっと倒れるだろうねえ。」"
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "shift-click",
+  "ok": false,
+  "near": true,
+  "got": "の若い紳士が、すっかりイギリスの兵隊のかたちをして、ぴかぴかする鉄砲をかついで、\n白熊のような犬を二疋つれて、だいぶ山奥の、木の葉のかさかさしたとこを、こんなことを云\nいながら、あるいておりました。「ぜんたい、ここらの山は怪しからんね。鳥も獣も一疋も居\nやがらん。なんでも構わないから、早くタンタアーンと、やって見たいもんだなあ。」「鹿の\n黄いろな横つ腹なんぞに、二三発お見舞もうしたら、ずいぶん痛快だろうねえ。くるくるまわ\nって、それからどたっと倒れるだろうね",
+  "want": "の若い紳士が、すっかりイギリスの兵隊のかたちをして、ぴかぴかする鉄砲をかついで、\n白熊のような犬を二疋つれて、だいぶ山奥の、木の葉のかさかさしたとこを、こんなことを云\nいながら、あるいておりました。「ぜんたい、ここらの山は怪しからんね。鳥も獣も一疋も居\nやがらん。なんでも構わないから、早くタンタアーンと、やって見たいもんだなあ。」「鹿の\n黄いろな横つ腹なんぞに、二三発お見舞もうしたら、ずいぶん痛快だろうねえ。くるくるまわ\nって、それからどたっと倒れるだろうねえ"
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "search-across-lines",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "panel-all",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "v4_dialogue",
+  "name": "panel-drag",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "m1_mixed",
+  "name": "all",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "m1_mixed",
+  "name": "cross-blocks",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "m1_mixed",
+  "name": "end-in-line-gap",
+  "ok": false,
+  "near": true,
+  "got": "「吾輩は猫である。」名前はまだない。\nどこで生れたかとんと見当がつかぬ。何\nでも薄暗いじめじめした所でニャー",
+  "want": "「吾輩は猫である。」名前はまだない。\nどこで生れたかとんと見当がつかぬ。何\nでも薄暗いじめじめした所でニャーニャ"
+ },
+ {
+  "page": "m1_mixed",
+  "name": "end-between-blocks",
+  "ok": false,
+  "near": false,
+  "got": "「吾輩は猫である。」名前はまだない。\nどこで生れたかとんと見当がつかぬ。何\nでも薄暗いじめじめした所でニャーニャ\n一",
+  "want": "を右から左へ読む。"
+ },
+ {
+  "page": "m1_mixed",
+  "name": "through-margin",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "m1_mixed",
+  "name": "end-in-margin",
+  "ok": false,
+  "near": false,
+  "got": "<empty>",
+  "want": "縦と横の混ざったページ\n\nこの段落は横書きである。右の囲みは縦書きで、列を右から左へ読む。\n\n「吾輩は猫である。」名前はまだない。\nどこで生れたかとんと見当がつかぬ。何\nでも薄暗いじめじめした所でニャーニャ\n一泣いていた事だけは記憶している。\n\n左の欄は横書きの説明である。縦書き"
+ },
+ {
+  "page": "m1_mixed",
+  "name": "shift-click",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "m1_mixed",
+  "name": "search-across-lines",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "m1_mixed",
+  "name": "panel-all",
+  "ok": true,
+  "near": false
+ },
+ {
+  "page": "m1_mixed",
+  "name": "panel-drag",
+  "ok": true,
+  "near": false
+ }
+]

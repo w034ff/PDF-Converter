@@ -1,8 +1,26 @@
 html, body, #root { margin: 0; height: 100%; }
-body { font-family: "IBM Plex Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", "Meiryo", sans-serif; background: #e8e8e8; }
+body { font-family: "IBM Plex Sans JP", sans-serif; background: #e8e8e8; }
 .app { display: flex; flex-direction: column; height: 100%; }
 header { display: flex; gap: 8px; padding: 6px 8px; background: #fafafa; border-bottom: 1px solid #ccc; align-items: center; }
 main { flex: 1; display: flex; min-height: 0; }
 .scroller { flex: 1; overflow: auto; padding: 16px; }
 .page { position: relative; background: white; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
 .page > img { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; }
+.native-layer { position: absolute; inset: 0; line-height: 1; overflow: hidden; }
+.native-layer span.line { position: absolute; color: transparent; white-space: pre; transform-origin: 0 0; cursor: text; z-index: 1; font-family: "IBM Plex Sans JP", sans-serif; }
+.native-layer span.line::selection { background: rgba(0, 90, 255, 0.3); color: transparent; }
+.native-layer br::selection { background: transparent; }
+.native-layer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+.native-layer.selecting .endOfContent { top: 0; }
+.bands { position: absolute; inset: 0; pointer-events: none; }
+.bands > div { position: absolute; }
+.bands.hit > div { background: rgba(255, 170, 0, 0.4); }
+.bands.sel > div { background: rgba(0, 90, 255, 0.3); }
+.vpanel { writing-mode: vertical-rl; width: 320px; background: #fafafa; border-left: 1px solid #ccc; overflow: auto; padding: 12px; box-sizing: border-box; }
+/* WebKitGTK 2.52 does not use the vertical forms (vert) by itself in vertical-rl; see REPORT.md. */
+.vtext { font-size: 20px; line-height: 1.7; height: 560px; font-feature-settings: "vert" 1; }
+.vpanel .hint { writing-mode: horizontal-tb; }
+.hint { color: #888; font-size: 13px; }
+header, .hint { user-select: none; }
+.custom-layer { position: absolute; inset: 0; cursor: text; touch-action: none; }
+.vwrap { position: relative; user-select: none; cursor: text; touch-action: none; }
