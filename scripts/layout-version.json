@@ -1,22 +1,22 @@
 {
   "onnxruntime": {
-    "version": "1.26.0",
+    "version": "1.31.1",
     "assets": {
       "linux": {
-        "file": "onnxruntime-linux-x64-1.26.0.tgz",
-        "sha256": "1254da24fb389cf39dc0ff3451ab48301740ffbfcbaf646849df92f80ee92c57",
-        "library": "onnxruntime-linux-x64-1.26.0/lib/libonnxruntime.so.1.26.0",
+        "file": "onnxruntime-linux-x64-1.31.1.tgz",
+        "sha256": "c849e36a1ef3e22d4ff217b9d1ce4a3cf5b9467b975610913ae959ad5b16bdc9",
+        "library": "onnxruntime-linux-x64-1.31.1/lib/libonnxruntime.so.1.31.1",
         "libraryName": "libonnxruntime.so",
-        "license": "onnxruntime-linux-x64-1.26.0/LICENSE",
-        "notices": "onnxruntime-linux-x64-1.26.0/ThirdPartyNotices.txt"
+        "license": "onnxruntime-linux-x64-1.31.1/LICENSE",
+        "notices": "onnxruntime-linux-x64-1.31.1/ThirdPartyNotices.txt"
       },
       "windows": {
-        "file": "onnxruntime-win-x64-1.26.0.zip",
-        "sha256": "6ebe99b5564bf4d029b6e93eac9ff423682b6212eade769e9ca3f685eaf500b4",
-        "library": "onnxruntime-win-x64-1.26.0/lib/onnxruntime.dll",
+        "file": "onnxruntime-win-x64-1.31.1.zip",
+        "sha256": "5869e26bb25314375f2d5ef1877e3ea06b1543d6c710e6e4a1ec2f7177ab4b2c",
+        "library": "onnxruntime-win-x64-1.31.1/lib/onnxruntime.dll",
         "libraryName": "onnxruntime.dll",
-        "license": "onnxruntime-win-x64-1.26.0/LICENSE",
-        "notices": "onnxruntime-win-x64-1.26.0/ThirdPartyNotices.txt"
+        "license": "onnxruntime-win-x64-1.31.1/LICENSE",
+        "notices": "onnxruntime-win-x64-1.31.1/ThirdPartyNotices.txt"
       }
     }
   },

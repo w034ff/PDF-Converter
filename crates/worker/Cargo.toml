@@ -17,8 +17,8 @@ test-hooks = []
 # Layout detection for crop candidates (design §4.7). Only release candidates of
 # 2.0 exist, so the version is pinned exactly. `load-dynamic` loads the
 # onnxruntime bundled per design §8.5 at run time instead of downloading one at
-# build time; `api-26` matches that onnxruntime 1.26.0.
-ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-26"] }
+# build time; `api-31` matches that onnxruntime 1.31.1.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-31"] }
 # Matches detected regions against embedded photos with `region` (design §4.7).
 pdfconv-core = { path = "../core" }
 # Encodes rendered pages as PNG, JPEG or lossless WebP (design §2, §4.4).
