@@ -1,0 +1,59 @@
+import { Button, ComboBox, ScrollView } from "std-widgets.slint";
+import "../fonts/IBMPlexSansJP-Regular.ttf";
+import "../fonts/IBMPlexSansJP-Bold.ttf";
+
+export component AppWindow inherits Window {
+    title: "OCR の文字の選択（Slint）";
+    preferred-width: 1280px;
+    preferred-height: 900px;
+    default-font-family: "IBM Plex Sans JP";
+    default-font-size: 13px;
+    background: #e8e8e8;
+
+    in property <[string]> page-names;
+    in-out property <int> page-index;
+    in property <image> page-image;
+    in property <float> page-w-pt: 595;
+    in property <float> page-h-pt: 842;
+    // Logical px per pt at 100 % is 96 / 72, as in the HTML version.
+    in-out property <float> zoom: 1;
+    property <float> scale: root.zoom * 96 / 72;
+    out property <length> page-abs-x: page.absolute-position.x;
+    out property <length> page-abs-y: page.absolute-position.y;
+    callback page-changed(int);
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: 6px;
+            spacing: 8px;
+            alignment: start;
+            ComboBox {
+                width: 200px;
+                model: root.page-names;
+                current-index <=> root.page-index;
+                selected => { root.page-changed(self.current-index); }
+            }
+            Button { text: "100 %"; clicked => { root.zoom = 1; } }
+            Button { text: "200 %"; clicked => { root.zoom = 2; } }
+        }
+        HorizontalLayout {
+            ScrollView {
+                viewport-width: page.width + 32px;
+                viewport-height: page.height + 32px;
+                page := Rectangle {
+                    x: 16px;
+                    y: 16px;
+                    width: root.page-w-pt * root.scale * 1px;
+                    height: root.page-h-pt * root.scale * 1px;
+                    background: white;
+                    Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: root.page-image;
+                        image-fit: fill;
+                    }
+                }
+            }
+        }
+    }
+}

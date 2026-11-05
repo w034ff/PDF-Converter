@@ -1,0 +1,19 @@
+[package]
+name = "select-spike-slint"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+# Kept out of the root workspace: this throwaway spike must not change the
+# root Cargo.lock or the workspace lints.
+[workspace]
+
+[dependencies]
+slint = "=1.18.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[build-dependencies]
+slint-build = "=1.18.1"

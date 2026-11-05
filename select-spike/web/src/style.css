@@ -1,0 +1,8 @@
+html, body, #root { margin: 0; height: 100%; }
+body { font-family: "IBM Plex Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", "Meiryo", sans-serif; background: #e8e8e8; }
+.app { display: flex; flex-direction: column; height: 100%; }
+header { display: flex; gap: 8px; padding: 6px 8px; background: #fafafa; border-bottom: 1px solid #ccc; align-items: center; }
+main { flex: 1; display: flex; min-height: 0; }
+.scroller { flex: 1; overflow: auto; padding: 16px; }
+.page { position: relative; background: white; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.page > img { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; }
