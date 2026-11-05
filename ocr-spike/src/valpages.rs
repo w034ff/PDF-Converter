@@ -5,7 +5,8 @@
 //! Miyazawa's "Gauche", Higuchi Ichiyō), typed in because Aozora Bunko is not
 //! reachable from the sandbox; the ground truth is what is drawn, so small
 //! differences from the printed editions do not matter. Five pages are set
-//! in Noto Serif JP (Mincho), two in IBM Plex Sans JP; heading sizes and
+//! in Noto Serif JP (Mincho), set solid (em = nominal size, `true_em`), two
+//! in IBM Plex Sans JP with the development pages' spacing; heading sizes and
 //! tiers differ from the development pages (4 tiers, 120 px and 96 px titles,
 //! a dense 28 px page, a 46 px page). Glyphs are placed with their em box at
 //! the pen (`Typesetter::em_align`), so `char_boxes` are exact.

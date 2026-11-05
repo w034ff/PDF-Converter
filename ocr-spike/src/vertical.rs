@@ -28,9 +28,10 @@ pub struct GtBlock {
     /// `[x0, y0, x1, y1]` in page pixels.
     pub bbox: [f64; 4],
     /// Vertical item 1: each character's em box `[x0, y0, x1, y1]`, per line.
-    /// On the four item-5 pages the glyphs sit lower than `line_boxes` say
-    /// (they were drawn with the hhea ascent); these boxes are where the em
-    /// boxes really are.
+    /// `PxScale` in ab_glyph is the font's height (hhea ascent − descent),
+    /// not its em, so on the four item-5 pages the em is 2/3 of the nominal
+    /// size and starts 0.12 of it below the pen; these boxes are where the
+    /// em boxes really are (`line_boxes` stay as item 5 wrote them).
     #[serde(default)]
     pub char_boxes: Vec<Vec<[f64; 4]>>,
 }
@@ -39,12 +40,14 @@ pub struct Typesetter<'a> {
     font: FontRef<'a>,
     cmap: HashMap<u32, u16>,
     vert: HashMap<u32, u16>,
-    /// (hhea ascent − OS/2 typo ascender) / units per em: how far below the
-    /// pen's top the em box starts when drawing with the hhea ascent.
-    em_drop: f32,
-    /// Vertical item 1: draw so that the em box starts at the pen's top.
-    /// Off for the four item-5 pages, which must stay as they were.
+    upm: f32,
+    typo_ascender: f32,
+    /// Vertical item 1: draw so that the em box starts at the pen's top
+    /// (instead of the hhea ascent's baseline). Off for the item-5 pages.
     pub em_align: bool,
+    /// Vertical item 1: scale so that the em is the nominal size (set solid,
+    /// 1 em per character). Off for the item-5 pages, whose em is 2/3 of it.
+    pub true_em: bool,
 }
 
 impl<'a> Typesetter<'a> {
@@ -59,24 +62,40 @@ impl<'a> Typesetter<'a> {
         };
         let font = FontRef::try_from_slice(font_bytes).unwrap();
         let m = &v["metrics"];
-        let em_drop = if m.is_object() {
-            let upm = m["upm"].as_f64().unwrap() as f32;
-            (font.ascent_unscaled() - m["typo_ascender"].as_f64().unwrap() as f32) / upm
+        let (upm, typo_ascender) = if m.is_object() {
+            (m["upm"].as_f64().unwrap() as f32, m["typo_ascender"].as_f64().unwrap() as f32)
         } else {
-            0.18
+            (1000.0, 880.0)
         };
-        Self { font, cmap: read("cmap"), vert: read("vert"), em_drop, em_align: false }
+        Self { font, cmap: read("cmap"), vert: read("vert"), upm, typo_ascender, em_align: false, true_em: false }
+    }
+
+    fn scale(&self, size: f32) -> PxScale {
+        if self.true_em {
+            PxScale::from(size * self.font.height_unscaled() / self.upm)
+        } else {
+            PxScale::from(size)
+        }
+    }
+
+    /// Pixels per font unit at `size`.
+    fn ppu(&self, size: f32) -> f32 {
+        self.font.as_scaled(self.scale(size)).scale_factor().vertical
+    }
+
+    /// The em in pixels at `size`.
+    pub fn em(&self, size: f32) -> f32 {
+        self.upm * self.ppu(size)
     }
 
     /// Top of the em box of a glyph drawn with its pen at `top`.
     pub fn em_top(&self, top: f32, size: f32) -> f32 {
-        if self.em_align { top } else { top + self.em_drop * size }
+        if self.em_align { top } else { top + (self.font.ascent_unscaled() - self.typo_ascender) * self.ppu(size) }
     }
 
     fn glyph(&self, img: &mut image::GrayImage, gid: u16, size: f32, left: f32, top: f32) {
-        let scale = PxScale::from(size);
-        let ascent = self.font.as_scaled(scale).ascent();
-        let ascent = if self.em_align { ascent - self.em_drop * size } else { ascent };
+        let scale = self.scale(size);
+        let ascent = if self.em_align { self.typo_ascender * self.ppu(size) } else { self.font.as_scaled(scale).ascent() };
         let g = GlyphId(gid).with_scale_and_position(scale, point(left, top + ascent));
         if let Some(o) = self.font.outline_glyph(g) {
             let b = o.px_bounds();
@@ -111,7 +130,7 @@ impl<'a> Typesetter<'a> {
 
     /// Each character's horizontal span on a line starting at `left`.
     pub fn row_advances(&self, text: &str, size: f32, left: f32) -> Vec<(f32, f32)> {
-        let scaled = self.font.as_scaled(PxScale::from(size));
+        let scaled = self.font.as_scaled(self.scale(size));
         let mut x = left;
         text.chars()
             .map(|ch| {
@@ -150,10 +169,11 @@ pub fn vblock(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32
         .enumerate()
         .map(|(i, c)| {
             let l = (right - size - i as f32 * pitch) as f64;
+            let em = ts.em(size) as f64;
             (0..c.chars().count())
                 .map(|k| {
                     let t = ts.em_top(top + k as f32 * size, size) as f64;
-                    [l, t, l + size as f64, t + size as f64]
+                    [l, t, l + em, t + em]
                 })
                 .collect()
         })
@@ -170,8 +190,8 @@ pub fn vblock(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32
 pub fn hline(ts: &Typesetter, img: &mut image::GrayImage, text: &str, size: f32, left: f32, top: f32) -> GtBlock {
     let w = ts.row(img, text, size, left, top);
     let bbox = [left as f64, top as f64, (left + w) as f64, (top + size) as f64];
-    let t = ts.em_top(top, size) as f64;
-    let char_boxes = vec![ts.row_advances(text, size, left).iter().map(|&(a, b)| [a as f64, t, b as f64, t + size as f64]).collect()];
+    let (t, em) = (ts.em_top(top, size) as f64, ts.em(size) as f64);
+    let char_boxes = vec![ts.row_advances(text, size, left).iter().map(|&(a, b)| [a as f64, t, b as f64, t + em]).collect()];
     GtBlock { vertical: false, lines: vec![text.into()], line_boxes: vec![bbox], bbox, char_boxes }
 }
 

@@ -50,6 +50,27 @@ pub fn open_ocr(env: &ort::environment::Environment, args: &[String]) -> Ocr {
         let v: Vec<f32> = v.split(',').map(|x| x.parse().unwrap()).collect();
         ocr.vbias = Some(engine::CtcBias::for_kinds(&ocr.dict, v[0], v[1], v[2], v[3]));
     }
+    // Vertical item 3 (method 2): --vcut [--vcut-gap EM] [--vcut-margin EM] [--vcut-norestore]
+    // [--vcut-bias blank,punct,choon,small] [--vcut-guard MIN,SLACK]
+    if args.iter().any(|a| a == "--vcut") {
+        let mut p = ocr_spike::vcut::CutParams::default();
+        if let Some(v) = arg(args, "--vcut-gap") {
+            p.gap = v.parse().unwrap();
+        }
+        if let Some(v) = arg(args, "--vcut-margin") {
+            p.margin = v.parse().unwrap();
+        }
+        p.restore = !args.iter().any(|a| a == "--vcut-norestore");
+        if let Some(v) = arg(args, "--vcut-bias") {
+            let v: Vec<f32> = v.split(',').map(|x| x.parse().unwrap()).collect();
+            p.bias = Some(engine::CtcBias::for_kinds(&ocr.dict, v[0], v[1], v[2], v[3]));
+        }
+        if let Some(v) = arg(args, "--vcut-guard") {
+            let v: Vec<usize> = v.split(',').map(|x| x.parse().unwrap()).collect();
+            p.guard = Some((v[0], v[1]));
+        }
+        ocr.vcut = Some(p);
+    }
     if let Some(l) = arg(args, "--limit") {
         ocr.det_params.limit_side_len = l.parse().unwrap();
     }

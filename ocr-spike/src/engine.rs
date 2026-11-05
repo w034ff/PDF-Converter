@@ -69,6 +69,10 @@ pub struct Timings {
     pub rec_post: Duration,
     /// Item 8: PARSeq on the vertical lines.
     pub parseq: Duration,
+    /// Vertical item 3: cutting vertical lines and setting the cells (rec time is in rec_*).
+    pub vcut: Duration,
+    pub vcut_lines: usize,
+    pub vcut_fallbacks: usize,
     pub parseq_lines: usize,
     pub parseq_fallbacks: usize,
 }
@@ -78,7 +82,7 @@ impl Timings {
         self.det_pre + self.det_run + self.det_post
     }
     pub fn rec(&self) -> Duration {
-        self.crop + self.rec_pre + self.rec_run + self.rec_post + self.parseq
+        self.crop + self.rec_pre + self.rec_run + self.rec_post + self.parseq + self.vcut
     }
 }
 
@@ -98,6 +102,19 @@ pub struct Line {
     /// Item 8: PARSeq's reading of a vertical line, with character cells
     /// (fractions along the crop) from the chosen [`CellMode`].
     pub parseq: Option<(crate::parseq::ParseqText, Vec<(f64, f64)>)>,
+    /// Vertical item 3: the reading of the line cut into characters.
+    pub alt: Option<AltRead>,
+}
+
+/// Vertical item 3: a vertical line read cut into upright characters.
+#[derive(Clone, Debug)]
+pub struct AltRead {
+    pub text: String,
+    pub score: f32,
+    /// Each character's span along the crop (fractions from the top).
+    pub cells: Vec<(f64, f64)>,
+    pub rec: RecText,
+    pub fixes: Vec<crate::vcut::Fix>,
 }
 
 /// Lines PP-OCR read as this many characters or fewer stay with PP-OCR.
@@ -375,18 +392,23 @@ pub fn sort_quads(mut boxes: Vec<Quad>) -> Vec<Quad> {
 /// `get_minarea_rect_crop` + `get_rotate_crop_image`: the quad unrolled to an
 /// axis-aligned image, turned when it is at least 1.5 times taller than wide.
 pub fn crop_quad(img: &Bgr, quad: &Quad) -> (Bgr, bool) {
+    let crop = crop_quad_upright(img, quad);
+    if crop.w > 0 && crop.h as f64 / crop.w as f64 >= VERTICAL_RATIO { (crop.rot90(), true) } else { (crop, false) }
+}
+
+/// The quad unrolled to an axis-aligned image, never turned (vertical item 3).
+pub fn crop_quad_upright(img: &Bgr, quad: &Quad) -> Bgr {
     let pts: Vec<Pt> = quad.iter().map(|p| [p[0].trunc(), p[1].trunc()]).collect();
     let (q, _) = geom::mini_box(&pts);
     let d = |a: Pt, b: Pt| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt();
     let w = d(q[0], q[1]).max(d(q[2], q[3])) as usize;
     let h = d(q[0], q[3]).max(d(q[1], q[2])) as usize;
     if w == 0 || h == 0 {
-        return (Bgr::new(0, 0), false);
+        return Bgr::new(0, 0);
     }
     let dst = [[0.0, 0.0], [w as f64, 0.0], [w as f64, h as f64], [0.0, h as f64]];
     let inv = imgops::perspective_transform(&dst, &q);
-    let crop = imgops::warp_perspective_cubic(img, &inv, w, h);
-    if h as f64 / w as f64 >= VERTICAL_RATIO { (crop.rot90(), true) } else { (crop, false) }
+    imgops::warp_perspective_cubic(img, &inv, w, h)
 }
 
 /// Width of a crop resized to height 48 (`OCRReisizeNormImg.resize_norm_img`),
@@ -574,8 +596,12 @@ impl Ocr {
                 crop_px: (rw, REC_HEIGHT),
                 tensor_w: tw,
                 parseq: None,
+                alt: None,
             })
             .collect();
+        if self.vcut.is_some() {
+            self.cut_vertical(img, &mut lines, t)?;
+        }
         if let Some(p) = self.parseq.as_mut() {
             let s = Instant::now();
             for (line, crop) in lines.iter_mut().zip(&crops) {
@@ -614,6 +640,57 @@ impl Ocr {
             t.parseq += s.elapsed();
         }
         Ok(lines)
+    }
+}
+
+impl Ocr {
+    /// Vertical item 3 (method 2): reads each vertical line again, cut into
+    /// characters set upright in a row, and keeps that reading in `alt`.
+    fn cut_vertical(&mut self, img: &Bgr, lines: &mut [Line], t: &mut Timings) -> ort::Result<()> {
+        let p = self.vcut.clone().unwrap();
+        let s = Instant::now();
+        let mut jobs = Vec::new(); // (line index, upright crop height, segmentation, spans, fixes)
+        let mut images = Vec::new();
+        for (i, l) in lines.iter().enumerate() {
+            if !l.vertical {
+                continue;
+            }
+            let crop = crop_quad_upright(img, &l.quad);
+            let Some(seg) = crate::vcut::segment(&crop) else { continue };
+            let (laid, spans, fixes) = crate::vcut::layout(&crop, &seg, &p);
+            if let Ok(dir) = std::env::var("VCUT_DUMP") {
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = laid.to_rgb().save(format!("{dir}/{}_{i}.png", std::env::var("VCUT_TAG").unwrap_or_default()));
+            }
+            jobs.push((i, crop.h, seg, spans, fixes, laid.w));
+            images.push(laid);
+        }
+        t.vcut += s.elapsed();
+        t.vcut_lines += jobs.len();
+        let saved = self.vbias.take();
+        self.vbias = p.bias.clone();
+        let flags = vec![p.bias.is_some(); images.len()];
+        let recs = self.recognize_flagged(&images, &flags, t);
+        self.vbias = saved;
+        let recs = recs?;
+        let s = Instant::now();
+        for ((i, crop_h, seg, spans, fixes, lw), (rec, rw, _)) in jobs.into_iter().zip(recs) {
+            let l = &mut lines[i];
+            let cells = crate::vcut::chars_to_cells(&rec, lw, rw, &spans);
+            let base_n = l.rec.text.chars().count();
+            let n = rec.text.chars().count();
+            if let Some((min_chars, slack)) = p.guard {
+                if base_n <= min_chars || n > 2 * base_n + slack {
+                    t.vcut_fallbacks += 1;
+                    continue;
+                }
+            }
+            l.text = rec.text.clone();
+            l.score = rec.score;
+            l.alt = Some(AltRead { text: rec.text.clone(), score: rec.score, cells: crate::vcut::cell_spans(&seg, crop_h, &cells), rec, fixes });
+        }
+        t.vcut += s.elapsed();
+        Ok(())
     }
 }
 

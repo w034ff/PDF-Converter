@@ -14,8 +14,9 @@
 - フォント（`data/fonts/`、`scripts/vert_map.py` で `vert` の置き換えと em の位置を抜き出す）:
   - `IBMPlexSansJP-Regular.otf`: `node_modules/@ibm/plex-sans-jp/fonts/complete/woff/hinted/IBMPlexSansJP-Regular.woff`（@ibm/plex-sans-jp 3.x）を fontTools で OTF に戻したもの。SHA-256 `dda65e359ccf0de131c571fd4f42b9647fd912c00e5fb14ae431368473e0a5e3`。SIL OFL 1.1。
   - `NotoSerifJP-Regular.otf`: `https://raw.githubusercontent.com/notofonts/noto-cjk/main/Serif/SubsetOTF/JP/NotoSerifJP-Regular.otf`（2026-11-05 に取得）。SHA-256 `2c9a12dbd4f2408c4610c7ee84a108b62d7236c3775baed618c64d9cb44b2f04`。SIL OFL 1.1。
-- `dev` の 4 枚は項目 5 と同じ描き方（字の em の上端がペンの位置より 0.18 em 下に来る）。`char_boxes` はその下がった位置で書いてある（`line_boxes` は項目 5 のまま）。`val` は em の上端をペンの位置に合わせて描いた。
-- `char_boxes` は字ごとの em の箱 `[x0, y0, x1, y1]`（ページの画素）。縦書きは字の大きさの正方形。
+- `dev` の 4 枚は項目 5 と同じ描き方: `ab_glyph` の `PxScale` が名目の大きさ（フォントの高さ）なので、em は名目の 2/3（Plex）、字送りは名目の大きさ（1.5 em）、em の上端はペンの位置より名目の 0.12 下。`char_boxes` はこの実際の em の箱（`line_boxes` は項目 5 のまま）。
+- `val` は em の上端をペンの位置に合わせて描いた（`em_align`）。明朝体の 5 枚は em を名目の大きさにしてベタ組み（`true_em`、字送り 1 em）、ゴシック体の 2 枚は開発の組と同じ em と字送り（対照）。
+- `char_boxes` は字ごとの em の箱 `[x0, y0, x1, y1]`（ページの画素）。縦書きは em の正方形。
 
 ## NDL のページ
 

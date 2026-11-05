@@ -52,6 +52,10 @@ pub fn generate(root: &Path) {
     gothic.em_align = true;
     let mut mincho = Typesetter::new(&noto, &root.join("data/fonts/noto_serif_vert.json"));
     mincho.em_align = true;
+    // Mincho pages are set solid (1 em per character) like printed books;
+    // the Gothic pages keep the development pages' spacing (em = 2/3 of the
+    // nominal size, 1.5 em per character) as a control.
+    mincho.true_em = true;
     for (set, pages) in [("dev", crate::vertical::pages(&legacy)), ("val", crate::valpages::pages(&mincho, &gothic))] {
         let (img_dir, gt_dir) = (image_dir(root, set), root.join("sets").join(set));
         std::fs::create_dir_all(&img_dir).unwrap();

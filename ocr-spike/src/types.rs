@@ -149,6 +149,9 @@ pub fn span_quad(q: &Quad, vertical: bool, u0: f64, u1: f64) -> Quad {
 /// The line's characters and their cells: PARSeq's (item 8) when it read
 /// the line, otherwise PP-OCR's with the CTC cells.
 pub fn line_chars(l: &Line) -> (Vec<(f64, f64)>, Vec<(char, f32)>) {
+    if let Some(a) = &l.alt {
+        return (a.cells.clone(), a.rec.char_cols.iter().map(|c| (c.0, c.3)).collect());
+    }
     match &l.parseq {
         Some((r, cells)) => (cells.clone(), r.text.chars().map(|c| (c, r.score)).collect()),
         None => (char_cells(l), l.rec.char_cols.iter().map(|c| (c.0, c.3)).collect()),
