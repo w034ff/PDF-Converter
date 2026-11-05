@@ -1,33 +1,26 @@
 //! Slint version of the OCR text selection spike.
-
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+//!   select-spike-slint [--script OUT_DIR [--zoom 2]]
 
 slint::include_modules!();
 
-const PAGES: [&str; 4] = ["h1_two_columns", "v2_two_tiers", "v4_dialogue", "m1_mixed"];
+mod app;
+mod drive;
+mod model;
+mod panel;
+mod script;
+mod vtext;
 
-fn fixtures() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
-}
-
-fn load_image(name: &str) -> slint::Image {
-    let img = image::open(fixtures().join(format!("{name}.png"))).unwrap().to_rgba8();
-    let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(img.as_raw(), img.width(), img.height());
-    slint::Image::from_rgba8(buf)
-}
+use slint::ComponentHandle;
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let arg = |n: &str| args.iter().position(|a| a == n).and_then(|i| args.get(i + 1)).cloned();
     let app = AppWindow::new().unwrap();
-    let names: Vec<SharedString> = PAGES.iter().map(|&s| s.into()).collect();
-    app.set_page_names(ModelRc::new(VecModel::from(names)));
-    let open = {
-        let weak = app.as_weak();
-        move |i: usize| {
-            let app = weak.unwrap();
-            app.set_page_image(load_image(PAGES[i]));
-        }
-    };
-    open(0);
-    app.on_page_changed(move |i| open(i as usize));
+    let state = app::install(&app);
+    app.invoke_focus_keys();
+    if let Some(dir) = arg("--script") {
+        let zoom: f32 = arg("--zoom").and_then(|z| z.parse().ok()).unwrap_or(1.0);
+        script::start(&app, state, std::path::PathBuf::from(dir), zoom);
+    }
     app.run().unwrap();
 }

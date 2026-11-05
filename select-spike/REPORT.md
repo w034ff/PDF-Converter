@@ -82,3 +82,52 @@
 （空行とコメントだけの行を除く。試験と台本 `web/tests/` を除く。）
 
 - かかった時間: 約 1 時間半（うち WebKitGTK の字形・フォント・あふれの調べに約 40 分）。
+
+## 3. Slint（字の 4 点から自作）
+
+### どう作ったか
+
+仮説どおり、**文字を描かず、フォントの寸法も調べず**、OCR の字の 4 点だけで作った。ページの上には絵と帯（`Rectangle`）と 1 枚の `TouchArea` しかない。
+
+- **字の列**（[slint/src/model.rs](slint/src/model.rs) の `Flat`）: `OcrPage` の塊 → 行 → 語 → 字を読み順に 1 列に並べ、各字に「塊・行・語」の番号と箱を持たせる。選択は列の中の 2 つの位置（anchor と focus、字の間の位置）で持つ。
+- **当たり判定**（`caret_at`、15 行）: 押した点から**いちばん近い行**（行の箱までの距離）を選び、その行の中で、文字の進む向き（横書きは x、縦書きは y）に字の中心と比べて、字の間の位置を決める。塊の間・行の後ろ・余白の点も必ずどこかの行に落ちるので、**選択が飛ばない**。縦書きと横書きの違いは「どちらの座標で比べるか」の 1 か所だけ。
+- **帯**（`bands`、15 行）: 選んだ範囲を行ごとに切り、最初の字の 4 点の始まりの辺と最後の字の終わりの辺から箱を作る。縦書きの 4 点は右上から始まる順なので、同じ式で列に沿った帯になる。`.slint` では pt の箱に `scale` を掛けて `Rectangle` を並べるだけ（[slint/ui/app.slint](slint/ui/app.slint) の `Bands`）。拡大しても窓の大きさを変えても、帯はページの `Rectangle` の子なので位置がずれない。
+- **コピー**（`text`、20 行と [slint/src/app.rs](slint/src/app.rs) の `copy`）: 範囲の字をつなぎ、塊が変われば空行、行が変われば改行、語が変われば空白。クリップボードは `arboard`（X11 では `Clipboard` を生かしておく間だけ選択を配るので、状態に持ち続ける）。
+- **Ctrl+A・Ctrl+C**: `FocusScope` の `key-pressed`。ページか欄か、最後に押したほうに効く。
+- **Shift+クリック**: `TouchArea` の `pointer-event` の `modifiers.shift` で、anchor を残して focus だけを動かす。
+- **ドラッグ**: `TouchArea` は押してから離すまでポインターをつかみ続けるので、ページの外まで出ても `moved` が来る（自作は要らなかった）。
+- **検索**（`search`、30 行）: 項目 2 と同じ決まり。`unicode-normalization` で NFKC。
+- **縦書きの欄**（[slint/src/panel.rs](slint/src/panel.rs) 30 行、前の試作の [slint/src/vtext.rs](slint/src/vtext.rs) をそのまま写した）: `vtext::layout` が 1 字ずつ升を決める（句読点・括弧は縦書き用の字に、長音と英数字は 90° 回す、小さいかなと句読点は右上へ、行頭の禁則はぶら下げ）。升の位置は Rust が決めるので、**その升を欄の「字の 4 点」にして、ページと同じ `Flat` に入れた**。欄の中の当たり判定・帯・コピー・Ctrl+A は、ページのコードをそのまま使う（新しく書いたのは升から 4 点を作る 5 行）。
+
+### 結果
+
+- 項目 5 の台本 38 個が、倍率 100 % と 200 % の両方で全部正解（[results/slint-1.json](results/slint-1.json)、[results/slint-2.json](results/slint-2.json)）。Rust の側で作ったページ全体の文字が、TypeScript で作った正解と同じことも確かめた。
+- 帯の絵: [screenshots/slint-h1-100.png](screenshots/slint-h1-100.png)（横書き 2 段、行の後ろのすき間で終えたドラッグ）、[screenshots/slint-m1-200.png](screenshots/slint-m1-200.png)（200 %、横書き → 縦書き → 横書きの塊をまたぐ）、[screenshots/slint-m1-panel.png](screenshots/slint-m1-panel.png)（縦書きの欄の中の選択）。
+
+![Slint 200 %](screenshots/slint-m1-200.png)
+
+### 行数
+
+| 部分 | ファイル | 行数 |
+| --- | --- | --- |
+| `OcrPage` の型と字の列、ページ全体の文字 | [model.rs](slint/src/model.rs) の前半 | 約 95 |
+| 当たり判定と帯 | `caret_at`、`bands` | 30 |
+| 範囲の文字 | `text` | 20 |
+| 検索 | `search` | 30 |
+| 窓とのつなぎ（押す・動かす・Ctrl+A・Ctrl+C・クリップボード・検索・欄の切り替え） | [app.rs](slint/src/app.rs) | 146 |
+| 画面（道具の欄、ページ、帯、`TouchArea`、欄の字と帯） | [app.slint](slint/ui/app.slint) | 158 |
+| 縦書きの欄の升 | [panel.rs](slint/src/panel.rs) ＋ [vtext.rs](slint/src/vtext.rs)（試験を除く 55） | 85 |
+| 合計（`main.rs` 20 を含む） | | **約 585** |
+
+（空行とコメントだけの行を除く。台本の [script.rs](slint/src/script.rs) 127 と [drive.rs](slint/src/drive.rs) 29 を除く。）
+
+- かかった時間: 約 1 時間（ビルドの待ちを含む）。最初の実行で 38 個が通った（項目 2 より先に TypeScript で同じ決まりを書いていたので、移すだけだった）。
+
+### 突き当たったこと
+
+- 大きなものはなかった。小さなもの:
+  - 自分の部品に `color` という名前のプロパティを足そうとすると「Cannot override property 'color'」で止まる（`Rectangle` の祖先の名前と重なる）。`fill` にした。
+  - 1.18.1 では `ScrollView` の `viewport-width` は非推奨（`content-width`）。
+  - 欄の大きさ（300 × 600 px）を Rust と `.slint` の両方に書いた。Rust が升を決めるので、`.slint` の欄の大きさを Rust に渡すか、定数を 1 か所にする仕組みが要る（製品では `changed width` で Rust に伝えて組み直す）。
+  - Linux で winit を動かすには `libxkbcommon-x11` が要った（入れ物に入っていなかった。前の試作の入れ物にはあった）。
+- **Slint がしてくれたこと**: ポインターのつかみ（ドラッグが外に出ても続く）、修飾キー、キーのフォーカス、拡大とスクロール、1 字ずつの `Text` の回転。**自作したこと**: 当たり判定、選択の範囲、帯、コピーの文字、クリップボード、検索、縦書きの升の配置。

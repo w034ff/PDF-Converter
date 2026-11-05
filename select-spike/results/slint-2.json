@@ -1,0 +1,192 @@
+[
+  {
+    "name": "all",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "cross-blocks",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "end-in-line-gap",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "end-between-blocks",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "through-margin",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "end-in-margin",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "shift-click",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "search-across-lines",
+    "ok": true,
+    "page": "h1_two_columns"
+  },
+  {
+    "name": "all",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "cross-blocks",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "end-in-line-gap",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "end-between-blocks",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "through-margin",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "end-in-margin",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "shift-click",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "search-across-lines",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "panel-all",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "panel-drag",
+    "ok": true,
+    "page": "v2_two_tiers"
+  },
+  {
+    "name": "all",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "cross-blocks",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "end-in-line-gap",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "end-between-blocks",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "through-margin",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "end-in-margin",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "shift-click",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "search-across-lines",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "panel-all",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "panel-drag",
+    "ok": true,
+    "page": "v4_dialogue"
+  },
+  {
+    "name": "all",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "cross-blocks",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "end-in-line-gap",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "end-between-blocks",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "through-margin",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "end-in-margin",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "shift-click",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "search-across-lines",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "panel-all",
+    "ok": true,
+    "page": "m1_mixed"
+  },
+  {
+    "name": "panel-drag",
+    "ok": true,
+    "page": "m1_mixed"
+  }
+]

@@ -1,6 +1,23 @@
-import { Button, ComboBox, ScrollView } from "std-widgets.slint";
+import { Button, ComboBox, ScrollView, LineEdit } from "std-widgets.slint";
 import "../fonts/IBMPlexSansJP-Regular.ttf";
 import "../fonts/IBMPlexSansJP-Bold.ttf";
+
+// A rectangle in page pt (page) or panel px (panel).
+export struct Band { x: float, y: float, w: float, h: float }
+export struct PanelGlyph { ch: string, x: float, y: float, rotate: bool, shift: bool }
+
+component Bands inherits Rectangle {
+    in property <[Band]> bands;
+    in property <float> scale: 1;
+    in property <color> fill;
+    for b in root.bands: Rectangle {
+        x: b.x * root.scale * 1px;
+        y: b.y * root.scale * 1px;
+        width: b.w * root.scale * 1px;
+        height: b.h * root.scale * 1px;
+        background: root.fill;
+    }
+}
 
 export component AppWindow inherits Window {
     title: "OCR の文字の選択（Slint）";
@@ -17,40 +34,132 @@ export component AppWindow inherits Window {
     in property <float> page-h-pt: 842;
     // Logical px per pt at 100 % is 96 / 72, as in the HTML version.
     in-out property <float> zoom: 1;
-    property <float> scale: root.zoom * 96 / 72;
+    out property <float> scale: root.zoom * 96 / 72;
     out property <length> page-abs-x: page.absolute-position.x;
     out property <length> page-abs-y: page.absolute-position.y;
-    callback page-changed(int);
+    out property <length> panel-abs-x: panel.absolute-position.x;
+    out property <length> panel-abs-y: panel.absolute-position.y;
+    in property <[Band]> sel-bands;
+    in property <[Band]> hit-bands;
+    in property <[PanelGlyph]> panel-glyphs;
+    in property <[Band]> panel-bands;
+    in property <float> panel-font-size: 18;
+    in property <string> status;
 
-    VerticalLayout {
-        HorizontalLayout {
-            padding: 6px;
-            spacing: 8px;
-            alignment: start;
-            ComboBox {
-                width: 200px;
-                model: root.page-names;
-                current-index <=> root.page-index;
-                selected => { root.page-changed(self.current-index); }
-            }
-            Button { text: "100 %"; clicked => { root.zoom = 1; } }
-            Button { text: "200 %"; clicked => { root.zoom = 2; } }
+    callback page-changed(int);
+    // kind: 0 press, 1 move, 2 release. Page points in pt, panel points in px.
+    callback page-pointer(int, float, float, bool);
+    callback panel-pointer(int, float, float, bool);
+    callback select-all();
+    callback copy();
+    callback search(string);
+
+    public function focus-keys() { keys.focus(); }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if (e.modifiers.control && (e.text == "a" || e.text == "A")) { root.select-all(); return accept; }
+            if (e.modifiers.control && (e.text == "c" || e.text == "C")) { root.copy(); return accept; }
+            reject
         }
-        HorizontalLayout {
-            ScrollView {
-                viewport-width: page.width + 32px;
-                viewport-height: page.height + 32px;
-                page := Rectangle {
-                    x: 16px;
-                    y: 16px;
-                    width: root.page-w-pt * root.scale * 1px;
-                    height: root.page-h-pt * root.scale * 1px;
-                    background: white;
-                    Image {
-                        width: parent.width;
-                        height: parent.height;
-                        source: root.page-image;
-                        image-fit: fill;
+        VerticalLayout {
+            HorizontalLayout {
+                padding: 6px;
+                spacing: 8px;
+                alignment: start;
+                ComboBox {
+                    width: 200px;
+                    model: root.page-names;
+                    current-index <=> root.page-index;
+                    selected => { root.page-changed(self.current-index); keys.focus(); }
+                }
+                Button { text: "100 %"; clicked => { root.zoom = 1; keys.focus(); } }
+                Button { text: "200 %"; clicked => { root.zoom = 2; keys.focus(); } }
+                search := LineEdit {
+                    width: 240px;
+                    placeholder-text: "検索";
+                    edited(t) => { root.search(t); }
+                }
+                Text { text: root.status; vertical-alignment: center; }
+            }
+            HorizontalLayout {
+                ScrollView {
+                    viewport-width: page.width + 32px;
+                    viewport-height: page.height + 32px;
+                    page := Rectangle {
+                        x: 16px;
+                        y: 16px;
+                        width: root.page-w-pt * root.scale * 1px;
+                        height: root.page-h-pt * root.scale * 1px;
+                        background: white;
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: root.page-image;
+                            image-fit: fill;
+                        }
+                        Bands { bands: root.hit-bands; scale: root.scale; fill: #ffaa0066; }
+                        Bands { bands: root.sel-bands; scale: root.scale; fill: #005aff4d; }
+                        TouchArea {
+                            mouse-cursor: text;
+                            pointer-event(e) => {
+                                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                                    keys.focus();
+                                    root.page-pointer(0, self.mouse-x / root.scale / 1px, self.mouse-y / root.scale / 1px, e.modifiers.shift);
+                                } else if (e.button == PointerEventButton.left && e.kind == PointerEventKind.up) {
+                                    root.page-pointer(2, self.mouse-x / root.scale / 1px, self.mouse-y / root.scale / 1px, false);
+                                }
+                            }
+                            moved => {
+                                if (self.pressed) {
+                                    root.page-pointer(1, self.mouse-x / root.scale / 1px, self.mouse-y / root.scale / 1px, false);
+                                }
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 340px;
+                    background: #fafafa;
+                    panel := Rectangle {
+                        x: 20px;
+                        y: 20px;
+                        width: 300px;
+                        height: 600px;
+                        Bands { bands: root.panel-bands; fill: #005aff4d; }
+                        for g in root.panel-glyphs: Text {
+                            x: g.x * 1px + (g.shift ? root.panel-font-size * 0.12px : 0);
+                            y: g.y * 1px - (g.shift ? root.panel-font-size * 0.12px : 0);
+                            width: root.panel-font-size * 1px;
+                            height: root.panel-font-size * 1.05px;
+                            text: g.ch;
+                            font-size: root.panel-font-size * 1px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            transform-rotation: g.rotate ? 90deg : 0deg;
+                        }
+                        TouchArea {
+                            mouse-cursor: text;
+                            pointer-event(e) => {
+                                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                                    keys.focus();
+                                    root.panel-pointer(0, self.mouse-x / 1px, self.mouse-y / 1px, e.modifiers.shift);
+                                } else if (e.button == PointerEventButton.left && e.kind == PointerEventKind.up) {
+                                    root.panel-pointer(2, self.mouse-x / 1px, self.mouse-y / 1px, false);
+                                }
+                            }
+                            moved => {
+                                if (self.pressed) {
+                                    root.panel-pointer(1, self.mouse-x / 1px, self.mouse-y / 1px, false);
+                                }
+                            }
+                        }
+                    }
+                    if root.panel-glyphs.length == 0: Text {
+                        x: 20px;
+                        y: 20px;
+                        text: "縦書きの塊を選ぶと、ここに縦書きで出る";
+                        color: #888;
                     }
                 }
             }
