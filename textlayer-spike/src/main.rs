@@ -2,6 +2,7 @@ mod check;
 mod fonts;
 mod krilla_write;
 mod layout;
+mod lopdf_write;
 mod pages;
 mod typeset;
 mod types;
@@ -94,6 +95,34 @@ fn krilla_pages(args: &[String], out: &Path) -> Vec<(String, PathBuf)> {
         .collect()
 }
 
+/// Image-only PDF (krilla) for one page, then the text layer added with lopdf.
+fn lopdf_pages(args: &[String], out: &Path) -> Vec<(String, PathBuf)> {
+    let kind = match arg(args, "--font") {
+        Some("glyphless") => lopdf_write::LFont::Glyphless,
+        Some("glyphless-empty") => lopdf_write::LFont::GlyphlessEmpty,
+        _ => lopdf_write::LFont::Real,
+    };
+    let fit = parse_fit(arg(args, "--fit"));
+    let pos = if fit == Fit::LineTj { lopdf_write::Positioning::Tj } else { lopdf_write::Positioning::Plain };
+    let vmode = parse_vmode(arg(args, "--vmode"), VMode::IdentityV);
+    let real = real_font();
+    std::fs::create_dir_all(out).unwrap();
+    PAGES
+        .iter()
+        .map(|name| {
+            let ocr = fixture(name);
+            let (image, png) = page_image(name);
+            let p = krilla_write::PageIn { image: &image, png, size: (ocr.width_pt, ocr.height_pt), runs: vec![] };
+            let base = krilla_write::image_only(&[p], krilla::SerializeSettings::default(), None);
+            let runs = layout::runs(&ocr, fit, vmode, 0.0);
+            let doc = lopdf_write::add_text_layer(&base, &[runs], kind, pos, &real);
+            let path = out.join(format!("{name}.pdf"));
+            std::fs::write(&path, lopdf_write::save(doc)).unwrap();
+            (name.to_string(), path)
+        })
+        .collect()
+}
+
 fn score_all(files: &[(String, PathBuf)]) -> String {
     let pdfium = check::pdfium();
     let mut s = check::header() + "\n";
@@ -112,6 +141,11 @@ fn main() {
         Some("krilla") => {
             let out = root().join("out").join(arg(&args, "--out").unwrap_or("krilla"));
             let files = krilla_pages(&args, &out);
+            println!("{}", score_all(&files));
+        }
+        Some("lopdf") => {
+            let out = root().join("out").join(arg(&args, "--out").unwrap_or("lopdf"));
+            let files = lopdf_pages(&args, &out);
             println!("{}", score_all(&files));
         }
         Some("dump") => check::dump(&check::pdfium(), Path::new(&args[2]), 0),

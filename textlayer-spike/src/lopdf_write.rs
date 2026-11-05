@@ -108,7 +108,7 @@ fn add_fonts(doc: &mut Document, chars: &BTreeSet<char>, kind: LFont, real: &Rea
                     unicode.insert(cid, c);
                 }
             }
-            let mut cids: Vec<(u16, f64)> = code.values().copied().collect::<BTreeSet<_>>().into_iter().map(|(a, b)| (a, b)).collect();
+            let mut cids: Vec<(u16, f64)> = code.values().copied().collect();
             cids.sort_by_key(|x| x.0);
             cids.dedup_by_key(|x| x.0);
             for (cid, adv) in cids {
