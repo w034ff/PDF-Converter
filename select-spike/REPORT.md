@@ -131,3 +131,38 @@
   - 欄の大きさ（300 × 600 px）を Rust と `.slint` の両方に書いた。Rust が升を決めるので、`.slint` の欄の大きさを Rust に渡すか、定数を 1 か所にする仕組みが要る（製品では `changed width` で Rust に伝えて組み直す）。
   - Linux で winit を動かすには `libxkbcommon-x11` が要った（入れ物に入っていなかった。前の試作の入れ物にはあった）。
 - **Slint がしてくれたこと**: ポインターのつかみ（ドラッグが外に出ても続く）、修飾キー、キーのフォーカス、拡大とスクロール、1 字ずつの `Text` の回転。**自作したこと**: 当たり判定、選択の範囲、帯、コピーの文字、クリップボード、検索、縦書きの升の配置。
+
+## 4. HTML（字の 4 点から自作）
+
+### どう作ったか
+
+項目 3 と同じ作りを TypeScript で書いた。実は項目 3 より先に、この作りの中心（[web/src/core/ocr.ts](web/src/core/ocr.ts) の字の列と `textOf`、[web/src/core/select.ts](web/src/core/select.ts) の `caretAt`・`bands`、[web/src/core/search.ts](web/src/core/search.ts)）を書き、Rust はそれを写した。2 つはほぼ 1 対 1 で対応する（`caret_at` ↔ `caretAt` など）。
+
+- [web/src/custom/CustomView.tsx](web/src/custom/CustomView.tsx): ページの上に透明な `div` を 1 枚かぶせ、`pointerdown`（`setPointerCapture` でつかむ）と `pointermove` で anchor と focus を動かす（[useSelection.ts](web/src/custom/useSelection.ts)、19 行）。帯は `div` を並べる（[shared/Bands.tsx](web/src/shared/Bands.tsx)）。ページの上には選べる文字の DOM がない。
+- Ctrl+A は `keydown`、Ctrl+C は `copy` イベントで `clipboardData.setData` する。`copy` イベントは、DOM の選択がなくても Ctrl+C で Chromium と WebKitGTK の両方で来た（クリップボードの許可は要らない）。
+- **縦書きの欄**（[custom/VerticalPanel.tsx](web/src/custom/VerticalPanel.tsx)、80 行）: 字の配置は**ブラウザーにまかせた**（`writing-mode: vertical-rl`、字ごとに `span`）。描いたあと各 `span` の `getBoundingClientRect` を測って欄の「字の 4 点」にし、ページと同じ `caretAt`・`bands`・`textOf` で選ぶ。Slint では `vtext.rs` が升を決めたところを、HTML ではブラウザーの組版を測って代える形。句読点の向き・ぶら下げ・英数字の回転はブラウザーとフォントがしてくれる（WebKitGTK では項目 2 の `vert` の 1 行が要る）。
+
+### 結果
+
+| | Chromium | WebKitGTK |
+| --- | --- | --- |
+| 台本 38 個（倍率 100 %） | **38 ○** | **37 ○、1 △** |
+
+- △ は WebKitGTK の縦書きの欄でのドラッグ（`v4_dialogue` の `panel-drag`）で、終わりが 2 字手前になった。台本は欄の字の `span` の箱の下 14 px で離すが、WebKitGTK では折り返した列の境目の字の箱が Chromium と違う位置に出たためと見ている（詳しくは追っていない）。
+- 項目 2 で × だったすき間の台本は全部 ○（正解の決まりと同じ作りなので当然ではある）。**Chromium と WebKitGTK の差は、欄の 1 か所を除いてなかった**（ページの上はブラウザーの組版を使わないので、差の出ようがない）。
+
+### 行数
+
+| 部分 | ファイル | 行数 |
+| --- | --- | --- |
+| 型と字の列、範囲の文字 | [core/ocr.ts](web/src/core/ocr.ts) | 115（うち型 50） |
+| 当たり判定と帯 | [core/select.ts](web/src/core/select.ts) | 43 |
+| 検索 | [core/search.ts](web/src/core/search.ts) | 23 |
+| ページの重ね、キー、コピー | [custom/CustomView.tsx](web/src/custom/CustomView.tsx) ＋ [useSelection.ts](web/src/custom/useSelection.ts) | 97 |
+| 縦書きの欄（ブラウザーの組版を測る） | [custom/VerticalPanel.tsx](web/src/custom/VerticalPanel.tsx) | 80 |
+| 帯・ページの枠（項目 2 と共用） | [shared/](web/src/shared/) | 35 |
+| 合計 | | **約 395**（`App.tsx` 51 と CSS 30 を除く） |
+
+- かかった時間: 約 30 分（中心は項目 2 のときに書いてあった）。
+- **項目 2 との差**: ブラウザーの選択を使う版（約 330 行、うち共用の型と検索を含む）と、ほぼ同じ行数だった。自作の版は、すき間で飛ばない・OCR の字の位置どおりに帯が出る・ブラウザーの差がない、の 3 点で出来が上。失うのは、ブラウザーの選択の作法（ダブルクリックで語、右クリックの「コピー」、選択したままのドラッグ＆ドロップ、スクリーンリーダーが文字を読めること）で、これらは項目 7 で見る。
+- **項目 3 との差**: ページの選択のコード（字の列・当たり判定・帯・コピー・検索）は、TypeScript 約 180 行と Rust 約 175 行でほぼ同じ。差は、縦書きの欄（HTML はブラウザーの組版を測る 80 行、Slint は `vtext.rs` の自作の組版 85 行）と、つなぎの書き方（React の state と Slint のコールバック）だけだった。

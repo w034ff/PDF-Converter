@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { OcrPage } from "./core/ocr";
+import { CustomView } from "./custom/CustomView";
 import { NativeView } from "./native/NativeView";
 import { expose } from "./testHooks";
 
@@ -49,6 +50,7 @@ export function App() {
       </header>
       <main id="ready" data-ready={page ? "1" : "0"}>
         {page && mode === "native" && <NativeView key={name} page={page} name={name} scale={scale} query={query} fix={fix} />}
+        {page && mode === "custom" && <CustomView key={name} page={page} name={name} scale={scale} query={query} />}
       </main>
     </div>
   );
