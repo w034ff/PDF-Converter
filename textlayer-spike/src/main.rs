@@ -158,6 +158,107 @@ fn bench(n: usize) {
     }
 }
 
+fn pdfa_settings() -> (krilla::SerializeSettings, krilla::metadata::Metadata) {
+    use krilla::configure::{Archival, ConfigurationBuilder};
+    let configuration = ConfigurationBuilder::new().with_archival_validator(Archival::A2_B).finish().unwrap();
+    // As crates/core/src/pdf_write.rs: PDF/A needs a creation date (fixed here).
+    let date = krilla::metadata::DateTime::new(2026).month(11).day(5).hour(0).minute(0).second(0).utc_offset_hour(0).utc_offset_minute(0);
+    let meta = krilla::metadata::Metadata::new().creator("textlayer-spike".into()).creation_date(date);
+    (krilla::SerializeSettings { configuration, ..krilla::SerializeSettings::default() }, meta)
+}
+
+/// AES-256 (V5, R6) as crates/core/src/pdf_encrypt.rs, with its /Length
+/// entries (poppler cannot decrypt without the crypt filter's /Length) and
+/// its /Extensions entry.
+fn encrypt(bytes: &[u8], password: &str) -> Vec<u8> {
+    use lopdf::encryption::crypt_filters::{Aes256CryptFilter, CryptFilter};
+    use lopdf::encryption::{EncryptionState, EncryptionVersion, Permissions};
+    let mut doc = lopdf::Document::load_mem(bytes).unwrap();
+    let mut key = [0u8; 32];
+    getrandom::fill(&mut key).unwrap();
+    let cf: std::sync::Arc<dyn CryptFilter> = std::sync::Arc::new(Aes256CryptFilter);
+    let state = EncryptionState::try_from(EncryptionVersion::V5 {
+        encrypt_metadata: true,
+        crypt_filters: std::collections::BTreeMap::from([(b"StdCF".to_vec(), cf)]),
+        file_encryption_key: &key,
+        stream_filter: b"StdCF".to_vec(),
+        string_filter: b"StdCF".to_vec(),
+        owner_password: password,
+        user_password: password,
+        permissions: Permissions::all(),
+    })
+    .unwrap();
+    doc.encrypt(&state).unwrap();
+    let id = doc.trailer.get(b"Encrypt").and_then(lopdf::Object::as_reference).unwrap();
+    let e = doc.get_object_mut(id).and_then(lopdf::Object::as_dict_mut).unwrap();
+    e.set("Length", 256);
+    e.get_mut(b"CF").and_then(lopdf::Object::as_dict_mut).unwrap().get_mut(b"StdCF").and_then(lopdf::Object::as_dict_mut).unwrap().set("Length", 32);
+    let root_id = doc.trailer.get(b"Root").and_then(lopdf::Object::as_reference).unwrap();
+    let adbe = lopdf::dictionary! { "BaseVersion" => "1.7", "ExtensionLevel" => 8 };
+    doc.get_object_mut(root_id).and_then(lopdf::Object::as_dict_mut).unwrap().set("Extensions", lopdf::dictionary! { "ADBE" => adbe });
+    lopdf_write::save(doc)
+}
+
+/// Item 7: PDF/A-2b documents (three pages: horizontal, vertical, turned
+/// mixed) from both paths, and AES-256 copies of the lopdf ones.
+fn pdfa() {
+    let real = real_font();
+    let out = root().join("out/pdfa");
+    std::fs::create_dir_all(&out).unwrap();
+    let names = ["h1_horizontal", "t1_vertical", "m1_mixed_rot2"];
+    let data: Vec<(OcrPage, Vec<u8>, bool)> = names.iter().map(|nm| { let (i, p) = page_image(nm); (fixture(nm), i, p) }).collect();
+    let pages = |vmode: VMode, with_runs: bool| -> Vec<krilla_write::PageIn<'_>> {
+        data.iter()
+            .map(|(o, i, p)| krilla_write::PageIn { image: i, png: *p, size: (o.width_pt, o.height_pt), runs: if with_runs { layout::runs(o, Fit::Char, vmode, 0.0) } else { vec![] } })
+            .collect()
+    };
+    let mut files = Vec::new();
+    for (label, font) in [("krilla_real", krilla_write::FontKind::Real), ("krilla_glyphless", krilla_write::FontKind::Glyphless)] {
+        let (settings, meta) = pdfa_settings();
+        let mut doc = krilla::Document::new_with(settings);
+        doc.set_metadata(meta);
+        krilla_write::write_into(&mut doc, &pages(VMode::UprightChars, true), font, krilla_write::Invisible::Transparent, &real);
+        match doc.finish() {
+            Ok(b) => {
+                let path = out.join(format!("{label}.pdf"));
+                std::fs::write(&path, b).unwrap();
+                println!("{label}: krilla finished");
+                files.push((label.to_string(), path));
+            }
+            Err(e) => println!("{label}: krilla refused: {e:?}"),
+        }
+    }
+    let (settings, meta) = pdfa_settings();
+    let base = krilla_write::image_only(&pages(VMode::IdentityV, false), settings, Some(meta));
+    std::fs::write(out.join("image_only.pdf"), &base).unwrap();
+    files.push(("image_only".into(), out.join("image_only.pdf")));
+    let runs: Vec<Vec<layout::Run>> = data.iter().map(|d| layout::runs(&d.0, Fit::Char, VMode::IdentityV, 0.0)).collect();
+    for (label, font) in [("lopdf_real", lopdf_write::LFont::Real), ("lopdf_glyphless", lopdf_write::LFont::Glyphless), ("lopdf_glyphless_empty", lopdf_write::LFont::GlyphlessEmpty)] {
+        let b = lopdf_write::save(lopdf_write::add_text_layer(&base, &runs, font, lopdf_write::Positioning::Plain, &real));
+        let path = out.join(format!("{label}.pdf"));
+        std::fs::write(&path, &b).unwrap();
+        files.push((label.to_string(), path));
+        let enc = encrypt(&b, "spike");
+        let epath = out.join(format!("{label}_aes256.pdf"));
+        std::fs::write(&epath, enc).unwrap();
+    }
+    // Text read back from the encrypted copies.
+    let pdfium = check::pdfium();
+    println!("{}", check::header());
+    for label in ["lopdf_real", "lopdf_glyphless"] {
+        for suffix in ["", "_aes256"] {
+            let path = out.join(format!("{label}{suffix}.pdf"));
+            for (k, nm) in names.iter().enumerate() {
+                let sc = check::score_page(&pdfium, &path, k, &fixture(nm), if suffix.is_empty() { None } else { Some("spike") });
+                println!("{}", check::row(&format!("{label}{suffix} / {nm}"), &sc));
+            }
+        }
+    }
+    for (l, p) in files {
+        println!("{l}: {}", p.display());
+    }
+}
+
 fn score_all(files: &[(String, PathBuf)]) -> String {
     let pdfium = check::pdfium();
     let mut s = check::header() + "\n";
@@ -197,6 +298,7 @@ fn main() {
                 bench(n);
             }
         }
+        Some("pdfa") => pdfa(),
         Some("dump") => check::dump(&check::pdfium(), Path::new(&args[2]), 0),
         _ => eprintln!("usage: textlayer-spike gen|krilla|lopdf|dump ..."),
     }

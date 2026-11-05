@@ -168,7 +168,15 @@ pub struct Score {
 }
 
 pub fn pdftotext(pdf: &Path, page: usize) -> String {
-    let out = std::process::Command::new("pdftotext")
+    pdftotext_pw(pdf, page, None)
+}
+
+pub fn pdftotext_pw(pdf: &Path, page: usize, password: Option<&str>) -> String {
+    let mut cmd = std::process::Command::new("pdftotext");
+    if let Some(pw) = password {
+        cmd.args(["-upw", pw]);
+    }
+    let out = cmd
         .args(["-q", "-enc", "UTF-8", "-f", &(page + 1).to_string(), "-l", &(page + 1).to_string()])
         .arg(pdf)
         .arg("-")
@@ -190,7 +198,7 @@ pub fn score_page(pdfium: &Pdfium, pdf: &Path, page_index: usize, ocr: &OcrPage,
     let n = reference.len().max(1) as f64;
 
     let (d_all, _) = align(&reference, &strip(&all));
-    let (d_pt, _) = align(&reference, &strip(&pdftotext(pdf, page_index)));
+    let (d_pt, _) = align(&reference, &strip(&pdftotext_pw(pdf, page_index, password)));
     let extracted: Vec<char> = chars.iter().map(|c| c.ch).collect();
     let (_, map) = align(&reference, &extracted);
     let (mut aligned, mut inside, mut iou_sum) = (0usize, 0usize, 0.0);

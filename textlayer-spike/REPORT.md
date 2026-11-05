@@ -208,3 +208,46 @@ lopdf の内容のストリームは、変わらない演算子（`Tf`・`Tz`・
 - **ページごとの費用**（100 ページの差から固定の費用を引いて割る）: lopdf の字ごと 約 2.3 KB/ページ（1 ページ約 430 字、1 字あたり約 5 B）、行ごと 約 1.3 KB/ページ。krilla の字ごと 約 6.6 KB/ページ。
 - 画像だけ 1 ページ 175 KB（200 dpi のグレースケールの PNG）に対して、lopdf・字形のない・字ごとの文字の層は 1 ページで +5.5 KB（+3 %）、100 ページで +236 KB。本物のフォントにすると、そこに +30〜200 KB。
 - 速さ: lopdf で 100 ページに足すのに 90 ms 前後（読み込みと保存込み）。krilla で一緒に書くときの増えは 100 ページで 70〜130 ms（ばらつきの範囲に近い）。どちらも OCR（1 ページ数秒）に比べて無視できる。
+
+## 項目 7: PDF/A-2b と暗号化
+
+### どう作ったか
+
+`cargo run --release -- pdfa`（[`src/main.rs`](src/main.rs) の `pdfa`）。3 ページ（`h1_horizontal`・`t1_vertical`・`m1_mixed_rot2`）の文書を、アプリの PDF/A-2b の書き方（`crates/core/src/pdf_write.rs`: `Archival::A2_B` の検証、作成日時を UTC で、補間なし）にならって作った。
+
+- krilla の経路: PDF/A-2b の設定の `Document` に、画像と文字の層を一緒に書く（字ごと、透明な塗り、縦は字を立てる）。
+- lopdf の経路: krilla で画像だけの PDF/A-2b を書き、lopdf で文字の層（字ごと、`3 Tr`、縦は `Identity-V`）を足して保存する。
+- 暗号化: lopdf の経路の出力を、`crates/core/src/pdf_encrypt.rs` と同じ AES-256（V5・R6、`/Length` と `/Extensions` も同じ）で暗号化し、pdfium と pdftotext にパスワードを渡して読む。
+
+### 数字
+
+veraPDF 1.28.2、PDF/A-2b（[`scripts/verapdf.sh`](scripts/verapdf.sh)）:
+
+| 文書 | krilla の検証 | veraPDF |
+| --- | --- | --- |
+| 画像だけ（krilla） | 通る | PASS |
+| krilla・本物のフォント（`/ca 0` の透明な塗り） | 通る | PASS |
+| krilla・字形のない（四角の字形、`/ca 0`） | 通る | PASS |
+| lopdf・本物のフォント（`3 Tr`） | — | PASS |
+| lopdf・字形のない（四角の字形、`3 Tr`） | — | PASS |
+| lopdf・字形のない（輪郭の空の字形、`3 Tr`） | — | PASS |
+| （対照）krilla の通常の PDF | — | FAIL |
+
+- 字形のないフォントは、PDF/A-2b で問題にならなかった。`W`（`DW 1000`）とフォントの `hmtx`（すべて 1000）が合っている（6.2.11.5 の幅の一致）、フォントは埋め込んである（6.2.11.4）、`CIDToGIDMap` はストリームで、`CIDSet` は書いていない（PDF/A-2 では任意）。krilla は字形のないフォントにも `CIDSet` を書くが、それも通った。
+- 透明な塗り（`/ca 0`）も PDF/A-2b で通る（PDF/A-2 は透明を許す。PDF/A-1 なら通らないはず）。
+- lopdf で足した後も、krilla の XMP メタデータと出力インテントはそのまま残り、通った。XMP の `ModifyDate` などは更新していないが、veraPDF は問題にしなかった。アプリに入れるときは、krilla が XMP に書く作成ソフトと文書情報の食い違いが起きないように、lopdf では文書情報を触らない。
+
+暗号化（AES-256）した後の取り出し（パスワード付き）:
+
+| 文書 / ページ | 全文 pdfium | 全文 pdftotext | 箱の中心 | 検索 |
+| --- | ---: | ---: | ---: | ---: |
+| 本物 / h1・t1・m1_rot2 | 100 % | 100 % / 100 % / 41.0 % | 100 % | 100 % |
+| 字形のない / h1・t1・m1_rot2 | 100 % | 100 % / 100 % / 41.0 % | 100 % | 100 % |
+
+暗号化の前と数字は同じ（`m1_mixed_rot2` の pdftotext の 41 % は暗号化の前から。傾いた混在ページで poppler が横書きと縦書きを混ぜて並べる）。mutool でも読めた。
+
+### 突き当たったこと
+
+- **暗号化した PDF/A は veraPDF が「暗号化されているので処理できない」と FAIL にする。** PDF/A は暗号化を禁じており、アプリはすでに PDF/A とパスワードの組み合わせを拒んでいる（`docs/design.md` §4.3.1、§7.1）。文書情報を変えないので、文字の層はこの決まりに何も足さない。
+- **暗号の辞書の `/Length` を省くと、poppler（pdftotext、Linux の多くのビューアー）が復号できない**（「Unknown compression method in flate stream」）。pdfium と qpdf は読める。アプリの `pdf_encrypt.rs` の `add_key_length` はこれを書いているので問題ない。試作で最初にこれを省いて気づいた。文字の層とは関係ないが、`add_key_length` を消さないように書き残す。
+- 文字の層を足すのは暗号化の**前**（lopdf の `Document` のまま `add_text_layer` → `encrypt_document`）。整理（`organize.rs`）と同じ流れで、復号と再暗号化は要らない。
