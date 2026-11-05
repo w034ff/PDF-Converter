@@ -3,6 +3,7 @@ mod fonts;
 mod krilla_write;
 mod layout;
 mod lopdf_write;
+mod overlay;
 mod pages;
 mod typeset;
 mod types;
@@ -147,6 +148,14 @@ fn main() {
             let out = root().join("out").join(arg(&args, "--out").unwrap_or("lopdf"));
             let files = lopdf_pages(&args, &out);
             println!("{}", score_all(&files));
+        }
+        Some("overlay") => {
+            // overlay <dir under out/> <page> [scale]
+            let pdf = root().join("out").join(&args[2]).join(format!("{}.pdf", args[3]));
+            let png = root().join("out").join(&args[2]).join(format!("{}.png", args[3]));
+            let scale = args.get(4).map_or(2.0, |s| s.parse().unwrap());
+            overlay::draw(&check::pdfium(), &pdf, &fixture(&args[3]), &png, scale);
+            println!("{}", png.display());
         }
         Some("dump") => check::dump(&check::pdfium(), Path::new(&args[2]), 0),
         _ => eprintln!("usage: textlayer-spike gen|krilla|lopdf|dump ..."),
