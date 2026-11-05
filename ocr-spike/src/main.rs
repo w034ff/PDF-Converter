@@ -50,6 +50,11 @@ pub fn open_ocr(env: &ort::environment::Environment, args: &[String]) -> Ocr {
         let v: Vec<f32> = v.split(',').map(|x| x.parse().unwrap()).collect();
         ocr.vbias = Some(engine::CtcBias::for_kinds(&ocr.dict, v[0], v[1], v[2], v[3]));
     }
+    // --vbias-guard MIN,SLACK[,SCORE_MARGIN]
+    if let Some(v) = arg(args, "--vbias-guard") {
+        let v: Vec<&str> = v.split(',').collect();
+        ocr.vbias_guard = Some((v[0].parse().unwrap(), v[1].parse().unwrap(), v.get(2).map(|m| m.parse().unwrap())));
+    }
     // Vertical item 3 (method 2): --vcut [--vcut-gap EM] [--vcut-margin EM] [--vcut-norestore]
     // [--vcut-bias blank,punct,choon,small] [--vcut-guard MIN,SLACK]
     if args.iter().any(|a| a == "--vcut") {
@@ -65,9 +70,10 @@ pub fn open_ocr(env: &ort::environment::Environment, args: &[String]) -> Ocr {
             let v: Vec<f32> = v.split(',').map(|x| x.parse().unwrap()).collect();
             p.bias = Some(engine::CtcBias::for_kinds(&ocr.dict, v[0], v[1], v[2], v[3]));
         }
+        // --vcut-guard MIN,SLACK[,SCORE_MARGIN]
         if let Some(v) = arg(args, "--vcut-guard") {
-            let v: Vec<usize> = v.split(',').map(|x| x.parse().unwrap()).collect();
-            p.guard = Some((v[0], v[1]));
+            let v: Vec<&str> = v.split(',').collect();
+            p.guard = Some((v[0].parse().unwrap(), v[1].parse().unwrap(), v.get(2).map(|m| m.parse().unwrap())));
         }
         ocr.vcut = Some(p);
     }
@@ -324,6 +330,7 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
     let mut total = cer::Score::default();
     let mut total_chars = cer::Score::default();
     let (mut pq_lines, mut pq_fallbacks) = (0usize, 0usize);
+    let (mut vc_lines, mut vc_fallbacks) = (0usize, 0usize);
     let mut dump = Vec::new();
     let mut det_ms = Vec::new();
     let mut rec_ms = Vec::new();
@@ -353,6 +360,19 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
         let lines = ocr.run(&img, &mut t).unwrap();
         pq_lines += t.parseq_lines;
         pq_fallbacks += t.parseq_fallbacks;
+        vc_lines += t.vcut_lines;
+        vc_fallbacks += t.vcut_fallbacks;
+        if std::env::var("XFUND_SHOW_VERTICAL").is_ok() {
+            for l in lines.iter().filter(|l| l.vertical) {
+                let b = geom::quad_bounds(&l.quad);
+                // The ground-truth entities this line overlaps most.
+                let gtt: Vec<&str> = gt.iter().filter(|g| {
+                    let i = (g.bbox[2].min(b[2]) - g.bbox[0].max(b[0])).max(0.0) * (g.bbox[3].min(b[3]) - g.bbox[1].max(b[1])).max(0.0);
+                    i > 0.3 * (b[2] - b[0]) * (b[3] - b[1])
+                }).map(|g| g.text.as_str()).collect();
+                println!("  V {fname} {:.0}x{:.0} base {:?} {:.2} -> {:?} {:.2} | gt {:?}", b[2] - b[0], b[3] - b[1], l.rec.text, l.rec.score, l.text, l.alt.as_ref().map_or(f32::NAN, |a| a.score), gtt);
+            }
+        }
         det_ms.push(t.det().as_secs_f64() * 1000.0);
         rec_ms.push(t.rec().as_secs_f64() * 1000.0);
         let pred: Vec<cer::Boxed> =
@@ -388,6 +408,7 @@ fn xfund(env: &ort::environment::Environment, args: &[String]) {
     std::fs::create_dir_all(root().join("out")).unwrap();
     let tag = if args.iter().any(|a| a == "--parseq") { "_parseq" } else { "" };
     println!("vertical lines sent to PARSeq {pq_lines}, kept PP-OCR's reading by the guards {pq_fallbacks}");
+    println!("vertical lines cut (method 2) {vc_lines}, kept the turned reading by the guards {vc_fallbacks}");
     std::fs::write(root().join(format!("out/xfund_pred_{model}{tag}.json")), serde_json::to_string(&dump).unwrap()).unwrap();
 }
 

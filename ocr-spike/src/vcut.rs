@@ -45,9 +45,11 @@ pub struct CutParams {
     /// Offsets for the CTC decoding of the cut lines (method 1 on top).
     pub bias: Option<CtcBias>,
     /// Item 4: keep PP-OCR's turned reading for lines it read as at most
-    /// this many characters, and when the cut reading is longer than twice
-    /// the turned one plus `runaway_slack`. `None`: no guard.
-    pub guard: Option<(usize, usize)>,
+    /// `.0` characters, when the cut reading is longer than twice the turned
+    /// one plus `.1`, and (with `.2`) when the cut reading is empty or its
+    /// mean probability is more than `.2` below the turned reading's.
+    /// `None`: no guard.
+    pub guard: Option<(usize, usize, Option<f32>)>,
 }
 
 impl Default for CutParams {

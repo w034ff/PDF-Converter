@@ -302,6 +302,11 @@ pub struct Ocr {
     pub keep_probs: bool,
     /// Vertical item 2 (method 1): biased decoding of vertical crops.
     pub vbias: Option<CtcBias>,
+    /// Vertical item 4: keep the plain decoding when it has at most `.0`
+    /// characters, when the biased one is longer than twice it plus `.1`, or
+    /// (with `.2`) when the biased one's mean probability is more than `.2`
+    /// below the plain one's.
+    pub vbias_guard: Option<(usize, usize, Option<f32>)>,
     /// Vertical item 3 (method 2): read vertical lines cut into characters.
     pub vcut: Option<crate::vcut::CutParams>,
 }
@@ -498,6 +503,7 @@ impl Ocr {
             cell_mode: CellMode::Aligned,
             keep_probs: false,
             vbias: None,
+            vbias_guard: None,
             vcut: None,
         })
     }
@@ -556,7 +562,18 @@ impl Ocr {
             for (k, &i) in chunk.iter().enumerate() {
                 let slice = &probs[k * steps * classes..(k + 1) * steps * classes];
                 let mut rec = match (&self.vbias, vertical[i]) {
-                    (Some(b), true) => ctc_decode_biased(slice, steps, classes, &self.dict, b),
+                    (Some(b), true) => {
+                        let biased = ctc_decode_biased(slice, steps, classes, &self.dict, b);
+                        match self.vbias_guard {
+                            Some((min_chars, slack, margin)) => {
+                                let plain = ctc_decode(slice, steps, classes, &self.dict);
+                                let (pn, bn) = (plain.text.chars().count(), biased.text.chars().count());
+                                let unsure = margin.is_some_and(|m| biased.score < plain.score - m);
+                                if pn <= min_chars || bn > 2 * pn + slack || unsure { plain } else { biased }
+                            }
+                            None => biased,
+                        }
+                    }
                     _ => ctc_decode(slice, steps, classes, &self.dict),
                 };
                 if self.keep_probs && vertical[i] {
@@ -679,8 +696,9 @@ impl Ocr {
             let cells = crate::vcut::chars_to_cells(&rec, lw, rw, &spans);
             let base_n = l.rec.text.chars().count();
             let n = rec.text.chars().count();
-            if let Some((min_chars, slack)) = p.guard {
-                if base_n <= min_chars || n > 2 * base_n + slack {
+            if let Some((min_chars, slack, margin)) = p.guard {
+                let unsure = margin.is_some_and(|m| n == 0 || rec.score < l.rec.score - m);
+                if base_n <= min_chars || n > 2 * base_n + slack || unsure {
                     t.vcut_fallbacks += 1;
                     continue;
                 }
