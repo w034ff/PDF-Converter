@@ -259,6 +259,29 @@ fn pdfa() {
     }
 }
 
+/// Sample PDFs for checking by hand in viewers: the eight generated pages
+/// (not ja_ref, whose image is not ours) in one document per variant.
+fn samples() {
+    let real = real_font();
+    let out = root().join("samples");
+    std::fs::create_dir_all(&out).unwrap();
+    let names: Vec<&str> = PAGES.iter().copied().filter(|n| *n != "ja_ref").collect();
+    let data: Vec<(OcrPage, Vec<u8>, bool)> = names.iter().map(|nm| { let (i, p) = page_image(nm); (fixture(nm), i, p) }).collect();
+    let pages = |vmode: VMode, fit: Fit, with_runs: bool| -> Vec<krilla_write::PageIn<'_>> {
+        data.iter()
+            .map(|(o, i, p)| krilla_write::PageIn { image: i, png: *p, size: (o.width_pt, o.height_pt), runs: if with_runs { layout::runs(o, fit, vmode, 0.0) } else { vec![] } })
+            .collect()
+    };
+    let base = krilla_write::image_only(&pages(VMode::IdentityV, Fit::Char, false), krilla::SerializeSettings::default(), None);
+    for (label, fit) in [("A_lopdf_glyphless_char", Fit::Char), ("C_lopdf_glyphless_line", Fit::Line)] {
+        let runs: Vec<Vec<layout::Run>> = data.iter().map(|d| layout::runs(&d.0, fit, VMode::IdentityV, 0.0)).collect();
+        let b = lopdf_write::save(lopdf_write::add_text_layer(&base, &runs, lopdf_write::LFont::Glyphless, lopdf_write::Positioning::Plain, &real));
+        std::fs::write(out.join(format!("{label}.pdf")), b).unwrap();
+    }
+    let b = krilla_write::write(&pages(VMode::UprightChars, Fit::Char, true), krilla_write::FontKind::Real, krilla_write::Invisible::Transparent, krilla::SerializeSettings::default(), None, &real);
+    std::fs::write(out.join("B_krilla_real_char.pdf"), b).unwrap();
+}
+
 fn score_all(files: &[(String, PathBuf)]) -> String {
     let pdfium = check::pdfium();
     let mut s = check::header() + "\n";
@@ -299,6 +322,7 @@ fn main() {
             }
         }
         Some("pdfa") => pdfa(),
+        Some("samples") => samples(),
         Some("dump") => check::dump(&check::pdfium(), Path::new(&args[2]), 0),
         _ => eprintln!("usage: textlayer-spike gen|krilla|lopdf|dump ..."),
     }
