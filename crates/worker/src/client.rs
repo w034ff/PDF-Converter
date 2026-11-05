@@ -61,6 +61,12 @@ pub const ORGANIZE_STEP_TIMEOUT: Duration = Duration::from_secs(120);
 /// it waits for an answer; this bounds how late a cancellation takes effect.
 pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+/// Variables every worker starts with. onnxruntime's official Linux build starts its 1DS
+/// telemetry when the library creates its environment, which writes under the home folder and
+/// connects to Microsoft; only this variable, read before the library is loaded, stops it, and
+/// the worker cannot set it on itself without `unsafe` (NFR-01, design §8.5).
+const WORKER_ENV: [(&str, &str); 1] = [("ORT_DISABLE_TELEMETRY", "1")];
+
 /// An intermediate answer of a streamed request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamPart {
@@ -100,6 +106,7 @@ impl WorkerProcess {
     {
         let mut child = Command::new(program)
             .args(args)
+            .envs(WORKER_ENV)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
