@@ -30,3 +30,25 @@
 - veraPDF は GitHub の Releases（`veraPDF/veraPDF-apps` はこのセッションの GitHub のアクセスの外）も `software.verapdf.org`（プロキシが 403）も取れなかった。Maven Central の `org.verapdf.apps:greenfield-apps:1.28.2` を `mvn dependency:copy-dependencies` で取り、`GreenfieldCliWrapper` を直接動かした。
 - IBM Plex Sans JP は npm の `@ibm/plex-sans-jp@3` の最新を OTF に戻したので、`ocr-spike/sets/README.md` の SHA-256 と違う（版の違い）。ページの絵の見た目にしか効かない。
 - 埋め込む本物のフォントは Noto Sans JP（SIL OFL 1.1、`notofonts/noto-cjk` の `Sans/SubsetOTF/JP/NotoSansJP-Regular.otf`、4.5 MB、CFF の輪郭、SHA-256 `dff723ba…5073`）。取り方は [`scripts/fetch.sh`](scripts/fetch.sh)。
+
+## 項目 2: 確かめの道具
+
+### どう作ったか
+
+[`src/check.rs`](src/check.rs)。書いた PDF の各ページを、そのページの `OcrPage` と比べる。以後の表の列は次のとおり。
+
+| 列 | 数え方 |
+| --- | --- |
+| 字 | OCR の字の数（空白を除く） |
+| 全文 pdfium | pdfium のページ全文（`FPDFText_GetText`）と OCR の字を、空白・改行を除いて読み順のまま編集距離で並べ、`1 − 編集距離 / 字` |
+| 全文 pdftotext | 同じことを `pdftotext`（poppler、既定の読み順の組み）で |
+| 箱の中心が 4 点の中 | OCR の字と同じ字に並んだ pdfium の字（`FPDFText_GetLooseCharBox`）の箱の中心が、OCR の字の 4 点の中にある割合 |
+| IoU | その箱と、OCR の字の 4 点の外接の箱の重なり（平均） |
+| 検索 | pdfium の `FPDFText_FindStart`（大文字小文字を区別）で、各行の文字列と、各行を 4 字ずつに切った断片（2 字以上）が見つかる割合。括弧の中は問い合わせの数 |
+| 記号を含む検索 | そのうち句読点・括弧・長音・小さいかなを含む断片 |
+| 縦書きの検索 | そのうち縦書きの行のもの |
+| 余計な空白 | pdfium の全文の空白の数 − OCR の語の間の空白の数。pdfium は字の間が広いと空白を足す（`is_generated` の字）。コピーした文字に入る |
+
+- 箱は「緩い箱」（loose）を使う。選択の青い帯はこの箱で描かれる。「きつい箱」（`FPDFText_GetCharBox`）は字形の輪郭から決まるので、字形のないフォントでは大きさがない。
+- pdftotext の数字は、縦書きでは低く出る（既定の組みは横の行に並べ直すので、縦の列が 1 字ずつの行になる）。`pdftotext -raw` なら内容の順になるが、アプリが使うのは pdfium なので、pdftotext は「ほかのビューアーで読み順が崩れるか」の目安としてだけ見る。
+- `cargo run --release -- dump <PDF>` で、pdfium と pdftotext の全文と、最初の 40 字の箱を出す。
