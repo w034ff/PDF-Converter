@@ -600,7 +600,21 @@ impl Ocr {
         }
         t.crop += s.elapsed();
         let flags: Vec<bool> = kept.iter().map(|k| k.1).collect();
-        let recs = self.recognize_flagged(&crops, &flags, t)?;
+        let skip = self.vcut.as_ref().is_some_and(|p| p.skip_turned && p.guard.is_none());
+        let recs = if skip {
+            // Item 5 (speed): vertical crops are only read cut, later.
+            let idx: Vec<usize> = (0..crops.len()).filter(|&i| !flags[i]).collect();
+            let sub: Vec<Bgr> = idx.iter().map(|&i| std::mem::replace(&mut crops[i], Bgr::new(0, 0))).collect();
+            let got = self.recognize_flagged(&sub, &vec![false; sub.len()], t)?;
+            let mut all: Vec<(RecText, usize, usize)> = vec![(RecText::default(), 0, 0); crops.len()];
+            for (&i, (r, c)) in idx.iter().zip(got.into_iter().zip(sub)) {
+                all[i] = r;
+                crops[i] = c;
+            }
+            all
+        } else {
+            self.recognize_flagged(&crops, &flags, t)?
+        };
         let mut lines: Vec<Line> = kept
             .into_iter()
             .zip(recs)

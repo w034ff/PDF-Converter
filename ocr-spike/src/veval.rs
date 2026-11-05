@@ -43,6 +43,10 @@ impl CellScore {
 pub struct PageResult {
     pub score: Score,
     pub kinds: KindStats,
+    /// Character-matched (order-free between lines): each predicted
+    /// character goes to the ground-truth line box holding its cell centre.
+    pub cm: Score,
+    pub cm_kinds: KindStats,
     pub cells: CellScore,
     pub vertical_lines: usize,
     pub timings: Timings,
@@ -95,15 +99,54 @@ pub fn cell_score(lines: &[Line], page: &EvalPage) -> CellScore {
     s
 }
 
+/// Each predicted character (with its cell from [`types::line_chars`]) goes
+/// to the smallest ground-truth line box that holds its centre; the boxes'
+/// texts are compared one by one, characters outside every box are inserted.
+pub fn char_matched(lines: &[Line], page: &EvalPage) -> (Score, KindStats) {
+    let mut per_box = vec![String::new(); page.gt_lines.len()];
+    let (mut score, mut kinds) = (Score::default(), KindStats::default());
+    for l in lines {
+        let (cells, glyphs) = types::line_chars(l);
+        for (g, &(u0, u1)) in glyphs.iter().zip(&cells) {
+            let b = geom::quad_bounds(&types::span_quad(&l.quad, l.vertical, u0, u1));
+            let (cx, cy) = ((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0);
+            let hit = page
+                .gt_lines
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| cx >= t.bbox[0] && cx <= t.bbox[2] && cy >= t.bbox[1] && cy <= t.bbox[3])
+                .min_by(|a, b| ((a.1.bbox[2] - a.1.bbox[0]) * (a.1.bbox[3] - a.1.bbox[1])).total_cmp(&((b.1.bbox[2] - b.1.bbox[0]) * (b.1.bbox[3] - b.1.bbox[1]))));
+            match hit {
+                Some((i, _)) => per_box[i].push(g.0),
+                None => {
+                    let s = g.0.to_string();
+                    score.edits += cer::normalize(&s).len();
+                    kinds.add_texts("", &s);
+                }
+            }
+        }
+    }
+    for (t, p) in page.gt_lines.iter().zip(&per_box) {
+        let s = cer::full_text(&t.text, p);
+        score.edits += s.edits;
+        score.chars += s.chars;
+        kinds.add_texts(&t.text, p);
+    }
+    (score, kinds)
+}
+
 pub fn score_page(ocr: &mut Ocr, page: &EvalPage) -> (PageResult, Vec<Line>, String) {
     let mut t = Timings::default();
     let lines = ocr.run(&page.image, &mut t).expect("ocr");
     let text = reading_text(&lines);
     let mut kinds = KindStats::default();
     kinds.add_texts(&page.gt_text, &text);
+    let (cm, cm_kinds) = char_matched(&lines, page);
     let r = PageResult {
         score: cer::full_text(&page.gt_text, &text),
         kinds,
+        cm,
+        cm_kinds,
         cells: if page.char_lines.is_empty() { CellScore::default() } else { cell_score(&lines, page) },
         vertical_lines: lines.iter().filter(|l| l.vertical).count(),
         timings: t,
@@ -114,14 +157,16 @@ pub fn score_page(ocr: &mut Ocr, page: &EvalPage) -> (PageResult, Vec<Line>, Str
 /// Scores every page and prints one line per page and a total.
 pub fn run_set(ocr: &mut Ocr, pages: &[EvalPage], label: &str, show: bool) -> (Score, KindStats, CellScore) {
     let (mut total, mut kinds, mut cells) = (Score::default(), KindStats::default(), CellScore::default());
+    let (mut cm, mut cm_kinds) = (Score::default(), KindStats::default());
     for p in pages {
         let (r, lines, text) = score_page(ocr, p);
         println!(
-            "{}: CER {:.2} % ({} / {}), vertical lines {}, cells {:.1} % of {}",
+            "{}: CER {:.2} % ({} / {}), char-matched {:.2} %, vertical lines {}, cells {:.1} % of {}",
             p.name,
             r.score.cer() * 100.0,
             r.score.edits,
             r.score.chars,
+            r.cm.cer() * 100.0,
             r.vertical_lines,
             r.cells.rate(),
             r.cells.chars
@@ -135,11 +180,15 @@ pub fn run_set(ocr: &mut Ocr, pages: &[EvalPage], label: &str, show: bool) -> (S
         }
         total.add(r.score);
         kinds.merge(&r.kinds);
+        cm.add(r.cm);
+        cm_kinds.merge(&r.cm_kinds);
         cells.add(&r.cells);
     }
     println!("TOTAL {label}: CER {:.2} % ({} / {})", total.cer() * 100.0, total.edits, total.chars);
     println!("  kinds: {}", kinds.summary());
     println!("  confusions: {}", kinds.top_confusions(12));
+    println!("TOTAL {label} char-matched: CER {:.2} % ({} / {})", cm.cer() * 100.0, cm.edits, cm.chars);
+    println!("  char-matched kinds: {}", cm_kinds.summary());
     if cells.chars > 0 {
         let by: Vec<String> = crate::charclass::KINDS
             .iter()

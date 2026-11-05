@@ -66,6 +66,7 @@ pub fn open_ocr(env: &ort::environment::Environment, args: &[String]) -> Ocr {
             p.margin = v.parse().unwrap();
         }
         p.restore = !args.iter().any(|a| a == "--vcut-norestore");
+        p.skip_turned = args.iter().any(|a| a == "--vcut-skip-turned");
         if let Some(v) = arg(args, "--vcut-bias") {
             let v: Vec<f32> = v.split(',').map(|x| x.parse().unwrap()).collect();
             p.bias = Some(engine::CtcBias::for_kinds(&ocr.dict, v[0], v[1], v[2], v[3]));
@@ -133,7 +134,10 @@ fn main() {
         Some("gen-sets") => ocr_spike::sets::generate(&root()),
         Some("veval") => {
             let set = arg(&args, "--set").unwrap_or("dev");
-            let pages = ocr_spike::sets::load(&root(), set);
+            let mut pages = ocr_spike::sets::load(&root(), set);
+            if let Some(only) = arg(&args, "--only") {
+                pages.retain(|p| p.name.contains(only));
+            }
             if args.iter().any(|a| a == "--gt-only") {
                 // Ground truth only (no OCR): the validation sets are not scored before item 5.
                 let mut k = ocr_spike::charclass::KindStats::default();

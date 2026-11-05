@@ -50,11 +50,14 @@ pub struct CutParams {
     /// mean probability is more than `.2` below the turned reading's.
     /// `None`: no guard.
     pub guard: Option<(usize, usize, Option<f32>)>,
+    /// Item 5 (speed only): do not read vertical lines turned at all. Only
+    /// without `guard`, which compares with the turned reading.
+    pub skip_turned: bool,
 }
 
 impl Default for CutParams {
     fn default() -> Self {
-        Self { gap: 0.0, margin: 0.15, restore: true, bias: None, guard: None }
+        Self { gap: 0.0, margin: 0.15, restore: true, bias: None, guard: None, skip_turned: false }
     }
 }
 
