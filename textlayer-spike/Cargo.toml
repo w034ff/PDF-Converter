@@ -1,0 +1,30 @@
+[package]
+name = "textlayer-spike"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Own workspace: the spike stays out of the app's workspace and its lints.
+[workspace]
+
+[dependencies]
+# Same versions and features as crates/core.
+krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }
+lopdf = { version = "0.46.0", default-features = false }
+# Same version and API level as crates/worker.
+pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
+# The subsetter krilla itself uses (MIT OR Apache-2.0), for the lopdf path.
+subsetter = "0.2.6"
+# Reads cmap, advances and metrics of the real font (MIT OR Apache-2.0); krilla depends on it too.
+skrifa = "0.42"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Page generation and 2° rotation (MIT), as in ocr-spike.
+imageproc = { version = "0.25", default-features = false }
+ab_glyph = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+getrandom = "0.4.3"
+
+[profile.release]
+debug = 1

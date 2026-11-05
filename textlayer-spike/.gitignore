@@ -1,0 +1,4 @@
+/target/
+# Fonts, generated page images, written PDFs and renders are rebuilt by the scripts.
+/data/
+/out/
