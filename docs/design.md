@@ -630,7 +630,8 @@ IPC では `{ code, detail }` の形で返す（SVG Tracer §5.5 と同じ。型
 - **量子化**: int8 のモデルは `scripts/quantize-layout-model.py` で作る（維持する人が一度だけ実行し、Release に置く）。元は Hugging Face の `PaddlePaddle/PP-DocLayout_plus-L_onnx` で、コミットとハッシュを固定して照合する（固定の値と量子化の手順はスクリプトが正本）。ネットワークを切ったコンテナで実行する（外から来たモデルを読むため）。同じ版の onnxruntime なら、何度実行しても同じファイルになった（試作）。ビルドのたびに量子化しないのは、CI に Python と onnxruntime の量子化の道具を入れずに済ませるため。
 - **同梱**: pdfium と同じく、`tauri.<os>.conf.json` の `bundle.resources` で同梱し、`resource_dir()` から場所を求めてワーカーに渡す（§5.4）。インストーラーは、モデル（xz で約 23 MB）と onnxruntime（Windows の DLL は xz で約 4 MB）のぶん大きくなる。
 - **ライセンス**: `scripts/generate-licenses.ts` が、onnxruntime の `LICENSE`（MIT）と `ThirdPartyNotices.txt`、モデルの `LICENSE`（Apache-2.0）と改変の表示（「PaddlePaddle の PP-DocLayout_plus-L を int8 に量子化した」。どちらも `scripts/layout-model/`）を第三者ライセンス一覧に加える。版は `layout-version.json` から入れる。
-- **更新**: onnxruntime の版は、§8.4 の `pdfium-update.yml` と同じ月 1 回の確認に加える（新しい版があれば Issue を作る）。更新は手で行い、`ort` の `api-NN` 機能を合わせ、§11 のテストを通す。モデルの更新（新しい版のモデル）は、下調べと同じ比べ方で精度を確かめてから、`layout-model-N` を作って行う。
+- **遠隔計測**: 公式のビルドは遠隔計測を持ち、既定で動く（NFR-01 に反する）。Linux 版は 1.29 から 1DS を含み、onnxruntime が環境を作るときに、ホームの下（`~/.cache/Microsoft/DeveloperTools/.onnxruntime/`）に端末の ID などを書き、Microsoft に接続しに行く。止められるのは、ライブラリを読み込む前に環境変数 `ORT_DISABLE_TELEMETRY=1` があるときだけで、C API の `DisableTelemetryEvents` では止まらない。ワーカーは自分の環境を変えられない（`std::env::set_var` は `unsafe` で、ワークスペースで禁じている）ので、メインプロセスがワーカーを起こすときに渡す（`client.rs` の `WorkerProcess::spawn`）。Windows 版は ETW のプロバイダーを Microsoft の遠隔計測として登録し、`DisableTelemetryEvents` を呼ぶまで事象を出すので、ワーカーは環境を作るときに `with_telemetry(false)` を指定する。Linux で `Detect` のあとにホームの下に何も作られないことを試験で確かめる（`crates/worker/tests/layout.rs`）。
+- **更新**: onnxruntime の版は、§8.4 の `pdfium-update.yml` と同じ月 1 回の確認に加える（新しい版があれば Issue を作る）。更新は手で行い、`ort` の `api-NN` 機能を合わせ、§11 のテストを通す。リリースノートと同梱の `Privacy.md` で遠隔計測の変更を確かめ、Windows ではネットワークの接続とファイルの書き込みが出ないことを Process Monitor で確かめる。モデルの更新（新しい版のモデル）は、下調べと同じ比べ方で精度を確かめてから、`layout-model-N` を作って行う。
 
 ## 9. セキュリティ（NFR-01）
 

@@ -201,3 +201,32 @@ fn detect_needs_an_open_pdf_and_a_page_before_loading_anything() {
         ErrorCode::InvalidParams,
     );
 }
+
+/// onnxruntime's official Linux build starts 1DS telemetry, which writes under the home folder
+/// (`~/.cache/Microsoft/DeveloperTools/.onnxruntime/`) and connects to Microsoft, unless the
+/// worker starts with telemetry turned off (NFR-01, design §8.5). An empty home after a detect
+/// shows it stayed off. `env` gives the worker its own home while `WorkerProcess::spawn` still
+/// sets the rest of its environment.
+#[cfg(target_os = "linux")]
+#[test]
+fn detecting_writes_nothing_under_the_home_folder() {
+    let home = std::env::temp_dir().join(format!("pdfconv-layout-home-{}", std::process::id()));
+    std::fs::create_dir_all(&home).expect("creating the home folder");
+    let mut env_args = vec![
+        OsString::from(format!("HOME={}", home.display())),
+        OsString::from(format!("XDG_CACHE_HOME={}", home.join(".cache").display())),
+        OsString::from(env!("CARGO_BIN_EXE_pdfconv-worker")),
+    ];
+    env_args.extend(worker_paths::worker_args());
+    let mut worker = WorkerProcess::spawn("env".as_ref(), env_args).expect("worker should start");
+    open(&mut worker, "crop_layout.pdf");
+    assert!(!detect(&mut worker, 1).is_empty());
+    drop(worker);
+
+    let written: Vec<_> = std::fs::read_dir(&home)
+        .expect("reading the home folder")
+        .map(|entry| entry.map(|e| e.path()))
+        .collect();
+    let _ = std::fs::remove_dir_all(&home);
+    assert!(written.is_empty(), "{written:?}");
+}

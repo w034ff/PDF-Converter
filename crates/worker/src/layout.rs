@@ -177,6 +177,9 @@ fn unavailable(detail: String) -> Response {
 fn load_session(runtime: &Path, model: &Path) -> Result<Session, String> {
     let environment = ort::init_from(runtime)
         .map_err(|e| e.to_string())?
+        // The Windows build registers its event provider as Microsoft telemetry and emits
+        // events for Windows to collect unless they are turned off here (NFR-01, design §8.5).
+        .with_telemetry(false)
         .build()
         .map_err(|e| e.to_string())?;
     let logical_cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
