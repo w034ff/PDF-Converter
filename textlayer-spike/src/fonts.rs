@@ -82,6 +82,12 @@ impl W {
 /// glyph 1, then one empty glyph per character (gid = index + 2), all with an
 /// advance of one em and no outline.
 pub fn glyphless_ttf(chars: &[char]) -> Vec<u8> {
+    glyphless_ttf_with(chars, true)
+}
+
+/// With `outline`, every glyph but .notdef is a rectangle over the em box
+/// (never drawn: the text is invisible); without it, glyphs are empty.
+pub fn glyphless_ttf_with(chars: &[char], outline: bool) -> Vec<u8> {
     let n = (chars.len() + 2) as u16;
     let name = "GlyphLessFont";
     let mut tables: Vec<([u8; 4], Vec<u8>)> = Vec::new();
@@ -90,7 +96,7 @@ pub fn glyphless_ttf(chars: &[char]) -> Vec<u8> {
     head.u32(0x0001_0000).u32(0x0001_0000).u32(0).u32(0x5F0F_3CF5).u16(0x000B).u16(UPM);
     head.bytes(&[0; 16]); // created, modified
     head.i16(0).i16(DESCENT).i16(UPM as i16).i16(ASCENT);
-    head.u16(0).u16(8).i16(2).i16(0).i16(0); // macStyle, lowestRecPPEM, direction hint, short loca, glyph data format
+    head.u16(0).u16(8).i16(2).i16(1).i16(0); // macStyle, lowestRecPPEM, direction hint, long loca, glyph data format
     tables.push((*b"head", head.0));
 
     let mut hhea = W(Vec::new());
@@ -100,7 +106,7 @@ pub fn glyphless_ttf(chars: &[char]) -> Vec<u8> {
 
     let mut maxp = W(Vec::new());
     maxp.u32(0x0001_0000).u16(n);
-    for v in [0u16, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0] {
+    for v in [4u16, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0] {
         maxp.u16(v);
     }
     tables.push((*b"maxp", maxp.0));
@@ -123,12 +129,27 @@ pub fn glyphless_ttf(chars: &[char]) -> Vec<u8> {
     }
     tables.push((*b"hmtx", hmtx.0));
 
-    let mut loca = W(Vec::new());
-    for _ in 0..=n {
-        loca.u16(0);
+    // A rectangle from (0, DESCENT) to (UPM, ASCENT): one contour, four on-curve points.
+    let mut rect = W(Vec::new());
+    rect.i16(1).i16(0).i16(DESCENT).i16(UPM as i16).i16(ASCENT).u16(3).u16(0);
+    rect.bytes(&[0x01; 4]);
+    for dx in [0, UPM as i16, 0, -(UPM as i16)] {
+        rect.i16(dx);
     }
+    for dy in [DESCENT, 0, ASCENT - DESCENT, 0] {
+        rect.i16(dy);
+    }
+    let mut glyf = Vec::new();
+    let mut loca = W(Vec::new());
+    for g in 0..n {
+        loca.u32(glyf.len() as u32);
+        if outline && g > 0 {
+            glyf.extend_from_slice(&rect.0);
+        }
+    }
+    loca.u32(glyf.len() as u32);
     tables.push((*b"loca", loca.0));
-    tables.push((*b"glyf", Vec::new()));
+    tables.push((*b"glyf", glyf));
 
     // cmap format 12 (platform 3, encoding 10).
     let mut sorted: Vec<(u32, u32)> = chars.iter().enumerate().map(|(i, c)| (*c as u32, i as u32 + 2)).collect();

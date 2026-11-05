@@ -118,3 +118,16 @@ fn main() {
         _ => eprintln!("usage: textlayer-spike gen|krilla|lopdf|dump ..."),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn missing_in_real_font() {
+        let real = super::real_font();
+        for name in super::PAGES {
+            let ocr = super::fixture(name);
+            let missing: Vec<String> = ocr.chars().flat_map(|c| c.text.chars()).filter(|c| real.gid(*c) == 0).map(|c| format!("{c} U+{:04X}", c as u32)).collect();
+            println!("{name}: {missing:?}");
+        }
+    }
+}

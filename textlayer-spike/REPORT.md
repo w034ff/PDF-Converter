@@ -52,3 +52,39 @@
 - 箱は「緩い箱」（loose）を使う。選択の青い帯はこの箱で描かれる。「きつい箱」（`FPDFText_GetCharBox`）は字形の輪郭から決まるので、字形のないフォントでは大きさがない。
 - pdftotext の数字は、縦書きでは低く出る（既定の組みは横の行に並べ直すので、縦の列が 1 字ずつの行になる）。`pdftotext -raw` なら内容の順になるが、アプリが使うのは pdfium なので、pdftotext は「ほかのビューアーで読み順が崩れるか」の目安としてだけ見る。
 - `cargo run --release -- dump <PDF>` で、pdfium と pdftotext の全文と、最初の 40 字の箱を出す。
+
+## 項目 3: krilla で書く（画像 → PDF の経路）
+
+### できたこと
+
+[`src/krilla_write.rs`](src/krilla_write.rs)（`cargo run --release -- krilla --font real|glyphless --fit line|tj|char --invisible transparent|under --vmode upright|rot90`、全部の組み合わせは [`scripts/krilla_tables.sh`](scripts/krilla_tables.sh)）。ページの画像を描き、その上に OCR の字を `Surface::draw_glyphs` で書く。字の箱は `KrillaGlyph` の `glyph_id`・`text_range`（ToUnicode のもと）・`x_advance` で決める。
+
+**9 ページすべてで、pdfium の全文 100 %、検索 100 %、字の箱の中心が OCR の 4 点に入る割合 100 %（字ごとに置いた場合）**。縦書き・傾き・混在のページも同じ。
+
+| 書き方（krilla） | 横書き h1 の箱の中心 | ja_ref の箱の中心 / IoU | 縦書き t1 の全文 pdfium | h1 の余計な空白 | 9 ページの大きさ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 本物のフォント、字ごと、透明、縦は字を立てて | 100 % | 100 % / 0.96 | 100 % | 0 | 2,095,052 B |
+| 字形のないフォント（四角の字形）、同上 | 100 % | 100 % / 0.95 | 100 % | 0 | 1,890,307 B |
+| 本物、行ごと（変換で伸ばす＝`Tz` 相当） | 94.5 % | 98.7 % / 0.81 | 100 % | 0 | 2,076,767 B |
+| 本物、行ごと＋字の送り（`TJ`） | 99.8 % | 98.3 % / 0.73 | 100 % | 17 | 2,079,515 B |
+| 本物、字ごと、画像の下に黒で | 100 % | 100 % / 0.96 | 100 % | 0 | 2,094,132 B |
+| 本物、行ごと、縦の列を 90° 回す | 94.5 % | 98.7 % / 0.81 | **11.0 %** | 0 | 2,048,009 B |
+
+全部の表は `scripts/krilla_tables.sh` が `out/krilla_tables.md` に出す（項目 5 で位置の合わせ方として改めて比べる）。
+
+### krilla 0.8.2 でできないこと（ソースとイシュー）
+
+- **描き方 3（`3 Tr`）は公開の API にない。** `content.rs` の `fill_stroke_glyph_group` は `TextRenderingMode::{Fill, Stroke, FillStroke}` しか書かない。代わりに不透明度 0 の塗り（`Fill { opacity: NormalizedF32::ZERO }`、`/ca 0` の ExtGState と `0 Tr` になる）か、文字を先に描いて画像で覆う。pdfium の取り出しはどちらでも同じ。イシューでは、`Tr 3` の補助を足す PR [LaurenzV/krilla#382](https://github.com/LaurenzV/krilla/pull/382)（2026-05、マージされず閉じた）に、作者が「塗りの不透明度を 0 にすればよいのでは」と答えている。つまり krilla としては足す気がない。
+  - 透明な塗りの心配: `/ca` を無視する古いビューアーや印刷経路では文字が黒く出る（字形のないフォントなら四角が出る）。画像の下に置けば見えないが、画像に透明な部分があると透ける。lopdf の経路の `3 Tr` にはこの心配がない。
+- **縦書き（`Identity-V`、`WMode 1`）は書けない。** `text/cid.rs` は CMap に `WMode::Horizontal` を固定で書き、エンコーディングは `Identity-H` だけ。`Glyph::y_advance` は輪郭として描く経路（`content.rs` の 1340 行あたり）でしか使われない。PR [LaurenzV/krilla#45](https://github.com/LaurenzV/krilla/pull/45)「Add support for vertical writing」（2024）と [#447](https://github.com/LaurenzV/krilla/pull/447)（2026-10）はこの y の送りの話で、`WMode` を検索しても何も出なかった。PDF/A の説明（`configure/PDF_A4.md`）にも「krilla does not use fonts in vertical writing mode」とある。
+  - 代わりに、縦の列の字を 1 字ずつ立てて（横書きのフォントのまま）字の 4 点に置いた。pdfium はこれを列ごとの 1 行にまとめて正しい順で取り出し、検索も選択も通った（`t1_vertical` で全文 100 %、箱 100 %）。
+  - 列を 90° 回した 1 行（字が横に寝る）にすると、pdfium は列を**左から右へ**並べて読み順が逆になった（全文 11 %）。検索は通る。縦書きは字を立てるほうが良い。
+- **`Tz`・`Tc` はない。** 行を伸ばすのは `push_transform` の拡大（`cm`）で代え、字ごとの位置は `x_advance`（`TJ` の調整になる）で与えた。krilla は `draw_glyphs` のたびに `q … cm /g0 gs BT … Tf … Tm … Tj ET Q` を書くので、字ごとに置くと内容のストリームが大きくなる（項目 6）。
+- 本物のフォント（Noto Sans JP、CFF）は、krilla が `subsetter` でサブセットにし、`CIDFontType0` / `FontFile3`（`CIDFontType0C`）で埋め込む。ToUnicode は `text_range` から字形ごとに作られる。
+
+### 突き当たったこと
+
+- **輪郭が空の字形は、pdfium の文字の取り出しから落ちる。** 字形のないフォントを、Tesseract のように輪郭のない字形で作ると、pdfium は 1 字も取り出さなかった（全文 0 %、検索 0 %。pdftotext は 100 % 取れた）。字形に em の箱いっぱいの四角（4 点の輪郭 1 つ）を入れると 100 % になった。見えない文字なので形は関係なく、きつい箱も em の箱になる。lopdf の経路でも確かめる（項目 4）。
+- krilla は ToUnicode を字形ごとに決め、字形はフォントの `cmap` から選ぶので、「全部の字を 1 つの字形に写す」Tesseract の作り方はそのままでは使えない。字形のないフォントは、文書に出る字ごとに 1 つずつ四角の字形を持たせて作った（[`src/fonts.rs`](src/fonts.rs) の `glyphless_ttf`。TrueType の表を手で組む）。それでも 9 ページで本物のフォントより 200 KB 小さい。
+- `ja_ref` は横長の写真を A4 に引き伸ばしたので字が縦長（高さ 38 pt、幅 10 pt）。字の送りだけ合わせて幅を縮めないと、箱が字の 4 倍の幅になる（箱の中心 2 %）。行を伸ばす拡大と字の送りを組み合わせて直した。
+- OCR の結果に、Noto Sans JP にない字はこの 9 ページにはなかった。ただし OCR の辞書は中国語の簡体字も含む（`fixtures/ocr_misread/` に「请」）。本物のフォントにない字は .notdef になり、ToUnicode も正しく作れない（krilla の PDF/A の検査では `ContainsNotDefGlyph` で失敗する）。字形のないフォントにはこの問題がない。
