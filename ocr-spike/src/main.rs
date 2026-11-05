@@ -45,6 +45,11 @@ pub fn open_ocr(env: &ort::environment::Environment, args: &[String]) -> Ocr {
             _ => engine::CellMode::Aligned,
         };
     }
+    // Vertical item 2 (method 1): --vbias blank,punct,choon,small (log-space offsets).
+    if let Some(v) = arg(args, "--vbias") {
+        let v: Vec<f32> = v.split(',').map(|x| x.parse().unwrap()).collect();
+        ocr.vbias = Some(engine::CtcBias::for_kinds(&ocr.dict, v[0], v[1], v[2], v[3]));
+    }
     if let Some(l) = arg(args, "--limit") {
         ocr.det_params.limit_side_len = l.parse().unwrap();
     }
@@ -76,6 +81,28 @@ fn main() {
         Some("chars") => chars(&env, &args),
         Some("pdf") => pdf_page(&env, &args),
         Some("vchars") => vchars(&env, &args),
+        Some("ctc-study") => {
+            let mut ocr = open_ocr(&env, &args);
+            let pages = ocr_spike::sets::load(&root(), arg(&args, "--set").unwrap_or("dev"));
+            let probes = ocr_spike::ctcstudy::study(&mut ocr, &pages);
+            ocr_spike::ctcstudy::report(&probes);
+        }
+        Some("bias-grid") => {
+            let mut ocr = open_ocr(&env, &args);
+            let pages = ocr_spike::sets::load(&root(), arg(&args, "--set").unwrap_or("dev"));
+            let list = |name: &str, dflt: &str| -> Vec<f32> { arg(&args, name).unwrap_or(dflt).split(',').map(|v| v.parse().unwrap()).collect() };
+            let mut settings = Vec::new();
+            for b in list("--blank", "0") {
+                for p in list("--punct", "0,2,3,4,5,6,7,8") {
+                    for c in list("--choon", "0") {
+                        for s in list("--small", "0,0.5,1,1.5,2,3") {
+                            settings.push((b, p, c, s));
+                        }
+                    }
+                }
+            }
+            ocr_spike::ctcstudy::grid(&mut ocr, &pages, &settings);
+        }
         Some("gen-sets") => ocr_spike::sets::generate(&root()),
         Some("veval") => {
             let set = arg(&args, "--set").unwrap_or("dev");

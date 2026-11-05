@@ -12,3 +12,5 @@ pub mod charclass;
 pub mod sets;
 pub mod valpages;
 pub mod veval;
+pub mod vcut;
+pub mod ctcstudy;

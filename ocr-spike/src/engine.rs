@@ -124,6 +124,105 @@ pub struct RecText {
     /// and its probability. One time step covers 8 input columns.
     pub char_cols: Vec<(char, usize, usize, f32)>,
     pub time_steps: usize,
+    /// Vertical item 2: the softmax output `[time_steps, classes]`, kept for
+    /// vertical crops when [`Ocr::keep_probs`] is set.
+    pub probs: Option<std::sync::Arc<Probs>>,
+}
+
+/// The rec model's softmax output of one crop, row-major `[steps, classes]`.
+pub struct Probs {
+    pub data: Vec<f32>,
+    pub classes: usize,
+}
+
+impl std::fmt::Debug for Probs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Probs({} x {})", self.data.len() / self.classes.max(1), self.classes)
+    }
+}
+
+/// Vertical item 2 (method 1): greedy CTC decoding with fixed log-space
+/// offsets, for vertical crops only. Each step picks
+/// `argmax_c ln p_c + offset_c`, where the blank gets `-blank_penalty` and the
+/// classes in `boost` get their value; the rest 0.
+#[derive(Clone, Debug, Default)]
+pub struct CtcBias {
+    pub blank_penalty: f32,
+    /// (class index, log-space offset)
+    pub boost: Vec<(usize, f32)>,
+}
+
+impl CtcBias {
+    /// Offsets by kind of character: punctuation and brackets (、。「」『』)
+    /// get `punct`, the long vowel mark ー gets `choon`, small kana `small`.
+    pub fn for_kinds(dict: &[String], blank_penalty: f32, punct: f32, choon: f32, small: f32) -> Self {
+        let mut boost = Vec::new();
+        for (i, s) in dict.iter().enumerate() {
+            let Some(c) = s.chars().next() else { continue };
+            if s.chars().count() != 1 {
+                continue;
+            }
+            let v = if "、。「」『』".contains(c) {
+                punct
+            } else if c == 'ー' {
+                choon
+            } else if crate::charclass::SMALL_KANA.contains(c) {
+                small
+            } else {
+                continue;
+            };
+            if v != 0.0 {
+                boost.push((i, v));
+            }
+        }
+        Self { blank_penalty, boost }
+    }
+}
+
+/// Greedy CTC decoding of one `[T, C]` slice with [`CtcBias`]. The reported
+/// probability of a character stays its softmax value.
+pub fn ctc_decode_biased(probs: &[f32], t: usize, c: usize, dict: &[String], bias: &CtcBias) -> RecText {
+    let mut out = RecText { time_steps: t, ..Default::default() };
+    let mut prev = usize::MAX;
+    let mut confs = Vec::new();
+    let ln = |p: f32| p.max(1e-30).ln();
+    for step in 0..t {
+        let row = &probs[step * c..(step + 1) * c];
+        let (mut best, p) = argmax(row);
+        let mut best_v = ln(p) - if best == 0 { bias.blank_penalty } else { 0.0 } + bias.boost.iter().find(|b| b.0 == best).map_or(0.0, |b| b.1);
+        // The blank with its penalty against the best non-blank class.
+        if best == 0 && bias.blank_penalty > 0.0 {
+            let (k, q) = argmax(&row[1..]);
+            let v = ln(q) + bias.boost.iter().find(|b| b.0 == k + 1).map_or(0.0, |b| b.1);
+            if v > best_v {
+                best = k + 1;
+                best_v = v;
+            }
+        }
+        for &(k, off) in &bias.boost {
+            let v = ln(row[k]) + off;
+            if v > best_v {
+                best = k;
+                best_v = v;
+            }
+        }
+        let p = row[best];
+        if best != 0 && best != prev {
+            let s = dict.get(best).map_or("", |s| s.as_str());
+            out.text.push_str(s);
+            for ch in s.chars() {
+                out.char_cols.push((ch, step, step, p));
+            }
+            confs.push(p);
+        } else if best != 0 && best == prev {
+            if let Some(last) = out.char_cols.last_mut() {
+                last.2 = step;
+            }
+        }
+        prev = best;
+    }
+    out.score = if confs.is_empty() { 0.0 } else { confs.iter().sum::<f32>() / confs.len() as f32 };
+    out
 }
 
 pub fn ort_init(runtime: &Path) -> Result<Environment, String> {
@@ -182,6 +281,12 @@ pub struct Ocr {
     pub rec_batch: usize,
     pub parseq: Option<crate::parseq::Parseq>,
     pub cell_mode: CellMode,
+    /// Vertical item 2: keep the softmax output of vertical crops.
+    pub keep_probs: bool,
+    /// Vertical item 2 (method 1): biased decoding of vertical crops.
+    pub vbias: Option<CtcBias>,
+    /// Vertical item 3 (method 2): read vertical lines cut into characters.
+    pub vcut: Option<crate::vcut::CutParams>,
 }
 
 /// Size after `DetResizeForTest.resize_image_type0`.
@@ -369,6 +474,9 @@ impl Ocr {
             rec_batch: 6,
             parseq: None,
             cell_mode: CellMode::Aligned,
+            keep_probs: false,
+            vbias: None,
+            vcut: None,
         })
     }
 
@@ -392,6 +500,12 @@ impl Ocr {
     /// Recognises crops in PaddleOCR's order: sorted by width / height,
     /// batches of `rec_batch`, each batch padded with zeros to its widest crop.
     pub fn recognize(&mut self, crops: &[Bgr], t: &mut Timings) -> ort::Result<Vec<(RecText, usize, usize)>> {
+        self.recognize_flagged(crops, &vec![false; crops.len()], t)
+    }
+
+    /// [`Self::recognize`], with `vertical[i]` saying whether crop `i` is a
+    /// turned vertical line (for [`Self::keep_probs`] and [`Self::vbias`]).
+    pub fn recognize_flagged(&mut self, crops: &[Bgr], vertical: &[bool], t: &mut Timings) -> ort::Result<Vec<(RecText, usize, usize)>> {
         let mut order: Vec<usize> = (0..crops.len()).collect();
         order.sort_by(|&a, &b| {
             let ra = crops[a].w as f64 / crops[a].h as f64;
@@ -419,7 +533,14 @@ impl Ocr {
             let (steps, classes) = (shape[1] as usize, shape[2] as usize);
             for (k, &i) in chunk.iter().enumerate() {
                 let slice = &probs[k * steps * classes..(k + 1) * steps * classes];
-                results[i] = Some((ctc_decode(slice, steps, classes, &self.dict), widths[k], tw));
+                let mut rec = match (&self.vbias, vertical[i]) {
+                    (Some(b), true) => ctc_decode_biased(slice, steps, classes, &self.dict, b),
+                    _ => ctc_decode(slice, steps, classes, &self.dict),
+                };
+                if self.keep_probs && vertical[i] {
+                    rec.probs = Some(std::sync::Arc::new(Probs { data: slice.to_vec(), classes }));
+                }
+                results[i] = Some((rec, widths[k], tw));
             }
             t.rec_post += s.elapsed();
         }
@@ -439,7 +560,8 @@ impl Ocr {
             }
         }
         t.crop += s.elapsed();
-        let recs = self.recognize(&crops, t)?;
+        let flags: Vec<bool> = kept.iter().map(|k| k.1).collect();
+        let recs = self.recognize_flagged(&crops, &flags, t)?;
         let mut lines: Vec<Line> = kept
             .into_iter()
             .zip(recs)
