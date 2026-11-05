@@ -96,7 +96,6 @@ fn add_fonts(doc: &mut Document, chars: &BTreeSet<char>, kind: LFont, real: &Rea
             }
             let sub = subsetter::subset(&real.data, 0, &remapper).unwrap();
             let sub_ref = skrifa::FontRef::new(&sub).unwrap();
-            use skrifa::raw::TableProvider;
             let cff = sub_ref.table_data(skrifa::Tag::new(b"CFF ")).map(|d| d.as_bytes().to_vec());
             let mut widths = Vec::new();
             for &c in chars {
@@ -189,6 +188,23 @@ fn add_fonts(doc: &mut Document, chars: &BTreeSet<char>, kind: LFont, real: &Rea
     Fonts { horizontal, vertical, code }
 }
 
+#[derive(Default)]
+struct State {
+    font: &'static str,
+    size: String,
+    tz: String,
+    tc: String,
+    /// Angle and origin (PDF space) of the current text line matrix.
+    line: Option<(f64, f64, f64)>,
+}
+
+/// A position: two decimals (1/100 pt).
+fn f2(v: f64) -> String {
+    let s = format!("{v:.2}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    if s == "-0" { "0".into() } else { s.into() }
+}
+
 fn f(v: f64) -> String {
     let s = format!("{v:.3}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
@@ -196,22 +212,62 @@ fn f(v: f64) -> String {
 }
 
 /// The content stream of one page's runs, in PDF space (y up) on a page `h` high.
-fn content(runs: &[Run], h: f64, fonts: &Fonts, pos: Positioning) -> Vec<u8> {
+fn content(runs: &[Run], h: f64, fonts: &Fonts, pos: Positioning, compact: bool) -> Vec<u8> {
     let mut s = String::from("BT\n3 Tr\n");
+    let mut state = State::default();
     for r in runs {
         let codes: Vec<(u16, f64)> = r.text.iter().map(|c| fonts.code[c]).collect();
         let (ox, oy) = (r.origin[0], h - r.origin[1]);
         let a = -r.angle;
         let (c, sn) = (a.cos(), a.sin());
         let hex = |cs: &[(u16, f64)]| cs.iter().map(|(c, _)| format!("{c:04X}")).collect::<String>();
-        if r.vertical {
+        // Operators that did not change since the previous run are left out,
+        // and a run at the same angle as the previous one moves with a
+        // relative `Td` (text space of the last `Tm`) instead of a new `Tm`.
+        let font = if r.vertical { "/TLV" } else { "/TLH" };
+        let size = f(r.size);
+        if state.font != font || state.size != size {
+            let _ = write!(s, "{font} {size} Tf ");
+            state.font = font;
+            state.size = size;
+        }
+        let natural: f64 = codes.iter().map(|(_, w)| w / 1000.0 * r.size).sum();
+        let th = if natural > 0.0 { r.length / natural } else { 1.0 };
+        let (tz, tc) = if r.vertical {
             let n = codes.len().max(1) as f64;
-            let tc = r.size - r.length / n;
-            let _ = writeln!(s, "/TLV {} Tf 100 Tz {} Tc {} {} {} {} {} {} Tm <{}> Tj", f(r.size), f(tc), f(c), f(sn), f(-sn), f(c), f(ox), f(oy), hex(&codes));
+            ("100".to_string(), f(r.size - r.length / n))
         } else {
             let natural: f64 = codes.iter().map(|(_, w)| w / 1000.0 * r.size).sum();
             let th = if natural > 0.0 { r.length / natural } else { 1.0 };
-            let _ = write!(s, "/TLH {} Tf {} Tz 0 Tc {} {} {} {} {} {} Tm ", f(r.size), f(th * 100.0), f(c), f(sn), f(-sn), f(c), f(ox), f(oy));
+            (f(th * 100.0), "0".to_string())
+        };
+        if state.tz != tz {
+            let _ = write!(s, "{tz} Tz ");
+            state.tz = tz.clone();
+        }
+        if state.tc != tc {
+            let _ = write!(s, "{tc} Tc ");
+            state.tc = tc;
+        }
+        match state.line {
+            Some((pa, px, py)) if compact && (pa - a).abs() < 0.2f64.to_radians() => {
+                // Inverse rotation of the move into the last Tm's text space.
+                let (dx, dy) = (ox - px, oy - py);
+                let (pc, ps) = (pa.cos(), pa.sin());
+                // Rounded as written, so that the rounding does not add up along a line.
+                let round = |v: f64| (v * 100.0).round() / 100.0;
+                let (tx, ty) = (round(dx * pc + dy * ps), round(-dx * ps + dy * pc));
+                let _ = write!(s, "{} {} Td ", f2(tx), f2(ty));
+                state.line = Some((pa, px + tx * pc - ty * ps, py + tx * ps + ty * pc));
+            }
+            _ => {
+                let _ = write!(s, "{} {} {} {} {} {} Tm ", f(c), f(sn), f(-sn), f(c), f2(ox), f2(oy));
+                state.line = Some((a, ox, oy));
+            }
+        }
+        if r.vertical {
+            let _ = writeln!(s, "<{}> Tj", hex(&codes));
+        } else {
             match (&r.starts, pos) {
                 (Some(starts), Positioning::Tj) => {
                     // Pen after glyph k (in text space, before Tz) should be at starts[k + 1] / th.
@@ -240,6 +296,10 @@ fn content(runs: &[Run], h: f64, fonts: &Fonts, pos: Positioning) -> Vec<u8> {
 
 /// Adds the runs of each page (by page index) to `pdf`.
 pub fn add_text_layer(pdf: &[u8], pages: &[Vec<Run>], kind: LFont, pos: Positioning, real: &RealFont) -> Document {
+    add_text_layer_with(pdf, pages, kind, pos, real, true)
+}
+
+pub fn add_text_layer_with(pdf: &[u8], pages: &[Vec<Run>], kind: LFont, pos: Positioning, real: &RealFont, compact: bool) -> Document {
     let mut doc = Document::load_mem(pdf).unwrap();
     let chars: BTreeSet<char> = pages.iter().flat_map(|p| p.iter().flat_map(|r| r.text.iter().copied())).collect();
     let fonts = add_fonts(&mut doc, &chars, kind, real);
@@ -258,7 +318,7 @@ pub fn add_text_layer(pdf: &[u8], pages: &[Vec<Run>], kind: LFont, pos: Position
         };
         let open = doc.add_object(Stream::new(dictionary! {}, b"q\n".to_vec()));
         let mut body = b"Q\n".to_vec();
-        body.extend(content(runs, h, &fonts, pos));
+        body.extend(content(runs, h, &fonts, pos, compact));
         let close = stream(&mut doc, dictionary! {}, body);
         list.insert(0, open.into());
         list.push(close.into());

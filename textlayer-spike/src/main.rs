@@ -124,6 +124,40 @@ fn lopdf_pages(args: &[String], out: &Path) -> Vec<(String, PathBuf)> {
         .collect()
 }
 
+/// Item 6: size and write time for `n` pages cycling through PAGES.
+fn bench(n: usize) {
+    let real = real_font();
+    let names: Vec<&str> = PAGES.iter().cycle().take(n).copied().collect();
+    let data: Vec<(OcrPage, Vec<u8>, bool)> = names.iter().map(|nm| { let (i, p) = page_image(nm); (fixture(nm), i, p) }).collect();
+    let pages = |fit: Fit, vmode: VMode| -> Vec<krilla_write::PageIn<'_>> {
+        data.iter().map(|(o, i, p)| krilla_write::PageIn { image: i, png: *p, size: (o.width_pt, o.height_pt), runs: layout::runs(o, fit, vmode, 0.0) }).collect()
+    };
+    let chars: usize = data.iter().map(|d| d.0.chars().count()).sum();
+    let t = std::time::Instant::now();
+    let base = krilla_write::image_only(&pages(Fit::Char, VMode::IdentityV), krilla::SerializeSettings::default(), None);
+    let base_ms = t.elapsed().as_secs_f64() * 1000.0;
+    println!("| {n} | {chars} | 画像だけ（krilla） | {} | — | {base_ms:.0} ms |", base.len());
+    for (label, font) in [("krilla 本物 char", krilla_write::FontKind::Real), ("krilla 字形なし char", krilla_write::FontKind::Glyphless)] {
+        let p = pages(Fit::Char, VMode::UprightChars);
+        let t = std::time::Instant::now();
+        let b = krilla_write::write(&p, font, krilla_write::Invisible::Transparent, krilla::SerializeSettings::default(), None, &real);
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        println!("| {n} | {chars} | {label} | {} | +{} | {ms:.0} ms（画像込み） |", b.len(), b.len() as i64 - base.len() as i64);
+    }
+    for (label, font, fit) in [
+        ("lopdf 本物 char", lopdf_write::LFont::Real, Fit::Char),
+        ("lopdf 字形なし char", lopdf_write::LFont::Glyphless, Fit::Char),
+        ("lopdf 本物 line", lopdf_write::LFont::Real, Fit::Line),
+        ("lopdf 字形なし line", lopdf_write::LFont::Glyphless, Fit::Line),
+    ] {
+        let runs: Vec<Vec<layout::Run>> = data.iter().map(|d| layout::runs(&d.0, fit, VMode::IdentityV, 0.0)).collect();
+        let t = std::time::Instant::now();
+        let b = lopdf_write::save(lopdf_write::add_text_layer(&base, &runs, font, lopdf_write::Positioning::Plain, &real));
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        println!("| {n} | {chars} | {label} | {} | +{} | {ms:.0} ms（読み込みと保存込み） |", b.len(), b.len() as i64 - base.len() as i64);
+    }
+}
+
 fn score_all(files: &[(String, PathBuf)]) -> String {
     let pdfium = check::pdfium();
     let mut s = check::header() + "\n";
@@ -156,6 +190,12 @@ fn main() {
             let scale = args.get(4).map_or(2.0, |s| s.parse().unwrap());
             overlay::draw(&check::pdfium(), &pdf, &fixture(&args[3]), &png, scale);
             println!("{}", png.display());
+        }
+        Some("bench") => {
+            println!("| ページ | 字 | 書き方 | 大きさ (B) | 画像だけとの差 (B) | 時間 |\n| ---: | ---: | --- | ---: | ---: | ---: |");
+            for n in [1, 10, 100] {
+                bench(n);
+            }
         }
         Some("dump") => check::dump(&check::pdfium(), Path::new(&args[2]), 0),
         _ => eprintln!("usage: textlayer-spike gen|krilla|lopdf|dump ..."),
