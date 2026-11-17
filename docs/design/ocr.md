@@ -13,7 +13,7 @@
   1. **認識**（§3〜§7）: ワーカーがページを描いて文字を読み、結果の型（§2）で返す。
   2. **文字の層**（§9）: `crates/core` が結果を PDF に書き込む。
   3. **組み込み**: OCR を付ける画面と操作、メインプロセスでの実行の管理、IPC。
-- **今作るのは段階 1 と 2 だけ**（PoC）。本番と同じ場所（`crates/worker`・`crates/core`）に作り、開発用のコマンド（§12）で出来を確かめる。画面、IPC、メインプロセスには触らない。
+- **今作るのは段階 1 と 2 だけ**（PoC）。本番と同じ場所（`crates/worker`・`crates/core`）に作り、開発用のコマンド（§12）で出来を確かめる。画面と IPC には触らない。メインプロセスは、ワーカーの起動の引数（OCR のモデルの場所、§8）と、ワーカーのエラーの変換（§10）だけを直す。
 - OCR をどの画面のどの操作に付けるか（導線）は、タブの整理と一緒に決める（§14）。段階 3 はそれから設計する。認識と文字の層は、導線がどう決まっても共通の部品になる。
 
 ## 2. 結果の型（`crates/core/src/ocr.rs`）
@@ -113,6 +113,7 @@ pub fn add_text_layer(doc: &mut lopdf::Document, pages: &[(usize, &OcrPage)]) ->
 
 - `OcrUnavailable`: onnxruntime か OCR のモデルを読み込めない、または推論に失敗したとき。`LayoutUnavailable` と分けるのは、モデルを別々に取得・同梱するので、画面でどちらが欠けたかを言い分けたいため。
 - PoC では、worker だけのコード（`WorkerOnlyCode`。今の `PdfiumUnavailable` と同じ扱い）にする。core の `ErrorCode` に足すと TS の型が変わり、画面の文言まで要るため。段階 3 で、画面の文言と一緒に `ErrorCode` に移す。
+- メインプロセスの `IpcError::from_worker` は `WorkerOnlyCode` を漏れなく見るので、`OcrUnavailable` も `PdfiumUnavailable` と同じく `WorkerCrashed` に変える。PoC ではメインプロセスが `Ocr` を送らないので、この腕は通らない。
 
 ## 11. テスト
 
