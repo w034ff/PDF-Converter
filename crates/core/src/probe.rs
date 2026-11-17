@@ -25,6 +25,9 @@ pub const MAX_DPI: u32 = 2400;
 /// Default DPI used when resolution is missing, unknown or out of range (design §4.1).
 pub const DEFAULT_DPI: u32 = 96;
 
+const CM_PER_INCH: f64 = 2.54;
+const METRES_PER_INCH: f64 = 0.0254;
+
 /// Supported input image formats (design §4.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ImageFormat {
@@ -166,14 +169,7 @@ pub fn probe_reader<R: BufRead + Seek>(mut reader: R) -> Result<ImageInfo, Probe
         ImageFormat::WebP | ImageFormat::Tiff => None,
     };
 
-    let (dpi_x, dpi_y) = match raw_dpi {
-        Some((dx, dy))
-            if (MIN_DPI..=MAX_DPI).contains(&dx) && (MIN_DPI..=MAX_DPI).contains(&dy) =>
-        {
-            (dx, dy)
-        }
-        _ => (DEFAULT_DPI, DEFAULT_DPI),
-    };
+    let (dpi_x, dpi_y) = dpi_or_default(raw_dpi);
 
     Ok(ImageInfo {
         format,
@@ -210,8 +206,8 @@ fn find_png_phys_dpi<R: BufRead + Seek>(reader: &mut R) -> Option<(u32, u32)> {
                 let ppu_y = u32::from_be_bytes(phys_data.get(4..8)?.try_into().ok()?);
                 let unit = *phys_data.get(8)?;
                 if unit == 1 && ppu_x > 0 && ppu_y > 0 {
-                    let dpi_x = (f64::from(ppu_x) * 0.0254).round() as u32;
-                    let dpi_y = (f64::from(ppu_y) * 0.0254).round() as u32;
+                    let dpi_x = (f64::from(ppu_x) * METRES_PER_INCH).round() as u32;
+                    let dpi_y = (f64::from(ppu_y) * METRES_PER_INCH).round() as u32;
                     if dpi_x > 0 && dpi_y > 0 {
                         return Some((dpi_x, dpi_y));
                     }
@@ -307,8 +303,8 @@ fn parse_jfif_dpi(bytes: &[u8]) -> Option<(u32, u32)> {
                     match unit {
                         1 => return Some((u32::from(x_density), u32::from(y_density))),
                         2 => {
-                            let dpi_x = (f64::from(x_density) * 2.54).round() as u32;
-                            let dpi_y = (f64::from(y_density) * 2.54).round() as u32;
+                            let dpi_x = (f64::from(x_density) * CM_PER_INCH).round() as u32;
+                            let dpi_y = (f64::from(y_density) * CM_PER_INCH).round() as u32;
                             if dpi_x > 0 && dpi_y > 0 {
                                 return Some((dpi_x, dpi_y));
                             }
@@ -381,34 +377,40 @@ fn parse_exif_dpi(tiff: &[u8]) -> Option<(u32, u32)> {
         }
     }
 
-    let (x_num, x_den) = x_res?;
-    let (y_num, y_den) = y_res?;
-    if x_den == 0 || y_den == 0 {
-        return None;
-    }
-    let unit = res_unit.unwrap_or(2);
-    match unit {
-        2 => {
-            let dpi_x = (f64::from(x_num) / f64::from(x_den)).round() as u32;
-            let dpi_y = (f64::from(y_num) / f64::from(y_den)).round() as u32;
-            if dpi_x > 0 && dpi_y > 0 {
-                Some((dpi_x, dpi_y))
-            } else {
-                None
-            }
+    resolution_dpi(x_res?, y_res?, res_unit.unwrap_or(RESOLUTION_UNIT_INCH))
+}
+
+/// The inch of TIFF's and EXIF's `ResolutionUnit`, which is also its default.
+pub(crate) const RESOLUTION_UNIT_INCH: u16 = 2;
+/// The centimetre of `ResolutionUnit`.
+const RESOLUTION_UNIT_CM: u16 = 3;
+
+/// The dpi of a TIFF or EXIF resolution, given as numerator and denominator per axis in the
+/// unit `unit`. `None` for an unknown unit, a zero denominator, or a value that rounds to 0.
+pub(crate) fn resolution_dpi(x: (u32, u32), y: (u32, u32), unit: u16) -> Option<(u32, u32)> {
+    let inches_per_unit = match unit {
+        RESOLUTION_UNIT_INCH => 1.0,
+        RESOLUTION_UNIT_CM => CM_PER_INCH,
+        _ => return None,
+    };
+    let dpi = |(num, den): (u32, u32)| {
+        if den == 0 {
+            return None;
         }
-        3 => {
-            let dpcm_x = f64::from(x_num) / f64::from(x_den);
-            let dpcm_y = f64::from(y_num) / f64::from(y_den);
-            let dpi_x = (dpcm_x * 2.54).round() as u32;
-            let dpi_y = (dpcm_y * 2.54).round() as u32;
-            if dpi_x > 0 && dpi_y > 0 {
-                Some((dpi_x, dpi_y))
-            } else {
-                None
-            }
+        let dpi = (f64::from(num) / f64::from(den) * inches_per_unit).round() as u32;
+        (dpi > 0).then_some(dpi)
+    };
+    Some((dpi(x)?, dpi(y)?))
+}
+
+/// `dpi` when both axes are within [`MIN_DPI`]..=[`MAX_DPI`], else [`DEFAULT_DPI`] for both
+/// (design §4.1).
+pub(crate) fn dpi_or_default(dpi: Option<(u32, u32)>) -> (u32, u32) {
+    match dpi {
+        Some((x, y)) if (MIN_DPI..=MAX_DPI).contains(&x) && (MIN_DPI..=MAX_DPI).contains(&y) => {
+            (x, y)
         }
-        _ => None,
+        _ => (DEFAULT_DPI, DEFAULT_DPI),
     }
 }
 
@@ -428,8 +430,8 @@ fn parse_bmp_dpi(bytes: &[u8]) -> Option<(u32, u32)> {
     if xpels_per_meter <= 0 || ypels_per_meter <= 0 {
         return None;
     }
-    let dpi_x = (f64::from(xpels_per_meter) * 0.0254).round() as u32;
-    let dpi_y = (f64::from(ypels_per_meter) * 0.0254).round() as u32;
+    let dpi_x = (f64::from(xpels_per_meter) * METRES_PER_INCH).round() as u32;
+    let dpi_y = (f64::from(ypels_per_meter) * METRES_PER_INCH).round() as u32;
     if dpi_x > 0 && dpi_y > 0 {
         Some((dpi_x, dpi_y))
     } else {

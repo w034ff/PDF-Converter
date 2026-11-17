@@ -9,7 +9,9 @@ use tiff::decoder::{Decoder, Limits};
 use tiff::tags::Tag;
 
 use crate::error::{MAX_TIFF_PAGES, ProbeError};
-use crate::probe::{DEFAULT_DPI, ImageFormat, ImageInfo, MAX_DPI, MAX_IMAGE_PIXELS, MIN_DPI};
+use crate::probe::{
+    ImageFormat, ImageInfo, MAX_IMAGE_PIXELS, RESOLUTION_UNIT_INCH, dpi_or_default, resolution_dpi,
+};
 
 /// Custom image implementation for krilla using raw decoded TIFF channels.
 #[derive(Clone, Hash)]
@@ -316,31 +318,11 @@ fn read_tiff_dpi<R: Read + Seek>(decoder: &mut Decoder<R>) -> Result<(u32, u32),
     let unit: u16 = decoder
         .find_tag_unsigned(Tag::ResolutionUnit)
         .map_err(|_| ProbeError::DecodeFailed)?
-        .unwrap_or(2);
-
-    let raw_dpi = match (x_res, y_res, unit) {
-        (Some((x_num, x_den)), Some((y_num, y_den)), 2) if x_den > 0 && y_den > 0 => {
-            let dx = (f64::from(x_num) / f64::from(x_den)).round() as u32;
-            let dy = (f64::from(y_num) / f64::from(y_den)).round() as u32;
-            Some((dx, dy))
-        }
-        (Some((x_num, x_den)), Some((y_num, y_den)), 3) if x_den > 0 && y_den > 0 => {
-            let dx = ((f64::from(x_num) / f64::from(x_den)) * 2.54).round() as u32;
-            let dy = ((f64::from(y_num) / f64::from(y_den)) * 2.54).round() as u32;
-            Some((dx, dy))
-        }
-        _ => None,
-    };
-
-    let dpi = match raw_dpi {
-        Some((dx, dy))
-            if (MIN_DPI..=MAX_DPI).contains(&dx) && (MIN_DPI..=MAX_DPI).contains(&dy) =>
-        {
-            (dx, dy)
-        }
-        _ => (DEFAULT_DPI, DEFAULT_DPI),
-    };
-    Ok(dpi)
+        .unwrap_or(RESOLUTION_UNIT_INCH);
+    let raw_dpi = x_res
+        .zip(y_res)
+        .and_then(|(x, y)| resolution_dpi(x, y, unit));
+    Ok(dpi_or_default(raw_dpi))
 }
 
 /// Decodes all pages of a TIFF file into krilla `Image`s and layout `ImageInfo`s atomically.
