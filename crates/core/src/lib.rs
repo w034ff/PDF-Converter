@@ -6,6 +6,7 @@ mod icc;
 mod jpeg_strip;
 pub mod layout;
 pub mod naming;
+pub mod ocr;
 pub mod organize;
 pub mod page_range;
 pub mod pdf_encrypt;

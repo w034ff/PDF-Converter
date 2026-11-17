@@ -49,6 +49,12 @@ pub const RENDER_TIMEOUT: Duration = Duration::from_secs(60);
 /// onnxruntime and the model on the first `Detect` (design §5.2).
 pub const DETECT_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// How long to wait for a worker to read a page by OCR, including loading
+/// onnxruntime and the models on the first `Ocr` (design ocr §5). A page full
+/// of text took 1.4 to 2.5 seconds in the survey's container; the limit leaves
+/// room for slower machines and pages of many more lines.
+pub const OCR_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// How long to wait between two answers of an `Organize` request (design
 /// §5.2). It bounds the gap between answers, not the whole request, whose
 /// length grows with the output. The gap that matters is the longest stretch

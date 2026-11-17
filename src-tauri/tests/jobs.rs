@@ -52,7 +52,7 @@ fn library_dir() -> PathBuf {
 
 /// The onnxruntime library and the layout model fetched by
 /// `npm run layout:fetch`, the worker's last two arguments (design §5.4).
-fn layout_args() -> [String; 2] {
+fn layout_args() -> [String; 3] {
     let onnxruntime = if cfg!(windows) {
         "onnxruntime/windows/onnxruntime.dll"
     } else {
@@ -62,6 +62,7 @@ fn layout_args() -> [String; 2] {
     [
         manifest_dir.join(onnxruntime),
         manifest_dir.join("layout-model/PP-DocLayout_plus-L-int8.onnx"),
+        manifest_dir.join("ocr-model"),
     ]
     .map(|path| path.to_string_lossy().into_owned())
 }

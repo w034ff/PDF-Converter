@@ -97,6 +97,7 @@ pub fn run() {
             let library_dir = pdfium::library_dir(app.handle())?;
             let onnxruntime = layout_files::onnxruntime_file(app.handle())?;
             let model = layout_files::model_file(app.handle())?;
+            let ocr_model_dir = layout_files::ocr_model_dir(app.handle())?;
             let config = WorkerPoolConfig::new(
                 exe,
                 [
@@ -104,6 +105,7 @@ pub fn run() {
                     library_dir.into_os_string(),
                     onnxruntime.into_os_string(),
                     model.into_os_string(),
+                    ocr_model_dir.into_os_string(),
                 ],
             );
             let state = AppState::new(WorkerPool::new(config));

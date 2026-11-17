@@ -8,7 +8,9 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use pdfconv_core::{ErrorCode, PageRect, iou};
-use pdfconv_worker::client::{DETECT_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess};
+use pdfconv_worker::client::{
+    DETECT_TIMEOUT, OCR_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess,
+};
 use pdfconv_worker::protocol::{
     CandidateKind, EmbeddedImage, LayoutCandidate, RenderColor, RenderFormat, Request, Response,
 };
@@ -37,7 +39,7 @@ fn open(worker: &mut WorkerProcess, fixture: &str) {
     assert!(opened.is_ok(), "opening {fixture}: {opened:?}");
 }
 
-fn crop_layout(args: [OsString; 3]) -> WorkerProcess {
+fn crop_layout(args: [OsString; 4]) -> WorkerProcess {
     let mut worker = worker_paths::start_with(args);
     open(&mut worker, "crop_layout.pdf");
     worker
@@ -76,8 +78,13 @@ fn page_rect(rect: &PageRect) -> PageRect {
     }
 }
 
-fn args_with(onnxruntime: OsString, model: OsString) -> [OsString; 3] {
-    [worker_paths::library_dir().into(), onnxruntime, model]
+fn args_with(onnxruntime: OsString, model: OsString) -> [OsString; 4] {
+    [
+        worker_paths::library_dir().into(),
+        onnxruntime,
+        model,
+        worker_paths::ocr_model_dir().into(),
+    ]
 }
 
 fn missing(name: &str) -> OsString {
@@ -140,7 +147,7 @@ fn the_model_stays_loaded_and_other_requests_still_work() {
     assert_eq!(detect(&mut worker, 1), first);
 }
 
-fn unavailable_stays_unavailable(args: [OsString; 3]) {
+fn unavailable_stays_unavailable(args: [OsString; 4]) {
     let mut worker = crop_layout(args);
     expect_error(
         &mut worker,
@@ -204,11 +211,11 @@ fn detect_needs_an_open_pdf_and_a_page_before_loading_anything() {
 /// onnxruntime's official Linux build starts 1DS telemetry, which writes under the home folder
 /// (`~/.cache/Microsoft/DeveloperTools/.onnxruntime/`) and connects to Microsoft, unless the
 /// worker starts with telemetry turned off (NFR-01, design §8.5). An empty home after a detect
-/// shows it stayed off. `env` gives the worker its own home while `WorkerProcess::spawn` still
+/// and an OCR (design ocr §11), which load onnxruntime once between them, shows it stayed off. `env` gives the worker its own home while `WorkerProcess::spawn` still
 /// sets the rest of its environment.
 #[cfg(target_os = "linux")]
 #[test]
-fn detecting_writes_nothing_under_the_home_folder() {
+fn detecting_and_ocr_write_nothing_under_the_home_folder() {
     let home = std::env::temp_dir().join(format!("pdfconv-layout-home-{}", std::process::id()));
     std::fs::create_dir_all(&home).expect("creating the home folder");
     let mut env_args = vec![
@@ -220,6 +227,10 @@ fn detecting_writes_nothing_under_the_home_folder() {
     let mut worker = WorkerProcess::spawn("env".as_ref(), env_args).expect("worker should start");
     open(&mut worker, "crop_layout.pdf");
     assert!(!detect(&mut worker, 1).is_empty());
+    assert!(matches!(
+        worker.request(&Request::Ocr { page: 1 }, OCR_TIMEOUT),
+        Ok((Response::Ocr, _))
+    ));
     drop(worker);
 
     let written: Vec<_> = std::fs::read_dir(&home)

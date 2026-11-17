@@ -16,6 +16,8 @@ use pdfium_render::prelude::{
 
 use crate::crop::{self, RegionRequest};
 use crate::layout::Detector;
+use crate::ocr::Recognizer;
+use crate::onnx::Runtime;
 use crate::organize::{self, OrganizeArgs};
 use crate::protocol::{
     PageDimensions, RenderColor, RenderFormat, Request, Response, WorkerCode, read_message,
@@ -55,14 +57,21 @@ pub const HANG_ON_IMAGE_FILE_NAME: &str = "hang-on-image-for-test.png";
 
 /// Runs the worker loop (design §5.4 for the arguments). `library_dir` is
 /// the folder holding the bundled pdfium library, loaded on the first request
-/// that needs it. `onnxruntime` is the onnxruntime library file and `model`
-/// the layout model file, both loaded on the first `Detect`.
+/// that needs it. `onnxruntime` is the onnxruntime library file, loaded on the
+/// first `Detect` or `Ocr`; `model` is the layout model file, loaded on the
+/// first `Detect`, and `ocr_model_dir` the OCR model folder, loaded on the
+/// first `Ocr` (design ocr §5).
 ///
 /// # Errors
 ///
 /// Returns an I/O error when stdin or stdout fails. A clean end of stdin
 /// (the main process closed the pipe or exited) returns `Ok(())`.
-pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<()> {
+pub fn run(
+    library_dir: &Path,
+    onnxruntime: &Path,
+    model: &Path,
+    ocr_model_dir: &Path,
+) -> io::Result<()> {
     apply_memory_limit()?;
     let mut input = BufReader::new(io::stdin().lock());
     let mut output = BufWriter::new(io::stdout().lock());
@@ -70,7 +79,9 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
         library_dir: library_dir.to_path_buf(),
         pdfium: None,
         document: None,
-        detector: Detector::new(onnxruntime, model),
+        runtime: Runtime::new(onnxruntime),
+        detector: Detector::new(model),
+        recognizer: Recognizer::new(ocr_model_dir),
     };
     while let Some((request, _body)) = read_message::<_, Request>(&mut input)? {
         // Only `Organize` and `CheckImage` answer with several messages, so they bypass `handle`.
@@ -153,8 +164,13 @@ struct State {
     library_dir: PathBuf,
     pdfium: Option<&'static Pdfium>,
     document: Option<PdfDocument<'static>>,
+    /// The onnxruntime environment that `detector` and `recognizer` share
+    /// (design ocr §6).
+    runtime: Runtime,
     /// Outlives `Open` and `Close`: the model stays loaded until the worker ends.
     detector: Detector,
+    /// Outlives `Open` and `Close` as `detector` does.
+    recognizer: Recognizer,
 }
 
 impl State {
@@ -267,8 +283,19 @@ impl State {
                     .document
                     .as_ref()
                     .ok_or_else(|| error_response(ErrorCode::InvalidParams, None))?;
-                let candidates = self.detector.detect(doc, page)?;
+                let candidates = self.detector.detect(&mut self.runtime, doc, page)?;
                 Ok((Response::Detect { candidates }, Vec::new()))
+            }
+            Request::Ocr { page } => {
+                let doc = self
+                    .document
+                    .as_ref()
+                    .ok_or_else(|| error_response(ErrorCode::InvalidParams, None))?;
+                let result = self.recognizer.read(&mut self.runtime, doc, page)?;
+                let body = serde_json::to_vec(&result).map_err(|e| {
+                    error_response(WorkerCode::OCR_UNAVAILABLE, Some(e.to_string()))
+                })?;
+                Ok((Response::Ocr, body))
             }
             Request::RenderRegion {
                 page,

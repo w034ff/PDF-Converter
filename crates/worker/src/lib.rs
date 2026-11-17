@@ -7,6 +7,8 @@ pub mod client;
 mod crop;
 mod image;
 mod layout;
+pub mod ocr;
+mod onnx;
 mod organize;
 pub mod protocol;
 pub mod server;
@@ -15,8 +17,9 @@ pub mod system_memory;
 mod windows_job;
 
 /// The first command-line argument that makes the app executable run as a
-/// worker; the pdfium library folder, the onnxruntime library file and the
-/// layout model file follow, in that order (design §5.4).
+/// worker; the pdfium library folder, the onnxruntime library file, the
+/// layout model file and the OCR model folder follow, in that order (design
+/// §5.4, design ocr §5).
 pub const WORKER_FLAG: &str = "--pdf-worker";
 
 /// Maximum number of pages a PDF can have before being rejected with `TooManyPages` (design §5.1, §6.6).

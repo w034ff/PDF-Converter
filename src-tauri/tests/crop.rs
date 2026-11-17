@@ -44,7 +44,7 @@ fn library_dir() -> PathBuf {
 
 /// The onnxruntime library and the layout model fetched by
 /// `npm run layout:fetch`, the worker's last two arguments (design §5.4).
-fn layout_args() -> [String; 2] {
+fn layout_args() -> [String; 3] {
     let onnxruntime = if cfg!(windows) {
         "onnxruntime/windows/onnxruntime.dll"
     } else {
@@ -54,6 +54,7 @@ fn layout_args() -> [String; 2] {
     [
         manifest_dir.join(onnxruntime),
         manifest_dir.join("layout-model/PP-DocLayout_plus-L-int8.onnx"),
+        manifest_dir.join("ocr-model"),
     ]
     .map(|path| path.to_string_lossy().into_owned())
 }
@@ -67,7 +68,7 @@ fn missing(name: &str) -> String {
         .into_owned()
 }
 
-fn config_with(layout: [String; 2]) -> WorkerPoolConfig {
+fn config_with(layout: [String; 3]) -> WorkerPoolConfig {
     WorkerPoolConfig::new(
         env!("CARGO_BIN_EXE_pdf-converter"),
         [
@@ -746,6 +747,7 @@ fn layout_unavailable_is_remembered_until_the_pdf_is_opened_again() {
     let state = state_with(config_with([
         layout_args()[0].clone(),
         missing("model.onnx"),
+        layout_args()[2].clone(),
     ]));
     let pdf = open_active(&state, "crop_layout.pdf");
 
@@ -1176,6 +1178,7 @@ fn without_the_model_the_first_page_says_so_and_the_run_ends() {
     let state = state_with(config_with([
         layout_args()[0].clone(),
         missing("model.onnx"),
+        layout_args()[2].clone(),
     ]));
     let pdf = open_active(&state, "shapes.pdf");
 

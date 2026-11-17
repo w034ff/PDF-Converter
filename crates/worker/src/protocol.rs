@@ -246,6 +246,8 @@ pub enum Request {
     /// Detects the photos, figures, charts and tables of page `page`
     /// (design §4.7, §5.1).
     Detect { page: u32 },
+    /// Reads the text of page `page` (1-based) by OCR (design ocr §5).
+    Ocr { page: u32 },
     /// Renders one range of page `page` (design §4.6, §5.1). `image_index`
     /// is set for a photo range; then `photo_native` writes the image's own
     /// pixels and `photo_only` leaves out everything but the image.
@@ -312,11 +314,18 @@ pub enum WorkerOnlyCode {
     /// The pdfium library cannot be loaded or used (design §6.6: the main
     /// process answers `WorkerCrashed`).
     PdfiumUnavailable,
+    /// onnxruntime or the OCR models cannot be loaded, or the models failed
+    /// to run (design ocr §10). Until OCR has a screen it stays a worker code,
+    /// and the main process answers `WorkerCrashed`.
+    OcrUnavailable,
 }
 
 impl WorkerCode {
     /// The pdfium library cannot be loaded or used.
     pub const PDFIUM_UNAVAILABLE: Self = Self::Worker(WorkerOnlyCode::PdfiumUnavailable);
+
+    /// onnxruntime or the OCR models cannot be loaded or run.
+    pub const OCR_UNAVAILABLE: Self = Self::Worker(WorkerOnlyCode::OcrUnavailable);
 }
 
 impl From<ErrorCode> for WorkerCode {
@@ -360,6 +369,9 @@ pub enum Response {
     ImageOnTop { on_top: bool },
     /// The layout candidates of the page, highest score first (design §4.7).
     Detect { candidates: Vec<LayoutCandidate> },
+    /// The page's OCR result: an `OcrPage` as JSON in the message body,
+    /// which can be larger than a header may be (design ocr §5).
+    Ocr,
     /// A range was rendered; the image bytes are in the message body.
     /// `width` and `height` are the written image's size; `scaled_down` is
     /// set when a photo had to be written smaller than its own pixels to stay
@@ -861,6 +873,28 @@ mod tests {
             .unwrap(),
             r#"{"type":"organizeFailed","code":"PdfOpenFailed","detail":null,"source":1}"#
         );
+    }
+
+    #[test]
+    fn ocr_uses_the_names_of_design_ocr_5() {
+        assert_eq!(
+            serde_json::to_string(&Request::Ocr { page: 2 }).unwrap(),
+            r#"{"type":"ocr","page":2}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Response::Ocr).unwrap(),
+            r#"{"type":"ocr"}"#
+        );
+        let error = Response::Error {
+            code: WorkerCode::OCR_UNAVAILABLE,
+            detail: None,
+        };
+        let json = serde_json::to_string(&error).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"error","code":"OcrUnavailable","detail":null}"#
+        );
+        assert_eq!(serde_json::from_str::<Response>(&json).unwrap(), error);
     }
 
     #[test]

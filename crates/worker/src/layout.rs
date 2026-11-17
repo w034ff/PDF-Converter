@@ -3,17 +3,18 @@
 //! model's boxes are turned into photos, figures, charts and tables.
 //!
 //! onnxruntime and the model are loaded on the first `Detect` only, so that a
-//! worker that never detects does not pay for them (design §5.1).
+//! worker that never detects does not pay for them (design §5.1). The
+//! onnxruntime environment is shared with OCR (design ocr §6).
 
 use std::path::{Path, PathBuf};
 
 use image::imageops::FilterType;
 use ort::session::Session;
-use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Tensor;
 use pdfconv_core::{ErrorCode, PHOTO_MATCH_IOU, PageRect, iou};
 use pdfium_render::prelude::PdfDocument;
 
+use crate::onnx::{Runtime, load_session};
 use crate::protocol::{CandidateKind, EmbeddedImage, LayoutCandidate, RenderColor, Response};
 use crate::server::{error_response, load_page, render_page_pixels, size_for_long_side};
 use crate::{MAX_RENDER_PIXELS, crop};
@@ -88,10 +89,8 @@ pub(crate) struct ModelBox {
     pub rect: PageRect,
 }
 
-/// Runs layout detection for one worker, loading onnxruntime and the model
-/// on first use.
+/// Runs layout detection for one worker, loading the model on first use.
 pub(crate) struct Detector {
-    runtime: PathBuf,
     model: PathBuf,
     session: SessionState,
 }
@@ -100,18 +99,14 @@ enum SessionState {
     NotLoaded,
     Loaded(Box<Session>),
     /// Loading failed once; every later `Detect` gets the same error rather
-    /// than trying again (design §5.1). Trying again would also end the
-    /// worker: a second `ort::init_from` after one that failed to load the
-    /// library brings the process down.
+    /// than trying again (design §5.1).
     Unavailable(String),
 }
 
 impl Detector {
-    /// `runtime` is the onnxruntime library file and `model` the model file;
-    /// neither is touched until [`Detector::detect`].
-    pub(crate) fn new(runtime: &Path, model: &Path) -> Self {
+    /// `model` is the model file; it is not touched until [`Detector::detect`].
+    pub(crate) fn new(model: &Path) -> Self {
         Self {
-            runtime: runtime.to_path_buf(),
             model: model.to_path_buf(),
             session: SessionState::NotLoaded,
         }
@@ -126,11 +121,12 @@ impl Detector {
     /// loaded or run.
     pub(crate) fn detect(
         &mut self,
+        runtime: &mut Runtime,
         doc: &PdfDocument<'_>,
         page: u32,
     ) -> Result<Vec<LayoutCandidate>, Response> {
         let pdf_page = load_page(doc, page)?;
-        let session = self.session()?;
+        let session = self.session(runtime)?;
 
         let page_pt = (
             f64::from(pdf_page.width().value),
@@ -151,9 +147,12 @@ impl Detector {
         Ok(candidates(&boxes, (width, height), page_pt, &images))
     }
 
-    fn session(&mut self) -> Result<&mut Session, Response> {
+    fn session(&mut self, runtime: &mut Runtime) -> Result<&mut Session, Response> {
         if matches!(self.session, SessionState::NotLoaded) {
-            self.session = match load_session(&self.runtime, &self.model) {
+            let loaded = runtime
+                .environment()
+                .and_then(|environment| load_session(environment, &self.model, LAYOUT_THREADS));
+            self.session = match loaded {
                 Ok(session) => SessionState::Loaded(Box::new(session)),
                 Err(detail) => SessionState::Unavailable(detail),
             };
@@ -168,40 +167,6 @@ impl Detector {
 
 fn unavailable(detail: String) -> Response {
     error_response(ErrorCode::LayoutUnavailable, Some(detail))
-}
-
-/// Loads onnxruntime from its full path, which keeps another copy on the
-/// system's search path from being used (design §5.4), then the model.
-fn load_session(runtime: &Path, model: &Path) -> Result<Session, String> {
-    let environment = ort::init_from(runtime)
-        .map_err(|e| e.to_string())?
-        // The Windows build registers its event provider as Microsoft telemetry and emits
-        // events for Windows to collect unless they are turned off here (NFR-01, design §8.5).
-        .with_telemetry(false)
-        .build()
-        .map_err(|e| e.to_string())?;
-    let logical_cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
-    let build = || -> ort::Result<Session> {
-        Session::builder(&environment)?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(intra_threads(logical_cpus))?
-            .with_inter_threads(1)?
-            // Idle threads that spin slow inference down (design §4.7, セッション).
-            .with_intra_op_spinning(false)?
-            // The arena keeps the largest allocation it has made for the life of the session,
-            // which counts against WORKER_MEMORY_LIMIT while the worker goes on to other
-            // requests; freed memory goes back to the allocator instead (design §4.7, セッション).
-            .with_execution_providers([ort::ep::CPU::default()
-                .with_arena_allocator(false)
-                .build()])?
-            .commit_from_file(model)
-    };
-    build().map_err(|e| e.to_string())
-}
-
-/// Threads for one inference on a machine with `logical_cpus` logical CPUs.
-fn intra_threads(logical_cpus: usize) -> usize {
-    LAYOUT_THREADS.min(logical_cpus.saturating_sub(1)).max(1)
 }
 
 /// The model's `image` input from the rendered page's RGB `pixels`: squeezed
@@ -726,15 +691,5 @@ mod tests {
             model_box(CHART, 0.9, area),
             model_box(IMAGE, LAYOUT_SCORE_MIN, area),
         ]));
-    }
-
-    #[test]
-    fn inference_leaves_one_logical_cpu_free_and_uses_at_least_one_thread() {
-        assert_eq!(intra_threads(0), 1);
-        assert_eq!(intra_threads(1), 1);
-        assert_eq!(intra_threads(2), 1);
-        assert_eq!(intra_threads(4), 3);
-        assert_eq!(intra_threads(LAYOUT_THREADS + 1), LAYOUT_THREADS);
-        assert_eq!(intra_threads(64), LAYOUT_THREADS);
     }
 }

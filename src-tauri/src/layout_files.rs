@@ -1,4 +1,5 @@
-//! Where the bundled onnxruntime and layout model live (design §5.4, §8.5).
+//! Where the bundled onnxruntime and layout model live (design §5.4, §8.5),
+//! and where the OCR models will (design ocr §8).
 
 use std::path::PathBuf;
 
@@ -40,6 +41,21 @@ pub fn onnxruntime_file(app: &AppHandle) -> tauri::Result<PathBuf> {
 /// Returns Tauri's error when the resource directory cannot be resolved.
 pub fn model_file(app: &AppHandle) -> tauri::Result<PathBuf> {
     resource(app, LAYOUT_MODEL_RESOURCE)
+}
+
+/// The OCR model folder under the resource directory (design ocr §8).
+const OCR_MODEL_RESOURCE: &str = "ocr-model";
+
+/// The OCR model folder, passed to each worker as [`onnxruntime_file`] is.
+/// The models are not bundled until OCR has a screen (design ocr §8), so the
+/// folder does not exist yet and a worker asked for `Ocr` answers
+/// `OcrUnavailable`; the app sends no `Ocr` until then.
+///
+/// # Errors
+///
+/// Returns Tauri's error when the resource directory cannot be resolved.
+pub fn ocr_model_dir(app: &AppHandle) -> tauri::Result<PathBuf> {
+    Ok(app.path().resource_dir()?.join(OCR_MODEL_RESOURCE))
 }
 
 fn resource(app: &AppHandle, components: [&str; 2]) -> tauri::Result<PathBuf> {

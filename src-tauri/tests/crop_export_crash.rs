@@ -91,6 +91,10 @@ fn a_worker_that_dies_fails_the_next_range_and_the_rest_is_not_tried() {
                 .join("layout-model/PP-DocLayout_plus-L-int8.onnx")
                 .to_string_lossy()
                 .into_owned(),
+            manifest_dir
+                .join("ocr-model")
+                .to_string_lossy()
+                .into_owned(),
         ],
     )
     .with_max_workers(1);

@@ -53,12 +53,15 @@ impl IpcError {
 
     /// Turns the `{ code, detail }` a worker answered with into an IPC error.
     ///
-    /// The worker's `PdfiumUnavailable` becomes `WorkerCrashed`, keeping the
-    /// detail (design §6.6).
+    /// The worker's `PdfiumUnavailable` and `OcrUnavailable` become
+    /// `WorkerCrashed`, keeping the detail (design §6.6, design ocr §10). The
+    /// app sends no `Ocr` yet, so `OcrUnavailable` does not reach this.
     pub fn from_worker(code: WorkerCode, detail: Option<&str>) -> Self {
         let code = match code {
             WorkerCode::Ipc(code) => code,
-            WorkerCode::Worker(WorkerOnlyCode::PdfiumUnavailable) => ErrorCode::WorkerCrashed,
+            WorkerCode::Worker(
+                WorkerOnlyCode::PdfiumUnavailable | WorkerOnlyCode::OcrUnavailable,
+            ) => ErrorCode::WorkerCrashed,
         };
         Self {
             code,
@@ -176,6 +179,13 @@ mod tests {
         let err = IpcError::from_worker(WorkerCode::PDFIUM_UNAVAILABLE, Some("library not found"));
         assert_eq!(err.code, ErrorCode::WorkerCrashed);
         assert_eq!(err.detail.as_deref(), Some("library not found"));
+    }
+
+    #[test]
+    fn ocr_unavailable_is_a_crash() {
+        let err = IpcError::from_worker(WorkerCode::OCR_UNAVAILABLE, Some("model not found"));
+        assert_eq!(err.code, ErrorCode::WorkerCrashed);
+        assert_eq!(err.detail.as_deref(), Some("model not found"));
     }
 
     #[test]

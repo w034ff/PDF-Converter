@@ -2731,6 +2731,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "serde_json",
+ "skrifa",
  "tiff",
  "ts-rs",
  "weezl 0.2.1",

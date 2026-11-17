@@ -13,12 +13,13 @@ fn main() -> ExitCode {
         .is_some_and(|flag| flag == pdfconv_worker::WORKER_FLAG)
     {
         let mut paths = args.map(PathBuf::from);
-        let (Some(library_dir), Some(onnxruntime), Some(model)) =
-            (paths.next(), paths.next(), paths.next())
+        let (Some(library_dir), Some(onnxruntime), Some(model), Some(ocr_model_dir)) =
+            (paths.next(), paths.next(), paths.next(), paths.next())
         else {
             return ExitCode::FAILURE;
         };
-        return match pdfconv_worker::server::run(&library_dir, &onnxruntime, &model) {
+        return match pdfconv_worker::server::run(&library_dir, &onnxruntime, &model, &ocr_model_dir)
+        {
             Ok(()) => ExitCode::SUCCESS,
             Err(_) => ExitCode::FAILURE,
         };

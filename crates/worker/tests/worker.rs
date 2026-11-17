@@ -92,9 +92,9 @@ fn loads_pdfium_and_answers_repeatedly() {
 
 #[test]
 fn reports_a_missing_library_as_an_error_without_crashing() {
-    let [_, onnxruntime, model] = worker_paths::worker_args();
+    let [_, onnxruntime, model, ocr_model] = worker_paths::worker_args();
     let empty = std::env::temp_dir().join("pdfconv-no-pdfium-here");
-    let mut worker = worker_paths::start_with([empty.into(), onnxruntime, model]);
+    let mut worker = worker_paths::start_with([empty.into(), onnxruntime, model, ocr_model]);
     match worker.request(&Request::Hello, ANSWER_TIMEOUT) {
         Err(WorkerError::Remote { code, .. }) => assert_eq!(code, WorkerCode::PDFIUM_UNAVAILABLE),
         other => panic!("expected PdfiumUnavailable, got {other:?}"),
@@ -107,12 +107,13 @@ fn reports_a_missing_library_as_an_error_without_crashing() {
 }
 
 #[test]
-fn fails_without_all_three_arguments() {
-    let [library_dir, onnxruntime, _] = worker_paths::worker_args();
+fn fails_without_all_four_arguments() {
+    let [library_dir, onnxruntime, model, _] = worker_paths::worker_args();
     for args in [
         vec![],
         vec![library_dir.clone()],
-        vec![library_dir, onnxruntime],
+        vec![library_dir.clone(), onnxruntime.clone()],
+        vec![library_dir, onnxruntime, model],
     ] {
         let status = Command::new(env!("CARGO_BIN_EXE_pdfconv-worker"))
             .args(&args)

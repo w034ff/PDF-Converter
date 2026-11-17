@@ -1,6 +1,6 @@
 //! The worker's arguments in the tests (design §5.4): the pdfium fetched by
-//! `npm run pdfium:fetch` and the onnxruntime and model fetched by
-//! `npm run layout:fetch` (design §8.1, §8.5). A missing file fails the test
+//! `npm run pdfium:fetch` and the onnxruntime, layout model and OCR models
+//! fetched by `npm run layout:fetch` (design §8.1, §8.5, design ocr §8). A missing file fails the test
 //! that needs it instead of skipping it.
 
 #![allow(
@@ -39,17 +39,22 @@ pub fn model_file() -> PathBuf {
     src_tauri().join("layout-model/PP-DocLayout_plus-L-int8.onnx")
 }
 
-/// The three arguments of a worker using the fetched libraries and model.
-pub fn worker_args() -> [OsString; 3] {
+pub fn ocr_model_dir() -> PathBuf {
+    src_tauri().join("ocr-model")
+}
+
+/// The four arguments of a worker using the fetched libraries and models.
+pub fn worker_args() -> [OsString; 4] {
     [
         library_dir().into(),
         onnxruntime_file().into(),
         model_file().into(),
+        ocr_model_dir().into(),
     ]
 }
 
 /// Starts the standalone worker with `args`.
-pub fn start_with(args: [OsString; 3]) -> WorkerProcess {
+pub fn start_with(args: [OsString; 4]) -> WorkerProcess {
     WorkerProcess::spawn(env!("CARGO_BIN_EXE_pdfconv-worker").as_ref(), args)
         .expect("worker should start")
 }

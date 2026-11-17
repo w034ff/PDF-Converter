@@ -1,0 +1,15 @@
+PP-OCRv6_small_det.onnx, PP-OCRv6_small_rec.onnx, PP-OCRv6_small_rec_dict.txt
+
+These files are PP-OCRv6 small by PaddlePaddle, licensed under the Apache
+License, Version 2.0 (see LICENSE).
+
+Original:
+- https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx
+  (inference.onnx at commit 28fe5895c24fd108c19eb3e8479f4ab385fbfc62)
+- https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx
+  (inference.onnx and inference.yml at commit
+  b8f84f0b80c529de40b4fbb3544b84fa7233a513)
+
+Changes: the two models are unchanged. PP-OCRv6_small_rec_dict.txt is the
+character dictionary of the recogniser's inference.yml written as plain text,
+one character per line (scripts/prepare-ocr-model.py in this repository).

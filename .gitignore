@@ -7,10 +7,11 @@ src-tauri/gen/
 # pdfium is downloaded by scripts/fetch-pdfium.ts, never committed
 src-tauri/pdfium/
 
-# onnxruntime and the layout model are downloaded by scripts/fetch-layout.ts,
-# never committed
+# onnxruntime, the layout model and the OCR models are downloaded by
+# scripts/fetch-layout.ts, never committed
 src-tauri/onnxruntime/
 src-tauri/layout-model/
+src-tauri/ocr-model/
 
 # Environment and secrets
 .env

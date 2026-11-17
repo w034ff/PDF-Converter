@@ -1,6 +1,8 @@
-// Downloads the onnxruntime build and the layout-analysis model pinned in
-// layout-version.json, checks their SHA-256 and places them in
-// src-tauri/onnxruntime/<os>/ and src-tauri/layout-model/ (design §8.5).
+// Downloads the onnxruntime build, the layout-analysis model and the OCR
+// models pinned in layout-version.json, checks their SHA-256 and places them
+// in src-tauri/onnxruntime/<os>/, src-tauri/layout-model/ and
+// src-tauri/ocr-model/ (design §8.5, design ocr §8). The OCR models share
+// onnxruntime with the layout model, so one script fetches both.
 // The app itself never downloads anything; this runs only at build time.
 //
 // Usage: node scripts/fetch-layout.ts
@@ -27,7 +29,7 @@ const MODEL_RELEASES_URL = "https://github.com/w034ff/PDF-Converter/releases";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION_FILE = join(ROOT, "scripts", "layout-version.json");
 // Records which version or release is in place, so a matching copy is not
-// fetched again. onnxruntime and the model each have their own.
+// fetched again. onnxruntime and each model have their own.
 const MARKER_FILE = ".release";
 
 type Os = "linux" | "windows";
@@ -47,7 +49,15 @@ type Onnxruntime = { version: string; assets: Record<Os, OnnxruntimeAsset> };
 
 type Model = { release: string; file: string; sha256: string };
 
-type LayoutVersion = { onnxruntime: Onnxruntime; model: Model };
+type OcrModelFile = { name: string; sha256: string };
+
+type OcrModel = { release: string; files: OcrModelFile[] };
+
+type LayoutVersion = {
+  onnxruntime: Onnxruntime;
+  model: Model;
+  ocrModel: OcrModel;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -74,6 +84,23 @@ function isModel(value: unknown): value is Model {
   );
 }
 
+function isOcrModelFile(value: unknown): value is OcrModelFile {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.sha256 === "string"
+  );
+}
+
+function isOcrModel(value: unknown): value is OcrModel {
+  return (
+    isRecord(value) &&
+    typeof value.release === "string" &&
+    Array.isArray(value.files) &&
+    value.files.every(isOcrModelFile)
+  );
+}
+
 function parseVersion(text: string): LayoutVersion {
   const value: unknown = JSON.parse(text);
   if (
@@ -83,7 +110,8 @@ function parseVersion(text: string): LayoutVersion {
     isRecord(value.onnxruntime.assets) &&
     isOnnxruntimeAsset(value.onnxruntime.assets.linux) &&
     isOnnxruntimeAsset(value.onnxruntime.assets.windows) &&
-    isModel(value.model)
+    isModel(value.model) &&
+    isOcrModel(value.ocrModel)
   ) {
     return {
       onnxruntime: {
@@ -94,6 +122,7 @@ function parseVersion(text: string): LayoutVersion {
         },
       },
       model: value.model,
+      ocrModel: value.ocrModel,
     };
   }
   throw new Error(`${VERSION_FILE} does not have the expected shape`);
@@ -216,10 +245,35 @@ async function fetchModel(model: Model): Promise<void> {
   console.log(`Layout model ${model.release} placed in ${dest}`);
 }
 
+async function fetchOcrModel(model: OcrModel): Promise<void> {
+  const dest = join(ROOT, "src-tauri", "ocr-model");
+  const names = model.files.map((file) => file.name);
+  if (isInPlace(dest, model.release, names)) {
+    console.log(`OCR model ${model.release} is already in ${dest}`);
+    return;
+  }
+
+  // Every file is downloaded and checked before the folder is replaced, so a
+  // failed download leaves the previous copy as it was.
+  const downloaded: [string, Buffer][] = [];
+  for (const file of model.files) {
+    const url = `${MODEL_RELEASES_URL}/download/${model.release}/${file.name}`;
+    downloaded.push([file.name, await download(url, file.name, file.sha256)]);
+  }
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dest, { recursive: true });
+  for (const [name, data] of downloaded) {
+    writeFileSync(join(dest, name), data);
+  }
+  writeFileSync(join(dest, MARKER_FILE), `${model.release}\n`);
+  console.log(`OCR model ${model.release} placed in ${dest}`);
+}
+
 async function main(): Promise<void> {
   const version = parseVersion(readFileSync(VERSION_FILE, "utf8"));
   await fetchOnnxruntime(currentOs(), version.onnxruntime);
   await fetchModel(version.model);
+  await fetchOcrModel(version.ocrModel);
 }
 
 await main();

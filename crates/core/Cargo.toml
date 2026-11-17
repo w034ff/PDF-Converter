@@ -52,3 +52,6 @@ md-5 = "0.11"
 pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
 # Writes the pHYs chunk, which image's PNG encoder cannot.
 png = "0.18"
+# Looks up the glyphs of the OCR test pages (examples/gen_ocr_fixtures.rs,
+# design ocr §11). The version krilla uses, so no other copy is built.
+skrifa = "0.42.1"

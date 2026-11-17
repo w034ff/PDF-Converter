@@ -165,6 +165,9 @@ impl WorkerPoolConfig {
             | Request::ImageOnTop { .. }
             | Request::RenderRegion { .. } => self.render_timeout,
             Request::Detect { .. } => self.detect_timeout,
+            // The app sends no `Ocr` until OCR has a screen (design ocr §1); the worker's own
+            // limit stands until then.
+            Request::Ocr { .. } => pdfconv_worker::client::OCR_TIMEOUT,
             // The wait between two answers of the stream, not for the whole request: the time
             // of a TIFF grows with its pages.
             Request::CheckImage { .. } => self.render_timeout,
