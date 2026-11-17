@@ -9,14 +9,14 @@
 
 use std::collections::BTreeSet;
 
-use pdfconv_core::{ErrorCode, POINTS_PER_INCH};
+use pdfconv_core::{ErrorCode, POINTS_PER_INCH, PageRect};
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfMatrix, PdfPage, PdfPageContentRegenerationStrategy, PdfPageObject,
     PdfPageObjectsCommon, PdfPoints, PdfRenderConfig,
 };
 
 use crate::is_render_dpi_in_range;
-use crate::protocol::{EmbeddedImage, NativeSize, RectPt, RenderColor, RenderFormat, Response};
+use crate::protocol::{EmbeddedImage, NativeSize, RenderColor, RenderFormat, Response};
 use crate::server::{encode_pixels, error_response, load_page, pixels_from_rgba};
 
 /// Device pixels per point when measuring the display matrix. Large, so that
@@ -142,7 +142,7 @@ fn display_matrix(page: &PdfPage<'_>) -> Result<Matrix, Response> {
     let probe = |x: f32, y: f32| -> Result<(f64, f64), Response> {
         let (device_x, device_y) = page
             .points_to_pixels(PdfPoints::new(x), PdfPoints::new(y), &config)
-            .map_err(|e| error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}"))))?;
+            .map_err(pdfium_failed)?;
         Ok((
             f64::from(device_x) * width / f64::from(probe_width),
             f64::from(device_y) * height / f64::from(probe_height),
@@ -232,7 +232,7 @@ fn walk_images(page: &PdfPage<'_>) -> Vec<PlacedImage> {
 
 /// The frame of a unit square mapped by `unit_to_display`: its bounding box
 /// cut to the page. `None` when nothing of it is on the page.
-fn frame_on_page(unit_to_display: Matrix, page_width: f64, page_height: f64) -> Option<RectPt> {
+fn frame_on_page(unit_to_display: Matrix, page_width: f64, page_height: f64) -> Option<PageRect> {
     let corners =
         [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)].map(|(x, y)| apply(unit_to_display, x, y));
     let x0 = corners.iter().map(|c| c.0).fold(f64::INFINITY, f64::min);
@@ -245,7 +245,7 @@ fn frame_on_page(unit_to_display: Matrix, page_width: f64, page_height: f64) -> 
         .iter()
         .map(|c| c.1)
         .fold(f64::NEG_INFINITY, f64::max);
-    let frame = RectPt {
+    let frame = PageRect {
         x0: x0.max(0.0),
         y0: y0.max(0.0),
         x1: x1.min(page_width),
@@ -272,7 +272,7 @@ struct ListedImage {
     placed: PlacedImage,
     info: EmbeddedImage,
     /// The frame of the whole image on the shown page, cut to the page.
-    frame: RectPt,
+    frame: PageRect,
     /// Image pixel (column, row from the top) → shown page, 1 pt = 1.
     pixel_to_display: Matrix,
 }
@@ -515,7 +515,7 @@ fn shown_rect(
     image: &ListedImage,
     grid: &Grid,
     visible: Option<PixelBox>,
-) -> Result<Option<RectPt>, Response> {
+) -> Result<Option<PageRect>, Response> {
     let Some(visible) = visible else {
         return Ok(None);
     };
@@ -531,7 +531,7 @@ fn shown_rect(
     );
     let corners = [(left, top), (right, top), (left, bottom), (right, bottom)]
         .map(|(x, y)| apply(to_display, f64::from(x), f64::from(y)));
-    let rect = RectPt {
+    let rect = PageRect {
         x0: corners
             .iter()
             .map(|c| c.0)
@@ -617,7 +617,7 @@ pub(crate) fn page_images(
         .iter()
         .map(|image| image_grid(image, VISIBLE_CHECK_PIXELS))
         .collect::<Result<Vec<_>, _>>()?;
-    let frames: Vec<RectPt> = candidates.iter().map(|image| image.frame).collect();
+    let frames: Vec<PageRect> = candidates.iter().map(|image| image.frame).collect();
     let reaches = grids
         .iter()
         .map(grid_reach)
@@ -645,13 +645,13 @@ pub(crate) fn page_images(
 
 /// The display-space box that the pixels of `grid` reach, one grid pixel
 /// wider on each side.
-fn grid_reach(grid: &Grid) -> Result<RectPt, Response> {
+fn grid_reach(grid: &Grid) -> Result<PageRect, Response> {
     let to_display =
         invert(grid.matrix).ok_or_else(|| error_response(ErrorCode::InvalidParams, None))?;
     let (right, bottom) = (f64::from(grid.width) + 1.0, f64::from(grid.height) + 1.0);
     let corners = [(-1.0, -1.0), (right, -1.0), (-1.0, bottom), (right, bottom)]
         .map(|(x, y)| apply(to_display, x, y));
-    Ok(RectPt {
+    Ok(PageRect {
         x0: corners.iter().map(|c| c.0).fold(f64::INFINITY, f64::min),
         y0: corners.iter().map(|c| c.1).fold(f64::INFINITY, f64::min),
         x1: corners
@@ -665,7 +665,7 @@ fn grid_reach(grid: &Grid) -> Result<RectPt, Response> {
     })
 }
 
-fn overlaps(a: &RectPt, b: &RectPt) -> bool {
+fn overlaps(a: &PageRect, b: &PageRect) -> bool {
     a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
 }
 
@@ -675,7 +675,7 @@ fn overlaps(a: &RectPt, b: &RectPt) -> bool {
 /// ([`grid_reach`], `reaches`) of another member's grid. Reloading the page
 /// for each isolation is what costs (design §4.6, 埋め込み画像の一覧), and
 /// side-by-side images such as the tiles of a map then share one.
-fn apart_groups(frames: &[RectPt], reaches: &[RectPt]) -> Vec<Vec<usize>> {
+fn apart_groups(frames: &[PageRect], reaches: &[PageRect]) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
     for i in 0..frames.len() {
         let apart =
@@ -853,13 +853,13 @@ fn isolated_page<'a>(
         } else {
             page.objects_mut()
                 .remove_object_at_index(position)
-                .map_err(removal_failed)?;
+                .map_err(pdfium_failed)?;
         }
     }
     for (position, &index) in kept.iter().enumerate() {
         let inner = paths_below(paths, index);
         if !inner.is_empty() {
-            let mut form = page.objects().get(position).map_err(removal_failed)?;
+            let mut form = page.objects().get(position).map_err(pdfium_failed)?;
             keep_in_form(&mut form, &inner)?;
         }
     }
@@ -881,13 +881,13 @@ fn keep_in_form(object: &mut PdfPageObject<'_>, paths: &[&[usize]]) -> Result<()
             position += 1;
         } else {
             form.remove_object_at_index(position)
-                .map_err(removal_failed)?;
+                .map_err(pdfium_failed)?;
         }
     }
     for (position, &index) in kept.iter().enumerate() {
         let inner = paths_below(paths, index);
         if !inner.is_empty() {
-            let mut child = form.get(position).map_err(removal_failed)?;
+            let mut child = form.get(position).map_err(pdfium_failed)?;
             keep_in_form(&mut child, &inner)?;
         }
     }
@@ -908,7 +908,8 @@ fn paths_below<'p>(paths: &[&'p [usize]], index: usize) -> Vec<&'p [usize]> {
         .collect()
 }
 
-fn removal_failed(e: pdfium_render::prelude::PdfiumError) -> Response {
+/// A `PdfOpenFailed` with pdfium's error as its detail.
+fn pdfium_failed(e: pdfium_render::prelude::PdfiumError) -> Response {
     error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}")))
 }
 
@@ -926,19 +927,19 @@ struct Draw<'a, 'b> {
 
 /// Renders to RGBA bytes (straight alpha).
 fn render_rgba(draw: &Draw<'_, '_>) -> Result<Vec<u8>, Response> {
-    let failed = |e: pdfium_render::prelude::PdfiumError| {
-        error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}")))
-    };
     let mut config = PdfRenderConfig::new()
         .set_fixed_size(draw.width as i32, draw.height as i32)
         .set_clear_color(draw.background)
         .render_annotations(draw.annotations)
         .apply_matrix(to_pdf(draw.matrix))
-        .map_err(failed)?;
+        .map_err(pdfium_failed)?;
     if draw.gray {
         config = config.use_grayscale_rendering(true);
     }
-    let bitmap = draw.page.render_with_config(&config).map_err(failed)?;
+    let bitmap = draw
+        .page
+        .render_with_config(&config)
+        .map_err(pdfium_failed)?;
     Ok(bitmap.as_rgba_bytes())
 }
 
@@ -1029,7 +1030,7 @@ pub(crate) fn image_on_top(
 /// The parameters of `RenderRegion` (design §5.1).
 pub(crate) struct RegionRequest {
     pub page: u32,
-    pub rect: RectPt,
+    pub rect: PageRect,
     pub image_index: Option<u32>,
     pub dpi: u32,
     pub format: RenderFormat,
@@ -1213,8 +1214,8 @@ mod tests {
         assert!(frame_on_page(place(-50.0, 0.0, 10.0, 10.0), 100.0, 100.0).is_none());
     }
 
-    fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> RectPt {
-        RectPt { x0, y0, x1, y1 }
+    fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> PageRect {
+        PageRect { x0, y0, x1, y1 }
     }
 
     #[test]

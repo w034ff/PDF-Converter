@@ -9,7 +9,7 @@ use image::ImageEncoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
 use image::codecs::webp::WebPEncoder;
-use pdfconv_core::{ErrorCode, POINTS_PER_INCH};
+use pdfconv_core::{ErrorCode, POINTS_PER_INCH, format_with_commas};
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfPage, PdfRenderConfig, Pdfium, PdfiumError, PdfiumInternalError,
 };
@@ -74,14 +74,24 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
     };
     while let Some((request, _body)) = read_message::<_, Request>(&mut input)? {
         // Only `Organize` and `CheckImage` answer with several messages, so they bypass `handle`.
-        if let Request::CheckImage { path } = &request {
-            #[cfg(feature = "test-hooks")]
-            fail_image_for_test(path);
-            crate::image::check(path, &mut output)?;
-            continue;
-        }
-        match OrganizeArgs::from_request(request) {
-            Ok(args) => {
+        match request {
+            Request::CheckImage { path } => {
+                #[cfg(feature = "test-hooks")]
+                fail_image_for_test(&path);
+                crate::image::check(&path, &mut output)?;
+            }
+            Request::Organize {
+                sources,
+                pages,
+                creator,
+                output_password,
+            } => {
+                let args = OrganizeArgs {
+                    sources,
+                    pages,
+                    creator,
+                    output_password,
+                };
                 #[cfg(feature = "test-hooks")]
                 fail_organize_for_test(&args);
                 state.document = None;
@@ -90,7 +100,7 @@ pub fn run(library_dir: &Path, onnxruntime: &Path, model: &Path) -> io::Result<(
                     Err(response) => write_message(&mut output, &response, &[])?,
                 }
             }
-            Err(request) => {
+            request => {
                 let (response, body) = state.handle(request);
                 write_message(&mut output, &response, &body)?;
             }
@@ -132,25 +142,11 @@ pub(crate) fn check_page_count(count: u32) -> Result<(), Response> {
     } else if count > MAX_PDF_PAGES {
         Err(error_response(
             ErrorCode::TooManyPages,
-            Some(format_number_with_commas(MAX_PDF_PAGES)),
+            Some(format_with_commas(u64::from(MAX_PDF_PAGES))),
         ))
     } else {
         Ok(())
     }
-}
-
-fn format_number_with_commas(n: u32) -> String {
-    let s = n.to_string();
-    let mut result = String::with_capacity(s.len() + s.len() / 3);
-    let chars: Vec<char> = s.chars().collect();
-    let len = chars.len();
-    for (i, &ch) in chars.iter().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            result.push(',');
-        }
-        result.push(ch);
-    }
-    result
 }
 
 struct State {
@@ -345,15 +341,14 @@ impl State {
     }
 
     fn pdfium(&mut self) -> Result<&'static Pdfium, Response> {
-        if self.pdfium.is_none() {
-            let path = Pdfium::pdfium_platform_library_name_at_path(&self.library_dir);
-            let bindings = Pdfium::bind_to_library(&path).map_err(|e| unavailable(&e))?;
-            let instance = Pdfium::new(bindings);
-            let static_ref: &'static Pdfium = Box::leak(Box::new(instance));
-            self.pdfium = Some(static_ref);
+        if let Some(pdfium) = self.pdfium {
+            return Ok(pdfium);
         }
-        self.pdfium
-            .ok_or_else(|| unavailable(&"pdfium was not stored"))
+        let path = Pdfium::pdfium_platform_library_name_at_path(&self.library_dir);
+        let bindings = Pdfium::bind_to_library(&path).map_err(|e| unavailable(&e))?;
+        let pdfium: &'static Pdfium = Box::leak(Box::new(Pdfium::new(bindings)));
+        self.pdfium = Some(pdfium);
+        Ok(pdfium)
     }
 }
 
@@ -574,15 +569,6 @@ mod tests {
                 "{color:?}, keep_alpha {keep_alpha}"
             );
         }
-    }
-
-    #[test]
-    fn formats_numbers_with_commas() {
-        assert_eq!(format_number_with_commas(0), "0");
-        assert_eq!(format_number_with_commas(999), "999");
-        assert_eq!(format_number_with_commas(1000), "1,000");
-        assert_eq!(format_number_with_commas(10000), "10,000");
-        assert_eq!(format_number_with_commas(1000000), "1,000,000");
     }
 
     #[cfg(feature = "test-hooks")]

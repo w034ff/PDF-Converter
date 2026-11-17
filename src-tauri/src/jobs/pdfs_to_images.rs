@@ -106,7 +106,8 @@ where
     let existing = list_existing_files(output_dir)?;
 
     let mut naming_inputs = Vec::new();
-    let mut initial_tasks = Vec::new();
+    let mut tasks = VecDeque::new();
+    let mut total_pages_all = 0u32;
 
     for &id in ids {
         let entry = state
@@ -131,7 +132,15 @@ where
             pages: pages.clone(),
         });
 
-        initial_tasks.push((id, filename, entry.open_request(), entry.error, pages));
+        total_pages_all = total_pages_all.saturating_add(pages.len() as u32);
+        tasks.push_back(PdfConversionTask {
+            id,
+            filename,
+            open_request: entry.open_request(),
+            initial_error: entry.error,
+            pages,
+            planned_names: Vec::new(),
+        });
     }
 
     let resolved_names_nested =
@@ -145,21 +154,8 @@ where
     }
     let used_names_lower = Mutex::new(initial_used);
 
-    let mut total_pages_all = 0u32;
-    let mut tasks = VecDeque::new();
-
-    for ((id, filename, open_request, initial_error, pages), planned_names) in
-        initial_tasks.into_iter().zip(resolved_names_nested)
-    {
-        total_pages_all = total_pages_all.saturating_add(pages.len() as u32);
-        tasks.push_back(PdfConversionTask {
-            id,
-            filename,
-            open_request,
-            initial_error,
-            pages,
-            planned_names,
-        });
+    for (task, planned_names) in tasks.iter_mut().zip(resolved_names_nested) {
+        task.planned_names = planned_names;
     }
 
     on_progress(JobProgressPayload {

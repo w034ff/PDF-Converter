@@ -9,7 +9,7 @@ use std::io::{self, Read, Write};
 use std::ops::Deref;
 use std::path::PathBuf;
 
-use pdfconv_core::ErrorCode;
+use pdfconv_core::{ErrorCode, PageRect};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Upper bound on a header, so a corrupt length cannot make the reader
@@ -134,16 +134,6 @@ pub struct PageDimensions {
     pub height_pt: f32,
 }
 
-/// A rectangle on a page, in points, in the orientation the page is shown in:
-/// the origin is the top-left corner and y grows downwards (design §4.6).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct RectPt {
-    pub x0: f64,
-    pub y0: f64,
-    pub x1: f64,
-    pub y1: f64,
-}
-
 /// One embedded image of a page (design §4.6, §5.1).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,7 +144,7 @@ pub struct EmbeddedImage {
     pub image_index: u32,
     /// The part of the image's frame that shows on the page, cut to the
     /// page: a clip or a mask can hide the rest (design §4.6).
-    pub rect_pt: RectPt,
+    pub rect_pt: PageRect,
     pub px_width: u32,
     pub px_height: u32,
     /// The size the image is written at in its own pixels, or `None` when it
@@ -196,7 +186,7 @@ pub struct LayoutCandidate {
     pub kind: CandidateKind,
     /// The model's confidence in the box, also for a photo.
     pub score: f32,
-    pub rect_pt: RectPt,
+    pub rect_pt: PageRect,
     /// The matched embedded image; set only for [`CandidateKind::Photo`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_index: Option<u32>,
@@ -261,7 +251,7 @@ pub enum Request {
     /// pixels and `photo_only` leaves out everything but the image.
     RenderRegion {
         page: u32,
-        rect_pt: RectPt,
+        rect_pt: PageRect,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         image_index: Option<u32>,
         dpi: u32,
@@ -717,7 +707,7 @@ mod tests {
     fn crop_requests_use_the_names_of_design_5_1() {
         let region = Request::RenderRegion {
             page: 2,
-            rect_pt: RectPt {
+            rect_pt: PageRect {
                 x0: 1.5,
                 y0: 2.0,
                 x1: 30.0,
@@ -763,7 +753,7 @@ mod tests {
         let images = Response::PageImages {
             images: vec![EmbeddedImage {
                 image_index: 2,
-                rect_pt: RectPt {
+                rect_pt: PageRect {
                     x0: 1.0,
                     y0: 2.0,
                     x1: 3.0,
@@ -879,7 +869,7 @@ mod tests {
             serde_json::to_string(&Request::Detect { page: 3 }).unwrap(),
             r#"{"type":"detect","page":3}"#
         );
-        let rect_pt = RectPt {
+        let rect_pt = PageRect {
             x0: 1.0,
             y0: 2.0,
             x1: 3.0,

@@ -93,8 +93,10 @@ impl ProbeError {
     }
 }
 
-/// Formats an integer with comma thousands separators without external dependencies.
-pub(crate) fn format_with_commas(mut n: u64) -> String {
+/// Formats an integer with comma thousands separators, as error details show
+/// limits (design §6.6).
+#[must_use]
+pub fn format_with_commas(mut n: u64) -> String {
     if n == 0 {
         return "0".to_string();
     }
@@ -138,18 +140,9 @@ impl std::error::Error for ProbeError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PdfWriteError(pub(crate) String);
 
-impl PdfWriteError {
-    /// Returns the IPC error code of design §6.6.
-    #[must_use]
-    pub fn code(&self) -> ErrorCode {
-        ErrorCode::WriteFailed
-    }
-
-    /// Returns the error detail string if applicable (design §6.6).
-    #[must_use]
-    pub fn detail(&self) -> Option<String> {
-        None
-    }
+/// A [`PdfWriteError`] whose message is `err`.
+pub(crate) fn write_failed(err: impl fmt::Display) -> PdfWriteError {
+    PdfWriteError(err.to_string())
 }
 
 impl fmt::Display for PdfWriteError {
@@ -217,10 +210,8 @@ mod tests {
     }
 
     #[test]
-    fn pdf_write_error_code_and_detail() {
+    fn pdf_write_error_display() {
         let err = PdfWriteError("unexpected error".to_string());
-        assert_eq!(err.code(), ErrorCode::WriteFailed);
-        assert_eq!(err.detail(), None);
         assert_eq!(err.to_string(), "failed to write PDF: unexpected error");
     }
 }

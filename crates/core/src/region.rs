@@ -3,10 +3,12 @@
 //! Nothing here depends on pdfium: the worker measures the page, this module
 //! only orders and compares the rectangles it is given.
 
+use serde::{Deserialize, Serialize};
+
 /// A rectangle on a page, in points, in the orientation the page is shown in
 /// (after `/Rotate`): the origin is the top-left corner and y grows downwards
 /// (design §4.6).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PageRect {
     pub x0: f64,
     pub y0: f64,

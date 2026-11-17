@@ -12,7 +12,7 @@ use std::sync::atomic::Ordering;
 use pdfconv_core::naming::{CropRegion, resolve_crop_names};
 use pdfconv_core::{ErrorCode, PageRect, position_order};
 use pdfconv_worker::is_render_dpi_in_range;
-use pdfconv_worker::protocol::{RectPt, Request, Response};
+use pdfconv_worker::protocol::{Request, Response};
 use serde::Deserialize;
 use ts_rs::TS;
 
@@ -46,7 +46,7 @@ pub struct CropRegionInput {
 struct PlannedRange {
     key: u64,
     page: u32,
-    rect_pt: RectPt,
+    rect_pt: PageRect,
     image_index: Option<u32>,
     name: String,
 }
@@ -62,7 +62,7 @@ struct ExportPlan {
     ranges: Vec<PlannedRange>,
     /// The names in the output folder and the planned ones, in lower case, for
     /// `save_atomic` to pick numbers from when a name is taken meanwhile.
-    taken_lower: HashSet<String>,
+    taken_lower: Mutex<HashSet<String>>,
 }
 
 fn page_rect(rect_pt: &[f64; 4]) -> PageRect {
@@ -186,11 +186,10 @@ fn plan_ranges(
         .into_iter()
         .map(|index| {
             let region = &regions[index];
-            let [x0, y0, x1, y1] = region.rect_pt;
             PlannedRange {
                 key: region.key,
                 page: region.page,
-                rect_pt: RectPt { x0, y0, x1, y1 },
+                rect_pt: named[index].rect,
                 image_index: region.image_index,
                 name: names[index].clone(),
             }
@@ -264,7 +263,7 @@ where
         output_dir,
         options,
         ranges,
-        taken_lower,
+        taken_lower: Mutex::new(taken_lower),
     };
 
     let JobCallbacks {
@@ -338,7 +337,6 @@ fn write_range(
     worker: &mut PooledWorker,
     plan: &ExportPlan,
     range: &PlannedRange,
-    taken_lower: &Mutex<HashSet<String>>,
 ) -> Result<String, IpcError> {
     let options = &plan.options;
     let request = Request::RenderRegion {
@@ -353,7 +351,7 @@ fn write_range(
     };
     match worker.send(&request)? {
         (Response::RenderRegion { .. }, image) => {
-            jobs::save_atomic(&plan.output_dir, &range.name, &image, taken_lower)
+            jobs::save_atomic(&plan.output_dir, &range.name, &image, &plan.taken_lower)
         }
         _ => Err(unexpected_response()),
     }
@@ -374,7 +372,6 @@ fn run_crop_export(
             current: Some(plan.pdf_name.clone()),
         });
     };
-    let taken_lower = Mutex::new(plan.taken_lower.clone());
     let mut tally = Tally::default();
     let mut cancelled = false;
 
@@ -394,7 +391,7 @@ fn run_crop_export(
                     cancelled = true;
                     break;
                 }
-                let result = write_range(&mut worker, plan, range, &taken_lower);
+                let result = write_range(&mut worker, plan, range);
                 let ends = result.as_ref().err().is_some_and(ends_the_export);
                 report(range, result, on_item, &mut tally);
                 progress(tally.reached);

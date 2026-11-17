@@ -10,8 +10,7 @@ use std::path::PathBuf;
 use pdfconv_core::{ErrorCode, PageRect, iou};
 use pdfconv_worker::client::{DETECT_TIMEOUT, RENDER_TIMEOUT, WorkerError, WorkerProcess};
 use pdfconv_worker::protocol::{
-    CandidateKind, EmbeddedImage, LayoutCandidate, RectPt, RenderColor, RenderFormat, Request,
-    Response,
+    CandidateKind, EmbeddedImage, LayoutCandidate, RenderColor, RenderFormat, Request, Response,
 };
 
 /// The bar chart of `crop_layout.pdf` with its axes, as `crop_layout_pdf` in
@@ -68,7 +67,7 @@ fn page_images(worker: &mut WorkerProcess) -> Vec<EmbeddedImage> {
     }
 }
 
-fn page_rect(rect: &RectPt) -> PageRect {
+fn page_rect(rect: &PageRect) -> PageRect {
     PageRect {
         x0: rect.x0,
         y0: rect.y0,

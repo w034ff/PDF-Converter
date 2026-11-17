@@ -15,6 +15,9 @@ pub struct IpcError {
     pub detail: Option<String>,
 }
 
+/// Bytes in the "MB" of the details of `OutputTooLarge` and `MergeTooLarge`.
+const BYTES_PER_MB: u64 = 1024 * 1024;
+
 impl IpcError {
     /// An error with a detail string.
     pub fn new(code: ErrorCode, detail: impl Into<String>) -> Self {
@@ -27,6 +30,20 @@ impl IpcError {
     /// An error without a detail.
     pub fn from_code(code: ErrorCode) -> Self {
         Self { code, detail: None }
+    }
+
+    /// An error for an output over its size limit, with `"{estimate} MB / {limit} MB"` as its
+    /// detail. The estimate is rounded up, so that one just over the limit does not read as
+    /// the limit.
+    pub fn over_limit(code: ErrorCode, estimate: u64, limit: u64) -> Self {
+        Self::new(
+            code,
+            format!(
+                "{} MB / {} MB",
+                estimate.div_ceil(BYTES_PER_MB),
+                limit / BYTES_PER_MB
+            ),
+        )
     }
 
     /// A `WriteFailed` with `error` as its detail.

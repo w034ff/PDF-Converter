@@ -12,7 +12,7 @@ use std::io::Write;
 
 use lopdf::{Dictionary, Document, Object};
 
-use crate::error::PdfWriteError;
+use crate::error::{PdfWriteError, write_failed};
 use crate::pdf_encrypt::{OutputPassword, encrypt_document};
 
 pub use source::{RAW_MAX_DECOMPRESSED, read_source_details};
@@ -25,10 +25,6 @@ pub use types::{
 /// same link. pdfium reports a rectangle as it reads it from the file; this absorbs the rounding
 /// of a rewritten file.
 pub const LINK_RECT_TOLERANCE_PT: f32 = 0.5;
-
-fn write_failed(err: impl std::fmt::Display) -> PdfWriteError {
-    PdfWriteError(err.to_string())
-}
 
 /// A PDF text string: PDFDocEncoding-compatible ASCII as it is, anything else as UTF-16BE with a
 /// byte order mark.

@@ -14,9 +14,7 @@ use ort::value::Tensor;
 use pdfconv_core::{ErrorCode, PHOTO_MATCH_IOU, PageRect, iou};
 use pdfium_render::prelude::PdfDocument;
 
-use crate::protocol::{
-    CandidateKind, EmbeddedImage, LayoutCandidate, RectPt, RenderColor, Response,
-};
+use crate::protocol::{CandidateKind, EmbeddedImage, LayoutCandidate, RenderColor, Response};
 use crate::server::{error_response, load_page, render_page_pixels, size_for_long_side};
 use crate::{MAX_RENDER_PIXELS, crop};
 
@@ -432,7 +430,7 @@ fn without_overlaps(mut boxes: Vec<ModelBox>) -> Vec<ModelBox> {
 fn matching_image<'a>(rect: &PageRect, images: &'a [EmbeddedImage]) -> Option<&'a EmbeddedImage> {
     let mut best: Option<(&EmbeddedImage, f64)> = None;
     for image in images {
-        let overlap = iou(rect, &page_rect(&image.rect_pt));
+        let overlap = iou(rect, &image.rect_pt);
         if overlap >= PHOTO_MATCH_IOU && best.is_none_or(|(_, b)| overlap > b) {
             best = Some((image, overlap));
         }
@@ -444,26 +442,8 @@ fn box_candidate(kind: CandidateKind, picture: &Picture) -> LayoutCandidate {
     LayoutCandidate {
         kind,
         score: picture.score,
-        rect_pt: rect_pt(&picture.rect),
+        rect_pt: picture.rect,
         image_index: None,
-    }
-}
-
-fn page_rect(rect: &RectPt) -> PageRect {
-    PageRect {
-        x0: rect.x0,
-        y0: rect.y0,
-        x1: rect.x1,
-        y1: rect.y1,
-    }
-}
-
-fn rect_pt(rect: &PageRect) -> RectPt {
-    RectPt {
-        x0: rect.x0,
-        y0: rect.y0,
-        x1: rect.x1,
-        y1: rect.y1,
     }
 }
 
@@ -492,7 +472,7 @@ mod tests {
     fn image(image_index: u32, rect: PageRect) -> EmbeddedImage {
         EmbeddedImage {
             image_index,
-            rect_pt: rect_pt(&rect),
+            rect_pt: rect,
             px_width: 10,
             px_height: 10,
             native_size: None,
@@ -545,7 +525,7 @@ mod tests {
         let found = candidates(&boxes, (1000, 800), (500.0, 400.0), &[]);
         assert_eq!(
             found[0].rect_pt,
-            RectPt {
+            PageRect {
                 x0: 0.0,
                 y0: 0.0,
                 x1: 500.0,
@@ -610,7 +590,7 @@ mod tests {
         let portrait = candidates(&boxes, (1000, 1600), (600.0, 800.0), &[]);
         assert_eq!(
             portrait[0].rect_pt,
-            RectPt {
+            PageRect {
                 x0: 60.0,
                 y0: 100.0,
                 x1: 300.0,
@@ -620,7 +600,7 @@ mod tests {
         let landscape = candidates(&boxes, (1600, 1000), (800.0, 600.0), &[]);
         assert_eq!(
             landscape[0].rect_pt,
-            RectPt {
+            PageRect {
                 x0: 50.0,
                 y0: 120.0,
                 x1: 250.0,
@@ -657,7 +637,7 @@ mod tests {
             vec![LayoutCandidate {
                 kind: CandidateKind::Photo,
                 score: 0.7,
-                rect_pt: rect_pt(&frame),
+                rect_pt: frame,
                 image_index: Some(4),
             }]
         );
@@ -669,7 +649,7 @@ mod tests {
             vec![LayoutCandidate {
                 kind: CandidateKind::Figure,
                 score: 0.7,
-                rect_pt: rect_pt(&below_rect),
+                rect_pt: below_rect,
                 image_index: None,
             }]
         );

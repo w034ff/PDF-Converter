@@ -39,16 +39,6 @@ pub enum WorkerPoolError {
     },
 }
 
-impl WorkerPoolError {
-    /// Additional details about the error, if any.
-    pub fn detail(&self) -> Option<&str> {
-        match self {
-            Self::WorkerCrashed | Self::WorkerTimeout => None,
-            Self::Remote { detail, .. } => detail.as_deref(),
-        }
-    }
-}
-
 impl std::fmt::Display for WorkerPoolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -200,7 +190,6 @@ struct IdleWorker {
 struct PoolState {
     idle: Vec<IdleWorker>,
     total_workers: usize,
-    shutting_down: bool,
     /// Whether [`close_idle_pdfs`] is running; it ends when no idle worker holds a PDF.
     closer_running: bool,
 }
@@ -226,37 +215,11 @@ impl WorkerPool {
                 state: Mutex::new(PoolState {
                     idle: Vec::new(),
                     total_workers: 0,
-                    shutting_down: false,
                     closer_running: false,
                 }),
                 available: Condvar::new(),
             }),
         }
-    }
-
-    /// The maximum number of concurrent workers allowed in this pool.
-    pub fn max_workers(&self) -> usize {
-        self.inner.config.max_workers
-    }
-
-    /// The timeout for opening documents.
-    pub fn open_timeout(&self) -> Duration {
-        self.inner.config.open_timeout
-    }
-
-    /// The timeout for rendering pages or thumbnails.
-    pub fn render_timeout(&self) -> Duration {
-        self.inner.config.render_timeout
-    }
-
-    /// The timeout for detecting a page's layout.
-    pub fn detect_timeout(&self) -> Duration {
-        self.inner.config.detect_timeout
-    }
-
-    /// The longest wait between two answers of an `Organize` request.
-    pub fn organize_step_timeout(&self) -> Duration {
-        self.inner.config.organize_step_timeout
     }
 
     /// How long to wait for the answer to `request`; see
@@ -320,9 +283,6 @@ impl WorkerPool {
     ) -> Result<PooledWorker, WorkerPoolError> {
         let mut state = self.inner.state.lock().expect("worker pool mutex poisoned");
         loop {
-            if state.shutting_down {
-                return Err(WorkerPoolError::WorkerCrashed);
-            }
             let idle = &state.idle;
             let index = idle
                 .iter()
@@ -370,14 +330,6 @@ impl WorkerPool {
                 .wait(state)
                 .expect("worker pool condvar wait poisoned");
         }
-    }
-
-    /// Shuts down all idle workers in the pool and signals waiting threads.
-    pub fn shutdown(&self) {
-        let mut state = self.inner.state.lock().expect("worker pool mutex poisoned");
-        state.shutting_down = true;
-        state.idle.clear();
-        self.inner.available.notify_all();
     }
 }
 
@@ -464,7 +416,7 @@ impl Drop for PooledWorker {
     fn drop(&mut self) {
         if let Some(worker) = self.worker.take() {
             let mut state = self.pool.state.lock().expect("worker pool mutex poisoned");
-            if worker.is_dead() || state.shutting_down {
+            if worker.is_dead() {
                 drop(worker);
                 state.total_workers -= 1;
             } else {
@@ -526,7 +478,8 @@ mod tests {
     use std::path::PathBuf;
 
     use pdfconv_core::ErrorCode;
-    use pdfconv_worker::protocol::{RectPt, RenderColor, RenderFormat};
+    use pdfconv_core::PageRect;
+    use pdfconv_worker::protocol::{RenderColor, RenderFormat};
 
     use super::*;
 
@@ -558,7 +511,7 @@ mod tests {
         };
         let region = Request::RenderRegion {
             page: 1,
-            rect_pt: RectPt {
+            rect_pt: PageRect {
                 x0: 0.0,
                 y0: 0.0,
                 x1: 1.0,
@@ -661,11 +614,9 @@ mod tests {
     fn maps_worker_errors_to_pool_errors() {
         let crashed = WorkerPoolError::from(WorkerError::Crashed);
         assert_eq!(crashed, WorkerPoolError::WorkerCrashed);
-        assert_eq!(crashed.detail(), None);
 
         let timeout = WorkerPoolError::from(WorkerError::Timeout);
         assert_eq!(timeout, WorkerPoolError::WorkerTimeout);
-        assert_eq!(timeout.detail(), None);
 
         let remote = WorkerPoolError::from(WorkerError::Remote {
             code: ErrorCode::PasswordProtected.into(),
@@ -678,6 +629,5 @@ mod tests {
                 detail: Some("secret".into()),
             }
         );
-        assert_eq!(remote.detail(), Some("secret"));
     }
 }

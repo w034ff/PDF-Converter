@@ -8,7 +8,7 @@ use lopdf::encryption::crypt_filters::{Aes256CryptFilter, CryptFilter};
 use lopdf::encryption::{EncryptionState, EncryptionVersion, Permissions};
 use lopdf::{Dictionary, Document, Object};
 
-use crate::error::PdfWriteError;
+use crate::error::{PdfWriteError, write_failed};
 
 /// Longest password in characters. The viewers other than pdfium cut a password at 127 bytes
 /// before checking it, while lopdf does not, so a longer one would not open (design §4.3.1).
@@ -100,10 +100,6 @@ impl fmt::Display for OutputPassword {
     }
 }
 
-fn write_failed(err: impl fmt::Display) -> PdfWriteError {
-    PdfWriteError(err.to_string())
-}
-
 /// Encrypts a PDF written by [`crate::PdfWriter::finish`] with AES-256 (design §4.3.1).
 ///
 /// `pdf` is taken by value so that it is freed once lopdf has read it. A PDF/A document must
@@ -185,13 +181,7 @@ fn add_extensions(doc: &mut Document) -> Result<(), PdfWriteError> {
     let mut extensions = Dictionary::new();
     extensions.set(b"ADBE", Object::Dictionary(adbe));
 
-    let root_id = doc
-        .trailer
-        .get(b"Root")
-        .and_then(Object::as_reference)
-        .map_err(write_failed)?;
-    doc.get_object_mut(root_id)
-        .and_then(Object::as_dict_mut)
+    doc.catalog_mut()
         .map_err(write_failed)?
         .set(b"Extensions", Object::Dictionary(extensions));
     Ok(())

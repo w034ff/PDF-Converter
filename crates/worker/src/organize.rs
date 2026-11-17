@@ -16,8 +16,7 @@ use pdfium_render::prelude::{
 };
 
 use crate::protocol::{
-    OUTPUT_CHUNK_BYTES, OrganizePage, OrganizeSource, Password, Request, Response, WorkerCode,
-    write_message,
+    OUTPUT_CHUNK_BYTES, OrganizePage, OrganizeSource, Password, Response, WorkerCode, write_message,
 };
 use crate::server::{WORKER_MEMORY_LIMIT, check_page_count, map_pdfium_open_error};
 use crate::system_memory::current_usage;
@@ -54,26 +53,6 @@ pub(crate) struct OrganizeArgs {
     pub pages: Vec<OrganizePage>,
     pub creator: String,
     pub output_password: Option<Password>,
-}
-
-impl OrganizeArgs {
-    /// Takes the arguments out of `request`, or gives it back if it is another request.
-    pub(crate) fn from_request(request: Request) -> Result<Self, Request> {
-        match request {
-            Request::Organize {
-                sources,
-                pages,
-                creator,
-                output_password,
-            } => Ok(Self {
-                sources,
-                pages,
-                creator,
-                output_password,
-            }),
-            other => Err(other),
-        }
-    }
 }
 
 /// Why an organize request ended without an output.
