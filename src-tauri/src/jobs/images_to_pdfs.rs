@@ -58,7 +58,7 @@ where
     }
 
     let mut target_names = Vec::new();
-    let mut initial_tasks = Vec::new();
+    let mut tasks = VecDeque::new();
     let mut total_pages = 0u32;
 
     for &id in ids {
@@ -74,14 +74,15 @@ where
             target_names.push(filename.clone());
             total_pages = total_pages.saturating_add(entry.page_count);
         }
-        initial_tasks.push((
+        tasks.push_back(ImageTask {
             id,
             filename,
-            entry.path,
-            entry.page_count,
-            entry.decoded_bytes,
-            entry.error,
-        ));
+            path: entry.path,
+            page_count: entry.page_count,
+            decoded_bytes: entry.decoded_bytes,
+            initial_error: entry.error,
+            initial_output_name: None,
+        });
     }
 
     let resolved_names = resolve_image_to_pdf_names(&target_names, &existing);
@@ -92,28 +93,10 @@ where
     }
     let used_names_lower = Mutex::new(initial_used);
 
-    let mut resolved_iter = resolved_names.into_iter();
-    let tasks: VecDeque<ImageTask> = initial_tasks
-        .into_iter()
-        .map(
-            |(id, filename, path, page_count, decoded_bytes, initial_error)| {
-                let initial_output_name = if initial_error.is_none() {
-                    resolved_iter.next()
-                } else {
-                    None
-                };
-                ImageTask {
-                    id,
-                    filename,
-                    path,
-                    page_count,
-                    decoded_bytes,
-                    initial_error,
-                    initial_output_name,
-                }
-            },
-        )
-        .collect();
+    let ready = tasks.iter_mut().filter(|task| task.initial_error.is_none());
+    for (task, name) in ready.zip(resolved_names) {
+        task.initial_output_name = Some(name);
+    }
 
     let total = total_pages;
     on_progress(JobProgressPayload {
