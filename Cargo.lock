@@ -2742,6 +2742,7 @@ name = "pdfconv-worker"
 version = "0.1.0"
 dependencies = [
  "image",
+ "lopdf",
  "ort",
  "pdfconv-core",
  "pdfium-render",

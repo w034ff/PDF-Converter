@@ -7,22 +7,24 @@
 //!
 //! ```text
 //! cargo build -p pdfconv-worker --release --bin pdfconv-worker
-//! cargo run -p pdfconv-worker --release --example ocr_pdf -- <input.pdf> [--json <folder>]
+//! cargo run -p pdfconv-worker --release --example ocr_pdf -- <input.pdf> <output.pdf> [--json <folder>]
 //! ```
 //!
-//! The page's text goes to standard output; writing the PDF with the text
-//! layer comes with the text layer itself (design ocr §1, stage 2). With
-//! `--json`, each page's
-//! `OcrPage` is written to `<folder>/page-<n>.json`, to look at the reading
-//! order and the confidences. The worker is `pdfconv-worker` of the same
-//! build, started with the pdfium, onnxruntime and models that the fetch
-//! scripts put under `src-tauri/`, so it reads within `WORKER_MEMORY_LIMIT`.
+//! Every page is read and `<output.pdf>` is the input with the text layer
+//! added by `add_text_layer` (design ocr §9); the text also goes to standard
+//! output. With `--json`, each page's `OcrPage` is written to
+//! `<folder>/page-<n>.json`, to look at the reading order and the
+//! confidences. The worker is `pdfconv-worker` of the same build, started
+//! with the pdfium, onnxruntime and models that the fetch scripts put under
+//! `src-tauri/`, so it reads within `WORKER_MEMORY_LIMIT`. An encrypted input
+//! is not read: lopdf would need its password too.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
 use pdfconv_core::ocr::OcrPage;
+use pdfconv_core::text_layer::add_text_layer;
 use pdfconv_worker::client::{OCR_TIMEOUT, OPEN_TIMEOUT, WorkerProcess};
 use pdfconv_worker::protocol::{Request, Response};
 
@@ -68,30 +70,38 @@ fn worker_program() -> Result<PathBuf, String> {
 
 struct Args {
     input: PathBuf,
+    output: PathBuf,
     json_dir: Option<PathBuf>,
 }
 
+const USAGE: &str = "usage: ocr_pdf <input.pdf> <output.pdf> [--json <folder>]";
+
 fn parse_args() -> Result<Args, String> {
     let mut args = std::env::args_os().skip(1);
-    let mut input = None;
+    let mut paths = Vec::new();
     let mut json_dir = None;
     while let Some(arg) = args.next() {
         if arg == "--json" {
             json_dir = Some(PathBuf::from(args.next().ok_or("--json needs a folder")?));
-        } else if input.is_none() {
-            input = Some(PathBuf::from(arg));
         } else {
-            return Err(format!("unexpected argument {}", arg.to_string_lossy()));
+            paths.push(PathBuf::from(arg));
         }
     }
+    let [input, output] = <[PathBuf; 2]>::try_from(paths).map_err(|_| USAGE)?;
     Ok(Args {
-        input: input.ok_or("usage: ocr_pdf <input.pdf> [--json <folder>]")?,
+        input,
+        output,
         json_dir,
     })
 }
 
 fn run() -> Result<(), String> {
     let args = parse_args()?;
+    let mut doc = lopdf::Document::load(&args.input)
+        .map_err(|e| format!("reading {} with lopdf: {e}", args.input.display()))?;
+    if doc.is_encrypted() {
+        return Err(format!("{} is encrypted", args.input.display()));
+    }
     let mut worker = WorkerProcess::spawn(worker_program()?.as_os_str(), worker_args())
         .map_err(|e| format!("starting the worker: {e:?}"))?;
     let page_count = match worker.request(
@@ -107,6 +117,7 @@ fn run() -> Result<(), String> {
     if let Some(dir) = &args.json_dir {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
+    let mut results = Vec::new();
     for page in 1..=page_count {
         let started = Instant::now();
         let body = match worker.request(&Request::Ocr { page }, OCR_TIMEOUT) {
@@ -129,7 +140,13 @@ fn run() -> Result<(), String> {
             let pretty = serde_json::to_vec_pretty(&result).map_err(|e| e.to_string())?;
             std::fs::write(&path, pretty).map_err(|e| format!("{}: {e}", path.display()))?;
         }
+        results.push(result);
     }
+    let pages: Vec<(usize, &OcrPage)> = results.iter().enumerate().collect();
+    add_text_layer(&mut doc, &pages).map_err(|e| format!("adding the text layer: {e}"))?;
+    doc.save(&args.output)
+        .map_err(|e| format!("writing {}: {e}", args.output.display()))?;
+    eprintln!("wrote {}", args.output.display());
     Ok(())
 }
 

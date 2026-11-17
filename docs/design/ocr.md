@@ -129,13 +129,17 @@ pub fn add_text_layer(doc: &mut lopdf::Document, pages: &[(usize, &OcrPage)]) ->
 - **使えないとき**: モデルがないと `OcrUnavailable` を返し、続く `Ocr` も同じエラー、ほかの要求は通ること。`Detect` のあとの `Ocr`（逆も）が、環境を共有して通ること。
 - **遠隔計測**: `Ocr` のあとにホームの下に何も作られないこと（今の layout の試験に足す）。
 - **文字の層**: pdfium で取り出した全文が結果と一致し、検索で当たり、字の箱の中心が結果の 4 点の中にあること。回転したページ（90°・180°・270°）、CropBox の原点がずれたページ、継承した `/Resources`、暗号化した PDF、PDF/A-2b（krilla の検証）でも同じこと。
+  - ワーカーのテスト（`crates/worker/tests/text_layer.rs`）で、OCR から通す。ページは、生成したページをワーカーで描き、今の画像 → PDF で画像だけの PDF にしたもの。回転のページは、内容を逆に回して描き、`/Rotate` で正立して見えるようにする（スキャナーが `/Rotate` を付けて書く形）。
+  - 字の箱は、pdfium の座標変換（`FPDF_PageToDevice`）で表示の向きのページに戻して比べる。文字の層の座標の直しとは別の道で確かめるため。
+  - 全文は字を 1 つずつ並べて作る。pdfium-render の `PdfPageText::all` は、(0, 0) から始まるページの大きさの矩形の中の字しか返さず、原点のずれたページの字を落とすため。
+  - PDF/A-2b の検証: `write_pdfa_samples` が、文字の層を足した見本（`text_layer.pdf`。横書き・縦書き・BMP の外の字）も書き、CI の veraPDF にかける。
 - モデルが要るテストは、layout と同じく取得したモデルで動かす。CI でも取得する。
 
 ## 12. 開発用のコマンド
 
 PoC の出来を、画面なしで確かめるための入口。`crates/worker/examples/ocr_pdf.rs` に置く。
 
-- PDF を受け取り、全ページを OCR し、文字の層を付けた PDF を書き出す。指定すれば、ページごとの `OcrPage` の JSON も書き出す（読み順や確信度を見るため）。
+- PDF を受け取り、全ページを OCR し、文字の層を付けた PDF を書き出す（`ocr_pdf <入力.pdf> <出力.pdf> [--json <フォルダ>]`）。暗号化した入力は受け付けない（lopdf にもパスワードが要るため）。指定すれば、ページごとの `OcrPage` の JSON も書き出す（読み順や確信度を見るため）。
 - 本物のワーカー（`pdfconv-worker`。テストが使う単体のワーカー）を起動し、`Open` と `Ocr` を送る。ワーカーの中で `WORKER_MEMORY_LIMIT` の下で読むので、メモリの確かめにもなる。文字の層は、入力の PDF を lopdf で読んで `add_text_layer`（§9）で足す。
 - pdfium、onnxruntime、モデルの場所の既定は、取得の道具が置く場所（`src-tauri/` の下）にする。
 - 画像を試すときは、今の画像 → PDF で PDF にしてから渡す。

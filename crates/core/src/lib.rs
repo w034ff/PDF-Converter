@@ -13,6 +13,7 @@ pub mod pdf_encrypt;
 pub mod pdf_write;
 pub mod probe;
 pub mod region;
+pub mod text_layer;
 pub mod thumbnail;
 pub mod tiff;
 mod utc_time;
