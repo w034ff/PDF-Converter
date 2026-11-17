@@ -19,7 +19,7 @@ use std::time::Duration;
 use pdfconv_worker::client::WorkerProcess;
 use pdfconv_worker::protocol::{
     CandidateKind as WorkerCandidateKind, EmbeddedImage, LayoutCandidate,
-    NativeSize as WorkerNativeSize, Password, RectPt, Request, Response,
+    NativeSize as WorkerNativeSize, Password, Request, Response,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -34,7 +34,7 @@ use crate::items::{
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
 use crate::worker_pool::{WorkerPool, WorkerPoolError};
-use pdfconv_core::ErrorCode;
+use pdfconv_core::{ErrorCode, PageRect};
 
 /// Name of the event that carries the candidates of one page of
 /// `start_detect_all` (design §7.2).
@@ -161,7 +161,7 @@ pub enum Dropped {
     Organize(OrganizeDropped),
 }
 
-fn rect_array(rect: &RectPt) -> [f64; 4] {
+fn rect_array(rect: &PageRect) -> [f64; 4] {
     [rect.x0, rect.y0, rect.x1, rect.y1]
 }
 

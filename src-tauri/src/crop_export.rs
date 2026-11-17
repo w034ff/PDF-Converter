@@ -12,7 +12,7 @@ use std::sync::atomic::Ordering;
 use pdfconv_core::naming::{CropRegion, resolve_crop_names};
 use pdfconv_core::{ErrorCode, PageRect, position_order};
 use pdfconv_worker::is_render_dpi_in_range;
-use pdfconv_worker::protocol::{RectPt, Request, Response};
+use pdfconv_worker::protocol::{Request, Response};
 use serde::Deserialize;
 use ts_rs::TS;
 
@@ -46,7 +46,7 @@ pub struct CropRegionInput {
 struct PlannedRange {
     key: u64,
     page: u32,
-    rect_pt: RectPt,
+    rect_pt: PageRect,
     image_index: Option<u32>,
     name: String,
 }
@@ -186,11 +186,10 @@ fn plan_ranges(
         .into_iter()
         .map(|index| {
             let region = &regions[index];
-            let [x0, y0, x1, y1] = region.rect_pt;
             PlannedRange {
                 key: region.key,
                 page: region.page,
-                rect_pt: RectPt { x0, y0, x1, y1 },
+                rect_pt: named[index].rect,
                 image_index: region.image_index,
                 name: names[index].clone(),
             }

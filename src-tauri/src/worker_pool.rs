@@ -478,7 +478,8 @@ mod tests {
     use std::path::PathBuf;
 
     use pdfconv_core::ErrorCode;
-    use pdfconv_worker::protocol::{RectPt, RenderColor, RenderFormat};
+    use pdfconv_core::PageRect;
+    use pdfconv_worker::protocol::{RenderColor, RenderFormat};
 
     use super::*;
 
@@ -510,7 +511,7 @@ mod tests {
         };
         let region = Request::RenderRegion {
             page: 1,
-            rect_pt: RectPt {
+            rect_pt: PageRect {
                 x0: 0.0,
                 y0: 0.0,
                 x1: 1.0,

@@ -10,12 +10,10 @@
 use std::path::PathBuf;
 
 use image::{GenericImageView, RgbaImage};
-use pdfconv_core::ErrorCode;
+use pdfconv_core::{ErrorCode, PageRect};
 use pdfconv_worker::PAGE_VIEW_MAX_SIDE;
 use pdfconv_worker::client::{RENDER_TIMEOUT, WorkerError, WorkerProcess};
-use pdfconv_worker::protocol::{
-    EmbeddedImage, RectPt, RenderColor, RenderFormat, Request, Response,
-};
+use pdfconv_worker::protocol::{EmbeddedImage, RenderColor, RenderFormat, Request, Response};
 
 #[path = "../../core/tests/support/crop_pattern.rs"]
 mod crop_pattern;
@@ -74,7 +72,7 @@ fn image_on_top(worker: &mut WorkerProcess, page: u32, image_index: u32) -> bool
 #[derive(Clone)]
 struct Region {
     page: u32,
-    rect: RectPt,
+    rect: PageRect,
     image_index: Option<u32>,
     dpi: u32,
     format: RenderFormat,
@@ -99,7 +97,7 @@ impl Region {
     }
 
     /// A rectangle drawn at `dpi`.
-    fn rectangle(page: u32, rect: RectPt, dpi: u32) -> Self {
+    fn rectangle(page: u32, rect: PageRect, dpi: u32) -> Self {
         Self {
             page,
             rect,
@@ -786,7 +784,7 @@ fn a_region_is_the_same_crop_of_the_page_as_render_makes() {
     assert_eq!(response, Response::Render);
     let page = image::load_from_memory(&page).unwrap().to_rgb8();
 
-    let rect = RectPt {
+    let rect = PageRect {
         x0: 48.0,
         y0: 96.0,
         x1: 384.0,
@@ -837,7 +835,7 @@ fn a_region_off_the_pixel_grid_still_matches_the_page_render() {
     let page = image::load_from_memory(&page).unwrap().to_rgb8();
 
     // 50.4 pt is 105 px and 100.8 pt is 210 px, but the sides are not whole.
-    let rect = RectPt {
+    let rect = PageRect {
         x0: 50.4,
         y0: 100.8,
         x1: 380.9,
@@ -869,7 +867,7 @@ fn a_region_of_a_turned_page_is_cut_from_the_shown_page() {
         .expect("Render should succeed");
     let page = image::load_from_memory(&page).unwrap().to_rgb8();
 
-    let rect = RectPt {
+    let rect = PageRect {
         x0: 60.0,
         y0: 50.0,
         x1: 460.0,
@@ -902,7 +900,7 @@ fn a_region_draws_annotations_like_the_page_render() {
         .expect("Render should succeed");
     let page = image::load_from_memory(&page).unwrap().to_rgb8();
 
-    let rect = RectPt {
+    let rect = PageRect {
         x0: 80.0,
         y0: 100.0,
         x1: 300.0,
@@ -919,7 +917,7 @@ fn a_region_draws_annotations_like_the_page_render() {
 fn a_region_over_the_pixel_limit_is_too_large() {
     // Page 2 of mixed_sizes.pdf is 3000 × 3000 pt: 156 million pixels at 300 dpi.
     let mut worker = started_with("mixed_sizes.pdf");
-    let whole = RectPt {
+    let whole = PageRect {
         x0: 0.0,
         y0: 0.0,
         x1: 3000.0,
@@ -931,7 +929,7 @@ fn a_region_over_the_pixel_limit_is_too_large() {
         ErrorCode::RenderTooLarge,
     );
     // A part of it that fits is drawn.
-    let part = RectPt {
+    let part = PageRect {
         x1: 1000.0,
         y1: 1000.0,
         ..whole
@@ -943,7 +941,7 @@ fn a_region_over_the_pixel_limit_is_too_large() {
 #[test]
 fn bad_regions_are_invalid_params() {
     let mut worker = crop_align();
-    let rect = RectPt {
+    let rect = PageRect {
         x0: 50.0,
         y0: 50.0,
         x1: 200.0,
@@ -953,13 +951,13 @@ fn bad_regions_are_invalid_params() {
     render(&mut worker, &ok);
 
     for bad_rect in [
-        RectPt { x1: 50.0, ..rect },
-        RectPt { y1: 40.0, ..rect },
-        RectPt { x0: -0.6, ..rect },
-        RectPt { y0: -0.6, ..rect },
+        PageRect { x1: 50.0, ..rect },
+        PageRect { y1: 40.0, ..rect },
+        PageRect { x0: -0.6, ..rect },
+        PageRect { y0: -0.6, ..rect },
         // The shown page of page 1 is 579.8 × 822.5 pt.
-        RectPt { x1: 580.4, ..rect },
-        RectPt { y1: 823.1, ..rect },
+        PageRect { x1: 580.4, ..rect },
+        PageRect { y1: 823.1, ..rect },
     ] {
         expect_region_error(
             &mut worker,
@@ -974,7 +972,7 @@ fn bad_regions_are_invalid_params() {
     render(
         &mut worker,
         &Region {
-            rect: RectPt {
+            rect: PageRect {
                 x0: -0.4,
                 y1: 822.9,
                 ..rect
@@ -1057,7 +1055,7 @@ fn the_dpi_range_does_not_apply_to_a_photo_in_its_own_pixels() {
 #[test]
 fn crop_requests_need_an_open_pdf_and_a_page() {
     let mut worker = start();
-    let rect = RectPt {
+    let rect = PageRect {
         x0: 0.0,
         y0: 0.0,
         x1: 10.0,
