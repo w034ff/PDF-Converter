@@ -10,7 +10,7 @@ use super::text_string;
 use super::types::{
     DestinationView, LinkStyleSource, LinkTarget, OutlineItem, OutputLink, Relinking, ViewSettings,
 };
-use crate::error::PdfWriteError;
+use crate::error::{PdfWriteError, write_failed};
 
 /// The `/F` of a link: print. The other flags would hide it or change how it is drawn.
 const LINK_FLAGS: i64 = 4;
@@ -251,7 +251,7 @@ fn write_outline(
     dict.set("Count", Object::Integer(outline.len() as i64));
     doc.objects.insert(root, Object::Dictionary(dict));
     doc.catalog_mut()
-        .map_err(|err| invalid(&err.to_string()))?
+        .map_err(write_failed)?
         .set("Outlines", Object::Reference(root));
     Ok(())
 }
@@ -296,7 +296,7 @@ fn set_view(
     view: ViewSettings,
     has_outline: bool,
 ) -> Result<(), PdfWriteError> {
-    let catalog = doc.catalog_mut().map_err(|err| invalid(&err.to_string()))?;
+    let catalog = doc.catalog_mut().map_err(write_failed)?;
     for (key, value) in view.0 {
         let opens_empty_pane = key == b"PageMode"
             && value.as_name().is_ok_and(|mode| mode == b"UseOutlines")

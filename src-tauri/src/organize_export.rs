@@ -409,7 +409,7 @@ struct SplitPlan {
     password: Option<Password>,
     /// The names in the folder and the planned ones, in lower case, for `persist_unique` to pick
     /// numbers from when a name is taken in the meantime.
-    taken_lower: HashSet<String>,
+    taken_lower: Mutex<HashSet<String>>,
 }
 
 /// Starts making `parts`, one output each, in the background as a conversion (design organize
@@ -465,7 +465,7 @@ where
         output_dir,
         outputs,
         password,
-        taken_lower,
+        taken_lower: Mutex::new(taken_lower),
     };
 
     let JobCallbacks {
@@ -517,7 +517,6 @@ fn run_split(
             current: Some(name.to_owned()),
         });
     };
-    let taken_lower = Mutex::new(plan.taken_lower.clone());
     // The PDFs a source failure was met on, and the failure, so that no later output is tried
     // with one (design organize §6).
     let mut failed_sources: Vec<(u64, IpcError)> = Vec::new();
@@ -545,7 +544,7 @@ fn run_split(
                     &|done| progress(base.saturating_add(done), &output.name),
                 )
                 .and_then(|temp| {
-                    jobs::persist_unique(temp, &plan.output_dir, &output.name, &taken_lower)
+                    jobs::persist_unique(temp, &plan.output_dir, &output.name, &plan.taken_lower)
                         .map_err(OutputStop::writing)
                 })
             }

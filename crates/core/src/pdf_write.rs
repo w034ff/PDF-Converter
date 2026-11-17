@@ -13,7 +13,7 @@ use krilla::image::Image;
 use krilla::metadata::{DateTime, Metadata};
 use krilla::page::PageSettings;
 
-use crate::error::{PdfWriteError, ProbeError};
+use crate::error::{PdfWriteError, ProbeError, write_failed};
 use crate::layout::{PageSize, calculate_layout, orientation_swaps_dimensions};
 use crate::probe::{ImageFormat, ImageInfo, probe_reader};
 use crate::utc_time::{UtcTime, now_utc};
@@ -381,7 +381,7 @@ impl PdfWriter {
     ///
     /// Returns [`PdfWriteError`] if krilla serialization fails.
     pub fn finish(self) -> Result<Vec<u8>, PdfWriteError> {
-        self.doc.finish().map_err(|e| PdfWriteError(e.to_string()))
+        self.doc.finish().map_err(write_failed)
     }
 }
 

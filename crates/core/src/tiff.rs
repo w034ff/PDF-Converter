@@ -49,6 +49,17 @@ impl CustomImage for CustomTiffImage {
     }
 }
 
+/// A decoder whose sample buffer is capped at the largest page design §4.1.1
+/// accepts. A supported page's raw samples never take more bytes per pixel than
+/// [`process_decoded_samples`] turns them into.
+fn limited_decoder<R: BufRead + Seek>(reader: R) -> Result<Decoder<R>, ProbeError> {
+    let mut limits = Limits::default();
+    limits.decoding_buffer_size = (MAX_IMAGE_PIXELS * MAX_DECODED_BYTES_PER_PIXEL) as usize;
+    Ok(Decoder::new(reader)
+        .map_err(|_| ProbeError::DecodeFailed)?
+        .with_limits(limits))
+}
+
 /// Probes a TIFF reader, reading only IFD metadata across all pages (design §4.1.1).
 ///
 /// Verifies:
@@ -58,10 +69,7 @@ impl CustomImage for CustomTiffImage {
 /// - Returns dimensions, orientation and resolution from the first page, and in
 ///   [`ImageInfo::decoded_bytes`] the pixel bytes of the largest page.
 pub fn probe_tiff<R: BufRead + Seek>(reader: &mut R) -> Result<ImageInfo, ProbeError> {
-    let mut decoder = Decoder::new(reader).map_err(|_| ProbeError::DecodeFailed)?;
-    let mut limits = Limits::default();
-    limits.decoding_buffer_size = (MAX_IMAGE_PIXELS * 8) as usize;
-    decoder = decoder.with_limits(limits);
+    let mut decoder = limited_decoder(reader)?;
 
     let mut page_count: u32 = 0;
     let mut first_page: Option<(u32, u32, Orientation, u32, u32)> = None;
@@ -356,10 +364,7 @@ where
     let total_pages = probed.page_count;
 
     reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
-    let mut decoder = Decoder::new(reader).map_err(|_| ProbeError::DecodeFailed)?;
-    let mut limits = Limits::default();
-    limits.decoding_buffer_size = (MAX_IMAGE_PIXELS * 8) as usize;
-    decoder = decoder.with_limits(limits);
+    let mut decoder = limited_decoder(reader)?;
 
     let mut pages = Vec::with_capacity(total_pages as usize);
 
@@ -397,10 +402,7 @@ pub fn verify_tiff_pages<R: BufRead + Seek>(
     let total_pages = probe_tiff(reader)?.page_count;
 
     reader.rewind().map_err(|_| ProbeError::ReadFailed)?;
-    let mut decoder = Decoder::new(reader).map_err(|_| ProbeError::DecodeFailed)?;
-    let mut limits = Limits::default();
-    limits.decoding_buffer_size = (MAX_IMAGE_PIXELS * 8) as usize;
-    decoder = decoder.with_limits(limits);
+    let mut decoder = limited_decoder(reader)?;
 
     for page_idx in 0..total_pages {
         // Not `decode_single_page`: a krilla image starts compressing as soon as it is made.
@@ -817,10 +819,7 @@ fn process_decoded_samples(
 pub fn decode_tiff_first_page_as_image<R: BufRead + Seek>(
     reader: R,
 ) -> Result<image::DynamicImage, ProbeError> {
-    let mut decoder = Decoder::new(reader).map_err(|_| ProbeError::DecodeFailed)?;
-    let mut limits = Limits::default();
-    limits.decoding_buffer_size = (MAX_IMAGE_PIXELS * 8) as usize;
-    decoder = decoder.with_limits(limits);
+    let mut decoder = limited_decoder(reader)?;
 
     let (width, height) = decoder.dimensions().map_err(|_| ProbeError::DecodeFailed)?;
     let total_pixels = u64::from(width).saturating_mul(u64::from(height));

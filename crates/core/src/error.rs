@@ -93,8 +93,10 @@ impl ProbeError {
     }
 }
 
-/// Formats an integer with comma thousands separators without external dependencies.
-pub(crate) fn format_with_commas(mut n: u64) -> String {
+/// Formats an integer with comma thousands separators, as error details show
+/// limits (design §6.6).
+#[must_use]
+pub fn format_with_commas(mut n: u64) -> String {
     if n == 0 {
         return "0".to_string();
     }
@@ -137,6 +139,11 @@ impl std::error::Error for ProbeError {}
 /// Error returned when writing/finishing a PDF document fails (design §4.3, §6.6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PdfWriteError(pub(crate) String);
+
+/// A [`PdfWriteError`] whose message is `err`.
+pub(crate) fn write_failed(err: impl fmt::Display) -> PdfWriteError {
+    PdfWriteError(err.to_string())
+}
 
 impl fmt::Display for PdfWriteError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

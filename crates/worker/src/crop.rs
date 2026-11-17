@@ -142,7 +142,7 @@ fn display_matrix(page: &PdfPage<'_>) -> Result<Matrix, Response> {
     let probe = |x: f32, y: f32| -> Result<(f64, f64), Response> {
         let (device_x, device_y) = page
             .points_to_pixels(PdfPoints::new(x), PdfPoints::new(y), &config)
-            .map_err(|e| error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}"))))?;
+            .map_err(pdfium_failed)?;
         Ok((
             f64::from(device_x) * width / f64::from(probe_width),
             f64::from(device_y) * height / f64::from(probe_height),
@@ -853,13 +853,13 @@ fn isolated_page<'a>(
         } else {
             page.objects_mut()
                 .remove_object_at_index(position)
-                .map_err(removal_failed)?;
+                .map_err(pdfium_failed)?;
         }
     }
     for (position, &index) in kept.iter().enumerate() {
         let inner = paths_below(paths, index);
         if !inner.is_empty() {
-            let mut form = page.objects().get(position).map_err(removal_failed)?;
+            let mut form = page.objects().get(position).map_err(pdfium_failed)?;
             keep_in_form(&mut form, &inner)?;
         }
     }
@@ -881,13 +881,13 @@ fn keep_in_form(object: &mut PdfPageObject<'_>, paths: &[&[usize]]) -> Result<()
             position += 1;
         } else {
             form.remove_object_at_index(position)
-                .map_err(removal_failed)?;
+                .map_err(pdfium_failed)?;
         }
     }
     for (position, &index) in kept.iter().enumerate() {
         let inner = paths_below(paths, index);
         if !inner.is_empty() {
-            let mut child = form.get(position).map_err(removal_failed)?;
+            let mut child = form.get(position).map_err(pdfium_failed)?;
             keep_in_form(&mut child, &inner)?;
         }
     }
@@ -908,7 +908,8 @@ fn paths_below<'p>(paths: &[&'p [usize]], index: usize) -> Vec<&'p [usize]> {
         .collect()
 }
 
-fn removal_failed(e: pdfium_render::prelude::PdfiumError) -> Response {
+/// A `PdfOpenFailed` with pdfium's error as its detail.
+fn pdfium_failed(e: pdfium_render::prelude::PdfiumError) -> Response {
     error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}")))
 }
 
@@ -926,19 +927,19 @@ struct Draw<'a, 'b> {
 
 /// Renders to RGBA bytes (straight alpha).
 fn render_rgba(draw: &Draw<'_, '_>) -> Result<Vec<u8>, Response> {
-    let failed = |e: pdfium_render::prelude::PdfiumError| {
-        error_response(ErrorCode::PdfOpenFailed, Some(format!("{e:?}")))
-    };
     let mut config = PdfRenderConfig::new()
         .set_fixed_size(draw.width as i32, draw.height as i32)
         .set_clear_color(draw.background)
         .render_annotations(draw.annotations)
         .apply_matrix(to_pdf(draw.matrix))
-        .map_err(failed)?;
+        .map_err(pdfium_failed)?;
     if draw.gray {
         config = config.use_grayscale_rendering(true);
     }
-    let bitmap = draw.page.render_with_config(&config).map_err(failed)?;
+    let bitmap = draw
+        .page
+        .render_with_config(&config)
+        .map_err(pdfium_failed)?;
     Ok(bitmap.as_rgba_bytes())
 }
 

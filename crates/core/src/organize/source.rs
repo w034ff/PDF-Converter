@@ -49,15 +49,10 @@ pub fn read_source_details(
     let styles = links
         .iter()
         .map(|key| {
-            let found = match on_page.get(&key.page) {
-                Some(found) => found,
-                None => {
-                    let id = *pages.get(key.page as usize)?;
-                    on_page
-                        .entry(key.page)
-                        .or_insert(page_annotations(&doc, id).links)
-                }
-            };
+            let id = *pages.get(key.page as usize)?;
+            let found = on_page
+                .entry(key.page)
+                .or_insert_with(|| page_annotations(&doc, id).links);
             let link = found.get(key.nth as usize)?;
             link.rect
                 .is_some_and(|rect| rects_match(rect, key.rect))

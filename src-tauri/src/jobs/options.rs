@@ -1,6 +1,6 @@
 //! Choices of the settings panel and what a PDF is written as, per design §6.2, §6.3, §6.9, §7.1.
 
-use pdfconv_core::{ErrorCode, OutputPassword, PdfConformance, encrypt_pdf};
+use pdfconv_core::{ErrorCode, OutputPassword, PageSize, PaperSize, PdfConformance, encrypt_pdf};
 use pdfconv_worker::protocol::RenderFormat;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -85,29 +85,21 @@ pub(super) fn protect_pdf(
 }
 
 impl PageSizeChoice {
-    /// Converts this choice and an orientation into a [`pdfconv_core::PageSize`] (design §7.1).
+    /// Converts this choice and an orientation into a [`PageSize`] (design §7.1).
     ///
     /// When `self` is [`PageSizeChoice::Fit`], `orientation` is ignored.
-    pub fn to_core(self, orientation: PageOrientationChoice) -> pdfconv_core::PageSize {
-        let orientation = orientation.into();
-        match self {
-            Self::Fit => pdfconv_core::PageSize::Fit,
-            Self::A3 => pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::A3, orientation),
-            Self::A4 => pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::A4, orientation),
-            Self::A5 => pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::A5, orientation),
-            Self::JisB4 => {
-                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::JisB4, orientation)
-            }
-            Self::JisB5 => {
-                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::JisB5, orientation)
-            }
-            Self::Letter => {
-                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::Letter, orientation)
-            }
-            Self::Legal => {
-                pdfconv_core::PageSize::Paper(pdfconv_core::PaperSize::Legal, orientation)
-            }
-        }
+    pub fn to_core(self, orientation: PageOrientationChoice) -> PageSize {
+        let paper = match self {
+            Self::Fit => return PageSize::Fit,
+            Self::A3 => PaperSize::A3,
+            Self::A4 => PaperSize::A4,
+            Self::A5 => PaperSize::A5,
+            Self::JisB4 => PaperSize::JisB4,
+            Self::JisB5 => PaperSize::JisB5,
+            Self::Letter => PaperSize::Letter,
+            Self::Legal => PaperSize::Legal,
+        };
+        PageSize::Paper(paper, orientation.into())
     }
 }
 

@@ -19,8 +19,8 @@ use crate::AppState;
 use crate::error::IpcError;
 use crate::items::{
     ItemKind, PageSizePt, Skipped, checked_max_side, checked_page, count, file_name,
-    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, scan_folder,
-    sort_dropped, stops_unlock, unlock_password,
+    kind_of_extension, open_in_pool, pdf_thumbnail, record_opened, scan_folder, sort_dropped,
+    stops_unlock, unlock_password,
 };
 use crate::jobs::{output_password, refuse_while_running};
 
@@ -29,9 +29,6 @@ use crate::jobs::{output_password, refuse_while_running};
 /// The worker's memory for one output is about 2.8 times the output, and `WORKER_MEMORY_LIMIT`
 /// of 2 GiB leaves room for an output of about 600 MB. This is a round number below that.
 pub const MAX_ORGANIZE_OUTPUT_BYTES: u64 = 512 * 1024 * 1024;
-
-/// Bytes in the "MB" of the `detail` of `OutputTooLarge`.
-const BYTES_PER_MB: u64 = 1024 * 1024;
 
 /// A PDF of the organize tab (design organize §4). When `error` is set, the PDF could not be
 /// opened (or still needs its password): the page count is 0 and `pages` is empty.
@@ -310,7 +307,7 @@ fn open_entry(state: &AppState, path: &Path, canonical: PathBuf) -> OrganizeEntr
             match open_in_pool(state, path, None) {
                 Ok((page_count, pages)) => {
                     entry.page_count = page_count;
-                    entry.pages = page_sizes(&pages);
+                    entry.pages = pages;
                 }
                 Err(error) => {
                     entry.encrypted = error.code == ErrorCode::PasswordProtected;
@@ -399,7 +396,6 @@ fn try_unlock(
     {
         return Err(error.clone());
     }
-    let opened = opened.map(|(page_count, pages)| (page_count, page_sizes(&pages)));
     Ok(state.organize.unlocked(id, opened, password.clone()))
 }
 
@@ -492,13 +488,10 @@ pub fn check_estimate(estimate: u64) -> Result<(), IpcError> {
     if estimate <= MAX_ORGANIZE_OUTPUT_BYTES {
         return Ok(());
     }
-    Err(IpcError::new(
+    Err(IpcError::over_limit(
         ErrorCode::OutputTooLarge,
-        format!(
-            "{} MB / {} MB",
-            estimate.div_ceil(BYTES_PER_MB),
-            MAX_ORGANIZE_OUTPUT_BYTES / BYTES_PER_MB
-        ),
+        estimate,
+        MAX_ORGANIZE_OUTPUT_BYTES,
     ))
 }
 

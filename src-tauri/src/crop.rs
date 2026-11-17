@@ -28,8 +28,8 @@ use crate::AppState;
 use crate::error::IpcError;
 use crate::items::{
     ItemKind, ItemsDropped, PageSizePt, add_dropped, checked_max_side, checked_page, file_name,
-    kind_of_extension, open_in_pool, page_sizes, pdf_thumbnail, record_opened, request_on_pdf,
-    stops_unlock, unexpected_response, unlock_password,
+    kind_of_extension, open_in_pool, pdf_thumbnail, record_opened, request_on_pdf, stops_unlock,
+    unexpected_response, unlock_password,
 };
 use crate::jobs::{self, FinishJob, JobFinishedPayload, JobProgressPayload, refuse_while_running};
 use crate::organize::{self, OrganizeDropped};
@@ -616,7 +616,7 @@ impl Analyzer {
 pub fn open_pdf(state: &AppState, path: &Path) -> CropPdf {
     let id = state.items.next_id();
     let (page_count, pages, error) = match open_in_pool(state, path, None) {
-        Ok((page_count, pages)) => (page_count, page_sizes(&pages), None),
+        Ok((page_count, pages)) => (page_count, pages, None),
         Err(error) => (0, Vec::new(), Some(error)),
     };
     let entry = CropEntry {
@@ -670,7 +670,6 @@ pub fn unlock_crop_pdf(state: &AppState, id: u64, password: &str) -> Result<Crop
     {
         return Err(error.clone());
     }
-    let opened = opened.map(|(page_count, pages)| (page_count, page_sizes(&pages)));
     state
         .crop
         .unlocked(id, opened, password)

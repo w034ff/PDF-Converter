@@ -26,9 +26,6 @@ const MERGE_PEAK_FACTOR: u64 = 2;
 const MERGE_MEMORY_NUMERATOR: u64 = 3;
 const MERGE_MEMORY_DENOMINATOR: u64 = 5;
 
-/// The bytes of a megabyte in the detail of `MergeTooLarge`, as in `OutputTooLarge`.
-const BYTES_PER_MB: u64 = 1024 * 1024;
-
 /// The largest estimate a merge is let through with on a machine with `installed` bytes of
 /// memory: 3/5 of it, halved because the peak is twice the output. See design §6.2 for the
 /// numbers.
@@ -59,13 +56,10 @@ pub fn check_merge_size(state: &AppState, ids: &[u64]) -> Result<(), IpcError> {
     if estimate <= limit {
         return Ok(());
     }
-    Err(IpcError::new(
+    Err(IpcError::over_limit(
         ErrorCode::MergeTooLarge,
-        format!(
-            "{} MB / {} MB",
-            estimate.div_ceil(BYTES_PER_MB),
-            limit / BYTES_PER_MB
-        ),
+        estimate,
+        limit,
     ))
 }
 

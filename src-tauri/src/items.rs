@@ -540,26 +540,22 @@ pub(crate) fn open_in_pool(
     state: &AppState,
     path: &Path,
     password: Option<&Password>,
-) -> Result<(u32, Vec<PageDimensions>), IpcError> {
+) -> Result<(u32, Vec<PageSizePt>), IpcError> {
     let mut worker = state.pool.acquire()?;
     let req = Request::Open {
         path: path.to_path_buf(),
         password: password.cloned(),
     };
-    let opened = send_open(&mut worker, &req)?;
+    let (page_count, pages) = send_open(&mut worker, &req)?;
     close_pdf(&mut worker);
-    Ok(opened)
-}
-
-/// The size of every page of `pages`, as [`open_in_pool`] returns them.
-pub(crate) fn page_sizes(pages: &[PageDimensions]) -> Vec<PageSizePt> {
-    pages
+    let sizes = pages
         .iter()
         .map(|page| PageSizePt {
             width_pt: page.width_pt,
             height_pt: page.height_pt,
         })
-        .collect()
+        .collect();
+    Ok((page_count, sizes))
 }
 
 fn load_pdf(
@@ -570,10 +566,7 @@ fn load_pdf(
     let (page_count, pages) = open_in_pool(state, path, password)?;
     Ok(PdfInfo {
         page_count,
-        first_page_size_pt: pages.first().map(|page| PageSizePt {
-            width_pt: page.width_pt,
-            height_pt: page.height_pt,
-        }),
+        first_page_size_pt: pages.first().copied(),
     })
 }
 
